@@ -1,0 +1,92 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/lookup-operation",
+  "description": "CodeSystem $lookup conformance tests: lookup by system+code query parameters, the Parameters-wrapped coding variant, an unknown-code error path, and a missing-required-parameter error path (modeled on HAPI FHIR's CodeSystemR4Test). Gated on the target advertising CodeSystem/$lookup; exact display/designation content is warningOnly since terminology content is server-specific even when $lookup itself is supported.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='CodeSystem').operation.where(name='lookup').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "cs-lookup-demo",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "CodeSystem",
+        "id": "ignixa-cs-lookup-demo",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-lookup" }] },
+        "url": "http://ignixa.io/testscript/codesystem/lookup-demo",
+        "status": "active",
+        "content": "complete",
+        "concept": [
+          { "code": "alpha", "display": "Alpha Code", "designation": [{ "language": "en", "value": "Alpha Code EN" }] },
+          { "code": "beta", "display": "Beta Code" }
+        ]
+      }
+    },
+    {
+      "id": "lookup-params-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "coding", "valueCoding": { "system": "http://ignixa.io/testscript/codesystem/lookup-demo", "code": "beta" } }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "CodeSystem/ignixa-cs-lookup-demo", "sourceId": "cs-lookup-demo", "description": "PUT CodeSystem/ignixa-cs-lookup-demo (url=http://ignixa.io/testscript/codesystem/lookup-demo)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$lookup by system+code query parameters",
+      "description": "GET CodeSystem/$lookup?system=...&code=alpha must return a Parameters resource whose 'display' part echoes the code's display (warningOnly: exact display content is terminology-server-specific).",
+      "action": [
+        { "operation": { "type": { "code": "$lookup" }, "method": "GET", "url": "CodeSystem/$lookup?system=http://ignixa.io/testscript/codesystem/lookup-demo&code=alpha", "responseId": "lookup-by-system-code", "description": "GET CodeSystem/$lookup?system=...&code=alpha" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Parameters resource", "resource": "Parameters" } },
+        { "assert": { "description": "Parameters should include a 'name' part echoing the code system's name (warningOnly)", "expression": "Parameters.parameter.where(name='name').exists()", "warningOnly": true } },
+        { "assert": { "description": "Parameters 'display' part should equal 'Alpha Code' (warningOnly: exact display content is terminology-server-specific)", "expression": "Parameters.parameter.where(name='display').valueString", "value": "Alpha Code", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$lookup via Parameters-wrapped coding parameter (POST)",
+      "description": "POST CodeSystem/$lookup with a coding Parameters body must return the same shape as the GET query-parameter form.",
+      "action": [
+        { "operation": { "type": { "code": "$lookup" }, "resource": "CodeSystem", "sourceId": "lookup-params-body", "responseId": "lookup-by-coding", "description": "POST CodeSystem/$lookup with a Parameters body (coding=beta)" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Parameters resource", "resource": "Parameters" } },
+        { "assert": { "description": "Parameters 'display' part should equal 'Beta Code' (warningOnly: exact display content is terminology-server-specific)", "expression": "Parameters.parameter.where(name='display').valueString", "value": "Beta Code", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$lookup for an unknown code returns an error",
+      "description": "GET CodeSystem/$lookup?system=...&code=<unknown> must be rejected (warningOnly: some servers return 404, others a 400/422 OperationOutcome).",
+      "action": [
+        { "operation": { "type": { "code": "$lookup" }, "method": "GET", "url": "CodeSystem/$lookup?system=http://ignixa.io/testscript/codesystem/lookup-demo&code=does-not-exist", "responseId": "lookup-unknown-code", "description": "GET CodeSystem/$lookup?system=...&code=does-not-exist" } },
+        { "assert": { "description": "Should return an error status, commonly 404 (warningOnly: exact error status varies by server — some return 400/422 instead)", "response": "notFound", "warningOnly": true } },
+        { "assert": { "description": "Response should be an OperationOutcome describing the unknown code (warningOnly)", "resource": "OperationOutcome", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$lookup missing required parameters returns 400",
+      "description": "GET CodeSystem/$lookup with no system/code/coding must be rejected with 400.",
+      "action": [
+        { "operation": { "type": { "code": "$lookup" }, "method": "GET", "url": "CodeSystem/$lookup", "responseId": "lookup-missing-required", "description": "GET CodeSystem/$lookup (no parameters)" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "CodeSystem/ignixa-cs-lookup-demo", "description": "Teardown: delete cs-lookup-demo" } }
+    ]
+  }
+}

@@ -1,0 +1,1324 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/all-resource-types-r4b-plus",
+  "description": "Creates and reads every concrete FHIR resource type introduced in R4B and still present in R5, gated on the target declaring fhirVersion 4.3.x or 5.0.x.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "administrableProductDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "AdministrableProductDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "citation-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "Citation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "clinicalUseDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ClinicalUseDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evidenceReport-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "EvidenceReport"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ingredient-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "Ingredient"
+          }
+        ]
+      }
+    },
+    {
+      "id": "manufacturedItemDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ManufacturedItemDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "nutritionProduct-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "NutritionProduct"
+          }
+        ]
+      }
+    },
+    {
+      "id": "packagedProductDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "PackagedProductDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "regulatedAuthorization-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "RegulatedAuthorization"
+          }
+        ]
+      }
+    },
+    {
+      "id": "subscriptionStatus-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubscriptionStatus"
+          }
+        ]
+      }
+    },
+    {
+      "id": "subscriptionTopic-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubscriptionTopic"
+          }
+        ]
+      }
+    },
+    {
+      "id": "substanceDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstanceDefinition"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "administrableProductDefinitionId",
+      "sourceId": "administrableProductDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created AdministrableProductDefinition"
+    },
+    {
+      "name": "citationId",
+      "sourceId": "citation-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created Citation"
+    },
+    {
+      "name": "clinicalUseDefinitionId",
+      "sourceId": "clinicalUseDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ClinicalUseDefinition"
+    },
+    {
+      "name": "evidenceReportId",
+      "sourceId": "evidenceReport-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created EvidenceReport"
+    },
+    {
+      "name": "ingredientId",
+      "sourceId": "ingredient-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created Ingredient"
+    },
+    {
+      "name": "manufacturedItemDefinitionId",
+      "sourceId": "manufacturedItemDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ManufacturedItemDefinition"
+    },
+    {
+      "name": "medicinalProductDefinitionId",
+      "sourceId": "medicinalProductDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductDefinition"
+    },
+    {
+      "name": "nutritionProductId",
+      "sourceId": "nutritionProduct-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created NutritionProduct"
+    },
+    {
+      "name": "packagedProductDefinitionId",
+      "sourceId": "packagedProductDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created PackagedProductDefinition"
+    },
+    {
+      "name": "regulatedAuthorizationId",
+      "sourceId": "regulatedAuthorization-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created RegulatedAuthorization"
+    },
+    {
+      "name": "subscriptionStatusId",
+      "sourceId": "subscriptionStatus-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubscriptionStatus"
+    },
+    {
+      "name": "subscriptionTopicId",
+      "sourceId": "subscriptionTopic-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubscriptionTopic"
+    },
+    {
+      "name": "substanceDefinitionId",
+      "sourceId": "substanceDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstanceDefinition"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "Can create and read AdministrableProductDefinition",
+      "description": "When the target server declares AdministrableProductDefinition create and read interactions, POST /AdministrableProductDefinition must create a synthetic AdministrableProductDefinition and GET /AdministrableProductDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='AdministrableProductDefinition').interaction.where(code='create').exists() and rest.resource.where(type='AdministrableProductDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "AdministrableProductDefinition",
+            "sourceId": "administrableProductDefinition-fixture",
+            "responseId": "administrableProductDefinition-create-response",
+            "description": "POST a synthetic AdministrableProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "AdministrableProductDefinition create must return HTTP 201 Created",
+            "sourceId": "administrableProductDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a AdministrableProductDefinition",
+            "sourceId": "administrableProductDefinition-create-response",
+            "resource": "AdministrableProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "administrableProductDefinition-create-response",
+            "expression": "AdministrableProductDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "AdministrableProductDefinition/${administrableProductDefinitionId}",
+            "responseId": "administrableProductDefinition-read-response",
+            "description": "GET the created AdministrableProductDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "AdministrableProductDefinition read must return HTTP 200 OK",
+            "sourceId": "administrableProductDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a AdministrableProductDefinition",
+            "sourceId": "administrableProductDefinition-read-response",
+            "resource": "AdministrableProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "administrableProductDefinition-read-response",
+            "expression": "AdministrableProductDefinition.id",
+            "value": "${administrableProductDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read Citation",
+      "description": "When the target server declares Citation create and read interactions, POST /Citation must create a synthetic Citation and GET /Citation/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Citation').interaction.where(code='create').exists() and rest.resource.where(type='Citation').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Citation",
+            "sourceId": "citation-fixture",
+            "responseId": "citation-create-response",
+            "description": "POST a synthetic Citation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Citation create must return HTTP 201 Created",
+            "sourceId": "citation-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a Citation",
+            "sourceId": "citation-create-response",
+            "resource": "Citation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "citation-create-response",
+            "expression": "Citation.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "Citation/${citationId}",
+            "responseId": "citation-read-response",
+            "description": "GET the created Citation by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Citation read must return HTTP 200 OK",
+            "sourceId": "citation-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a Citation",
+            "sourceId": "citation-read-response",
+            "resource": "Citation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "citation-read-response",
+            "expression": "Citation.id",
+            "value": "${citationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ClinicalUseDefinition",
+      "description": "When the target server declares ClinicalUseDefinition create and read interactions, POST /ClinicalUseDefinition must create a synthetic ClinicalUseDefinition and GET /ClinicalUseDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ClinicalUseDefinition').interaction.where(code='create').exists() and rest.resource.where(type='ClinicalUseDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ClinicalUseDefinition",
+            "sourceId": "clinicalUseDefinition-fixture",
+            "responseId": "clinicalUseDefinition-create-response",
+            "description": "POST a synthetic ClinicalUseDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "ClinicalUseDefinition create must return HTTP 201 Created",
+            "sourceId": "clinicalUseDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ClinicalUseDefinition",
+            "sourceId": "clinicalUseDefinition-create-response",
+            "resource": "ClinicalUseDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "clinicalUseDefinition-create-response",
+            "expression": "ClinicalUseDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ClinicalUseDefinition/${clinicalUseDefinitionId}",
+            "responseId": "clinicalUseDefinition-read-response",
+            "description": "GET the created ClinicalUseDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ClinicalUseDefinition read must return HTTP 200 OK",
+            "sourceId": "clinicalUseDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ClinicalUseDefinition",
+            "sourceId": "clinicalUseDefinition-read-response",
+            "resource": "ClinicalUseDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "clinicalUseDefinition-read-response",
+            "expression": "ClinicalUseDefinition.id",
+            "value": "${clinicalUseDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read EvidenceReport",
+      "description": "When the target server declares EvidenceReport create and read interactions, POST /EvidenceReport must create a synthetic EvidenceReport and GET /EvidenceReport/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='EvidenceReport').interaction.where(code='create').exists() and rest.resource.where(type='EvidenceReport').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "EvidenceReport",
+            "sourceId": "evidenceReport-fixture",
+            "responseId": "evidenceReport-create-response",
+            "description": "POST a synthetic EvidenceReport"
+          }
+        },
+        {
+          "assert": {
+            "description": "EvidenceReport create must return HTTP 201 Created",
+            "sourceId": "evidenceReport-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a EvidenceReport",
+            "sourceId": "evidenceReport-create-response",
+            "resource": "EvidenceReport"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "evidenceReport-create-response",
+            "expression": "EvidenceReport.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "EvidenceReport/${evidenceReportId}",
+            "responseId": "evidenceReport-read-response",
+            "description": "GET the created EvidenceReport by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "EvidenceReport read must return HTTP 200 OK",
+            "sourceId": "evidenceReport-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a EvidenceReport",
+            "sourceId": "evidenceReport-read-response",
+            "resource": "EvidenceReport"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "evidenceReport-read-response",
+            "expression": "EvidenceReport.id",
+            "value": "${evidenceReportId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read Ingredient",
+      "description": "When the target server declares Ingredient create and read interactions, POST /Ingredient must create a synthetic Ingredient and GET /Ingredient/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Ingredient').interaction.where(code='create').exists() and rest.resource.where(type='Ingredient').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Ingredient",
+            "sourceId": "ingredient-fixture",
+            "responseId": "ingredient-create-response",
+            "description": "POST a synthetic Ingredient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Ingredient create must return HTTP 201 Created",
+            "sourceId": "ingredient-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a Ingredient",
+            "sourceId": "ingredient-create-response",
+            "resource": "Ingredient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "ingredient-create-response",
+            "expression": "Ingredient.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "Ingredient/${ingredientId}",
+            "responseId": "ingredient-read-response",
+            "description": "GET the created Ingredient by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Ingredient read must return HTTP 200 OK",
+            "sourceId": "ingredient-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a Ingredient",
+            "sourceId": "ingredient-read-response",
+            "resource": "Ingredient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "ingredient-read-response",
+            "expression": "Ingredient.id",
+            "value": "${ingredientId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ManufacturedItemDefinition",
+      "description": "When the target server declares ManufacturedItemDefinition create and read interactions, POST /ManufacturedItemDefinition must create a synthetic ManufacturedItemDefinition and GET /ManufacturedItemDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ManufacturedItemDefinition').interaction.where(code='create').exists() and rest.resource.where(type='ManufacturedItemDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ManufacturedItemDefinition",
+            "sourceId": "manufacturedItemDefinition-fixture",
+            "responseId": "manufacturedItemDefinition-create-response",
+            "description": "POST a synthetic ManufacturedItemDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "ManufacturedItemDefinition create must return HTTP 201 Created",
+            "sourceId": "manufacturedItemDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ManufacturedItemDefinition",
+            "sourceId": "manufacturedItemDefinition-create-response",
+            "resource": "ManufacturedItemDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "manufacturedItemDefinition-create-response",
+            "expression": "ManufacturedItemDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ManufacturedItemDefinition/${manufacturedItemDefinitionId}",
+            "responseId": "manufacturedItemDefinition-read-response",
+            "description": "GET the created ManufacturedItemDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ManufacturedItemDefinition read must return HTTP 200 OK",
+            "sourceId": "manufacturedItemDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ManufacturedItemDefinition",
+            "sourceId": "manufacturedItemDefinition-read-response",
+            "resource": "ManufacturedItemDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "manufacturedItemDefinition-read-response",
+            "expression": "ManufacturedItemDefinition.id",
+            "value": "${manufacturedItemDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductDefinition",
+      "description": "When the target server declares MedicinalProductDefinition create and read interactions, POST /MedicinalProductDefinition must create a synthetic MedicinalProductDefinition and GET /MedicinalProductDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductDefinition').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductDefinition",
+            "sourceId": "medicinalProductDefinition-fixture",
+            "responseId": "medicinalProductDefinition-create-response",
+            "description": "POST a synthetic MedicinalProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductDefinition create must return HTTP 201 Created",
+            "sourceId": "medicinalProductDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductDefinition",
+            "sourceId": "medicinalProductDefinition-create-response",
+            "resource": "MedicinalProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductDefinition-create-response",
+            "expression": "MedicinalProductDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductDefinition/${medicinalProductDefinitionId}",
+            "responseId": "medicinalProductDefinition-read-response",
+            "description": "GET the created MedicinalProductDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductDefinition read must return HTTP 200 OK",
+            "sourceId": "medicinalProductDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductDefinition",
+            "sourceId": "medicinalProductDefinition-read-response",
+            "resource": "MedicinalProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductDefinition-read-response",
+            "expression": "MedicinalProductDefinition.id",
+            "value": "${medicinalProductDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read NutritionProduct",
+      "description": "When the target server declares NutritionProduct create and read interactions, POST /NutritionProduct must create a synthetic NutritionProduct and GET /NutritionProduct/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='NutritionProduct').interaction.where(code='create').exists() and rest.resource.where(type='NutritionProduct').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "NutritionProduct",
+            "sourceId": "nutritionProduct-fixture",
+            "responseId": "nutritionProduct-create-response",
+            "description": "POST a synthetic NutritionProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "NutritionProduct create must return HTTP 201 Created",
+            "sourceId": "nutritionProduct-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a NutritionProduct",
+            "sourceId": "nutritionProduct-create-response",
+            "resource": "NutritionProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "nutritionProduct-create-response",
+            "expression": "NutritionProduct.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "NutritionProduct/${nutritionProductId}",
+            "responseId": "nutritionProduct-read-response",
+            "description": "GET the created NutritionProduct by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "NutritionProduct read must return HTTP 200 OK",
+            "sourceId": "nutritionProduct-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a NutritionProduct",
+            "sourceId": "nutritionProduct-read-response",
+            "resource": "NutritionProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "nutritionProduct-read-response",
+            "expression": "NutritionProduct.id",
+            "value": "${nutritionProductId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read PackagedProductDefinition",
+      "description": "When the target server declares PackagedProductDefinition create and read interactions, POST /PackagedProductDefinition must create a synthetic PackagedProductDefinition and GET /PackagedProductDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='PackagedProductDefinition').interaction.where(code='create').exists() and rest.resource.where(type='PackagedProductDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "PackagedProductDefinition",
+            "sourceId": "packagedProductDefinition-fixture",
+            "responseId": "packagedProductDefinition-create-response",
+            "description": "POST a synthetic PackagedProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "PackagedProductDefinition create must return HTTP 201 Created",
+            "sourceId": "packagedProductDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a PackagedProductDefinition",
+            "sourceId": "packagedProductDefinition-create-response",
+            "resource": "PackagedProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "packagedProductDefinition-create-response",
+            "expression": "PackagedProductDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "PackagedProductDefinition/${packagedProductDefinitionId}",
+            "responseId": "packagedProductDefinition-read-response",
+            "description": "GET the created PackagedProductDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "PackagedProductDefinition read must return HTTP 200 OK",
+            "sourceId": "packagedProductDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a PackagedProductDefinition",
+            "sourceId": "packagedProductDefinition-read-response",
+            "resource": "PackagedProductDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "packagedProductDefinition-read-response",
+            "expression": "PackagedProductDefinition.id",
+            "value": "${packagedProductDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read RegulatedAuthorization",
+      "description": "When the target server declares RegulatedAuthorization create and read interactions, POST /RegulatedAuthorization must create a synthetic RegulatedAuthorization and GET /RegulatedAuthorization/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='RegulatedAuthorization').interaction.where(code='create').exists() and rest.resource.where(type='RegulatedAuthorization').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "RegulatedAuthorization",
+            "sourceId": "regulatedAuthorization-fixture",
+            "responseId": "regulatedAuthorization-create-response",
+            "description": "POST a synthetic RegulatedAuthorization"
+          }
+        },
+        {
+          "assert": {
+            "description": "RegulatedAuthorization create must return HTTP 201 Created",
+            "sourceId": "regulatedAuthorization-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a RegulatedAuthorization",
+            "sourceId": "regulatedAuthorization-create-response",
+            "resource": "RegulatedAuthorization"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "regulatedAuthorization-create-response",
+            "expression": "RegulatedAuthorization.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "RegulatedAuthorization/${regulatedAuthorizationId}",
+            "responseId": "regulatedAuthorization-read-response",
+            "description": "GET the created RegulatedAuthorization by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "RegulatedAuthorization read must return HTTP 200 OK",
+            "sourceId": "regulatedAuthorization-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a RegulatedAuthorization",
+            "sourceId": "regulatedAuthorization-read-response",
+            "resource": "RegulatedAuthorization"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "regulatedAuthorization-read-response",
+            "expression": "RegulatedAuthorization.id",
+            "value": "${regulatedAuthorizationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubscriptionStatus",
+      "description": "When the target server declares SubscriptionStatus create and read interactions, POST /SubscriptionStatus must create a synthetic SubscriptionStatus and GET /SubscriptionStatus/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubscriptionStatus').interaction.where(code='create').exists() and rest.resource.where(type='SubscriptionStatus').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubscriptionStatus",
+            "sourceId": "subscriptionStatus-fixture",
+            "responseId": "subscriptionStatus-create-response",
+            "description": "POST a synthetic SubscriptionStatus"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubscriptionStatus create must return HTTP 201 Created",
+            "sourceId": "subscriptionStatus-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubscriptionStatus",
+            "sourceId": "subscriptionStatus-create-response",
+            "resource": "SubscriptionStatus"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "subscriptionStatus-create-response",
+            "expression": "SubscriptionStatus.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubscriptionStatus/${subscriptionStatusId}",
+            "responseId": "subscriptionStatus-read-response",
+            "description": "GET the created SubscriptionStatus by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubscriptionStatus read must return HTTP 200 OK",
+            "sourceId": "subscriptionStatus-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubscriptionStatus",
+            "sourceId": "subscriptionStatus-read-response",
+            "resource": "SubscriptionStatus"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "subscriptionStatus-read-response",
+            "expression": "SubscriptionStatus.id",
+            "value": "${subscriptionStatusId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubscriptionTopic",
+      "description": "When the target server declares SubscriptionTopic create and read interactions, POST /SubscriptionTopic must create a synthetic SubscriptionTopic and GET /SubscriptionTopic/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubscriptionTopic').interaction.where(code='create').exists() and rest.resource.where(type='SubscriptionTopic').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubscriptionTopic",
+            "sourceId": "subscriptionTopic-fixture",
+            "responseId": "subscriptionTopic-create-response",
+            "description": "POST a synthetic SubscriptionTopic"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubscriptionTopic create must return HTTP 201 Created",
+            "sourceId": "subscriptionTopic-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubscriptionTopic",
+            "sourceId": "subscriptionTopic-create-response",
+            "resource": "SubscriptionTopic"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "subscriptionTopic-create-response",
+            "expression": "SubscriptionTopic.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubscriptionTopic/${subscriptionTopicId}",
+            "responseId": "subscriptionTopic-read-response",
+            "description": "GET the created SubscriptionTopic by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubscriptionTopic read must return HTTP 200 OK",
+            "sourceId": "subscriptionTopic-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubscriptionTopic",
+            "sourceId": "subscriptionTopic-read-response",
+            "resource": "SubscriptionTopic"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "subscriptionTopic-read-response",
+            "expression": "SubscriptionTopic.id",
+            "value": "${subscriptionTopicId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubstanceDefinition",
+      "description": "When the target server declares SubstanceDefinition create and read interactions, POST /SubstanceDefinition must create a synthetic SubstanceDefinition and GET /SubstanceDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstanceDefinition').interaction.where(code='create').exists() and rest.resource.where(type='SubstanceDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstanceDefinition",
+            "sourceId": "substanceDefinition-fixture",
+            "responseId": "substanceDefinition-create-response",
+            "description": "POST a synthetic SubstanceDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceDefinition create must return HTTP 201 Created",
+            "sourceId": "substanceDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstanceDefinition",
+            "sourceId": "substanceDefinition-create-response",
+            "resource": "SubstanceDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substanceDefinition-create-response",
+            "expression": "SubstanceDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstanceDefinition/${substanceDefinitionId}",
+            "responseId": "substanceDefinition-read-response",
+            "description": "GET the created SubstanceDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceDefinition read must return HTTP 200 OK",
+            "sourceId": "substanceDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstanceDefinition",
+            "sourceId": "substanceDefinition-read-response",
+            "resource": "SubstanceDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substanceDefinition-read-response",
+            "expression": "SubstanceDefinition.id",
+            "value": "${substanceDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": []
+  },
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "fhirVersion.startsWith('4.3') or fhirVersion.startsWith('5.0')"
+    }
+  ]
+}

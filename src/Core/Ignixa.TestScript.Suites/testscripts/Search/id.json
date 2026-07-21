@@ -1,0 +1,127 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/id",
+  "description": "_id search-parameter conformance tests on HealthcareService: single-value lookup, combination with other search parameters/modifiers (AND semantics), and comma-separated id lists (OR semantics) (from IdSearchTests). Since _id matches on a globally unique id, assertions here are exact rather than warningOnly.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "loc",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Location",
+        "id": "ignixa-id-loc",
+        "status": "active",
+        "name": "ignixa Test Location"
+      }
+    },
+    {
+      "id": "hs-a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-id-a",
+        "active": true,
+        "name": "ignixa Alpha Health Service",
+        "location": [{ "reference": "Location/ignixa-id-loc" }]
+      }
+    },
+    {
+      "id": "hs-b",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-id-b",
+        "active": false,
+        "name": "ignixa Bravo Health Service"
+      }
+    },
+    {
+      "id": "hs-c",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-id-c",
+        "active": true,
+        "name": "ignixa Charlie Health Service"
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Location/ignixa-id-loc", "sourceId": "loc", "description": "PUT Location/ignixa-id-loc — client-supplied ID so hs-a can reference it" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-id-a", "sourceId": "hs-a", "description": "PUT HealthcareService/ignixa-id-a (active=true, has location)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-id-b", "sourceId": "hs-b", "description": "PUT HealthcareService/ignixa-id-b (active=false, no location)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-id-c", "sourceId": "hs-c", "description": "PUT HealthcareService/ignixa-id-c (active=true, no location)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "_id: single-value lookup returns exactly that resource",
+      "description": "HealthcareService?_id=ignixa-id-a must return a Bundle containing exactly one entry, which is hs-a. Since _id filters on a globally unique id, this is deterministic even on a server with other suites' data.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_id=ignixa-id-a", "responseId": "id-single", "description": "GET HealthcareService?_id=ignixa-id-a" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must contain exactly 1 entry", "expression": "entry.count() = 1" } },
+        { "assert": { "description": "The single entry must be hs-a", "expression": "entry.where(resource.id = 'ignixa-id-a').exists()" } }
+      ]
+    },
+    {
+      "name": "_id combined with a :missing modifier on another parameter (AND semantics)",
+      "description": "HealthcareService?_id=ignixa-id-a&location:missing=false must return hs-a (which has a location). The same query with location:missing=true must return zero results, since hs-a does have a location — demonstrating _id is ANDed with other search parameters/modifiers rather than short-circuiting them.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_id=ignixa-id-a&location:missing=false", "responseId": "id-missing-false", "description": "GET HealthcareService?_id=ignixa-id-a&location:missing=false" } },
+        { "assert": { "description": "missing=false: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "missing=false: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "missing=false: must include hs-a (has a location)", "expression": "entry.where(resource.id = 'ignixa-id-a').exists()" } },
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_id=ignixa-id-a&location:missing=true", "responseId": "id-missing-true", "description": "GET HealthcareService?_id=ignixa-id-a&location:missing=true" } },
+        { "assert": { "description": "missing=true: HTTP 200", "response": "okay", "sourceId": "id-missing-true" } },
+        { "assert": { "description": "missing=true: returns a Bundle", "resource": "Bundle", "sourceId": "id-missing-true" } },
+        { "assert": { "description": "missing=true: must return zero entries (hs-a has a location)", "expression": "entry.count() = 0", "sourceId": "id-missing-true" } }
+      ]
+    },
+    {
+      "name": "_id combined with a plain search parameter (AND semantics)",
+      "description": "HealthcareService?_id=ignixa-id-b&active=true must return zero results, because hs-b is scoped by id but its active flag is false. HealthcareService?_id=ignixa-id-c&active=true must return hs-c, whose active flag is true.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_id=ignixa-id-b&active=true", "responseId": "id-active-mismatch", "description": "GET HealthcareService?_id=ignixa-id-b&active=true" } },
+        { "assert": { "description": "Mismatch: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Mismatch: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Mismatch: must return zero entries (hs-b is active=false)", "expression": "entry.count() = 0" } },
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_id=ignixa-id-c&active=true", "responseId": "id-active-match", "description": "GET HealthcareService?_id=ignixa-id-c&active=true" } },
+        { "assert": { "description": "Match: HTTP 200", "response": "okay", "sourceId": "id-active-match" } },
+        { "assert": { "description": "Match: returns a Bundle", "resource": "Bundle", "sourceId": "id-active-match" } },
+        { "assert": { "description": "Match: must include hs-c", "expression": "entry.where(resource.id = 'ignixa-id-c').exists()", "sourceId": "id-active-match" } }
+      ]
+    },
+    {
+      "name": "_id supports a comma-separated list of ids (OR semantics)",
+      "description": "HealthcareService?_id=ignixa-id-a,ignixa-id-b,ignixa-id-c&_count=100 must return a Bundle with exactly 3 entries, one for each listed id.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_id=ignixa-id-a,ignixa-id-b,ignixa-id-c&_count=100", "responseId": "id-list", "description": "GET HealthcareService?_id=ignixa-id-a,ignixa-id-b,ignixa-id-c" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must contain exactly 3 entries", "expression": "entry.count() = 3" } },
+        { "assert": { "description": "Must include hs-a", "expression": "entry.where(resource.id = 'ignixa-id-a').exists()" } },
+        { "assert": { "description": "Must include hs-b", "expression": "entry.where(resource.id = 'ignixa-id-b').exists()" } },
+        { "assert": { "description": "Must include hs-c", "expression": "entry.where(resource.id = 'ignixa-id-c').exists()" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-id-a", "description": "Teardown: delete hs-a" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-id-b", "description": "Teardown: delete hs-b" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-id-c", "description": "Teardown: delete hs-c" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Location/ignixa-id-loc", "description": "Teardown: delete loc" } }
+    ]
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/pagination",
+  "description": "Pagination conformance tests for _count and _total. Does NOT follow next links — absolute-URL link traversal requires an engine enhancement. Five Patients (fhir262-page-p1..p5) share identifier system http://fhir262/pagination so searches can be scoped. Count/total comparisons use inline FHIRPath (entry.count() <= 2, total >= 5) because the engine has no lessOrEquals/greaterOrEquals assert operator.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "page-p1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-page-p1",
+        "identifier": [{ "system": "http://fhir262/pagination", "value": "PAGE-1" }],
+        "name": [{ "family": "Page", "given": ["One"] }]
+      }
+    },
+    {
+      "id": "page-p2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-page-p2",
+        "identifier": [{ "system": "http://fhir262/pagination", "value": "PAGE-2" }],
+        "name": [{ "family": "Page", "given": ["Two"] }]
+      }
+    },
+    {
+      "id": "page-p3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-page-p3",
+        "identifier": [{ "system": "http://fhir262/pagination", "value": "PAGE-3" }],
+        "name": [{ "family": "Page", "given": ["Three"] }]
+      }
+    },
+    {
+      "id": "page-p4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-page-p4",
+        "identifier": [{ "system": "http://fhir262/pagination", "value": "PAGE-4" }],
+        "name": [{ "family": "Page", "given": ["Four"] }]
+      }
+    },
+    {
+      "id": "page-p5",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-page-p5",
+        "identifier": [{ "system": "http://fhir262/pagination", "value": "PAGE-5" }],
+        "name": [{ "family": "Page", "given": ["Five"] }]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/fhir262-page-p1", "sourceId": "page-p1", "description": "PUT Patient/fhir262-page-p1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/fhir262-page-p2", "sourceId": "page-p2", "description": "PUT Patient/fhir262-page-p2" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/fhir262-page-p3", "sourceId": "page-p3", "description": "PUT Patient/fhir262-page-p3" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/fhir262-page-p4", "sourceId": "page-p4", "description": "PUT Patient/fhir262-page-p4" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/fhir262-page-p5", "sourceId": "page-p5", "description": "PUT Patient/fhir262-page-p5" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "_count limits page size",
+      "description": "Searching the pagination identifier system with _count=2 must return no more than 2 entries on the first page. total>=5 or a next link confirms there are more results beyond this page (warningOnly — not all servers populate total or a next link).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://fhir262/pagination|&_count=2", "responseId": "count-page", "description": "GET /Patient?identifier=http://fhir262/pagination|&_count=2" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "First page must contain at most 2 entries (_count=2)", "expression": "entry.count() <= 2" } },
+        { "assert": { "description": "total should report at least 5 matches across all pages", "expression": "total >= 5", "warningOnly": true } },
+        { "assert": { "description": "A next link should be present when results exceed the page size", "expression": "link.where(relation = 'next').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_total=accurate returns a count",
+      "description": "With _total=accurate the server must populate Bundle.total with the full match count (>=5 for our five fixtures).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://fhir262/pagination|&_total=accurate", "responseId": "total-accurate", "description": "GET /Patient?identifier=http://fhir262/pagination|&_total=accurate" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "total must be at least 5", "expression": "total >= 5" } }
+      ]
+    },
+    {
+      "name": "_total=none omits the total",
+      "description": "With _total=none the server is permitted to omit Bundle.total. Behaviour varies (omit vs total=0), so the assertion is warningOnly.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://fhir262/pagination|&_total=none", "responseId": "total-none", "description": "GET /Patient?identifier=http://fhir262/pagination|&_total=none" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "total should be omitted (or 0) when _total=none", "expression": "total.exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/fhir262-page-p1", "description": "Teardown: delete p1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/fhir262-page-p2", "description": "Teardown: delete p2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/fhir262-page-p3", "description": "Teardown: delete p3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/fhir262-page-p4", "description": "Teardown: delete p4" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/fhir262-page-p5", "description": "Teardown: delete p5" } }
+    ]
+  }
+}

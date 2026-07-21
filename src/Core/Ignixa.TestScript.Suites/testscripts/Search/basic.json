@@ -1,0 +1,377 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/basic",
+  "description": "Basic search conformance tests: token, string prefix, date range, _id lookup, and _total=accurate against three known Patient fixtures.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://fhir262/test",
+            "value": "MRN-001"
+          }
+        ],
+        "name": [
+          {
+            "family": "Smith",
+            "given": ["John"]
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1980-01-15"
+      }
+    },
+    {
+      "id": "patient-b",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://fhir262/test",
+            "value": "MRN-002"
+          }
+        ],
+        "name": [
+          {
+            "family": "Jones",
+            "given": ["Jane"]
+          }
+        ],
+        "gender": "female",
+        "birthDate": "1990-06-20"
+      }
+    },
+    {
+      "id": "patient-c",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://fhir262/test",
+            "value": "MRN-003"
+          }
+        ],
+        "name": [
+          {
+            "family": "Smithson",
+            "given": ["Sam"]
+          }
+        ],
+        "gender": "female",
+        "birthDate": "2000-12-31"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "patientAId",
+      "sourceId": "create-a-response",
+      "path": "id",
+      "description": "Server-assigned id for Patient A (Smith/MRN-001)"
+    },
+    {
+      "name": "patientBId",
+      "sourceId": "create-b-response",
+      "path": "id",
+      "description": "Server-assigned id for Patient B (Jones/MRN-002)"
+    },
+    {
+      "name": "patientCId",
+      "sourceId": "create-c-response",
+      "path": "id",
+      "description": "Server-assigned id for Patient C (Smithson/MRN-003)"
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "patient-a",
+          "responseId": "create-a-response",
+          "description": "Create Patient A: John Smith, male, MRN-001, born 1980-01-15"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "patient-b",
+          "responseId": "create-b-response",
+          "description": "Create Patient B: Jane Jones, female, MRN-002, born 1990-06-20"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "patient-c",
+          "responseId": "create-c-response",
+          "description": "Create Patient C: Sam Smithson, female, MRN-003, born 2000-12-31"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "token: identifier exact match",
+      "description": "GET /Patient?identifier=system|value must return only the patient with that exact identifier token. Expect Patient A; must not include Patient B.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?identifier=http://fhir262/test|MRN-001",
+            "responseId": "token-search-response",
+            "description": "Search by exact token identifier for MRN-001"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result set must contain Patient A",
+            "expression": "entry.where(resource.id = '${patientAId}').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result set must NOT contain Patient B (warningOnly: false would cause false failures if server returns superset)",
+            "expression": "entry.where(resource.id = '${patientBId}').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "string: family prefix match",
+      "description": "GET /Patient?family=smi must return patients whose family name starts with 'Smi' (Smith and Smithson). Must include A and C; must not include B (Jones).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?family=smi&identifier=http://fhir262/test|&_count=100",
+            "responseId": "family-search-response",
+            "description": "Search by family name prefix 'smi' (case-insensitive prefix per FHIR string search)"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must contain Patient A (Smith)",
+            "expression": "entry.where(resource.id = '${patientAId}').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must contain Patient C (Smithson)",
+            "expression": "entry.where(resource.id = '${patientCId}').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must NOT contain Patient B (Jones does not start with 'Smi')",
+            "expression": "entry.where(resource.id = '${patientBId}').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "date: birthdate ge filter",
+      "description": "GET /Patient?birthdate=ge1985-01-01 must return patients born on or after 1985-01-01. Expect B (1990) and C (2000); must not include A (1980).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?birthdate=ge1985-01-01&identifier=http://fhir262/test|&_count=100",
+            "responseId": "date-search-response",
+            "description": "Search for patients born on or after 1985-01-01"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must contain Patient B (born 1990-06-20)",
+            "expression": "entry.where(resource.id = '${patientBId}').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must contain Patient C (born 2000-12-31)",
+            "expression": "entry.where(resource.id = '${patientCId}').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must NOT contain Patient A (born 1980-01-15, before the ge cutoff)",
+            "expression": "entry.where(resource.id = '${patientAId}').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "_id exact match",
+      "description": "GET /Patient?_id={id} must return exactly that one patient. Expect only Patient A; must not include B or C.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?_id=${patientAId}",
+            "responseId": "id-search-response",
+            "description": "Search by _id for Patient A's server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must contain Patient A",
+            "expression": "entry.where(resource.id = '${patientAId}').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must NOT contain Patient B",
+            "expression": "entry.where(resource.id = '${patientBId}').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Result must NOT contain Patient C",
+            "expression": "entry.where(resource.id = '${patientCId}').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "_total accurate",
+      "description": "GET /Patient?identifier=http://fhir262/test|&_total=accurate must return Bundle.total = 3 (all three fixtures use that system). Requires the server to support _total=accurate.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Patient",
+            "params": "?identifier=http://fhir262/test|&_total=accurate",
+            "responseId": "total-search-response",
+            "description": "Search with _total=accurate to assert Bundle.total reflects all three inserted patients"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Bundle.total must equal 3 (warningOnly: server may have pre-existing data with this system, or may not support _total=accurate)",
+            "expression": "Bundle.total",
+            "value": "3",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${patientAId}",
+          "description": "Teardown: delete Patient A"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${patientBId}",
+          "description": "Teardown: delete Patient B"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${patientCId}",
+          "description": "Teardown: delete Patient C"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,439 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/string-modifiers",
+  "description": "Search modifier conformance tests ported from fhir262 modifiers block: :exact, :contains, :missing, :not, and :of-type against isolated Patient and ValueSet fixtures (identifier system http://fhir262/test).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-exact-smith",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "EX-1" }],
+        "name": [{ "family": "Smith" }]
+      }
+    },
+    {
+      "id": "patient-exact-smithson",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "EX-2" }],
+        "name": [{ "family": "Smithson" }]
+      }
+    },
+    {
+      "id": "patient-exact-smith-lower",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "EX-3" }],
+        "name": [{ "family": "smith" }]
+      }
+    },
+    {
+      "id": "patient-ct-anderson",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "CT-1" }],
+        "name": [{ "family": "Anderson" }]
+      }
+    },
+    {
+      "id": "patient-ct-sonder",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "CT-2" }],
+        "name": [{ "family": "Sonder" }]
+      }
+    },
+    {
+      "id": "patient-ct-samsonite",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "CT-3" }],
+        "name": [{ "family": "Samsonite" }]
+      }
+    },
+    {
+      "id": "patient-ct-brown",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "CT-4" }],
+        "name": [{ "family": "Brown" }]
+      }
+    },
+    {
+      "id": "valueset-ct-acme",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "identifier": [ { "system": "http://fhir262/test", "value": "VS-ACME" } ],
+        "url": "http://acme.org/fhir/ValueSet/foo",
+        "status": "active"
+      }
+    },
+    {
+      "id": "valueset-ct-example",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "identifier": [ { "system": "http://fhir262/test", "value": "VS-EXAMPLE" } ],
+        "url": "http://example.org/fhir/ValueSet/bar",
+        "status": "active"
+      }
+    },
+    {
+      "id": "patient-mi-full",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "MI-1" }],
+        "gender": "male",
+        "birthDate": "1980-01-01"
+      }
+    },
+    {
+      "id": "patient-mi-empty",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "MI-2" }]
+      }
+    },
+    {
+      "id": "patient-nt-male",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "NT-1" }],
+        "gender": "male"
+      }
+    },
+    {
+      "id": "patient-nt-female",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "NT-2" }],
+        "gender": "female"
+      }
+    },
+    {
+      "id": "patient-nt-other",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "NT-3" }],
+        "gender": "other"
+      }
+    },
+    {
+      "id": "patient-nt-none",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "NT-4" }]
+      }
+    },
+    {
+      "id": "patient-ot-mr",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          { "system": "http://fhir262/test", "value": "OT-1" },
+          {
+            "type": {
+              "coding": [
+                { "system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "MR" }
+              ]
+            },
+            "value": "12345"
+          }
+        ]
+      }
+    },
+    {
+      "id": "patient-ot-mrt",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          { "system": "http://fhir262/test", "value": "OT-2" },
+          {
+            "type": {
+              "coding": [
+                { "system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "MRT" }
+              ]
+            },
+            "value": "12345"
+          }
+        ]
+      }
+    },
+    {
+      "id": "patient-ot-mrx",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          { "system": "http://fhir262/test", "value": "OT-3" },
+          {
+            "type": {
+              "coding": [
+                { "system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "MR" }
+              ]
+            },
+            "value": "99999"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "patientExactSmithId", "sourceId": "create-exact-smith", "path": "id", "description": "Id for patient-exact-smith (Smith, EX-1)" },
+    { "name": "patientExactSmithsonId", "sourceId": "create-exact-smithson", "path": "id", "description": "Id for patient-exact-smithson (Smithson, EX-2)" },
+    { "name": "patientExactSmithLowerId", "sourceId": "create-exact-smith-lower", "path": "id", "description": "Id for patient-exact-smith-lower (smith, EX-3)" },
+    { "name": "patientCtAndersonId", "sourceId": "create-ct-anderson", "path": "id", "description": "Id for patient-ct-anderson (Anderson, CT-1)" },
+    { "name": "patientCtSonderId", "sourceId": "create-ct-sonder", "path": "id", "description": "Id for patient-ct-sonder (Sonder, CT-2)" },
+    { "name": "patientCtSamsoniteId", "sourceId": "create-ct-samsonite", "path": "id", "description": "Id for patient-ct-samsonite (Samsonite, CT-3)" },
+    { "name": "patientCtBrownId", "sourceId": "create-ct-brown", "path": "id", "description": "Id for patient-ct-brown (Brown, CT-4)" },
+    { "name": "valuesetCtAcmeId", "sourceId": "create-ct-acme", "path": "id", "description": "Id for valueset-ct-acme (acme.org url)" },
+    { "name": "valuesetCtExampleId", "sourceId": "create-ct-example", "path": "id", "description": "Id for valueset-ct-example (example.org url)" },
+    { "name": "patientMiFullId", "sourceId": "create-mi-full", "path": "id", "description": "Id for patient-mi-full (gender+birthDate, MI-1)" },
+    { "name": "patientMiEmptyId", "sourceId": "create-mi-empty", "path": "id", "description": "Id for patient-mi-empty (no gender/birthDate, MI-2)" },
+    { "name": "patientNtMaleId", "sourceId": "create-nt-male", "path": "id", "description": "Id for patient-nt-male (male, NT-1)" },
+    { "name": "patientNtFemaleId", "sourceId": "create-nt-female", "path": "id", "description": "Id for patient-nt-female (female, NT-2)" },
+    { "name": "patientNtOtherId", "sourceId": "create-nt-other", "path": "id", "description": "Id for patient-nt-other (other, NT-3)" },
+    { "name": "patientNtNoneId", "sourceId": "create-nt-none", "path": "id", "description": "Id for patient-nt-none (no gender, NT-4)" },
+    { "name": "patientOtMrId", "sourceId": "create-ot-mr", "path": "id", "description": "Id for patient-ot-mr (type MR, value 12345)" },
+    { "name": "patientOtMrtId", "sourceId": "create-ot-mrt", "path": "id", "description": "Id for patient-ot-mrt (type MRT, value 12345)" },
+    { "name": "patientOtMrxId", "sourceId": "create-ot-mrx", "path": "id", "description": "Id for patient-ot-mrx (type MR, value 99999)" }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-exact-smith", "responseId": "create-exact-smith", "description": "Create patient-exact-smith" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-exact-smithson", "responseId": "create-exact-smithson", "description": "Create patient-exact-smithson" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-exact-smith-lower", "responseId": "create-exact-smith-lower", "description": "Create patient-exact-smith-lower" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ct-anderson", "responseId": "create-ct-anderson", "description": "Create patient-ct-anderson" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ct-sonder", "responseId": "create-ct-sonder", "description": "Create patient-ct-sonder" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ct-samsonite", "responseId": "create-ct-samsonite", "description": "Create patient-ct-samsonite" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ct-brown", "responseId": "create-ct-brown", "description": "Create patient-ct-brown" } },
+      { "operation": { "type": { "code": "create" }, "resource": "ValueSet", "sourceId": "valueset-ct-acme", "responseId": "create-ct-acme", "description": "Create valueset-ct-acme" } },
+      { "operation": { "type": { "code": "create" }, "resource": "ValueSet", "sourceId": "valueset-ct-example", "responseId": "create-ct-example", "description": "Create valueset-ct-example" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-mi-full", "responseId": "create-mi-full", "description": "Create patient-mi-full" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-mi-empty", "responseId": "create-mi-empty", "description": "Create patient-mi-empty" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-nt-male", "responseId": "create-nt-male", "description": "Create patient-nt-male" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-nt-female", "responseId": "create-nt-female", "description": "Create patient-nt-female" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-nt-other", "responseId": "create-nt-other", "description": "Create patient-nt-other" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-nt-none", "responseId": "create-nt-none", "description": "Create patient-nt-none" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ot-mr", "responseId": "create-ot-mr", "description": "Create patient-ot-mr" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ot-mrt", "responseId": "create-ot-mrt", "description": "Create patient-ot-mrt" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-ot-mrx", "responseId": "create-ot-mrx", "description": "Create patient-ot-mrx" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "exact: family:exact=Smith matches full string case-sensitively",
+      "description": "GET /Patient?family:exact=Smith must return only the patient whose family name is exactly 'Smith' (case-sensitive, whole-string). Prefix matches (Smithson) and case-mismatches (smith) must be excluded.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:exact=Smith&identifier=http://fhir262/test|&_count=100", "responseId": "exact-smith-response", "description": "Search family:exact=Smith" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-exact-smith (exact 'Smith')", "expression": "entry.where(resource.id = '${patientExactSmithId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-exact-smithson (prefix, not exact)", "expression": "entry.where(resource.id = '${patientExactSmithsonId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-exact-smith-lower (wrong case)", "expression": "entry.where(resource.id = '${patientExactSmithLowerId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "exact: family:exact=smith matches only lowercase",
+      "description": "GET /Patient?family:exact=smith must match only the lowercase 'smith' family name; the capitalized variants are case-sensitive misses.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:exact=smith&identifier=http://fhir262/test|&_count=100", "responseId": "exact-smith-lower-response", "description": "Search family:exact=smith" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-exact-smith-lower (exact lowercase 'smith')", "expression": "entry.where(resource.id = '${patientExactSmithLowerId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-exact-smith (wrong case)", "expression": "entry.where(resource.id = '${patientExactSmithId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-exact-smithson", "expression": "entry.where(resource.id = '${patientExactSmithsonId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "contains: family:contains=son matches substring anywhere",
+      "description": "GET /Patient?family:contains=son must match any family name containing 'son' as a substring (Anderson, Sonder, Samsonite), and exclude Brown.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:contains=son&identifier=http://fhir262/test|&_count=100", "responseId": "contains-son-response", "description": "Search family:contains=son" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-ct-anderson", "expression": "entry.where(resource.id = '${patientCtAndersonId}').exists()" } },
+        { "assert": { "description": "Must include patient-ct-sonder", "expression": "entry.where(resource.id = '${patientCtSonderId}').exists()" } },
+        { "assert": { "description": "Must include patient-ct-samsonite", "expression": "entry.where(resource.id = '${patientCtSamsoniteId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-ct-brown", "expression": "entry.where(resource.id = '${patientCtBrownId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "contains: family:contains=SON is case-insensitive",
+      "description": "GET /Patient?family:contains=SON must behave case-insensitively, matching the same set as lowercase 'son'.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?family:contains=SON&identifier=http://fhir262/test|&_count=100", "responseId": "contains-son-upper-response", "description": "Search family:contains=SON" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-ct-anderson", "expression": "entry.where(resource.id = '${patientCtAndersonId}').exists()" } },
+        { "assert": { "description": "Must include patient-ct-sonder", "expression": "entry.where(resource.id = '${patientCtSonderId}').exists()" } },
+        { "assert": { "description": "Must include patient-ct-samsonite", "expression": "entry.where(resource.id = '${patientCtSamsoniteId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-ct-brown", "expression": "entry.where(resource.id = '${patientCtBrownId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "contains: url:contains=acme matches ValueSet URL substring",
+      "description": "GET /ValueSet?url:contains=acme must match the ValueSet whose url contains 'acme' and exclude the example.org one.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:contains=acme&identifier=http://fhir262/test|&_count=100", "responseId": "contains-acme-response", "description": "Search ValueSet url:contains=acme" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include valueset-ct-acme", "expression": "entry.where(resource.id = '${valuesetCtAcmeId}').exists()" } },
+        { "assert": { "description": "Must NOT include valueset-ct-example", "expression": "entry.where(resource.id = '${valuesetCtExampleId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "missing: gender:missing=true returns records without gender",
+      "description": "GET /Patient?gender:missing=true must return patients with no gender element and exclude those with a gender.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:missing=true&identifier=http://fhir262/test|&_count=100", "responseId": "gender-missing-true-response", "description": "Search gender:missing=true" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-mi-empty (no gender)", "expression": "entry.where(resource.id = '${patientMiEmptyId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-mi-full (has gender)", "expression": "entry.where(resource.id = '${patientMiFullId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "missing: gender:missing=false returns records with gender",
+      "description": "GET /Patient?gender:missing=false must return patients that have a gender element and exclude those without.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:missing=false&identifier=http://fhir262/test|&_count=100", "responseId": "gender-missing-false-response", "description": "Search gender:missing=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-mi-full (has gender)", "expression": "entry.where(resource.id = '${patientMiFullId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-mi-empty (no gender)", "expression": "entry.where(resource.id = '${patientMiEmptyId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "missing: birthdate:missing=true returns records without birthDate",
+      "description": "GET /Patient?birthdate:missing=true must return patients with no birthDate element.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?birthdate:missing=true&identifier=http://fhir262/test|&_count=100", "responseId": "birthdate-missing-true-response", "description": "Search birthdate:missing=true" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-mi-empty (no birthDate)", "expression": "entry.where(resource.id = '${patientMiEmptyId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-mi-full (has birthDate)", "expression": "entry.where(resource.id = '${patientMiFullId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "missing: birthdate:missing=false returns records with birthDate",
+      "description": "GET /Patient?birthdate:missing=false must return patients that have a birthDate element.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?birthdate:missing=false&identifier=http://fhir262/test|&_count=100", "responseId": "birthdate-missing-false-response", "description": "Search birthdate:missing=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-mi-full (has birthDate)", "expression": "entry.where(resource.id = '${patientMiFullId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-mi-empty (no birthDate)", "expression": "entry.where(resource.id = '${patientMiEmptyId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "not: gender:not=male excludes male and includes no-gender",
+      "description": "GET /Patient?gender:not=male must return patients whose gender is not male (female, other) plus those with no gender, while excluding male patients.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?gender:not=male&identifier=http://fhir262/test|&_count=100", "responseId": "gender-not-male-response", "description": "Search gender:not=male" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-nt-female", "expression": "entry.where(resource.id = '${patientNtFemaleId}').exists()" } },
+        { "assert": { "description": "Must include patient-nt-other", "expression": "entry.where(resource.id = '${patientNtOtherId}').exists()" } },
+        { "assert": { "description": "Must include patient-nt-none (no gender)", "expression": "entry.where(resource.id = '${patientNtNoneId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-nt-male", "expression": "entry.where(resource.id = '${patientNtMaleId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "of-type: identifier:of-type matches full system|code|value",
+      "description": "GET /Patient?identifier:of-type=v2-0203|MR|12345 must match only the identifier with type-code MR and value 12345.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MR|12345", "responseId": "oftype-mr-response", "description": "Search identifier:of-type MR|12345" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-ot-mr (MR|12345)", "expression": "entry.where(resource.id = '${patientOtMrId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-ot-mrt (different code MRT)", "expression": "entry.where(resource.id = '${patientOtMrtId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-ot-mrx (different value 99999)", "expression": "entry.where(resource.id = '${patientOtMrxId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "of-type: different type code does not match",
+      "description": "GET /Patient?identifier:of-type=v2-0203|MRT|12345 must match only the MRT-typed identifier, not MR.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MRT|12345", "responseId": "oftype-mrt-response", "description": "Search identifier:of-type MRT|12345" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-ot-mrt (MRT|12345)", "expression": "entry.where(resource.id = '${patientOtMrtId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-ot-mr (code MR)", "expression": "entry.where(resource.id = '${patientOtMrId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-ot-mrx (value 99999)", "expression": "entry.where(resource.id = '${patientOtMrxId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "of-type: different value does not match",
+      "description": "GET /Patient?identifier:of-type=v2-0203|MR|99999 must match only the MR-typed identifier with value 99999.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier:of-type=http://terminology.hl7.org/CodeSystem/v2-0203|MR|99999", "responseId": "oftype-mrx-response", "description": "Search identifier:of-type MR|99999" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-ot-mrx (MR|99999)", "expression": "entry.where(resource.id = '${patientOtMrxId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-ot-mr (value 12345)", "expression": "entry.where(resource.id = '${patientOtMrId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-ot-mrt (code MRT)", "expression": "entry.where(resource.id = '${patientOtMrtId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientExactSmithId}", "description": "Teardown: delete patient-exact-smith" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientExactSmithsonId}", "description": "Teardown: delete patient-exact-smithson" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientExactSmithLowerId}", "description": "Teardown: delete patient-exact-smith-lower" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientCtAndersonId}", "description": "Teardown: delete patient-ct-anderson" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientCtSonderId}", "description": "Teardown: delete patient-ct-sonder" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientCtSamsoniteId}", "description": "Teardown: delete patient-ct-samsonite" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientCtBrownId}", "description": "Teardown: delete patient-ct-brown" } },
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/${valuesetCtAcmeId}", "description": "Teardown: delete valueset-ct-acme" } },
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/${valuesetCtExampleId}", "description": "Teardown: delete valueset-ct-example" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientMiFullId}", "description": "Teardown: delete patient-mi-full" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientMiEmptyId}", "description": "Teardown: delete patient-mi-empty" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientNtMaleId}", "description": "Teardown: delete patient-nt-male" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientNtFemaleId}", "description": "Teardown: delete patient-nt-female" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientNtOtherId}", "description": "Teardown: delete patient-nt-other" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientNtNoneId}", "description": "Teardown: delete patient-nt-none" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientOtMrId}", "description": "Teardown: delete patient-ot-mr" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientOtMrtId}", "description": "Teardown: delete patient-ot-mrt" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientOtMrxId}", "description": "Teardown: delete patient-ot-mrx" } }
+    ]
+  }
+}

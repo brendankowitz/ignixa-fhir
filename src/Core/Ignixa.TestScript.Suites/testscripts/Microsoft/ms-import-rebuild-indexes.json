@@ -1,0 +1,44 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-import-rebuild-indexes",
+  "description": "$import index-rebuild-behavior conformance tests (from ImportRebuildIndexesTests.cs). Index rebuild/disable during import is a server-side-only configuration knob with no client-facing request parameter, so this suite only confirms that unrecognized rebuild-related parameters have no effect on the request contract.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.operation.where(name='import').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "import-params-with-unrecognized-index-params",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          },
+          { "name": "rebuildIndexes", "valueBoolean": true },
+          { "name": "sqlIndexRebuildThreads", "valueInteger": 16 },
+          { "name": "disableOptionalIndexesForImport", "valueBoolean": true }
+        ]
+      }
+    }
+  ],
+  "test": [
+    {
+      "name": "$import does not expose any client-controllable index-rebuild parameter",
+      "description": "Sending unrecognized rebuild-related parameters (rebuildIndexes, sqlIndexRebuildThreads, disableOptionalIndexesForImport) alongside a normal $import body must not change the response: still 400 Bad Request, same as without them.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-with-unrecognized-index-params", "responseId": "unrecognized-index-params-response", "description": "POST $import with unrecognized rebuildIndexes/sqlIndexRebuildThreads/disableOptionalIndexesForImport parameters alongside a normal (unconfigured-host) body" } },
+        { "assert": { "description": "Unrecognized index-rebuild parameters must not change the outcome: still 400 Bad Request, same as without them", "sourceId": "unrecognized-index-params-response", "response": "bad" } }
+      ]
+    }
+  ]
+}

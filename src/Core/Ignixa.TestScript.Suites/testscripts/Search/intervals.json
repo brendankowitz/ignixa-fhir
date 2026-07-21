@@ -1,0 +1,406 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/intervals",
+  "description": "Representative date-prefix interval conformance tests, a curated subset of the programmatically-generated fhir262 interval suite. Exercises all 8 date prefixes (eq, ne, ge, gt, le, lt, sa, eb) against Observation.effectiveDateTime and Patient.birthDate fixtures positioned clearly before/inside/after the year 2028. Each prefix test is parametrized over multiple date-precision search values (year, year-month, date, instant) via the http://ignixa.io/testscript/parametrize engine extension.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "obs-past",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": { "coding": [ { "system": "http://fhir262/test", "code": "fhir262-interval-test" } ] },
+        "effectiveDateTime": "2026-06-15"
+      }
+    },
+    {
+      "id": "obs-inside",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": { "coding": [ { "system": "http://fhir262/test", "code": "fhir262-interval-test" } ] },
+        "effectiveDateTime": "2028-06-15"
+      }
+    },
+    {
+      "id": "obs-future",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "code": { "coding": [ { "system": "http://fhir262/test", "code": "fhir262-interval-test" } ] },
+        "effectiveDateTime": "2030-06-15"
+      }
+    },
+    {
+      "id": "patient-past",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "INT-P-PAST" }],
+        "birthDate": "2026"
+      }
+    },
+    {
+      "id": "patient-inside",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "INT-P-INSIDE" }],
+        "birthDate": "2028"
+      }
+    },
+    {
+      "id": "patient-after",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "INT-P-AFTER" }],
+        "birthDate": "2030"
+      }
+    }
+  ],
+  "variable": [
+    { "name": "obsPastId", "sourceId": "create-obs-past", "path": "id", "description": "Id for obs-past (effective 2026-06-15)" },
+    { "name": "obsInsideId", "sourceId": "create-obs-inside", "path": "id", "description": "Id for obs-inside (effective 2028-06-15)" },
+    { "name": "obsFutureId", "sourceId": "create-obs-future", "path": "id", "description": "Id for obs-future (effective 2030-06-15)" },
+    { "name": "patientPastId", "sourceId": "create-patient-past", "path": "id", "description": "Id for patient-past (birthDate 2026)" },
+    { "name": "patientInsideId", "sourceId": "create-patient-inside", "path": "id", "description": "Id for patient-inside (birthDate 2028)" },
+    { "name": "patientAfterId", "sourceId": "create-patient-after", "path": "id", "description": "Id for patient-after (birthDate 2030)" },
+    { "name": "searchDate", "defaultValue": "2028", "description": "Search date value. Parametrized by the http://ignixa.io/testscript/parametrize engine extension — engines that do not support the extension execute each test once using this defaultValue." }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-past", "responseId": "create-obs-past", "description": "Create obs-past (effective 2026-06-15)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-inside", "responseId": "create-obs-inside", "description": "Create obs-inside (effective 2028-06-15)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-future", "responseId": "create-obs-future", "description": "Create obs-future (effective 2030-06-15)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-past", "responseId": "create-patient-past", "description": "Create patient-past (birthDate 2026)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-inside", "responseId": "create-patient-inside", "description": "Create patient-inside (birthDate 2028)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-after", "responseId": "create-patient-after", "description": "Create patient-after (birthDate 2030)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Observation: date eq — only inside year matches",
+      "description": "GET /Observation?code=fhir262-interval-test&date=eq${searchDate} must match only the Observation whose effective date falls within the requested period.",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=eq${searchDate}", "responseId": "obs-eq-response", "description": "Search Observation date=eq${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-inside (2028-06-15)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date ne — past and future match",
+      "description": "GET /Observation?code=fhir262-interval-test&date=ne${searchDate} must match Observations outside the requested period (2026 and 2030).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=ne${searchDate}", "responseId": "obs-ne-response", "description": "Search Observation date=ne${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()" } },
+        { "assert": { "description": "Must include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date ge — inside and future match",
+      "description": "GET /Observation?code=fhir262-interval-test&date=ge${searchDate} must match Observations on or after the requested period (2028 and 2030).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=ge${searchDate}", "responseId": "obs-ge-response", "description": "Search Observation date=ge${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()" } },
+        { "assert": { "description": "Must include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date gt — only future matches",
+      "description": "GET /Observation?code=fhir262-interval-test&date=gt${searchDate} must match Observations strictly after the requested period (2030 only).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=gt${searchDate}", "responseId": "obs-gt-response", "description": "Search Observation date=gt${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date le — past and inside match",
+      "description": "GET /Observation?code=fhir262-interval-test&date=le${searchDate} must match Observations on or before the requested period (2026 and 2028).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=le${searchDate}", "responseId": "obs-le-response", "description": "Search Observation date=le${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()" } },
+        { "assert": { "description": "Must include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date lt — only past matches",
+      "description": "GET /Observation?code=fhir262-interval-test&date=lt${searchDate} must match Observations strictly before the requested period (2026 only).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=lt${searchDate}", "responseId": "obs-lt-response", "description": "Search Observation date=lt${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date sa — only future matches (starts after)",
+      "description": "GET /Observation?code=fhir262-interval-test&date=sa${searchDate} (starts after) must match Observations whose instant is after the end of the requested period (2030 only). A point value inside the period does not start after it.",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=sa${searchDate}", "responseId": "obs-sa-response", "description": "Search Observation date=sa${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Observation: date eb — only past matches (ends before)",
+      "description": "GET /Observation?code=fhir262-interval-test&date=eb${searchDate} (ends before) must match Observations whose instant is before the start of the requested period (2026 only). A point value inside the period does not end before it.",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code=fhir262-interval-test&date=eb${searchDate}", "responseId": "obs-eb-response", "description": "Search Observation date=eb${searchDate}" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-past (2026)", "expression": "entry.where(resource.id = '${obsPastId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-inside (2028)", "expression": "entry.where(resource.id = '${obsInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-future (2030)", "expression": "entry.where(resource.id = '${obsFutureId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate eq — only inside year matches",
+      "description": "GET /Patient?_id=...&birthdate=eq${searchDate} must match only the patient born within the requested period.",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=eq${searchDate}", "responseId": "pat-eq-response", "description": "Search Patient birthdate=eq${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate ne — past and future match",
+      "description": "GET /Patient?_id=...&birthdate=ne${searchDate} must match patients born outside the requested period (2026 and 2030).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=ne${searchDate}", "responseId": "pat-ne-response", "description": "Search Patient birthdate=ne${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()" } },
+        { "assert": { "description": "Must include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate ge — inside and future match",
+      "description": "GET /Patient?_id=...&birthdate=ge${searchDate} must match patients born on or after the requested period (2028 and 2030).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=ge${searchDate}", "responseId": "pat-ge-response", "description": "Search Patient birthdate=ge${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()" } },
+        { "assert": { "description": "Must include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate gt — only future matches",
+      "description": "GET /Patient?_id=...&birthdate=gt${searchDate} must match patients born strictly after the requested period (2030 only).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=gt${searchDate}", "responseId": "pat-gt-response", "description": "Search Patient birthdate=gt${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate le — past and inside match",
+      "description": "GET /Patient?_id=...&birthdate=le${searchDate} must match patients born on or before the requested period (2026 and 2028).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=le${searchDate}", "responseId": "pat-le-response", "description": "Search Patient birthdate=le${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()" } },
+        { "assert": { "description": "Must include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate lt — only past matches",
+      "description": "GET /Patient?_id=...&birthdate=lt${searchDate} must match patients born strictly before the requested period (2026 only).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=lt${searchDate}", "responseId": "pat-lt-response", "description": "Search Patient birthdate=lt${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate sa — only future matches (starts after)",
+      "description": "GET /Patient?_id=...&birthdate=sa${searchDate} (starts after) must match patients whose birthdate is after the end of the requested period (2030 only).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=sa${searchDate}", "responseId": "pat-sa-response", "description": "Search Patient birthdate=sa${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient: birthdate eb — only past matches (ends before)",
+      "description": "GET /Patient?_id=...&birthdate=eb${searchDate} (ends before) must match patients whose birthdate is before the start of the requested period (2026 only).",
+      "extension": [{
+        "url": "http://ignixa.io/testscript/parametrize",
+        "extension": [
+          { "url": "variable", "valueString": "searchDate" },
+          { "url": "values", "valueString": "2028,2028-06,2028-06-15,2028-06-15T12:00:00Z" }
+        ]
+      }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${patientPastId},${patientInsideId},${patientAfterId}&birthdate=eb${searchDate}", "responseId": "pat-eb-response", "description": "Search Patient birthdate=eb${searchDate} scoped" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include patient-past (2026)", "expression": "entry.where(resource.id = '${patientPastId}').exists()" } },
+        { "assert": { "description": "Must NOT include patient-inside (2028)", "expression": "entry.where(resource.id = '${patientInsideId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include patient-after (2030)", "expression": "entry.where(resource.id = '${patientAfterId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${obsPastId}", "description": "Teardown: delete obs-past" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${obsInsideId}", "description": "Teardown: delete obs-inside" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${obsFutureId}", "description": "Teardown: delete obs-future" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientPastId}", "description": "Teardown: delete patient-past" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientInsideId}", "description": "Teardown: delete patient-inside" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${patientAfterId}", "description": "Teardown: delete patient-after" } }
+    ]
+  }
+}

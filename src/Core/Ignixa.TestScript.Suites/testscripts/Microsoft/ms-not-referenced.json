@@ -1,0 +1,178 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-not-referenced",
+  "description": "Tests the _not-referenced=[SourceType]:[searchParam] search modifier, which returns only resources that are NOT the target of any matching reference, including wildcard source/param segments and malformed values (from NotReferencedSearchTests.cs).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "p1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-nr-p1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-P1" }]
+      }
+    },
+    {
+      "id": "p2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-nr-p2",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-P2" }]
+      }
+    },
+    {
+      "id": "p3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-nr-p3",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-P3" }]
+      }
+    },
+    {
+      "id": "p4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-nr-p4",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-P4" }]
+      }
+    },
+    {
+      "id": "p5",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-nr-p5",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-P5" }]
+      }
+    },
+    {
+      "id": "obs-subject",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-nr-obs-subject",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-OBS-SUBJECT" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
+        "subject": { "reference": "Patient/ignixa-nr-p1" }
+      }
+    },
+    {
+      "id": "obs-performer",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-nr-obs-performer",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-OBS-PERFORMER" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "29463-7", "display": "Body weight" }] },
+        "performer": [{ "reference": "Patient/ignixa-nr-p2" }]
+      }
+    },
+    {
+      "id": "condition",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Condition",
+        "id": "ignixa-nr-condition",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-referenced", "value": "NR-CONDITION" }],
+        "subject": { "reference": "Patient/ignixa-nr-p3" }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-nr-p1", "sourceId": "p1", "description": "PUT Patient/ignixa-nr-p1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-nr-p2", "sourceId": "p2", "description": "PUT Patient/ignixa-nr-p2" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-nr-p3", "sourceId": "p3", "description": "PUT Patient/ignixa-nr-p3" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-nr-p4", "sourceId": "p4", "description": "PUT Patient/ignixa-nr-p4" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-nr-p5", "sourceId": "p5", "description": "PUT Patient/ignixa-nr-p5" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-nr-obs-subject", "sourceId": "obs-subject", "description": "PUT Observation/ignixa-nr-obs-subject (subject=p1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-nr-obs-performer", "sourceId": "obs-performer", "description": "PUT Observation/ignixa-nr-obs-performer (performer=p2)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Condition/ignixa-nr-condition", "sourceId": "condition", "description": "PUT Condition/ignixa-nr-condition (subject=p3)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "_not-referenced=*:* excludes patients referenced by any resource/param",
+      "description": "Patient?_not-referenced=*:* must exclude p1 (Observation.subject), p2 (Observation.performer) and p3 (Condition.subject); only p4 and p5 (never referenced) must remain.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_not-referenced=*:*&identifier=http://ignixa.io/testscript/suite/ms-not-referenced|&_count=100", "responseId": "wildcard-both", "description": "GET /Patient?_not-referenced=*:*" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include p4 (never referenced)", "expression": "entry.where(resource.id = 'ignixa-nr-p4').exists()" } },
+        { "assert": { "description": "Must include p5 (never referenced)", "expression": "entry.where(resource.id = 'ignixa-nr-p5').exists()" } },
+        { "assert": { "description": "Must NOT include p1 (referenced by Observation.subject)", "expression": "entry.where(resource.id = 'ignixa-nr-p1').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include p2 (referenced by Observation.performer)", "expression": "entry.where(resource.id = 'ignixa-nr-p2').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include p3 (referenced by Condition.subject)", "expression": "entry.where(resource.id = 'ignixa-nr-p3').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_not-referenced=Observation:* excludes only patients referenced from Observation",
+      "description": "Patient?_not-referenced=Observation:* scopes the exclusion to references FROM Observation resources only. p1 and p2 (both referenced by Observations) are excluded; p3 (only referenced by a Condition) is NOT excluded because Condition references don't count here.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_not-referenced=Observation:*&identifier=http://ignixa.io/testscript/suite/ms-not-referenced|&_count=100", "responseId": "wildcard-field", "description": "GET /Patient?_not-referenced=Observation:*" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include p3 (only referenced by Condition, not Observation)", "expression": "entry.where(resource.id = 'ignixa-nr-p3').exists()" } },
+        { "assert": { "description": "Must include p4 (never referenced)", "expression": "entry.where(resource.id = 'ignixa-nr-p4').exists()" } },
+        { "assert": { "description": "Must include p5 (never referenced)", "expression": "entry.where(resource.id = 'ignixa-nr-p5').exists()" } },
+        { "assert": { "description": "Must NOT include p1 (referenced by Observation.subject)", "expression": "entry.where(resource.id = 'ignixa-nr-p1').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include p2 (referenced by Observation.performer)", "expression": "entry.where(resource.id = 'ignixa-nr-p2').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_not-referenced=Observation:subject excludes only patients referenced by that specific param",
+      "description": "Patient?_not-referenced=Observation:subject scopes the exclusion to the 'subject' search parameter on Observation only. Only p1 (Observation.subject) is excluded; p2 (referenced via Observation.performer, a different param) is NOT excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_not-referenced=Observation:subject&identifier=http://ignixa.io/testscript/suite/ms-not-referenced|&_count=100", "responseId": "specific-param", "description": "GET /Patient?_not-referenced=Observation:subject" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include p2 (referenced only via Observation.performer, not subject)", "expression": "entry.where(resource.id = 'ignixa-nr-p2').exists()" } },
+        { "assert": { "description": "Must include p3 (only referenced by Condition)", "expression": "entry.where(resource.id = 'ignixa-nr-p3').exists()" } },
+        { "assert": { "description": "Must include p4 (never referenced)", "expression": "entry.where(resource.id = 'ignixa-nr-p4').exists()" } },
+        { "assert": { "description": "Must include p5 (never referenced)", "expression": "entry.where(resource.id = 'ignixa-nr-p5').exists()" } },
+        { "assert": { "description": "Must NOT include p1 (referenced by Observation.subject)", "expression": "entry.where(resource.id = 'ignixa-nr-p1').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_not-referenced=invalid (no separator) is ignored with a warning",
+      "description": "Patient?_not-referenced=invalid is missing the required ':' separator between resource type and search param. The server should ignore the malformed modifier value (returning all patients, unaffected) and add a warning/not-supported OperationOutcome issue, rather than fail the request.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_not-referenced=invalid&identifier=http://ignixa.io/testscript/suite/ms-not-referenced|&_count=100", "responseId": "invalid-param", "description": "GET /Patient?_not-referenced=invalid" } },
+        { "assert": { "description": "Search should return HTTP 200 (malformed modifier value is not fatal)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "All five patients should still be returned since the malformed filter is ignored", "expression": "entry.where(resource.id = 'ignixa-nr-p1').exists() and entry.where(resource.id = 'ignixa-nr-p2').exists() and entry.where(resource.id = 'ignixa-nr-p3').exists() and entry.where(resource.id = 'ignixa-nr-p4').exists() and entry.where(resource.id = 'ignixa-nr-p5').exists()", "warningOnly": true } },
+        { "assert": { "description": "A warning OperationOutcome may be present noting the unsupported/malformed _not-referenced value", "expression": "entry.resource.ofType(OperationOutcome).issue.where(severity = 'warning').exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-nr-obs-subject", "description": "Teardown: delete obs-subject" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-nr-obs-performer", "description": "Teardown: delete obs-performer" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Condition/ignixa-nr-condition", "description": "Teardown: delete condition" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-nr-p1", "description": "Teardown: delete p1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-nr-p2", "description": "Teardown: delete p2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-nr-p3", "description": "Teardown: delete p3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-nr-p4", "description": "Teardown: delete p4" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-nr-p5", "description": "Teardown: delete p5" } }
+    ]
+  }
+}

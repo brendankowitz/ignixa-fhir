@@ -1,0 +1,226 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/everything-operation",
+  "description": "Patient $everything conformance tests: full compartment fetch, cross-patient isolation, _type/_since filtering, and unsupported-parameter handling (from EverythingOperationTests). Condition substitutes for Encounter as a version-stable compartment member; Device/DeviceAssociation compartment membership is not covered since its shape varies by FHIR version. Gated on the target advertising Patient/$everything, either as a resource-scoped operation or as a system-level 'patient-everything' operation (the Microsoft FHIR Server convention).",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='Patient').operation.where(name='everything').exists() or rest.operation.where(name='patient-everything').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "org",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-evx-org",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-ORG" }],
+        "name": "Everything Test Org"
+      }
+    },
+    {
+      "id": "patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-evx-pat",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-PAT" }],
+        "name": [{ "family": "Everything", "given": ["Pat"] }],
+        "managingOrganization": { "reference": "Organization/ignixa-evx-org" }
+      }
+    },
+    {
+      "id": "obs",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-evx-obs",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-OBS" }],
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }]
+        },
+        "subject": { "reference": "Patient/ignixa-evx-pat" },
+        "valueQuantity": { "value": 88, "unit": "beats/minute", "system": "http://unitsofmeasure.org", "code": "/min" }
+      }
+    },
+    {
+      "id": "cond",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Condition",
+        "id": "ignixa-evx-cond",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-COND" }],
+        "subject": { "reference": "Patient/ignixa-evx-pat" },
+        "code": {
+          "coding": [{ "system": "http://snomed.info/sct", "code": "38341003", "display": "Hypertension" }]
+        }
+      }
+    },
+    {
+      "id": "appt",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Appointment",
+        "id": "ignixa-evx-appt",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-APPT" }],
+        "status": "booked",
+        "participant": [
+          { "actor": { "reference": "Patient/ignixa-evx-pat" }, "status": "accepted" }
+        ]
+      }
+    },
+    {
+      "id": "other-patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-evx-other",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-OTHER-PAT" }],
+        "name": [{ "family": "Decoy", "given": ["Other"] }]
+      }
+    },
+    {
+      "id": "other-obs",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-evx-other-obs",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "EVX-OTHER-OBS" }],
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "29463-7", "display": "Body weight" }]
+        },
+        "subject": { "reference": "Patient/ignixa-evx-other" },
+        "valueQuantity": { "value": 60, "unit": "kg", "system": "http://unitsofmeasure.org", "code": "kg" }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-evx-org", "sourceId": "org", "responseId": "setup-org-response", "description": "PUT Organization/ignixa-evx-org" } },
+      { "assert": { "description": "Setup PUT Organization/ignixa-evx-org must succeed", "sourceId": "setup-org-response", "response": "okay" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-evx-pat", "sourceId": "patient", "responseId": "setup-patient-response", "description": "PUT Patient/ignixa-evx-pat (managingOrganization=org)" } },
+      { "assert": { "description": "Setup PUT Patient/ignixa-evx-pat must succeed", "sourceId": "setup-patient-response", "response": "okay" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-evx-obs", "sourceId": "obs", "responseId": "setup-obs-response", "description": "PUT Observation/ignixa-evx-obs (subject=pat)" } },
+      { "assert": { "description": "Setup PUT Observation/ignixa-evx-obs must succeed", "sourceId": "setup-obs-response", "response": "okay" } },
+      { "operation": { "type": { "code": "update" }, "url": "Condition/ignixa-evx-cond", "sourceId": "cond", "responseId": "setup-condition-response", "description": "PUT Condition/ignixa-evx-cond (subject=pat)" } },
+      { "assert": { "description": "Setup PUT Condition/ignixa-evx-cond must succeed", "sourceId": "setup-condition-response", "response": "okay" } },
+      { "operation": { "type": { "code": "update" }, "url": "Appointment/ignixa-evx-appt", "sourceId": "appt", "responseId": "setup-appointment-response", "description": "PUT Appointment/ignixa-evx-appt (participant=pat)" } },
+      { "assert": { "description": "Setup PUT Appointment/ignixa-evx-appt must succeed", "sourceId": "setup-appointment-response", "response": "okay" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-evx-other", "sourceId": "other-patient", "responseId": "setup-decoy-patient-response", "description": "PUT Patient/ignixa-evx-other (decoy, unrelated patient)" } },
+      { "assert": { "description": "Setup PUT Patient/ignixa-evx-other must succeed", "sourceId": "setup-decoy-patient-response", "response": "okay" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-evx-other-obs", "sourceId": "other-obs", "responseId": "setup-decoy-obs-response", "description": "PUT Observation/ignixa-evx-other-obs (subject=other, decoy)" } },
+      { "assert": { "description": "Setup PUT Observation/ignixa-evx-other-obs must succeed", "sourceId": "setup-decoy-obs-response", "response": "okay" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$everything: full compartment fetch",
+      "description": "$everything must return the patient and its managing organization; compartment members (observation/condition/appointment) are checked warningOnly since the server may page them onto a later batch. An unrelated decoy patient and its data must never appear.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Patient/ignixa-evx-pat/$everything", "responseId": "evx-full", "description": "GET Patient/ignixa-evx-pat/$everything" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include the patient itself", "expression": "entry.where(resource.id = 'ignixa-evx-pat').exists()" } },
+        { "assert": { "description": "Must include the managing organization", "expression": "entry.where(resource.id = 'ignixa-evx-org').exists()" } },
+        { "assert": { "description": "Should include the observation (warningOnly: may be on a later phase/page)", "expression": "entry.where(resource.id = 'ignixa-evx-obs').exists()", "warningOnly": true } },
+        { "assert": { "description": "Should include the condition (warningOnly: may be on a later phase/page)", "expression": "entry.where(resource.id = 'ignixa-evx-cond').exists()", "warningOnly": true } },
+        { "assert": { "description": "Should include the appointment (warningOnly: may be on a later phase/page)", "expression": "entry.where(resource.id = 'ignixa-evx-appt').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include the decoy patient", "expression": "entry.where(resource.id = 'ignixa-evx-other').empty()" } },
+        { "assert": { "description": "Must NOT include the decoy patient's observation", "expression": "entry.where(resource.id = 'ignixa-evx-other-obs').empty()" } }
+      ]
+    },
+    {
+      "name": "$everything: _type filter narrows compartment content",
+      "description": "_type=Patient,Observation must filter returned resource types, but result inclusion is informational because R4 compartment inclusion is a SHOULD rather than a SHALL.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Patient/ignixa-evx-pat/$everything?_type=Patient,Observation", "responseId": "evx-type-filter", "description": "GET Patient/ignixa-evx-pat/$everything?_type=Patient,Observation" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Informational compartment-completeness check: result should include the patient", "expression": "entry.where(resource.id = 'ignixa-evx-pat').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational compartment-completeness check: result should include the observation", "expression": "entry.where(resource.id = 'ignixa-evx-obs').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include the condition (not in _type list)", "expression": "entry.where(resource.id = 'ignixa-evx-cond').empty()" } },
+        { "assert": { "description": "Must NOT include the appointment (not in _type list)", "expression": "entry.where(resource.id = 'ignixa-evx-appt').empty()" } },
+        { "assert": { "description": "Must NOT include the organization (not in _type list)", "expression": "entry.where(resource.id = 'ignixa-evx-org').empty()" } }
+      ]
+    },
+    {
+      "name": "$everything: invalid _type value returns an empty bundle",
+      "description": "_type=foo (a nonexistent resource type) must return 200 with an empty Bundle, excluding even the patient itself.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Patient/ignixa-evx-pat/$everything?_type=foo", "responseId": "evx-invalid-type", "description": "GET Patient/ignixa-evx-pat/$everything?_type=foo" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must have no entries", "expression": "entry.empty()" } }
+      ]
+    },
+    {
+      "name": "$everything: far-future _since returns an empty bundle",
+      "description": "_since=3000 (a far-future timestamp) must return an empty Bundle since no fixture matches.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Patient/ignixa-evx-pat/$everything?_since=3000", "responseId": "evx-since-future", "description": "GET Patient/ignixa-evx-pat/$everything?_since=3000" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must have no entries", "expression": "entry.empty()" } }
+      ]
+    },
+    {
+      "name": "$everything: invalid continuation token is rejected",
+      "description": "A malformed continuation token (ct=abc) must be rejected with 400.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Patient/ignixa-evx-pat/$everything?ct=abc", "responseId": "evx-bad-ct", "description": "GET Patient/ignixa-evx-pat/$everything?ct=abc" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$everything: unsupported resource type returns 404",
+      "description": "$everything on a resource type that doesn't support it (Observation) must return 404.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Observation/bar/$everything", "responseId": "evx-unsupported-type", "description": "GET Observation/bar/$everything" } },
+        { "assert": { "description": "Must return HTTP 404", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "$everything: unsupported input parameters produce a warning outcome but real results still return",
+      "description": "Unsupported parameters (_count, foo) must each produce a warning/not-supported OperationOutcome issue while real results (patient, organization) still return.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$everything" }, "method": "GET", "url": "Patient/ignixa-evx-pat/$everything?_count=100&foo=bar", "responseId": "evx-unsupported-params", "description": "GET Patient/ignixa-evx-pat/$everything?_count=100&foo=bar" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must still include the patient", "expression": "entry.where(resource.id = 'ignixa-evx-pat').exists()" } },
+        { "assert": { "description": "Must still include the organization", "expression": "entry.where(resource.id = 'ignixa-evx-org').exists()" } },
+        { "assert": { "description": "Must contain at least 2 warning/not-supported OperationOutcome issues (one per unsupported parameter)", "expression": "entry.resource.ofType(OperationOutcome).issue.where(severity = 'warning' and code = 'not-supported').count() >= 2" } },
+        { "assert": { "description": "An issue diagnostics should mention '_count' (warningOnly: exact message wording varies)", "expression": "entry.resource.ofType(OperationOutcome).issue.diagnostics.where($this.contains('_count')).exists()", "warningOnly": true } },
+        { "assert": { "description": "An issue diagnostics should mention 'foo' (warningOnly: exact message wording varies)", "expression": "entry.resource.ofType(OperationOutcome).issue.diagnostics.where($this.contains('foo')).exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-evx-other-obs", "description": "Teardown: delete decoy observation" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-evx-other", "description": "Teardown: delete decoy patient" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Appointment/ignixa-evx-appt", "description": "Teardown: delete appointment" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Condition/ignixa-evx-cond", "description": "Teardown: delete condition" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-evx-obs", "description": "Teardown: delete observation" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-evx-pat", "description": "Teardown: delete patient" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-evx-org", "description": "Teardown: delete organization" } }
+    ]
+  }
+}

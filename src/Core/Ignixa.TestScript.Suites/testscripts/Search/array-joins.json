@@ -1,0 +1,137 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/array-joins",
+  "description": "AND/OR on array-simple search parameters using AllergyIntolerance.category. Covers the fhir262 'AND repeated on array-simple' and 'OR on array-simple' cases that require a multi-value token array. Uses a client-supplied patient ID (fhir262-array-pab) so AllergyIntolerance fixtures can reference it statically — servers that reject client-assigned IDs will fail setup, which is a known limitation of the FHIR TestScript format for cross-resource tests.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-array-pab",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "fhir262-array-pab",
+        "identifier": [{ "system": "http://fhir262/test", "value": "JOIN-A0" }],
+        "name": [{ "family": "Smith", "given": ["Alex", "Bob"] }],
+        "birthDate": "1985-06-15"
+      }
+    },
+    {
+      "id": "allergy-amb",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "identifier": [{ "system": "http://fhir262/test", "value": "JOIN-A1" }],
+        "patient": { "reference": "Patient/fhir262-array-pab" },
+        "category": ["medication", "biologic"],
+        "clinicalStatus": {
+          "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active" }]
+        }
+      }
+    },
+    {
+      "id": "allergy-am",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "identifier": [{ "system": "http://fhir262/test", "value": "JOIN-A2" }],
+        "patient": { "reference": "Patient/fhir262-array-pab" },
+        "category": ["medication"],
+        "clinicalStatus": {
+          "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active" }]
+        }
+      }
+    },
+    {
+      "id": "allergy-ab",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "identifier": [{ "system": "http://fhir262/test", "value": "JOIN-A3" }],
+        "patient": { "reference": "Patient/fhir262-array-pab" },
+        "category": ["biologic"],
+        "clinicalStatus": {
+          "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active" }]
+        }
+      }
+    },
+    {
+      "id": "allergy-af",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "AllergyIntolerance",
+        "identifier": [{ "system": "http://fhir262/test", "value": "JOIN-A4" }],
+        "patient": { "reference": "Patient/fhir262-array-pab" },
+        "category": ["food"],
+        "clinicalStatus": {
+          "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active" }]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "name": "aAmbId", "sourceId": "create-amb-response", "path": "id", "description": "Id for allergy-amb (medication + biologic)" },
+    { "name": "aAmId",  "sourceId": "create-am-response",  "path": "id", "description": "Id for allergy-am (medication only)" },
+    { "name": "aAbId",  "sourceId": "create-ab-response",  "path": "id", "description": "Id for allergy-ab (biologic only)" },
+    { "name": "aAfId",  "sourceId": "create-af-response",  "path": "id", "description": "Id for allergy-af (food only)" }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "update" },
+          "url": "Patient/fhir262-array-pab",
+          "sourceId": "patient-array-pab",
+          "description": "PUT Patient/fhir262-array-pab — client-supplied ID required so AllergyIntolerance fixtures can reference it statically"
+        }
+      },
+      { "operation": { "type": { "code": "create" }, "resource": "AllergyIntolerance", "sourceId": "allergy-amb", "responseId": "create-amb-response", "description": "Create allergy-amb (medication + biologic)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "AllergyIntolerance", "sourceId": "allergy-am",  "responseId": "create-am-response",  "description": "Create allergy-am (medication only)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "AllergyIntolerance", "sourceId": "allergy-ab",  "responseId": "create-ab-response",  "description": "Create allergy-ab (biologic only)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "AllergyIntolerance", "sourceId": "allergy-af",  "responseId": "create-af-response",  "description": "Create allergy-af (food only)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "AND on array-simple: category=medication&category=biologic requires both",
+      "description": "Repeating a token array param ANDs the constraints. category=medication&category=biologic must match only resources that have BOTH tokens in the array. Only aMB has both; aM (medication only), aB (biologic only), and aF (food) must not match.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "AllergyIntolerance", "params": "?category=medication&category=biologic&identifier=http://fhir262/test|&_count=100", "responseId": "and-category-response", "description": "Search category=medication AND category=biologic" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include aMB (has both medication and biologic)", "expression": "entry.where(resource.id = '${aAmbId}').exists()" } },
+        { "assert": { "description": "Must NOT include aM (medication only, biologic missing)", "expression": "entry.where(resource.id = '${aAmId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include aB (biologic only, medication missing)", "expression": "entry.where(resource.id = '${aAbId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include aF (food only)", "expression": "entry.where(resource.id = '${aAfId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "OR on array-simple: category=medication,biologic",
+      "description": "Comma-separated values within one token param are ORed. category=medication,biologic matches resources with medication OR biologic in the category array. Matches aMB, aM, and aB; excludes aF (food only).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "AllergyIntolerance", "params": "?category=medication,biologic&identifier=http://fhir262/test|&_count=100", "responseId": "or-category-response", "description": "Search category=medication OR biologic" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include aMB (has medication and biologic)", "expression": "entry.where(resource.id = '${aAmbId}').exists()" } },
+        { "assert": { "description": "Must include aM (medication matches)", "expression": "entry.where(resource.id = '${aAmId}').exists()" } },
+        { "assert": { "description": "Must include aB (biologic matches)", "expression": "entry.where(resource.id = '${aAbId}').exists()" } },
+        { "assert": { "description": "Must NOT include aF (food only, neither medication nor biologic)", "expression": "entry.where(resource.id = '${aAfId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "AllergyIntolerance/${aAmbId}", "description": "Teardown: delete allergy-amb" } },
+      { "operation": { "type": { "code": "delete" }, "url": "AllergyIntolerance/${aAmId}",  "description": "Teardown: delete allergy-am" } },
+      { "operation": { "type": { "code": "delete" }, "url": "AllergyIntolerance/${aAbId}",  "description": "Teardown: delete allergy-ab" } },
+      { "operation": { "type": { "code": "delete" }, "url": "AllergyIntolerance/${aAfId}",  "description": "Teardown: delete allergy-af" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/fhir262-array-pab",   "description": "Teardown: delete the client-supplied-ID patient" } }
+    ]
+  }
+}

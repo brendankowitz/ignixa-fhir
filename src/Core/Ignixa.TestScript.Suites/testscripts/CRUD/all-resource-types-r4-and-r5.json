@@ -1,0 +1,524 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/all-resource-types-r4-and-r5",
+  "description": "Creates and reads every concrete FHIR resource type present in R4 and R5 but dropped in R4B, gated on the target declaring fhirVersion 4.0.x or 5.0.x.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "substanceNucleicAcid-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstanceNucleicAcid"
+          }
+        ]
+      }
+    },
+    {
+      "id": "substancePolymer-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstancePolymer"
+          }
+        ]
+      }
+    },
+    {
+      "id": "substanceProtein-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstanceProtein"
+          }
+        ]
+      }
+    },
+    {
+      "id": "substanceReferenceInformation-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstanceReferenceInformation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "substanceSourceMaterial-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstanceSourceMaterial"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "substanceNucleicAcidId",
+      "sourceId": "substanceNucleicAcid-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstanceNucleicAcid"
+    },
+    {
+      "name": "substancePolymerId",
+      "sourceId": "substancePolymer-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstancePolymer"
+    },
+    {
+      "name": "substanceProteinId",
+      "sourceId": "substanceProtein-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstanceProtein"
+    },
+    {
+      "name": "substanceReferenceInformationId",
+      "sourceId": "substanceReferenceInformation-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstanceReferenceInformation"
+    },
+    {
+      "name": "substanceSourceMaterialId",
+      "sourceId": "substanceSourceMaterial-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstanceSourceMaterial"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "Can create and read SubstanceNucleicAcid",
+      "description": "When the target server declares SubstanceNucleicAcid create and read interactions, POST /SubstanceNucleicAcid must create a synthetic SubstanceNucleicAcid and GET /SubstanceNucleicAcid/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstanceNucleicAcid').interaction.where(code='create').exists() and rest.resource.where(type='SubstanceNucleicAcid').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstanceNucleicAcid",
+            "sourceId": "substanceNucleicAcid-fixture",
+            "responseId": "substanceNucleicAcid-create-response",
+            "description": "POST a synthetic SubstanceNucleicAcid"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceNucleicAcid create must return HTTP 201 Created",
+            "sourceId": "substanceNucleicAcid-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstanceNucleicAcid",
+            "sourceId": "substanceNucleicAcid-create-response",
+            "resource": "SubstanceNucleicAcid"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substanceNucleicAcid-create-response",
+            "expression": "SubstanceNucleicAcid.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstanceNucleicAcid/${substanceNucleicAcidId}",
+            "responseId": "substanceNucleicAcid-read-response",
+            "description": "GET the created SubstanceNucleicAcid by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceNucleicAcid read must return HTTP 200 OK",
+            "sourceId": "substanceNucleicAcid-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstanceNucleicAcid",
+            "sourceId": "substanceNucleicAcid-read-response",
+            "resource": "SubstanceNucleicAcid"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substanceNucleicAcid-read-response",
+            "expression": "SubstanceNucleicAcid.id",
+            "value": "${substanceNucleicAcidId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubstancePolymer",
+      "description": "When the target server declares SubstancePolymer create and read interactions, POST /SubstancePolymer must create a synthetic SubstancePolymer and GET /SubstancePolymer/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstancePolymer').interaction.where(code='create').exists() and rest.resource.where(type='SubstancePolymer').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstancePolymer",
+            "sourceId": "substancePolymer-fixture",
+            "responseId": "substancePolymer-create-response",
+            "description": "POST a synthetic SubstancePolymer"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstancePolymer create must return HTTP 201 Created",
+            "sourceId": "substancePolymer-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstancePolymer",
+            "sourceId": "substancePolymer-create-response",
+            "resource": "SubstancePolymer"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substancePolymer-create-response",
+            "expression": "SubstancePolymer.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstancePolymer/${substancePolymerId}",
+            "responseId": "substancePolymer-read-response",
+            "description": "GET the created SubstancePolymer by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstancePolymer read must return HTTP 200 OK",
+            "sourceId": "substancePolymer-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstancePolymer",
+            "sourceId": "substancePolymer-read-response",
+            "resource": "SubstancePolymer"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substancePolymer-read-response",
+            "expression": "SubstancePolymer.id",
+            "value": "${substancePolymerId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubstanceProtein",
+      "description": "When the target server declares SubstanceProtein create and read interactions, POST /SubstanceProtein must create a synthetic SubstanceProtein and GET /SubstanceProtein/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstanceProtein').interaction.where(code='create').exists() and rest.resource.where(type='SubstanceProtein').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstanceProtein",
+            "sourceId": "substanceProtein-fixture",
+            "responseId": "substanceProtein-create-response",
+            "description": "POST a synthetic SubstanceProtein"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceProtein create must return HTTP 201 Created",
+            "sourceId": "substanceProtein-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstanceProtein",
+            "sourceId": "substanceProtein-create-response",
+            "resource": "SubstanceProtein"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substanceProtein-create-response",
+            "expression": "SubstanceProtein.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstanceProtein/${substanceProteinId}",
+            "responseId": "substanceProtein-read-response",
+            "description": "GET the created SubstanceProtein by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceProtein read must return HTTP 200 OK",
+            "sourceId": "substanceProtein-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstanceProtein",
+            "sourceId": "substanceProtein-read-response",
+            "resource": "SubstanceProtein"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substanceProtein-read-response",
+            "expression": "SubstanceProtein.id",
+            "value": "${substanceProteinId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubstanceReferenceInformation",
+      "description": "When the target server declares SubstanceReferenceInformation create and read interactions, POST /SubstanceReferenceInformation must create a synthetic SubstanceReferenceInformation and GET /SubstanceReferenceInformation/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstanceReferenceInformation').interaction.where(code='create').exists() and rest.resource.where(type='SubstanceReferenceInformation').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstanceReferenceInformation",
+            "sourceId": "substanceReferenceInformation-fixture",
+            "responseId": "substanceReferenceInformation-create-response",
+            "description": "POST a synthetic SubstanceReferenceInformation"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceReferenceInformation create must return HTTP 201 Created",
+            "sourceId": "substanceReferenceInformation-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstanceReferenceInformation",
+            "sourceId": "substanceReferenceInformation-create-response",
+            "resource": "SubstanceReferenceInformation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substanceReferenceInformation-create-response",
+            "expression": "SubstanceReferenceInformation.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstanceReferenceInformation/${substanceReferenceInformationId}",
+            "responseId": "substanceReferenceInformation-read-response",
+            "description": "GET the created SubstanceReferenceInformation by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceReferenceInformation read must return HTTP 200 OK",
+            "sourceId": "substanceReferenceInformation-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstanceReferenceInformation",
+            "sourceId": "substanceReferenceInformation-read-response",
+            "resource": "SubstanceReferenceInformation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substanceReferenceInformation-read-response",
+            "expression": "SubstanceReferenceInformation.id",
+            "value": "${substanceReferenceInformationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubstanceSourceMaterial",
+      "description": "When the target server declares SubstanceSourceMaterial create and read interactions, POST /SubstanceSourceMaterial must create a synthetic SubstanceSourceMaterial and GET /SubstanceSourceMaterial/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstanceSourceMaterial').interaction.where(code='create').exists() and rest.resource.where(type='SubstanceSourceMaterial').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstanceSourceMaterial",
+            "sourceId": "substanceSourceMaterial-fixture",
+            "responseId": "substanceSourceMaterial-create-response",
+            "description": "POST a synthetic SubstanceSourceMaterial"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceSourceMaterial create must return HTTP 201 Created",
+            "sourceId": "substanceSourceMaterial-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstanceSourceMaterial",
+            "sourceId": "substanceSourceMaterial-create-response",
+            "resource": "SubstanceSourceMaterial"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substanceSourceMaterial-create-response",
+            "expression": "SubstanceSourceMaterial.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstanceSourceMaterial/${substanceSourceMaterialId}",
+            "responseId": "substanceSourceMaterial-read-response",
+            "description": "GET the created SubstanceSourceMaterial by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceSourceMaterial read must return HTTP 200 OK",
+            "sourceId": "substanceSourceMaterial-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstanceSourceMaterial",
+            "sourceId": "substanceSourceMaterial-read-response",
+            "resource": "SubstanceSourceMaterial"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substanceSourceMaterial-read-response",
+            "expression": "SubstanceSourceMaterial.id",
+            "value": "${substanceSourceMaterialId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": []
+  },
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "fhirVersion.startsWith('4.0') or fhirVersion.startsWith('5.0')"
+    }
+  ]
+}

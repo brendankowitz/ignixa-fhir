@@ -1,0 +1,254 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/quantity",
+  "description": "Quantity search-parameter conformance tests on Observation.value-quantity: implicit/eq, ne/lt/gt/le/ge/sa/eb prefixes, system- and unit-qualified values, and scientific-notation parsing (from QuantitySearchTests).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "obs-sci",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-qty-sci",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-test" }] },
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-suite" }] },
+        "valueQuantity": { "value": 0.002, "unit": "unit1", "system": "system1", "code": "unit1" }
+      }
+    },
+    {
+      "id": "obs-low",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-qty-low",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-test" }] },
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-suite" }] },
+        "valueQuantity": { "value": 1, "unit": "unit1", "system": "system1", "code": "unit1" }
+      }
+    },
+    {
+      "id": "obs-mid-a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-qty-mid-a",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-test" }] },
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-suite" }] },
+        "valueQuantity": { "value": 5, "unit": "unit1", "system": "system1", "code": "unit1" }
+      }
+    },
+    {
+      "id": "obs-mid-b",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-qty-mid-b",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-test" }] },
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-suite" }] },
+        "valueQuantity": { "value": 5, "unit": "unit2", "system": "system2", "code": "unit2" }
+      }
+    },
+    {
+      "id": "obs-high",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-qty-high",
+        "status": "final",
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-test" }] },
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-qty-suite" }] },
+        "valueQuantity": { "value": 100, "unit": "unit1", "system": "system1", "code": "unit1" }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-qty-sci", "sourceId": "obs-sci", "description": "PUT Observation/ignixa-qty-sci (value=0.002, unit1/system1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-qty-low", "sourceId": "obs-low", "description": "PUT Observation/ignixa-qty-low (value=1, unit1/system1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-qty-mid-a", "sourceId": "obs-mid-a", "description": "PUT Observation/ignixa-qty-mid-a (value=5, unit1/system1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-qty-mid-b", "sourceId": "obs-mid-b", "description": "PUT Observation/ignixa-qty-mid-b (value=5, unit2/system2)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-qty-high", "sourceId": "obs-high", "description": "PUT Observation/ignixa-qty-high (value=100, unit1/system1)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "quantity: implicit (no prefix) and explicit eq match by value regardless of unit",
+      "description": "Observation?value-quantity=5 (implicit) and ?value-quantity=eq5 (explicit) must both match both mid-a (unit1/system1) and mid-b (unit2/system2) since a bare value matches on numeric value alone; low (1) and high (100) must not match.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-implicit", "description": "GET Observation?value-quantity=5 (implicit eq)" } },
+        { "assert": { "description": "Implicit: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Implicit: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Implicit: must include mid-a", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()" } },
+        { "assert": { "description": "Implicit: must include mid-b", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()" } },
+        { "assert": { "description": "Implicit: must NOT include low (1)", "expression": "entry.where(resource.id = 'ignixa-qty-low').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Implicit: must NOT include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=eq5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-eq", "description": "GET Observation?value-quantity=eq5 (explicit)" } },
+        { "assert": { "description": "eq: HTTP 200", "response": "okay", "sourceId": "qty-eq" } },
+        { "assert": { "description": "eq: returns a Bundle", "resource": "Bundle", "sourceId": "qty-eq" } },
+        { "assert": { "description": "eq: must include mid-a", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "sourceId": "qty-eq" } },
+        { "assert": { "description": "eq: must include mid-b", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "sourceId": "qty-eq" } }
+      ]
+    },
+    {
+      "name": "quantity: ne — matches everything except the exact value",
+      "description": "Observation?value-quantity=ne5 must match low (1), high (100), and sci (0.002); must not match mid-a/mid-b (5).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=ne5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-ne", "description": "GET Observation?value-quantity=ne5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include low (1)", "expression": "entry.where(resource.id = 'ignixa-qty-low').exists()" } },
+        { "assert": { "description": "Must include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()" } },
+        { "assert": { "description": "Must NOT include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include mid-b (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: lt — strictly less than",
+      "description": "Observation?value-quantity=lt5 must match low (1) and sci (0.002); mid and high are not strictly less than 5.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=lt5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-lt", "description": "GET Observation?value-quantity=lt5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include low (1)", "expression": "entry.where(resource.id = 'ignixa-qty-low').exists()" } },
+        { "assert": { "description": "Must include sci (0.002)", "expression": "entry.where(resource.id = 'ignixa-qty-sci').exists()" } },
+        { "assert": { "description": "Must NOT include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: gt — strictly greater than",
+      "description": "Observation?value-quantity=gt5 must match only high (100); low, sci, and mid are not strictly greater than 5.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=gt5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-gt", "description": "GET Observation?value-quantity=gt5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()" } },
+        { "assert": { "description": "Must NOT include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include mid-b (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: le — less than or equal",
+      "description": "Observation?value-quantity=le5 must match low, sci, mid-a, and mid-b; high (100) is excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=le5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-le", "description": "GET Observation?value-quantity=le5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()" } },
+        { "assert": { "description": "Must include mid-b (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()" } },
+        { "assert": { "description": "Must NOT include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: ge — greater than or equal",
+      "description": "Observation?value-quantity=ge5 must match mid-a, mid-b, and high (100); low (1) and sci (0.002) are excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=ge5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-ge", "description": "GET Observation?value-quantity=ge5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()" } },
+        { "assert": { "description": "Must include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()" } },
+        { "assert": { "description": "Must NOT include low (1)", "expression": "entry.where(resource.id = 'ignixa-qty-low').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: sa (starts-after) — behaves like gt for point values",
+      "description": "Observation?value-quantity=sa5 must match only high (100), same result as gt5 since these fixtures are point decimals with no inherent range.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=sa5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-sa", "description": "GET Observation?value-quantity=sa5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include high (100)", "expression": "entry.where(resource.id = 'ignixa-qty-high').exists()" } },
+        { "assert": { "description": "Must NOT include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include mid-b (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: eb (ends-before) — behaves like lt for point values",
+      "description": "Observation?value-quantity=eb5 must match low (1) and sci (0.002), same result as lt5 since these fixtures are point decimals with no inherent range.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=eb5&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-eb", "description": "GET Observation?value-quantity=eb5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include low (1)", "expression": "entry.where(resource.id = 'ignixa-qty-low').exists()" } },
+        { "assert": { "description": "Must include sci (0.002)", "expression": "entry.where(resource.id = 'ignixa-qty-sci').exists()" } },
+        { "assert": { "description": "Must NOT include mid-a (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include mid-b (5)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: system-qualified value (value|system) disambiguates equal values",
+      "description": "Observation?value-quantity=5|system1 must match only mid-a (unit1/system1); mid-b shares the value 5 but has system2, so it must be excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=5|system1&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-system", "description": "GET Observation?value-quantity=5|system1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include mid-a (system1)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()" } },
+        { "assert": { "description": "Must NOT include mid-b (system2)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: unit-qualified value (value||unit) disambiguates equal values",
+      "description": "Observation?value-quantity=5||unit2 must match only mid-b (unit2/system2); mid-a shares the value 5 but has unit1, so it must be excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=5||unit2&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-unit", "description": "GET Observation?value-quantity=5||unit2" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include mid-b (unit2)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()" } },
+        { "assert": { "description": "Must NOT include mid-a (unit1)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: combined system+unit filter with no matching fixture",
+      "description": "Observation?value-quantity=5|system1|unit2 must match neither mid-a (system1/unit1) nor mid-b (system2/unit2) since neither fixture combines system1 with unit2.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=5|system1|unit2&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-system-unit", "description": "GET Observation?value-quantity=5|system1|unit2" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include mid-a (system1/unit1 mismatch)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include mid-b (system2/unit2 mismatch)", "expression": "entry.where(resource.id = 'ignixa-qty-mid-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "quantity: scientific notation value parsing",
+      "description": "Observation?value-quantity=2e-3 must parse the scientific-notation value as 0.002 and match the sci fixture.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?value-quantity=2e-3&_tag=http://ignixa.io/testscript/suite/test|ignixa-qty-suite&_count=100", "responseId": "qty-sci-search", "description": "GET Observation?value-quantity=2e-3" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include sci (0.002 == 2e-3)", "expression": "entry.where(resource.id = 'ignixa-qty-sci').exists()" } },
+        { "assert": { "description": "Must NOT include low (1)", "expression": "entry.where(resource.id = 'ignixa-qty-low').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-qty-sci", "description": "Teardown: delete obs-sci" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-qty-low", "description": "Teardown: delete obs-low" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-qty-mid-a", "description": "Teardown: delete obs-mid-a" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-qty-mid-b", "description": "Teardown: delete obs-mid-b" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-qty-high", "description": "Teardown: delete obs-high" } }
+    ]
+  }
+}

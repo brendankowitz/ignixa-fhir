@@ -1,0 +1,293 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/compartments",
+  "description": "Compartment search conformance tests (GET /{CompartmentType}/{id}/{ResourceType}), complementing the existing Patient/Observation test in Search/chaining.json with Device and Practitioner compartments, wildcard+_type filtering, combined filters, and edge cases like an unknown owner.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "device1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Device",
+        "id": "ignixa-cmp-device1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-DEVICE1" }]
+      }
+    },
+    {
+      "id": "prac1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-cmp-prac1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-PRAC1" }],
+        "name": [{ "family": "Compartment", "given": ["Prac1"] }]
+      }
+    },
+    {
+      "id": "prac-other",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-cmp-prac-other",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-PRAC-OTHER" }],
+        "name": [{ "family": "Compartment", "given": ["Other"] }]
+      }
+    },
+    {
+      "id": "pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-cmp-pat1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-PAT1" }],
+        "name": [{ "family": "Compartment", "given": ["Pat1"] }]
+      }
+    },
+    {
+      "id": "cond1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Condition",
+        "id": "ignixa-cmp-cond1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-COND1" }],
+        "subject": { "reference": "Patient/ignixa-cmp-pat1" }
+      }
+    },
+    {
+      "id": "obs-device",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-cmp-obs-device",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-OBS-DEVICE" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
+        "subject": { "reference": "Patient/ignixa-cmp-pat1" },
+        "device": { "reference": "Device/ignixa-cmp-device1" }
+      }
+    },
+    {
+      "id": "obs-prac",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-cmp-obs-prac",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-OBS-PRAC" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "29463-7", "display": "Body weight" }] },
+        "subject": { "reference": "Patient/ignixa-cmp-pat1" },
+        "performer": [{ "reference": "Practitioner/ignixa-cmp-prac1" }]
+      }
+    },
+    {
+      "id": "obs-plain",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-cmp-obs-plain",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/compartments", "value": "CMP-OBS-PLAIN" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "9279-1", "display": "Respiratory rate" }] },
+        "subject": { "reference": "Patient/ignixa-cmp-pat1" }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Device/ignixa-cmp-device1", "sourceId": "device1", "description": "PUT Device/ignixa-cmp-device1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-cmp-prac1", "sourceId": "prac1", "description": "PUT Practitioner/ignixa-cmp-prac1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-cmp-prac-other", "sourceId": "prac-other", "description": "PUT Practitioner/ignixa-cmp-prac-other (decoy, not referenced by any observation)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-cmp-pat1", "sourceId": "pat1", "description": "PUT Patient/ignixa-cmp-pat1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Condition/ignixa-cmp-cond1", "sourceId": "cond1", "description": "PUT Condition/ignixa-cmp-cond1 (subject=pat1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-cmp-obs-device", "sourceId": "obs-device", "description": "PUT Observation/ignixa-cmp-obs-device (subject=pat1, device=device1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-cmp-obs-prac", "sourceId": "obs-prac", "description": "PUT Observation/ignixa-cmp-obs-prac (subject=pat1, performer=prac1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-cmp-obs-plain", "sourceId": "obs-plain", "description": "PUT Observation/ignixa-cmp-obs-plain (subject=pat1 only)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Device compartment: observations referencing the device",
+      "description": "GET /Device/ignixa-cmp-device1/Observation returns the Device compartment. Only obs-device references the device; obs-prac and obs-plain must not appear.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Device/ignixa-cmp-device1/Observation", "responseId": "device-compartment", "description": "GET /Device/ignixa-cmp-device1/Observation (compartment search)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-device", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()" } },
+        { "assert": { "description": "Must NOT include obs-prac (not linked to the device)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-plain (not linked to the device)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Practitioner compartment: observations referencing the practitioner as performer",
+      "description": "GET /Practitioner/ignixa-cmp-prac1/Observation returns the Practitioner compartment. Only obs-prac lists prac1 as performer; obs-device and obs-plain must not appear.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Practitioner/ignixa-cmp-prac1/Observation", "responseId": "practitioner-compartment", "description": "GET /Practitioner/ignixa-cmp-prac1/Observation (compartment search)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-prac", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()" } },
+        { "assert": { "description": "Must NOT include obs-device (no performer=prac1)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-plain (no performer=prac1)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient compartment wildcard: all resource types linked to the patient",
+      "description": "GET /Patient/ignixa-cmp-pat1/* returns every resource type in the Patient compartment: all three observations plus the Condition.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/*", "responseId": "wildcard-all", "description": "GET /Patient/ignixa-cmp-pat1/* (wildcard compartment search)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-device", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()" } },
+        { "assert": { "description": "Must include obs-prac", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()" } },
+        { "assert": { "description": "Must include obs-plain", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()" } },
+        { "assert": { "description": "Must include cond1 (Condition, a different resource type)", "expression": "entry.where(resource.id = 'ignixa-cmp-cond1').exists()" } }
+      ]
+    },
+    {
+      "name": "Patient compartment wildcard filtered by _type=Observation",
+      "description": "GET /Patient/ignixa-cmp-pat1/*?_type=Observation restricts the wildcard compartment search to Observation resources only; cond1 (a Condition) must be excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/*?_type=Observation", "responseId": "wildcard-type-obs", "description": "GET /Patient/ignixa-cmp-pat1/*?_type=Observation" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-device", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()" } },
+        { "assert": { "description": "Must include obs-prac", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()" } },
+        { "assert": { "description": "Must include obs-plain", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()" } },
+        { "assert": { "description": "Must NOT include cond1 (filtered out by _type=Observation)", "expression": "entry.where(resource.id = 'ignixa-cmp-cond1').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient compartment wildcard filtered by _type=Condition",
+      "description": "GET /Patient/ignixa-cmp-pat1/*?_type=Condition restricts to Condition resources only; the three observations must be excluded.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/*?_type=Condition", "responseId": "wildcard-type-cond", "description": "GET /Patient/ignixa-cmp-pat1/*?_type=Condition" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include cond1", "expression": "entry.where(resource.id = 'ignixa-cmp-cond1').exists()" } },
+        { "assert": { "description": "Must NOT include obs-device (filtered out by _type=Condition)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-prac (filtered out by _type=Condition)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-plain (filtered out by _type=Condition)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Direct-type compartment route is equivalent to wildcard+_type",
+      "description": "GET /Patient/ignixa-cmp-pat1/Observation and GET /Patient/ignixa-cmp-pat1/*?_type=Observation must return the same set of observations.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/Observation", "responseId": "direct-type-response", "description": "GET /Patient/ignixa-cmp-pat1/Observation (direct-type route)" } },
+        { "assert": { "description": "Direct route: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Direct route: must include obs-device", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()" } },
+        { "assert": { "description": "Direct route: must include obs-prac", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()" } },
+        { "assert": { "description": "Direct route: must include obs-plain", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()" } },
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/*?_type=Observation", "responseId": "wildcard-equiv-response", "description": "GET /Patient/ignixa-cmp-pat1/*?_type=Observation (wildcard+_type route)" } },
+        { "assert": { "description": "Wildcard route: HTTP 200", "response": "okay", "sourceId": "wildcard-equiv-response" } },
+        { "assert": { "description": "Wildcard route: must include obs-device", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()", "sourceId": "wildcard-equiv-response" } },
+        { "assert": { "description": "Wildcard route: must include obs-prac", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()", "sourceId": "wildcard-equiv-response" } },
+        { "assert": { "description": "Wildcard route: must include obs-plain", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()", "sourceId": "wildcard-equiv-response" } }
+      ]
+    },
+    {
+      "name": "Patient compartment wildcard with unsupported _type is ignored with a warning",
+      "description": "GET /Patient/ignixa-cmp-pat1/*?_type=foo uses an unrecognized resource type. Servers commonly respond 200 with an OperationOutcome warning and no matches, rather than an error, but exact behavior varies so the details are warningOnly.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/*?_type=foo", "responseId": "wildcard-bad-type", "description": "GET /Patient/ignixa-cmp-pat1/*?_type=foo" } },
+        { "assert": { "description": "Search should return HTTP 200 (unsupported _type value is not fatal)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "No compartment resources should match an unrecognized type", "expression": "entry.where(resource.resourceType != 'OperationOutcome').count() = 0", "warningOnly": true } },
+        { "assert": { "description": "A warning OperationOutcome may be present explaining the unsupported _type", "expression": "entry.resource.ofType(OperationOutcome).issue.where(severity = 'warning').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient compartment filtered by a matching performer",
+      "description": "GET /Patient/ignixa-cmp-pat1/Observation?performer=Practitioner/ignixa-cmp-prac1 narrows the compartment search to observations performed by prac1: only obs-prac matches.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/Observation?performer=Practitioner/ignixa-cmp-prac1", "responseId": "performer-match", "description": "GET /Patient/ignixa-cmp-pat1/Observation?performer=Practitioner/ignixa-cmp-prac1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-prac", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()" } },
+        { "assert": { "description": "Must NOT include obs-device", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-device').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-plain", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Patient compartment filtered by a non-matching performer returns no results",
+      "description": "GET /Patient/ignixa-cmp-pat1/Observation?performer=Practitioner/ignixa-cmp-prac-other must return an empty Bundle since prac-other performs none of pat1's observations.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/Observation?performer=Practitioner/ignixa-cmp-prac-other", "responseId": "performer-no-match", "description": "GET /Patient/ignixa-cmp-pat1/Observation?performer=Practitioner/ignixa-cmp-prac-other" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must have no matching entries", "expression": "entry.where(resource.resourceType = 'Observation').count() = 0" } }
+      ]
+    },
+    {
+      "name": "Compartment search combined with _include",
+      "description": "GET /Patient/ignixa-cmp-pat1/Observation?_include=Observation:performer:Practitioner&performer=Practitioner/ignixa-cmp-prac1 returns obs-prac plus the included Practitioner resource.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/Observation?_include=Observation:performer:Practitioner&performer=Practitioner/ignixa-cmp-prac1", "responseId": "compartment-include", "description": "GET compartment search with _include=Observation:performer:Practitioner" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-prac (match)", "expression": "entry.where(resource.id = 'ignixa-cmp-obs-prac').exists()" } },
+        { "assert": { "description": "Must include prac1 (included Practitioner)", "expression": "entry.where(resource.id = 'ignixa-cmp-prac1').exists()" } }
+      ]
+    },
+    {
+      "name": "Nonexistent compartment sub-resource type returns 404",
+      "description": "GET /Patient/ignixa-cmp-pat1/FooBarType uses a resource type segment that isn't a valid FHIR resource type; the server must return 404 Not Found.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/FooBarType", "responseId": "invalid-subtype", "description": "GET /Patient/ignixa-cmp-pat1/FooBarType (invalid resource type segment)" } },
+        { "assert": { "description": "Must return HTTP 404 Not Found", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "Nonexistent compartment owner returns an empty result",
+      "description": "GET /Patient/ignixa-cmp-nonexistent-owner-000/Observation references a Patient id that was never created. Compartment search typically filters by the owner reference without validating the owner's existence, yielding 200 with an empty Bundle; some servers may instead 404, so this is warningOnly.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-nonexistent-owner-000/Observation", "responseId": "nonexistent-owner", "description": "GET /Patient/ignixa-cmp-nonexistent-owner-000/Observation" } },
+        { "assert": { "description": "Search should return HTTP 200 rather than an error for an unknown owner", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Bundle should have no entries for an owner with no compartment resources", "expression": "entry.count() = 0", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Compartment search paging with _count=1",
+      "description": "GET /Patient/ignixa-cmp-pat1/*?_count=1 must return at most 1 entry on the first page; the next link is not followed (this suite does not test multi-page traversal).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "url": "Patient/ignixa-cmp-pat1/*?_count=1", "responseId": "compartment-paging", "description": "GET /Patient/ignixa-cmp-pat1/*?_count=1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "First page must contain at most 1 entry (_count=1)", "expression": "entry.count() <= 1" } },
+        { "assert": { "description": "A next link should be present since the compartment has more than 1 resource", "expression": "link.where(relation = 'next').exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-cmp-obs-device", "description": "Teardown: delete obs-device" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-cmp-obs-prac", "description": "Teardown: delete obs-prac" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-cmp-obs-plain", "description": "Teardown: delete obs-plain" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Condition/ignixa-cmp-cond1", "description": "Teardown: delete cond1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-cmp-pat1", "description": "Teardown: delete pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-cmp-prac1", "description": "Teardown: delete prac1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-cmp-prac-other", "description": "Teardown: delete prac-other" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Device/ignixa-cmp-device1", "description": "Teardown: delete device1" } }
+    ]
+  }
+}

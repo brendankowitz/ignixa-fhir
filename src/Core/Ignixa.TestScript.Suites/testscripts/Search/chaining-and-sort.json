@@ -1,0 +1,444 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/chaining-and-sort",
+  "description": "Tests reverse chaining (_has) combined with active:not, name:missing, location:missing modifiers, a second _has clause, _sort, _summary=count and _total=accurate on a small deterministic HealthcareService/PractitionerRole dataset (from ChainingAndSortTests.cs, adapted from its large seeded bundle), complementing Search/chaining.json and Search/sort.json.",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Location').updateCreate = true and rest.resource.where(type='Practitioner').updateCreate = true and rest.resource.where(type='HealthcareService').updateCreate = true and rest.resource.where(type='PractitionerRole').updateCreate = true" }
+  ],
+  "fixture": [
+    {
+      "id": "loc1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Location",
+        "id": "ignixa-cs-loc1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-LOC1" }],
+        "name": "Chaining Sort Test Location"
+      }
+    },
+    {
+      "id": "prac-target",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-cs-prac-target",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-PRAC-TARGET" }],
+        "name": [{ "family": "ChainSortTarget", "given": ["Practitioner"] }]
+      }
+    },
+    {
+      "id": "prac-other",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-cs-prac-other",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-PRAC-OTHER" }],
+        "name": [{ "family": "ChainSortOther", "given": ["Practitioner"] }]
+      }
+    },
+    {
+      "id": "hs1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-cs-hs1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-HS1" }],
+        "name": "Alpha Clinic",
+        "active": true,
+        "location": [{ "reference": "Location/ignixa-cs-loc1" }]
+      }
+    },
+    {
+      "id": "hs2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-cs-hs2",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-HS2" }],
+        "active": true,
+        "location": [{ "reference": "Location/ignixa-cs-loc1" }]
+      }
+    },
+    {
+      "id": "hs3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-cs-hs3",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-HS3" }],
+        "name": "Gamma Clinic",
+        "active": false,
+        "location": [{ "reference": "Location/ignixa-cs-loc1" }]
+      }
+    },
+    {
+      "id": "hs4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-cs-hs4",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-HS4" }],
+        "name": "Delta Clinic",
+        "active": true
+      }
+    },
+    {
+      "id": "hs5",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-cs-hs5",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-HS5" }],
+        "name": "Epsilon Clinic",
+        "active": true,
+        "location": [{ "reference": "Location/ignixa-cs-loc1" }]
+      }
+    },
+    {
+      "id": "hsdecoy",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "HealthcareService",
+        "id": "ignixa-cs-hsdecoy",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/chaining-and-sort", "value": "CS-HSDECOY" }],
+        "name": "Zeta Clinic",
+        "active": true,
+        "location": [{ "reference": "Location/ignixa-cs-loc1" }]
+      }
+    },
+    {
+      "id": "role1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-cs-role1",
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-cs-prac-target" },
+        "healthcareService": [{ "reference": "HealthcareService/ignixa-cs-hs1" }]
+      }
+    },
+    {
+      "id": "role2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-cs-role2",
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-cs-prac-target" },
+        "healthcareService": [{ "reference": "HealthcareService/ignixa-cs-hs2" }]
+      }
+    },
+    {
+      "id": "role3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-cs-role3",
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-cs-prac-target" },
+        "healthcareService": [{ "reference": "HealthcareService/ignixa-cs-hs3" }]
+      }
+    },
+    {
+      "id": "role4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-cs-role4",
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-cs-prac-target" },
+        "healthcareService": [{ "reference": "HealthcareService/ignixa-cs-hs4" }]
+      }
+    },
+    {
+      "id": "role5",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-cs-role5",
+        "active": false,
+        "practitioner": { "reference": "Practitioner/ignixa-cs-prac-target" },
+        "healthcareService": [{ "reference": "HealthcareService/ignixa-cs-hs5" }]
+      }
+    },
+    {
+      "id": "roledecoy",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-cs-roledecoy",
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-cs-prac-other" },
+        "healthcareService": [{ "reference": "HealthcareService/ignixa-cs-hsdecoy" }]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Location/ignixa-cs-loc1", "sourceId": "loc1", "description": "PUT Location/ignixa-cs-loc1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-cs-prac-target", "sourceId": "prac-target", "description": "PUT Practitioner/ignixa-cs-prac-target" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-cs-prac-other", "sourceId": "prac-other", "description": "PUT Practitioner/ignixa-cs-prac-other" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-cs-hs1", "sourceId": "hs1", "description": "PUT HealthcareService/ignixa-cs-hs1 (Alpha Clinic, active, named, located)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-cs-hs2", "sourceId": "hs2", "description": "PUT HealthcareService/ignixa-cs-hs2 (no name, active, located)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-cs-hs3", "sourceId": "hs3", "description": "PUT HealthcareService/ignixa-cs-hs3 (Gamma Clinic, inactive, located)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-cs-hs4", "sourceId": "hs4", "description": "PUT HealthcareService/ignixa-cs-hs4 (Delta Clinic, active, no location)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-cs-hs5", "sourceId": "hs5", "description": "PUT HealthcareService/ignixa-cs-hs5 (Epsilon Clinic, active, located, but its only role is inactive)" } },
+      { "operation": { "type": { "code": "update" }, "url": "HealthcareService/ignixa-cs-hsdecoy", "sourceId": "hsdecoy", "description": "PUT HealthcareService/ignixa-cs-hsdecoy (linked only to prac-other)" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-cs-role1", "sourceId": "role1", "description": "PUT PractitionerRole/ignixa-cs-role1 (target -> hs1, active)" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-cs-role2", "sourceId": "role2", "description": "PUT PractitionerRole/ignixa-cs-role2 (target -> hs2, active)" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-cs-role3", "sourceId": "role3", "description": "PUT PractitionerRole/ignixa-cs-role3 (target -> hs3, active)" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-cs-role4", "sourceId": "role4", "description": "PUT PractitionerRole/ignixa-cs-role4 (target -> hs4, active)" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-cs-role5", "sourceId": "role5", "description": "PUT PractitionerRole/ignixa-cs-role5 (target -> hs5, INACTIVE)" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-cs-roledecoy", "sourceId": "roledecoy", "description": "PUT PractitionerRole/ignixa-cs-roledecoy (other -> hsdecoy, active)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Reverse chain: HealthcareServices linked to the target practitioner",
+      "description": "HealthcareService?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target must return hs1..hs5 (all have a PractitionerRole for prac-target); hsdecoy (linked only to prac-other) must not appear.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100", "responseId": "chain-only", "description": "GET /HealthcareService?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "Must include hs2", "expression": "entry.where(resource.id = 'ignixa-cs-hs2').exists()" } },
+        { "assert": { "description": "Must include hs3", "expression": "entry.where(resource.id = 'ignixa-cs-hs3').exists()" } },
+        { "assert": { "description": "Must include hs4", "expression": "entry.where(resource.id = 'ignixa-cs-hs4').exists()" } },
+        { "assert": { "description": "Must include hs5", "expression": "entry.where(resource.id = 'ignixa-cs-hs5').exists()" } },
+        { "assert": { "description": "Must NOT include hsdecoy (linked only to prac-other)", "expression": "entry.where(resource.id = 'ignixa-cs-hsdecoy').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Chain + active:not=false excludes the inactive service",
+      "description": "Adding active:not=false to the reverse chain excludes hs3 (active=false); hs1,hs2,hs4,hs5 (all active=true) remain.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&active:not=false&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100", "responseId": "chain-active-not", "description": "GET .../HealthcareService?..._has...&active:not=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "Must include hs2", "expression": "entry.where(resource.id = 'ignixa-cs-hs2').exists()" } },
+        { "assert": { "description": "Must include hs4", "expression": "entry.where(resource.id = 'ignixa-cs-hs4').exists()" } },
+        { "assert": { "description": "Must include hs5", "expression": "entry.where(resource.id = 'ignixa-cs-hs5').exists()" } },
+        { "assert": { "description": "Must NOT include hs3 (active=false)", "expression": "entry.where(resource.id = 'ignixa-cs-hs3').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Chain + name:missing=false excludes the unnamed service",
+      "description": "Adding name:missing=false to the reverse chain excludes hs2 (no name); hs1,hs3,hs4,hs5 (all named) remain.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&name:missing=false&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100", "responseId": "chain-name-missing", "description": "GET .../HealthcareService?..._has...&name:missing=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "Must include hs3", "expression": "entry.where(resource.id = 'ignixa-cs-hs3').exists()" } },
+        { "assert": { "description": "Must include hs4", "expression": "entry.where(resource.id = 'ignixa-cs-hs4').exists()" } },
+        { "assert": { "description": "Must include hs5", "expression": "entry.where(resource.id = 'ignixa-cs-hs5').exists()" } },
+        { "assert": { "description": "Must NOT include hs2 (no name)", "expression": "entry.where(resource.id = 'ignixa-cs-hs2').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Chain + location:missing=false excludes the service without a location",
+      "description": "Adding location:missing=false to the reverse chain excludes hs4 (no location); hs1,hs2,hs3,hs5 (all located) remain.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&location:missing=false&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100", "responseId": "chain-location-missing", "description": "GET .../HealthcareService?..._has...&location:missing=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "Must include hs2", "expression": "entry.where(resource.id = 'ignixa-cs-hs2').exists()" } },
+        { "assert": { "description": "Must include hs3", "expression": "entry.where(resource.id = 'ignixa-cs-hs3').exists()" } },
+        { "assert": { "description": "Must include hs5", "expression": "entry.where(resource.id = 'ignixa-cs-hs5').exists()" } },
+        { "assert": { "description": "Must NOT include hs4 (no location)", "expression": "entry.where(resource.id = 'ignixa-cs-hs4').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Second _has excludes the service whose only role is inactive",
+      "description": "Adding a second reverse chain, _has:PractitionerRole:service:active=true, requires the linking PractitionerRole itself to be active. hs5's only role (role5) is inactive, so hs5 is excluded even though hs5.active=true; hs1..hs4 (each linked by an active role) remain.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&_has:PractitionerRole:service:active=true&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100", "responseId": "chain-role-active", "description": "GET .../HealthcareService with two _has clauses (practitioner + role active=true)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "Must include hs2", "expression": "entry.where(resource.id = 'ignixa-cs-hs2').exists()" } },
+        { "assert": { "description": "Must include hs3", "expression": "entry.where(resource.id = 'ignixa-cs-hs3').exists()" } },
+        { "assert": { "description": "Must include hs4", "expression": "entry.where(resource.id = 'ignixa-cs-hs4').exists()" } },
+        { "assert": { "description": "Must NOT include hs5 (its only PractitionerRole, role5, is inactive)", "expression": "entry.where(resource.id = 'ignixa-cs-hs5').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Combined chain + all modifiers narrows to exactly one match",
+      "description": "Combining the reverse chain with active:not=false, name:missing=false, location:missing=false and the second _has:PractitionerRole:service:active=true narrows the result to exactly hs1, the only service passing every filter.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&active:not=false&name:missing=false&location:missing=false&_has:PractitionerRole:service:active=true&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100", "responseId": "chain-combined", "description": "GET .../HealthcareService with the full combined filter set" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1 (passes every filter)", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "Must NOT include hs2 (no name)", "expression": "entry.where(resource.id = 'ignixa-cs-hs2').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include hs3 (inactive)", "expression": "entry.where(resource.id = 'ignixa-cs-hs3').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include hs4 (no location)", "expression": "entry.where(resource.id = 'ignixa-cs-hs4').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include hs5 (only role is inactive)", "expression": "entry.where(resource.id = 'ignixa-cs-hs5').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include hsdecoy (different practitioner)", "expression": "entry.where(resource.id = 'ignixa-cs-hsdecoy').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_sort=name orders chained results ascending (missing name last)",
+      "description": "Applying _sort=name to the base reverse-chain query (hs1..hs5) should order by name ascending: hs1 (Alpha), hs4 (Delta), hs5 (Epsilon), hs3 (Gamma), then hs2 (no name) last. Position assertions are warningOnly since null-ordering conventions vary across servers.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists()) and (rest.resource.where(type='HealthcareService').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_count=100&_sort=name", "responseId": "chain-sort-name", "description": "GET .../HealthcareService?..._has...&_sort=name" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Position 0 should be hs1 (Alpha Clinic)", "expression": "entry[0].resource.id", "value": "ignixa-cs-hs1", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 1 should be hs4 (Delta Clinic)", "expression": "entry[1].resource.id", "value": "ignixa-cs-hs4", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 2 should be hs5 (Epsilon Clinic)", "expression": "entry[2].resource.id", "value": "ignixa-cs-hs5", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 3 should be hs3 (Gamma Clinic)", "expression": "entry[3].resource.id", "value": "ignixa-cs-hs3", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 4 should be hs2 (no name, sorts last)", "expression": "entry[4].resource.id", "value": "ignixa-cs-hs2", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_summary=count on the combined query reports the total without returning entries",
+      "description": "Adding _summary=count to the fully-combined query (which matches exactly hs1) must return an empty entry list and Bundle.total=1.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists()) and (rest.resource.where(type='HealthcareService').searchParam.where(name='_summary').exists() or rest.searchParam.where(name='_summary').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&active:not=false&name:missing=false&location:missing=false&_has:PractitionerRole:service:active=true&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_summary=count", "responseId": "chain-summary-count", "description": "GET .../HealthcareService with the combined filter set + _summary=count" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Entry list must be empty when _summary=count is used", "expression": "entry.count() = 0" } },
+        { "assert": { "description": "total must be exactly 1 (only hs1 matches)", "expression": "total = 1" } }
+      ]
+    },
+    {
+      "name": "_total=accurate on the combined query reports the exact total",
+      "description": "Adding _total=accurate to the fully-combined query must return Bundle.total=1 alongside the single matching entry (hs1).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists()) and (rest.resource.where(type='HealthcareService').searchParam.where(name='_total').exists() or rest.searchParam.where(name='_total').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "HealthcareService", "params": "?_has:PractitionerRole:service:practitioner=ignixa-cs-prac-target&active:not=false&name:missing=false&location:missing=false&_has:PractitionerRole:service:active=true&identifier=http://ignixa.io/testscript/suite/chaining-and-sort|&_total=accurate", "responseId": "chain-total-accurate", "description": "GET .../HealthcareService with the combined filter set + _total=accurate" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include hs1", "expression": "entry.where(resource.id = 'ignixa-cs-hs1').exists()" } },
+        { "assert": { "description": "total must be exactly 1", "expression": "total = 1" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-cs-role1", "description": "Teardown: delete role1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-cs-role2", "description": "Teardown: delete role2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-cs-role3", "description": "Teardown: delete role3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-cs-role4", "description": "Teardown: delete role4" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-cs-role5", "description": "Teardown: delete role5" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-cs-roledecoy", "description": "Teardown: delete roledecoy" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-cs-hs1", "description": "Teardown: delete hs1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-cs-hs2", "description": "Teardown: delete hs2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-cs-hs3", "description": "Teardown: delete hs3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-cs-hs4", "description": "Teardown: delete hs4" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-cs-hs5", "description": "Teardown: delete hs5" } },
+      { "operation": { "type": { "code": "delete" }, "url": "HealthcareService/ignixa-cs-hsdecoy", "description": "Teardown: delete hsdecoy" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-cs-prac-target", "description": "Teardown: delete prac-target" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-cs-prac-other", "description": "Teardown: delete prac-other" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Location/ignixa-cs-loc1", "description": "Teardown: delete loc1" } }
+    ]
+  }
+}

@@ -1,0 +1,424 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/all-resource-types-pre-r5",
+  "description": "Creates and reads every concrete FHIR resource type present in STU3 through R4B but removed in R5, gated on the target declaring fhirVersion 3.0.x, 4.0.x, or 4.3.x.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "deviceUseStatement-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "DeviceUseStatement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "documentManifest-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "DocumentManifest"
+          }
+        ]
+      }
+    },
+    {
+      "id": "media-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "Media"
+          }
+        ]
+      }
+    },
+    {
+      "id": "requestGroup-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "RequestGroup"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "deviceUseStatementId",
+      "sourceId": "deviceUseStatement-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created DeviceUseStatement"
+    },
+    {
+      "name": "documentManifestId",
+      "sourceId": "documentManifest-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created DocumentManifest"
+    },
+    {
+      "name": "mediaId",
+      "sourceId": "media-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created Media"
+    },
+    {
+      "name": "requestGroupId",
+      "sourceId": "requestGroup-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created RequestGroup"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "Can create and read DeviceUseStatement",
+      "description": "When the target server declares DeviceUseStatement create and read interactions, POST /DeviceUseStatement must create a synthetic DeviceUseStatement and GET /DeviceUseStatement/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "3.0,4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='DeviceUseStatement').interaction.where(code='create').exists() and rest.resource.where(type='DeviceUseStatement').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "DeviceUseStatement",
+            "sourceId": "deviceUseStatement-fixture",
+            "responseId": "deviceUseStatement-create-response",
+            "description": "POST a synthetic DeviceUseStatement"
+          }
+        },
+        {
+          "assert": {
+            "description": "DeviceUseStatement create must return HTTP 201 Created",
+            "sourceId": "deviceUseStatement-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a DeviceUseStatement",
+            "sourceId": "deviceUseStatement-create-response",
+            "resource": "DeviceUseStatement"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "deviceUseStatement-create-response",
+            "expression": "DeviceUseStatement.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "DeviceUseStatement/${deviceUseStatementId}",
+            "responseId": "deviceUseStatement-read-response",
+            "description": "GET the created DeviceUseStatement by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "DeviceUseStatement read must return HTTP 200 OK",
+            "sourceId": "deviceUseStatement-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a DeviceUseStatement",
+            "sourceId": "deviceUseStatement-read-response",
+            "resource": "DeviceUseStatement"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "deviceUseStatement-read-response",
+            "expression": "DeviceUseStatement.id",
+            "value": "${deviceUseStatementId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read DocumentManifest",
+      "description": "When the target server declares DocumentManifest create and read interactions, POST /DocumentManifest must create a synthetic DocumentManifest and GET /DocumentManifest/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "3.0,4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='DocumentManifest').interaction.where(code='create').exists() and rest.resource.where(type='DocumentManifest').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "DocumentManifest",
+            "sourceId": "documentManifest-fixture",
+            "responseId": "documentManifest-create-response",
+            "description": "POST a synthetic DocumentManifest"
+          }
+        },
+        {
+          "assert": {
+            "description": "DocumentManifest create must return HTTP 201 Created",
+            "sourceId": "documentManifest-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a DocumentManifest",
+            "sourceId": "documentManifest-create-response",
+            "resource": "DocumentManifest"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "documentManifest-create-response",
+            "expression": "DocumentManifest.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "DocumentManifest/${documentManifestId}",
+            "responseId": "documentManifest-read-response",
+            "description": "GET the created DocumentManifest by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "DocumentManifest read must return HTTP 200 OK",
+            "sourceId": "documentManifest-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a DocumentManifest",
+            "sourceId": "documentManifest-read-response",
+            "resource": "DocumentManifest"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "documentManifest-read-response",
+            "expression": "DocumentManifest.id",
+            "value": "${documentManifestId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read Media",
+      "description": "When the target server declares Media create and read interactions, POST /Media must create a synthetic Media and GET /Media/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "3.0,4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Media').interaction.where(code='create').exists() and rest.resource.where(type='Media').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Media",
+            "sourceId": "media-fixture",
+            "responseId": "media-create-response",
+            "description": "POST a synthetic Media"
+          }
+        },
+        {
+          "assert": {
+            "description": "Media create must return HTTP 201 Created",
+            "sourceId": "media-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a Media",
+            "sourceId": "media-create-response",
+            "resource": "Media"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "media-create-response",
+            "expression": "Media.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "Media/${mediaId}",
+            "responseId": "media-read-response",
+            "description": "GET the created Media by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Media read must return HTTP 200 OK",
+            "sourceId": "media-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a Media",
+            "sourceId": "media-read-response",
+            "resource": "Media"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "media-read-response",
+            "expression": "Media.id",
+            "value": "${mediaId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read RequestGroup",
+      "description": "When the target server declares RequestGroup create and read interactions, POST /RequestGroup must create a synthetic RequestGroup and GET /RequestGroup/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "3.0,4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='RequestGroup').interaction.where(code='create').exists() and rest.resource.where(type='RequestGroup').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "RequestGroup",
+            "sourceId": "requestGroup-fixture",
+            "responseId": "requestGroup-create-response",
+            "description": "POST a synthetic RequestGroup"
+          }
+        },
+        {
+          "assert": {
+            "description": "RequestGroup create must return HTTP 201 Created",
+            "sourceId": "requestGroup-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a RequestGroup",
+            "sourceId": "requestGroup-create-response",
+            "resource": "RequestGroup"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "requestGroup-create-response",
+            "expression": "RequestGroup.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "RequestGroup/${requestGroupId}",
+            "responseId": "requestGroup-read-response",
+            "description": "GET the created RequestGroup by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "RequestGroup read must return HTTP 200 OK",
+            "sourceId": "requestGroup-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a RequestGroup",
+            "sourceId": "requestGroup-read-response",
+            "resource": "RequestGroup"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "requestGroup-read-response",
+            "expression": "RequestGroup.id",
+            "value": "${requestGroupId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": []
+  },
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "fhirVersion.startsWith('3.0') or fhirVersion.startsWith('4.0') or fhirVersion.startsWith('4.3')"
+    }
+  ]
+}

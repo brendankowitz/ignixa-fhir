@@ -1,0 +1,151 @@
+{
+  "resourceType": "TestScript",
+  "name": "Bundles/edge-cases",
+  "description": "Bundle edge-case conformance tests: invalid Bundle.type rejection, an id shared between two different resource types in the same Bundle, and _history/_history/{version} GET requests nested inside a batch Bundle. Two concurrency-dependent scenarios from BundleEdgeCaseTests.cs (a custom parallelism option, concurrent multi-bundle version conflicts) aren't portable to this sequential engine and are omitted.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "invalid-type-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "invalid-type",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "identifier": [{ "system": "http://ignixa.io/testscript/suite/bundle-edge", "value": "EDGE-INVALIDTYPE" }],
+              "name": [{ "family": "Edge", "given": ["InvalidType"] }]
+            },
+            "request": { "method": "POST", "url": "Patient" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "shared-id-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "batch",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "id": "ignixa-edge-shared-id",
+              "identifier": [{ "system": "http://ignixa.io/testscript/suite/bundle-edge", "value": "EDGE-SHARED" }],
+              "name": [{ "family": "Edge", "given": ["Shared"] }]
+            },
+            "request": { "method": "PUT", "url": "Patient/ignixa-edge-shared-id" }
+          },
+          {
+            "resource": {
+              "resourceType": "Observation",
+              "id": "ignixa-edge-shared-id",
+              "identifier": [{ "system": "http://ignixa.io/testscript/suite/bundle-edge", "value": "EDGE-SHARED" }],
+              "status": "final",
+              "code": { "coding": [{ "system": "http://loinc.org", "code": "8310-5", "display": "Body temperature" }] }
+            },
+            "request": { "method": "PUT", "url": "Observation/ignixa-edge-shared-id" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "hist-patient-v1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-edge-hist-p1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/bundle-edge", "value": "EDGE-HIST" }],
+        "name": [{ "family": "Edge", "given": ["History"] }]
+      }
+    },
+    {
+      "id": "hist-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "batch",
+        "entry": [
+          { "request": { "method": "GET", "url": "Patient/ignixa-edge-hist-p1/_history" } },
+          { "request": { "method": "GET", "url": "Patient/ignixa-edge-hist-p1/_history/1" } }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-edge-hist-p1", "sourceId": "hist-patient-v1", "description": "PUT Patient/ignixa-edge-hist-p1 (client id) to deterministically create version 1 before the _history bundle test runs" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Invalid Bundle.type value is rejected with 400 Bad Request",
+      "description": "POST a Bundle with an invalid Bundle.type value; the server must reject it with 400 rather than processing the entries.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "batch" }, "method": "POST", "sourceId": "invalid-type-bundle", "responseId": "invalid-type-response", "description": "POST Bundle with type='invalid-type' to the base URL" } },
+        { "assert": { "description": "Server must return 400 Bad Request for an unsupported Bundle.type value", "response": "bad" } },
+        { "assert": { "description": "Response body should be an OperationOutcome (warningOnly: some servers return a plain error body instead)", "resource": "OperationOutcome", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Same literal id shared between different resource types is processed as two independent resources",
+      "description": "PUT a Patient and an Observation using the same literal id inside one batch Bundle; both must succeed independently since ids are scoped per resource type.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "batch" }, "method": "POST", "sourceId": "shared-id-bundle", "responseId": "shared-id-response", "description": "POST batch Bundle with same-id Patient and Observation PUTs" } },
+        { "assert": { "description": "Batch submission must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Response Bundle must contain 2 entries", "expression": "entry.count() = 2" } },
+        { "assert": { "description": "Patient/ignixa-edge-shared-id entry must succeed with a 2xx status", "expression": "entry[0].response.status.startsWith('2')" } },
+        { "assert": { "description": "Observation/ignixa-edge-shared-id entry must also succeed with a 2xx status", "expression": "entry[1].response.status.startsWith('2')" } },
+        { "assert": { "description": "First entry's resource id must be the shared id", "expression": "entry[0].resource.id", "value": "ignixa-edge-shared-id", "operator": "equals" } },
+        { "assert": { "description": "Second entry's resource id must also be the shared id", "expression": "entry[1].resource.id", "value": "ignixa-edge-shared-id", "operator": "equals" } }
+      ]
+    },
+    {
+      "name": "Both same-id resources are independently retrievable by resource type",
+      "description": "GET both the Patient and Observation created with the shared id; each must return its own correct resource type, proving ids are scoped per resource type.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "Patient/ignixa-edge-shared-id", "responseId": "read-shared-patient", "description": "GET /Patient/ignixa-edge-shared-id" } },
+        { "assert": { "description": "Read must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Patient", "resource": "Patient" } },
+        { "assert": { "description": "Returned Patient id must be the shared id", "expression": "Patient.id", "value": "ignixa-edge-shared-id", "operator": "equals" } },
+        { "operation": { "type": { "code": "read" }, "url": "Observation/ignixa-edge-shared-id", "responseId": "read-shared-observation", "description": "GET /Observation/ignixa-edge-shared-id" } },
+        { "assert": { "description": "Read must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be an Observation", "resource": "Observation" } },
+        { "assert": { "description": "Returned Observation id must be the shared id", "expression": "Observation.id", "value": "ignixa-edge-shared-id", "operator": "equals" } }
+      ]
+    },
+    {
+      "name": "A batch Bundle containing _history and _history/{version} GET requests returns the expected resources",
+      "description": "POST a batch Bundle containing nested _history and _history/1 GET entries for a Patient; both must succeed, returning the expected history Bundle and version-1 resource respectively.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "batch" }, "method": "POST", "sourceId": "hist-bundle", "responseId": "hist-bundle-response", "description": "POST batch Bundle with _history and _history/1 GET entries" } },
+        { "assert": { "description": "Batch submission must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Response Bundle must contain 2 entries", "expression": "entry.count() = 2" } },
+        { "assert": { "description": "The _history entry must succeed with a 2xx status", "expression": "entry[0].response.status.startsWith('2')" } },
+        { "assert": { "description": "The _history/1 entry must succeed with a 2xx status", "expression": "entry[1].response.status.startsWith('2')" } },
+        { "assert": { "description": "The _history entry's embedded resource should itself be a history-type Bundle (warningOnly: nested Bundle-type resolution may vary by server)", "expression": "entry[0].resource.type = 'history'", "warningOnly": true } },
+        { "assert": { "description": "The _history/1 entry's embedded resource must be the version-1 Patient", "expression": "entry[1].resource.id", "value": "ignixa-edge-hist-p1", "operator": "equals" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-edge-shared-id", "description": "Teardown: delete shared-id Patient" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-edge-shared-id", "description": "Teardown: delete shared-id Observation" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-edge-hist-p1", "description": "Teardown: delete the _history test Patient" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient?identifier=http://ignixa.io/testscript/suite/bundle-edge|EDGE-INVALIDTYPE", "description": "Teardown: defensive conditional delete in case a lenient server processed the invalid-type Bundle" } }
+    ]
+  }
+}

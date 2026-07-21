@@ -1,0 +1,1917 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/patch-fhirpath",
+  "description": "FHIRPath Patch (application/fhir+json PATCH with a Parameters resource, per http://hl7.org/fhir/fhirpatch.html) conformance tests: add/replace/delete operations, FHIRPath where() filters, choice-type handling, immutable-element protection, If-Match preconditions, and date/dateTime edge cases (from FhirPathPatchTests).",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='patch').exists()" }
+  ],
+  "fixture": [
+    {
+      "id": "patient-full",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/e2e-marker",
+            "value": "patch-fhirpath-e2e-full"
+          }
+        ],
+        "gender": "male",
+        "deceasedBoolean": false,
+        "address": [
+          {
+            "use": "home",
+            "city": "Springfield",
+            "line": [
+              "1 Test Way"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patient-no-address",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/e2e-marker",
+            "value": "patch-fhirpath-e2e-noaddr"
+          }
+        ],
+        "gender": "male",
+        "deceasedBoolean": false
+      }
+    },
+    {
+      "id": "patient-minimal",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/e2e-marker",
+            "value": "patch-fhirpath-e2e-minimal"
+          }
+        ],
+        "gender": "unknown"
+      }
+    },
+    {
+      "id": "activitydefinition-base",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ActivityDefinition",
+        "status": "active",
+        "name": "IgnixaE2EPatchFhirpathActivityDefinition"
+      }
+    },
+    {
+      "id": "patch-replace-gender-delete-address",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.gender"
+              },
+              {
+                "name": "value",
+                "valueCode": "female"
+              }
+            ]
+          },
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "delete"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.address"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-invalid-optype",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "coo"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.gender"
+              },
+              {
+                "name": "value",
+                "valueCode": "femaale"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-missing-path",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "value",
+                "valueCode": "female"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-missing-value",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.gender"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-add-address-object",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient"
+              },
+              {
+                "name": "name",
+                "valueString": "address"
+              },
+              {
+                "name": "value",
+                "valueAddress": {
+                  "use": "home",
+                  "line": [
+                    "23 thule st",
+                    "avon"
+                  ],
+                  "city": "Big Smoke",
+                  "country": "erewhon",
+                  "text": "23 thule st"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-where-city",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.address.where(use = 'home').city"
+              },
+              {
+                "name": "value",
+                "valueString": "Portland"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-add-dummy-property",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient"
+              },
+              {
+                "name": "name",
+                "valueString": "dummyProperty"
+              },
+              {
+                "name": "value",
+                "valueString": "dummy"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-immutable-id",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.id"
+              },
+              {
+                "name": "value",
+                "valueId": "abc"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-invalid-gender-value",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.gender"
+              },
+              {
+                "name": "value",
+                "valueString": "dummyGender"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-add-deceased-datetime",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient"
+              },
+              {
+                "name": "name",
+                "valueString": "deceased"
+              },
+              {
+                "name": "value",
+                "valueDateTime": "2015-02-14T13:42:00+10:00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-deceased-datetime",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.deceased"
+              },
+              {
+                "name": "value",
+                "valueDateTime": "2015-02-14T13:42:00+10:00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-replace-gender-only",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.gender"
+              },
+              {
+                "name": "value",
+                "valueCode": "female"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-invalid-link-duplicate-value",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient"
+              },
+              {
+                "name": "name",
+                "valueString": "link"
+              },
+              {
+                "name": "value",
+                "part": [
+                  {
+                    "name": "value",
+                    "valueCode": "replaced-by"
+                  },
+                  {
+                    "name": "value",
+                    "valueReference": {
+                      "reference": "Patient/123",
+                      "display": "Test Patient",
+                      "type": "Patient"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-valid-link-backbone",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient"
+              },
+              {
+                "name": "name",
+                "valueString": "link"
+              },
+              {
+                "name": "value",
+                "part": [
+                  {
+                    "name": "type",
+                    "valueCode": "replaced-by"
+                  },
+                  {
+                    "name": "other",
+                    "valueReference": {
+                      "reference": "Patient/123",
+                      "display": "Test Patient",
+                      "type": "Patient"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-add-deceased-offset",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient"
+              },
+              {
+                "name": "name",
+                "valueString": "deceased"
+              },
+              {
+                "name": "value",
+                "valueDateTime": "2022-05-02T14:00:00+02:00"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-add-approvaldate-no-time",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "ActivityDefinition"
+              },
+              {
+                "name": "name",
+                "valueString": "approvalDate"
+              },
+              {
+                "name": "value",
+                "valueDate": "2022-05-02"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patch-add-approvaldate-with-time",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "add"
+              },
+              {
+                "name": "path",
+                "valueString": "ActivityDefinition"
+              },
+              {
+                "name": "name",
+                "valueString": "approvalDate"
+              },
+              {
+                "name": "value",
+                "valueDateTime": "2022-05-02T14:00:00"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "patientId1",
+      "sourceId": "create1",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create1'"
+    },
+    {
+      "name": "patientId2",
+      "sourceId": "create2",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create2'"
+    },
+    {
+      "name": "patientId3",
+      "sourceId": "create3",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create3'"
+    },
+    {
+      "name": "patientId4",
+      "sourceId": "create4",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create4'"
+    },
+    {
+      "name": "patientId5",
+      "sourceId": "create5",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create5'"
+    },
+    {
+      "name": "patientId6",
+      "sourceId": "create6",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create6'"
+    },
+    {
+      "name": "patientId7",
+      "sourceId": "create7",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create7'"
+    },
+    {
+      "name": "patientId8",
+      "sourceId": "create8",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create8'"
+    },
+    {
+      "name": "patientId9",
+      "sourceId": "create9",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create9'"
+    },
+    {
+      "name": "patientId11",
+      "sourceId": "create11",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create11'"
+    },
+    {
+      "name": "patientId12",
+      "sourceId": "create12",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create12'"
+    },
+    {
+      "name": "patientId13",
+      "sourceId": "create13",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create13'"
+    },
+    {
+      "name": "patientId14",
+      "sourceId": "create14",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create14'"
+    },
+    {
+      "name": "patientId15",
+      "sourceId": "create15",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create15'"
+    },
+    {
+      "name": "patientId16",
+      "sourceId": "create16",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create16'"
+    },
+    {
+      "name": "patientId17",
+      "sourceId": "create17",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create17'"
+    },
+    {
+      "name": "adId18",
+      "sourceId": "create18",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create18'"
+    },
+    {
+      "name": "adId19",
+      "sourceId": "create19",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create19'"
+    },
+    {
+      "name": "patientId20",
+      "sourceId": "create20",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create20'"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "replace and delete operations patch correctly",
+      "description": "A single FHIRPath Patch request with a 'replace' on Patient.gender and a 'delete' on Patient.address must succeed with 200 and apply both edits.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create1",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create1"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId1}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-gender-delete-address",
+            "responseId": "patch1",
+            "description": "Replace gender to female and delete the address collection"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Resource body must be a Patient",
+            "resource": "Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "gender must now be 'female'",
+            "expression": "Patient.gender",
+            "value": "female",
+            "operator": "equals"
+          }
+        },
+        {
+          "assert": {
+            "description": "address must have been removed",
+            "expression": "Patient.address.exists()",
+            "value": "false",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unknown patch operation type is rejected",
+      "description": "Submitting a patch operation whose 'type' part is not one of add/insert/delete/replace/upsert/move must be rejected with 400 and a diagnostic naming the allowed types.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create2",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create2"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId2}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-invalid-optype",
+            "responseId": "patch2",
+            "description": "Submit a patch operation with type 'coo', which is not a recognized FHIRPath Patch operation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request for an unrecognized operation type",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must name the invalid operation type and the allowed set",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "Invalid patch operation type: 'coo'. Only 'add', 'insert', 'delete', 'replace', 'upsert', and 'move' are allowed.",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace operation without a path is rejected",
+      "description": "A 'replace' patch operation that omits the required 'path' part must be rejected with 400.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create3",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create3"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId3}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-missing-path",
+            "responseId": "patch3",
+            "description": "Submit a 'replace' operation with no 'path' part"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must state that replace requires a path",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "Patch replace operations must have the 'path' part.",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace operation without a value is rejected",
+      "description": "A 'replace' patch operation that has a 'path' but omits the required 'value' part must be rejected with 400.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create4",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create4"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId4}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-missing-value",
+            "responseId": "patch4",
+            "description": "Submit a 'replace' operation with a path but no value"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must state that replace requires a value",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "Patch replace operations must have the 'value' part.",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add operation accepts a complex object value",
+      "description": "An 'add' patch operation whose value is a complex type (Address) must be applied, resulting in a single address entry.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-no-address",
+            "responseId": "create5",
+            "description": "Create a fresh Patient from fixture 'patient-no-address' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create5"
+          }
+        },
+        {
+          "assert": {
+            "description": "Fixture patient must start with no address",
+            "sourceId": "create5",
+            "expression": "Patient.address.exists()",
+            "value": "false",
+            "operator": "equals"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId5}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-address-object",
+            "responseId": "patch5",
+            "description": "Add a complete Address object to the empty address collection"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "exactly one address must now be present",
+            "expression": "Patient.address.count()",
+            "value": "1",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace operation supports FHIRPath where() filters",
+      "description": "A 'replace' patch path may use a FHIRPath where() filter to target a specific repeating element, here replacing the city of the address whose use is 'home'.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create6",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create6"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId6}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-where-city",
+            "responseId": "patch6",
+            "description": "Replace the city of the address selected via where(use = 'home')"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "exactly one address must remain",
+            "expression": "Patient.address.count()",
+            "value": "1",
+            "operator": "equals"
+          }
+        },
+        {
+          "assert": {
+            "description": "city must now be 'Portland'",
+            "expression": "Patient.address.where(use = 'home').city",
+            "value": "Portland",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add operation on a nonexistent element is rejected",
+      "description": "An 'add' patch operation naming a property that does not exist on the target type must be rejected with 400 and a diagnostic naming the element.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create7",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create7"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId7}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-dummy-property",
+            "responseId": "patch7",
+            "description": "Attempt to add a property named 'dummyProperty', which does not exist on Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must name the missing element",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "Element dummyProperty not found at Patient when processing patch add operation.",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace operation on an immutable element is rejected",
+      "description": "A 'replace' patch operation targeting a server-controlled/immutable element (id, meta.versionId, text.div, text.status are all equally forbidden) must be rejected with 400. Patient.id is used as the representative case.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create8",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create8"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId8}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-immutable-id",
+            "responseId": "patch8",
+            "description": "Attempt to replace the server-assigned Patient.id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must mention that the element is immutable",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "immutable",
+            "operator": "contains"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace operation with an invalid typed value is rejected",
+      "description": "A 'replace' patch operation whose value cannot be coerced to the target element's type (here an arbitrary string for the coded 'gender' element; birthDate and address.use with invalid values behave identically) must be rejected with 400 and a diagnostic naming the element and operation.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create9",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create9"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId9}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-invalid-gender-value",
+            "responseId": "patch9",
+            "description": "Attempt to replace gender with a value that is not a valid administrative-gender code"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must state the invalid input for gender",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "Invalid input for gender at Patient.gender when processing patch replace operation.",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "patching a nonexistent resource returns 404",
+      "description": "Submitting a FHIRPath Patch for a Patient id that was never created must return 404 Not Found.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/ignixa-e2e-missing-patch-fhirpath",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-deceased-datetime",
+            "responseId": "patch10",
+            "description": "Attempt to patch a Patient id that does not exist on the server"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 404 Not Found",
+            "response": "notFound"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add operation on an already-populated element is rejected",
+      "description": "An 'add' patch operation targeting a choice-type element (deceased[x]) that already has a value must be rejected with 400, since 'add' requires the element to be absent; 'replace' must be used instead.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create11",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create11"
+          }
+        },
+        {
+          "assert": {
+            "description": "Fixture patient must already have a deceased value",
+            "sourceId": "create11",
+            "expression": "Patient.deceased.exists()",
+            "value": "true",
+            "operator": "equals"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId11}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-deceased-datetime",
+            "responseId": "patch11",
+            "description": "Attempt to 'add' a deceasedDateTime even though deceasedBoolean already exists"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must mention the existing deceased element",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "Existing element deceased found",
+            "operator": "contains"
+          }
+        }
+      ]
+    },
+    {
+      "name": "replace operation changes the type of an existing choice element",
+      "description": "A 'replace' patch operation on a choice-type element (Patient.deceased) may switch both the value and the concrete type (deceasedBoolean -> deceasedDateTime) in one step, and must succeed with 200.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create12",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create12"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId12}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-deceased-datetime",
+            "responseId": "patch12",
+            "description": "Replace deceasedBoolean with a deceasedDateTime value"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "deceased must now carry a dateTime value",
+            "expression": "(Patient.deceased as dateTime).exists()",
+            "value": "true",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "patch with a stale If-Match version fails with 412",
+      "description": "Submitting a patch with an If-Match header referencing a version that does not match the resource's current version must be rejected with 412 Precondition Failed.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create13",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create13"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId13}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-deceased-datetime",
+            "responseId": "patch13",
+            "description": "Submit a patch with If-Match: W/\"5\" against a resource that is still at version 1",
+            "requestHeader": [
+              {
+                "field": "If-Match",
+                "value": "W/\"5\""
+              }
+            ]
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 412 Precondition Failed",
+            "response": "preconditionFailed"
+          }
+        }
+      ]
+    },
+    {
+      "name": "patch with a matching If-Match version succeeds",
+      "description": "Submitting a patch with an If-Match header that matches the resource's current version must succeed with 200.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create14",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create14"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId14}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-gender-only",
+            "responseId": "patch14",
+            "description": "Submit a patch with If-Match: W/\"1\" against a freshly created (version 1) resource",
+            "requestHeader": [
+              {
+                "field": "If-Match",
+                "value": "W/\"1\""
+              }
+            ]
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        }
+      ]
+    },
+    {
+      "name": "malformed nested backbone value is rejected",
+      "description": "An 'add' operation whose value is built from two anonymous 'value' parts (instead of the named sub-element parts a BackboneElement like Patient.link expects) must be rejected with 400.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create15",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create15"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId15}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-invalid-link-duplicate-value",
+            "responseId": "patch15",
+            "description": "Attempt to add a Patient.link entry using two unnamed 'value' parts instead of named sub-parts"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        },
+        {
+          "assert": {
+            "description": "Diagnostics must indicate an element was not found while resolving the malformed part",
+            "expression": "OperationOutcome.issue[0].diagnostics",
+            "value": "not found at Patient",
+            "operator": "contains"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add operation accepts a BackboneElement value with named sub-parts",
+      "description": "An 'add' operation whose value is built from correctly named sub-parts ('type' and 'other') for the Patient.link BackboneElement must succeed with 200.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create16",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create16"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId16}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-valid-link-backbone",
+            "responseId": "patch16",
+            "description": "Add a Patient.link entry using correctly named 'type'/'other' sub-parts"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dateTime value with a timezone offset is preserved",
+      "description": "An 'add' patch operation whose value is a dateTime with a non-zero timezone offset must preserve that offset in the stored and returned value.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-minimal",
+            "responseId": "create17",
+            "description": "Create a fresh Patient from fixture 'patient-minimal' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create17"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId17}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-deceased-offset",
+            "responseId": "patch17",
+            "description": "Add a deceasedDateTime of 2022-05-02T14:00:00+02:00 to a patient with no prior deceased value"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "the returned dateTime must retain the +02:00 offset",
+            "expression": "(Patient.deceased as dateTime).toString()",
+            "value": "2022-05-02T14:00:00+02:00",
+            "operator": "contains"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add operation on a Date element parses a date-only value",
+      "description": "An 'add' patch operation whose value is a bare date (no time component) applied to a FHIR 'date' typed element (ActivityDefinition.approvalDate) must succeed and round-trip exactly.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ActivityDefinition",
+            "sourceId": "activitydefinition-base",
+            "responseId": "create18",
+            "description": "Create a fresh ActivityDefinition from fixture 'activitydefinition-base' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create18"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "ActivityDefinition/${adId18}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-approvaldate-no-time",
+            "responseId": "patch18",
+            "description": "Add approvalDate = 2022-05-02 (date, no time)"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "approvalDate must equal the supplied date",
+            "expression": "ActivityDefinition.approvalDate",
+            "value": "2022-05-02",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "add operation rejects a dateTime value for a Date element",
+      "description": "A FHIR 'date' element (ActivityDefinition.approvalDate) may not contain time information. Submitting a valueDateTime (with or without an offset) for that path must be rejected with 400 so the resource never enters an invalid state.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ActivityDefinition",
+            "sourceId": "activitydefinition-base",
+            "responseId": "create19",
+            "description": "Create a fresh ActivityDefinition from fixture 'activitydefinition-base' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create19"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "ActivityDefinition/${adId19}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-add-approvaldate-with-time",
+            "responseId": "patch19",
+            "description": "Attempt to add approvalDate = 2022-05-02T14:00:00 (a dateTime, not a date)"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request rather than accept time information on a Date element",
+            "response": "bad"
+          }
+        }
+      ]
+    },
+    {
+      "name": "_meta-history=false suppresses a new history entry",
+      "description": "Some data stores (notably SQL Server) honor a '_meta-history=false' query parameter on patch by applying the change without recording a new version in the resource's history. This is warningOnly because not every supported data store implements the optimization.",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create20",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create20"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId20}?_meta-history=false",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-gender-only",
+            "responseId": "patch20",
+            "description": "Patch with _meta-history=false"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must still return HTTP 200 OK regardless of history handling",
+            "response": "okay"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "history"
+            },
+            "url": "Patient/${patientId20}/_history",
+            "responseId": "history20",
+            "description": "Read the full history of the patched Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "History response must be a Bundle",
+            "sourceId": "history20",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Only the original create should remain in history when _meta-history=false is honored",
+            "expression": "Bundle.entry.count()",
+            "sourceId": "history20",
+            "value": "1",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId1}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId2}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId3}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId4}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId5}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId6}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId7}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId8}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId9}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId11}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId12}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId13}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId14}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId15}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId16}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId17}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "ActivityDefinition/${adId18}",
+          "description": "Teardown: delete the ActivityDefinition created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "ActivityDefinition/${adId19}",
+          "description": "Teardown: delete the ActivityDefinition created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId20}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      }
+    ]
+  }
+}

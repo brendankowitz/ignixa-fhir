@@ -1,0 +1,110 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/translate-operation",
+  "description": "ConceptMap $translate conformance tests: instance-level translate of a known-mapped source code, an unmapped source code, and a missing-required-parameter error path (modeled on HAPI FHIR's ConceptMap translate coverage). Gated on the target advertising ConceptMap/$translate; match-result details are warningOnly since translate semantics/equivalence reporting vary across servers.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='ConceptMap').operation.where(name='translate').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "cs-translate-source",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "CodeSystem",
+        "id": "ignixa-cs-translate-source",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-translate" }] },
+        "url": "http://ignixa.io/testscript/codesystem/translate-source",
+        "status": "active",
+        "content": "complete",
+        "concept": [{ "code": "src-code", "display": "Source Code" }]
+      }
+    },
+    {
+      "id": "cs-translate-target",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "CodeSystem",
+        "id": "ignixa-cs-translate-target",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-translate" }] },
+        "url": "http://ignixa.io/testscript/codesystem/translate-target",
+        "status": "active",
+        "content": "complete",
+        "concept": [{ "code": "tgt-code", "display": "Target Code" }]
+      }
+    },
+    {
+      "id": "cm-translate-demo",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ConceptMap",
+        "id": "ignixa-cm-translate-demo",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-translate" }] },
+        "url": "http://ignixa.io/testscript/conceptmap/translate-demo",
+        "status": "active",
+        "group": [
+          {
+            "source": "http://ignixa.io/testscript/codesystem/translate-source",
+            "target": "http://ignixa.io/testscript/codesystem/translate-target",
+            "element": [
+              {
+                "code": "src-code",
+                "target": [{ "code": "tgt-code", "equivalence": "equivalent" }]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "CodeSystem/ignixa-cs-translate-source", "sourceId": "cs-translate-source", "description": "PUT CodeSystem/ignixa-cs-translate-source" } },
+      { "operation": { "type": { "code": "update" }, "url": "CodeSystem/ignixa-cs-translate-target", "sourceId": "cs-translate-target", "description": "PUT CodeSystem/ignixa-cs-translate-target" } },
+      { "operation": { "type": { "code": "update" }, "url": "ConceptMap/ignixa-cm-translate-demo", "sourceId": "cm-translate-demo", "description": "PUT ConceptMap/ignixa-cm-translate-demo (src-code -> tgt-code, equivalent)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$translate: mapped source code translates to its target",
+      "description": "GET ConceptMap/{id}/$translate?system=<source>&code=src-code must return result=true with a match targeting tgt-code.",
+      "action": [
+        { "operation": { "type": { "code": "$translate" }, "method": "GET", "url": "ConceptMap/ignixa-cm-translate-demo/$translate?system=http://ignixa.io/testscript/codesystem/translate-source&code=src-code", "responseId": "translate-mapped", "description": "GET ConceptMap/ignixa-cm-translate-demo/$translate?system=...&code=src-code" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Parameters resource", "resource": "Parameters" } },
+        { "assert": { "description": "Parameters 'result' part should be true (warningOnly: translate semantics vary by server)", "expression": "Parameters.parameter.where(name='result').valueBoolean", "value": "true", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "A match part should include a concept coding with code=tgt-code (warningOnly)", "expression": "Parameters.parameter.where(name='match').part.where(name='concept').valueCoding.code.where($this = 'tgt-code').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$translate: unmapped source code returns result=false",
+      "description": "GET ConceptMap/{id}/$translate?system=<source>&code=<unmapped> must return result=false (warningOnly: some servers instead return an empty match list without setting result=false explicitly).",
+      "action": [
+        { "operation": { "type": { "code": "$translate" }, "method": "GET", "url": "ConceptMap/ignixa-cm-translate-demo/$translate?system=http://ignixa.io/testscript/codesystem/translate-source&code=does-not-exist", "responseId": "translate-unmapped", "description": "GET ConceptMap/ignixa-cm-translate-demo/$translate?system=...&code=does-not-exist" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'result' part should be false (warningOnly)", "expression": "Parameters.parameter.where(name='result').valueBoolean", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$translate missing required parameters returns 400",
+      "description": "GET ConceptMap/{id}/$translate with no system/code/coding must be rejected with 400.",
+      "action": [
+        { "operation": { "type": { "code": "$translate" }, "method": "GET", "url": "ConceptMap/ignixa-cm-translate-demo/$translate", "responseId": "translate-missing-required", "description": "GET ConceptMap/ignixa-cm-translate-demo/$translate (no parameters)" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "ConceptMap/ignixa-cm-translate-demo", "description": "Teardown: delete cm-translate-demo" } },
+      { "operation": { "type": { "code": "delete" }, "url": "CodeSystem/ignixa-cs-translate-target", "description": "Teardown: delete cs-translate-target" } },
+      { "operation": { "type": { "code": "delete" }, "url": "CodeSystem/ignixa-cs-translate-source", "description": "Teardown: delete cs-translate-source" } }
+    ]
+  }
+}

@@ -1,0 +1,221 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/basic",
+  "description": "Basic CRUD conformance tests: create, read, update, delete lifecycle for a Patient resource.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "Patient"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "patientId",
+      "sourceId": "create-response",
+      "path": "id",
+      "description": "The server-assigned ID from the create response"
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "patient-fixture",
+          "responseId": "create-response",
+          "description": "Create a synthetic Patient to obtain a server-assigned ID for subsequent tests"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "create returns 201 and assigns an id",
+      "description": "Server must respond with 201 Created and assign a non-empty id to the resource",
+      "action": [
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "sourceId": "create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response body must be a Patient resource",
+            "sourceId": "create-response",
+            "resource": "Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must have assigned an id",
+            "sourceId": "create-response",
+            "expression": "Patient.id.exists()"
+          }
+        }
+      ]
+    },
+    {
+      "name": "read returns the created resource",
+      "description": "GET /Patient/{id} must return the Patient that was just created",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "url": "Patient/${patientId}",
+            "responseId": "read-response",
+            "description": "Read the Patient by server-assigned ID"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response body must be a Patient",
+            "resource": "Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Returned id must match the one assigned at create",
+            "expression": "Patient.id",
+            "value": "${patientId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update changes the resource",
+      "description": "PUT /Patient/{id} must be accepted (2xx). Body field assertions require dynamic body construction which is not supported by this engine yet.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "url": "Patient/${patientId}",
+            "responseId": "pre-update-read",
+            "description": "Fetch current resource to use as update body"
+          }
+        },
+        {
+          "operation": {
+            "type": { "code": "update" },
+            "url": "Patient/${patientId}",
+            "sourceId": "pre-update-read",
+            "responseId": "update-response",
+            "description": "PUT the resource back (round-trip update). Field-level mutation requires dynamic body construction not yet supported."
+          }
+        },
+        {
+          "assert": {
+            "description": "Update must return a success status (2xx)",
+            "response": "okay"
+          }
+        }
+      ]
+    },
+    {
+      "name": "read after update reflects the change",
+      "description": "GET after PUT must return 200. Field-level change assertions require dynamic body construction not yet supported.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "url": "Patient/${patientId}",
+            "responseId": "post-update-read",
+            "description": "Read the Patient after update"
+          }
+        },
+        {
+          "assert": {
+            "description": "Post-update read must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Resource id must be stable across the update",
+            "expression": "Patient.id",
+            "value": "${patientId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "delete removes the resource",
+      "description": "DELETE /Patient/{id} must return 2xx (200, 202, or 204 are all valid per the FHIR spec)",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "delete" },
+            "url": "Patient/${patientId}",
+            "responseId": "delete-response",
+            "description": "Delete the Patient resource"
+          }
+        },
+        {
+          "assert": {
+            "description": "Delete must return a 2xx success status",
+            "response": "okay"
+          }
+        }
+      ]
+    },
+    {
+      "name": "read after delete returns 410 or 404",
+      "description": "GET after DELETE must return 410 (Gone) or 404 (Not Found). FHIR R4 specifies 410 Gone for a resource that existed and was deleted, so that is the primary assertion. 404 is accepted as a warningOnly alternative for servers that do not distinguish deleted from never-existed.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "url": "Patient/${patientId}",
+            "responseId": "after-delete-read",
+            "description": "Attempt to read the deleted Patient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Primary: expect 410 Gone (FHIR R4 behavior for a deleted resource)",
+            "response": "gone",
+            "warningOnly": false
+          }
+        },
+        {
+          "assert": {
+            "description": "Alternative: 404 Not Found is also accepted (warningOnly so 404-returning servers still pass this suite)",
+            "response": "notFound",
+            "warningOnly": true
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${patientId}",
+          "description": "Teardown: attempt to clean up the Patient (may already be deleted by the delete test — that is expected)"
+        }
+      }
+    ]
+  }
+}

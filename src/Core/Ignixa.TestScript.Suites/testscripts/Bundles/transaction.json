@@ -1,0 +1,176 @@
+{
+  "resourceType": "TestScript",
+  "name": "Bundles/transaction",
+  "description": "Bundle transaction (type=transaction) conformance tests: multi-resource atomic creates, conditional-create idempotency, and urn:uuid fullUrl reference resolution (from BundleTransactionTests.cs).",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.interaction.where(code='transaction').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "tx-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "identifier": [{ "system": "http://ignixa/bundle-tx", "value": "BTX-1" }],
+              "name": [{ "family": "Bundle", "given": ["Alpha"] }]
+            },
+            "request": { "method": "POST", "url": "Patient" }
+          },
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "identifier": [{ "system": "http://ignixa/bundle-tx", "value": "BTX-2" }],
+              "name": [{ "family": "Bundle", "given": ["Beta"] }]
+            },
+            "request": { "method": "POST", "url": "Patient" }
+          },
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "identifier": [{ "system": "http://ignixa/bundle-tx", "value": "BTX-3" }],
+              "name": [{ "family": "Bundle", "given": ["Gamma"] }]
+            },
+            "request": { "method": "POST", "url": "Patient" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "tx-conditional-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "resource": {
+              "resourceType": "Patient",
+              "identifier": [{ "system": "http://ignixa/bundle-tx", "value": "BTX-1" }],
+              "name": [{ "family": "Bundle", "given": ["Alpha"] }]
+            },
+            "request": {
+              "method": "POST",
+              "url": "Patient",
+              "ifNoneExist": "identifier=http://ignixa/bundle-tx|BTX-1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "tx-urnuuid-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:11111111-1111-4111-8111-111111111111",
+            "resource": {
+              "resourceType": "Patient",
+              "identifier": [{ "system": "http://ignixa.io/testscript/suite/bundle-tx", "value": "BTX-UUID" }],
+              "name": [{ "family": "Bundle", "given": ["UuidPatient"] }]
+            },
+            "request": { "method": "POST", "url": "Patient" }
+          },
+          {
+            "resource": {
+              "resourceType": "Observation",
+              "identifier": [{ "system": "http://ignixa.io/testscript/suite/bundle-tx", "value": "BTX-UUID-OBS" }],
+              "status": "final",
+              "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
+              "subject": { "reference": "urn:uuid:11111111-1111-4111-8111-111111111111" }
+            },
+            "request": { "method": "POST", "url": "Observation" }
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "txUuidPatientId",
+      "sourceId": "tx-uuid-response",
+      "expression": "entry[0].resource.id",
+      "description": "Server-assigned id of the Patient created via urn:uuid fullUrl in the tx-urnuuid-bundle transaction, used for teardown"
+    },
+    {
+      "name": "txUuidObservationId",
+      "sourceId": "tx-uuid-response",
+      "expression": "entry[1].resource.id",
+      "description": "Server-assigned id of the Observation created in the same transaction, used for teardown"
+    }
+  ],
+  "test": [
+    {
+      "name": "Transaction creates resources",
+      "description": "POST a transaction Bundle of 3 Patient creates to the base URL. The server must return 200 with a transaction-response Bundle of 3 entries, each with a 2xx response.status.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "transaction" }, "method": "POST", "sourceId": "tx-bundle", "responseId": "tx-response", "description": "POST transaction Bundle (3 Patient creates) to the base URL" } },
+        { "assert": { "description": "Transaction must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Response Bundle must be of type transaction-response", "expression": "type = 'transaction-response'" } },
+        { "assert": { "description": "Response must contain 3 entries", "expression": "entry.count() = 3" } },
+        { "assert": { "description": "Every entry must report a 2xx response status", "expression": "entry.all(response.status.startsWith('2'))" } }
+      ]
+    },
+    {
+      "name": "Resources are retrievable after transaction",
+      "description": "After the transaction commits, a search by one of the bundle identifiers must return at least one match, proving the resources were persisted.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa/bundle-tx|BTX-1", "responseId": "tx-search", "description": "GET /Patient?identifier=http://ignixa/bundle-tx|BTX-1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "At least one BTX-1 Patient must be found", "expression": "entry.count() >= 1" } }
+      ]
+    },
+    {
+      "name": "Conditional create (If-None-Exist) is idempotent",
+      "description": "POST a transaction Bundle containing one Patient create guarded by ifNoneExist for an identifier that already exists (BTX-1). The transaction must succeed (200) and the entry must report status 200 (matched existing, not re-created 201).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "transaction" }, "method": "POST", "sourceId": "tx-conditional-bundle", "responseId": "tx-cond-response", "description": "POST transaction Bundle with ifNoneExist for the already-existing BTX-1" } },
+        { "assert": { "description": "Conditional transaction must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "The single entry must report status 200 (existing resource matched, not created)", "expression": "entry[0].response.status.startsWith('200')", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "urn:uuid fullUrl references are resolved to the server-assigned id",
+      "description": "POST a transaction Bundle where an Observation references a Patient via its urn:uuid fullUrl; the server must resolve the reference to the Patient's real server-assigned id (e.g. 'Patient/abc123'), not leave it as the literal urn:uuid.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "transaction" }, "method": "POST", "sourceId": "tx-urnuuid-bundle", "responseId": "tx-uuid-response", "description": "POST transaction Bundle with a urn:uuid Patient<-Observation reference" } },
+        { "assert": { "description": "Transaction must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Response must contain 2 entries", "expression": "entry.count() = 2" } },
+        { "assert": { "description": "Both entries must report a 2xx response status", "expression": "entry.all(response.status.startsWith('2'))" } },
+        { "assert": { "description": "The Observation's subject reference must be resolved to a real Patient/{id} reference, not left as the urn:uuid placeholder", "expression": "entry[1].resource.subject.reference.startsWith('Patient/')" } },
+        { "assert": { "description": "The resolved reference must not still contain the urn:uuid literal", "expression": "entry[1].resource.subject.reference", "value": "urn:uuid", "operator": "notContains" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient?identifier=http://ignixa/bundle-tx|BTX-1", "description": "Teardown: conditional delete BTX-1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient?identifier=http://ignixa/bundle-tx|BTX-2", "description": "Teardown: conditional delete BTX-2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient?identifier=http://ignixa/bundle-tx|BTX-3", "description": "Teardown: conditional delete BTX-3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${txUuidPatientId}", "description": "Teardown: delete the urn:uuid-created Patient by its server-assigned id" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${txUuidObservationId}", "description": "Teardown: delete the urn:uuid-created Observation by its server-assigned id" } }
+    ]
+  }
+}

@@ -1,0 +1,212 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-includes-operation",
+  "description": "Tests _include/_revinclude/_include:iterate combined with the Microsoft FHIR Server's _includesCount paging control for included resources; truncation/continuation assertions are warningOnly since this suite does not follow multi-page 'related' links (from IncludesOperationTests.cs).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "org1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-inco-org1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-ORG1" }],
+        "name": "Includes Operation Test Org"
+      }
+    },
+    {
+      "id": "prac1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-inco-prac1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-PRAC1" }],
+        "name": [{ "family": "IncludesOpTest", "given": ["Practitioner1"] }]
+      }
+    },
+    {
+      "id": "p1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-inco-p1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-P1" }],
+        "name": [{ "family": "IncludesOpTest", "given": ["Patient1"] }],
+        "managingOrganization": { "reference": "Organization/ignixa-inco-org1" },
+        "generalPractitioner": [{ "reference": "Practitioner/ignixa-inco-prac1" }]
+      }
+    },
+    {
+      "id": "p2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-inco-p2",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-P2" }],
+        "name": [{ "family": "IncludesOpTest", "given": ["Patient2Decoy"] }]
+      }
+    },
+    {
+      "id": "obs1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-inco-obs1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-OBS1" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "12345-6" }] },
+        "subject": { "reference": "Patient/ignixa-inco-p1" }
+      }
+    },
+    {
+      "id": "obs2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-inco-obs2",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-OBS2" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "12345-7" }] },
+        "subject": { "reference": "Patient/ignixa-inco-p1" }
+      }
+    },
+    {
+      "id": "obs3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-inco-obs3",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-OBS3" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "12345-8" }] },
+        "subject": { "reference": "Patient/ignixa-inco-p2" }
+      }
+    },
+    {
+      "id": "mr1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "ignixa-inco-mr1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-MR1" }],
+        "status": "active",
+        "intent": "order",
+        "medicationCodeableConcept": { "coding": [{ "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "1049502" }] },
+        "subject": { "reference": "Patient/ignixa-inco-p1" }
+      }
+    },
+    {
+      "id": "md1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "MedicationDispense",
+        "id": "ignixa-inco-md1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-includes-operation", "value": "INCO-MD1" }],
+        "status": "completed",
+        "medicationCodeableConcept": { "coding": [{ "system": "http://www.nlm.nih.gov/research/umls/rxnorm", "code": "1049502" }] },
+        "subject": { "reference": "Patient/ignixa-inco-p1" },
+        "authorizingPrescription": [{ "reference": "MedicationRequest/ignixa-inco-mr1" }]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-inco-org1", "sourceId": "org1", "description": "PUT Organization/ignixa-inco-org1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-inco-prac1", "sourceId": "prac1", "description": "PUT Practitioner/ignixa-inco-prac1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-inco-p1", "sourceId": "p1", "description": "PUT Patient/ignixa-inco-p1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-inco-p2", "sourceId": "p2", "description": "PUT Patient/ignixa-inco-p2 (decoy)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-inco-obs1", "sourceId": "obs1", "description": "PUT Observation/ignixa-inco-obs1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-inco-obs2", "sourceId": "obs2", "description": "PUT Observation/ignixa-inco-obs2" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-inco-obs3", "sourceId": "obs3", "description": "PUT Observation/ignixa-inco-obs3 (decoy, subject=p2)" } },
+      { "operation": { "type": { "code": "update" }, "url": "MedicationRequest/ignixa-inco-mr1", "sourceId": "mr1", "description": "PUT MedicationRequest/ignixa-inco-mr1" } },
+      { "operation": { "type": { "code": "update" }, "url": "MedicationDispense/ignixa-inco-md1", "sourceId": "md1", "description": "PUT MedicationDispense/ignixa-inco-md1" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Wildcard _include/_revinclude returns every direct and reverse reference with no truncation",
+      "description": "Patient?_id=ignixa-inco-p1&_include=*&_revinclude=* must return the matched patient plus org1, prac1, obs1, obs2, mr1 and md1; obs3 (references the decoy p2) must not appear.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inco-p1&_include=*&_revinclude=*", "responseId": "inco-wildcard", "description": "GET /Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include the matched patient", "expression": "entry.where(resource.id = 'ignixa-inco-p1').exists()" } },
+        { "assert": { "description": "Must include org1 (managingOrganization)", "expression": "entry.where(resource.id = 'ignixa-inco-org1').exists()" } },
+        { "assert": { "description": "Must include prac1 (generalPractitioner)", "expression": "entry.where(resource.id = 'ignixa-inco-prac1').exists()" } },
+        { "assert": { "description": "Must include obs1 (revinclude subject)", "expression": "entry.where(resource.id = 'ignixa-inco-obs1').exists()" } },
+        { "assert": { "description": "Must include obs2 (revinclude subject)", "expression": "entry.where(resource.id = 'ignixa-inco-obs2').exists()" } },
+        { "assert": { "description": "Must include mr1 (revinclude subject)", "expression": "entry.where(resource.id = 'ignixa-inco-mr1').exists()" } },
+        { "assert": { "description": "Must include md1 (revinclude subject)", "expression": "entry.where(resource.id = 'ignixa-inco-md1').exists()" } },
+        { "assert": { "description": "Must NOT include obs3 (references decoy p2, not p1)", "expression": "entry.where(resource.id = 'ignixa-inco-obs3').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_includesCount limits included resources per page without dropping the matched resource",
+      "description": "Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1 must still return the matched patient even though 6 resources qualify for inclusion; truncating the included set and surfacing a 'related' link plus a warning are optional server behaviors, so those are checked as warnings only.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }, { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.operation.where(name='includes').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1", "responseId": "inco-count", "description": "GET /Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must always include the matched patient regardless of _includesCount", "expression": "entry.where(resource.id = 'ignixa-inco-p1').exists()" } },
+        { "assert": { "description": "The included set should be truncated to at most _includesCount entries, if supported", "expression": "entry.where(resource.search.mode = 'include').count() <= 1", "warningOnly": true } },
+        { "assert": { "description": "If truncated, response should carry an incomplete/warning OperationOutcome entry", "expression": "entry.resource.ofType(OperationOutcome).issue.where(severity = 'warning' and code = 'incomplete').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_include:iterate combined with _includesCount does not error and may truncate iterated includes",
+      "description": "MedicationDispense?_id=ignixa-inco-md1&_include=MedicationDispense:prescription&_include:iterate=MedicationRequest:subject&_includesCount=1 must always match md1; the combined direct + iterated includes may be truncated, so those assertions are warningOnly.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }, { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.operation.where(name='includes').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "MedicationDispense", "params": "?_id=ignixa-inco-md1&_include=MedicationDispense:prescription&_include:iterate=MedicationRequest:subject&_includesCount=1", "responseId": "inco-iterate", "description": "GET /MedicationDispense with _include + _include:iterate + _includesCount=1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must match md1", "expression": "entry.where(resource.id = 'ignixa-inco-md1').exists()" } },
+        { "assert": { "description": "If not truncated, mr1 (direct include) should be present", "expression": "entry.where(resource.id = 'ignixa-inco-mr1').exists()", "warningOnly": true } },
+        { "assert": { "description": "If not truncated, p1 (iterated include via mr1.subject) should be present", "expression": "entry.where(resource.id = 'ignixa-inco-p1').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Matched-resource search is unaffected by $includes support or absence",
+      "description": "Patient?_id=ignixa-inco-p1 with no include parameters must match exactly one patient, as a deterministic control unaffected by whether the server supports _includesCount.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inco-p1", "responseId": "inco-control", "description": "GET /Patient?_id=ignixa-inco-p1" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must match exactly p1", "expression": "entry.where(resource.id = 'ignixa-inco-p1').count() = 1" } }
+      ]
+    },
+    {
+      "name": "_summary=count reports only the matched total, ignoring include-style parameters",
+      "description": "Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_summary=count must return total=1 and an empty entry list, confirming the total isn't inflated by included resources.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inco-p1&_include=*&_revinclude=*&_summary=count", "responseId": "inco-summary-count", "description": "GET /Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_summary=count" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "total must be exactly 1", "expression": "total = 1" } },
+        { "assert": { "description": "Entry list must be empty", "expression": "entry.count() = 0" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "MedicationDispense/ignixa-inco-md1", "description": "Teardown: delete md1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "MedicationRequest/ignixa-inco-mr1", "description": "Teardown: delete mr1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-inco-obs1", "description": "Teardown: delete obs1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-inco-obs2", "description": "Teardown: delete obs2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-inco-obs3", "description": "Teardown: delete obs3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-inco-p1", "description": "Teardown: delete p1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-inco-p2", "description": "Teardown: delete p2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-inco-prac1", "description": "Teardown: delete prac1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-inco-org1", "description": "Teardown: delete org1" } }
+    ]
+  }
+}

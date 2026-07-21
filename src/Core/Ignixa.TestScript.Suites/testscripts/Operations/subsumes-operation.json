@@ -1,0 +1,95 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/subsumes-operation",
+  "description": "CodeSystem $subsumes conformance tests over a small, self-contained is-a hierarchy (root/child/unrelated concepts), plus a missing-required-parameter error path. Gated on the target advertising CodeSystem/$subsumes; the exact outcome value is warningOnly since many servers only compute subsumption over well-known/preloaded terminologies rather than arbitrary custom CodeSystems.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='CodeSystem').operation.where(name='subsumes').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "cs-subsumes-demo",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "CodeSystem",
+        "id": "ignixa-cs-subsumes-demo",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-subsumes" }] },
+        "url": "http://ignixa.io/testscript/codesystem/subsumes-demo",
+        "status": "active",
+        "content": "complete",
+        "hierarchyMeaning": "is-a",
+        "concept": [
+          {
+            "code": "root-condition",
+            "display": "Root Condition",
+            "concept": [
+              { "code": "specific-condition", "display": "Specific Condition" }
+            ]
+          },
+          { "code": "unrelated-condition", "display": "Unrelated Condition" }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "CodeSystem/ignixa-cs-subsumes-demo", "sourceId": "cs-subsumes-demo", "description": "PUT CodeSystem/ignixa-cs-subsumes-demo (root-condition > specific-condition; unrelated-condition)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$subsumes: parent code subsumes its child",
+      "description": "GET CodeSystem/$subsumes?system=...&codeA=root-condition&codeB=specific-condition must report outcome=subsumes (warningOnly: custom-hierarchy subsumption support varies by server).",
+      "action": [
+        { "operation": { "type": { "code": "$subsumes" }, "method": "GET", "url": "CodeSystem/$subsumes?system=http://ignixa.io/testscript/codesystem/subsumes-demo&codeA=root-condition&codeB=specific-condition", "responseId": "subsumes-parent-child", "description": "GET CodeSystem/$subsumes?codeA=root-condition&codeB=specific-condition" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Parameters resource", "resource": "Parameters" } },
+        { "assert": { "description": "Parameters 'outcome' part should equal 'subsumes' (warningOnly: custom-hierarchy subsumption support varies by server)", "expression": "Parameters.parameter.where(name='outcome').valueCode", "value": "subsumes", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$subsumes: child code is subsumed-by its parent",
+      "description": "Reversing the arguments (codeA=specific-condition, codeB=root-condition) must report outcome=subsumed-by (warningOnly: same server-dependency as the parent/child test).",
+      "action": [
+        { "operation": { "type": { "code": "$subsumes" }, "method": "GET", "url": "CodeSystem/$subsumes?system=http://ignixa.io/testscript/codesystem/subsumes-demo&codeA=specific-condition&codeB=root-condition", "responseId": "subsumes-child-parent", "description": "GET CodeSystem/$subsumes?codeA=specific-condition&codeB=root-condition" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'outcome' part should equal 'subsumed-by' (warningOnly)", "expression": "Parameters.parameter.where(name='outcome').valueCode", "value": "subsumed-by", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$subsumes: unrelated codes are not-subsumed",
+      "description": "GET CodeSystem/$subsumes?codeA=root-condition&codeB=unrelated-condition must report outcome=not-subsumed (warningOnly).",
+      "action": [
+        { "operation": { "type": { "code": "$subsumes" }, "method": "GET", "url": "CodeSystem/$subsumes?system=http://ignixa.io/testscript/codesystem/subsumes-demo&codeA=root-condition&codeB=unrelated-condition", "responseId": "subsumes-unrelated", "description": "GET CodeSystem/$subsumes?codeA=root-condition&codeB=unrelated-condition" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'outcome' part should equal 'not-subsumed' (warningOnly)", "expression": "Parameters.parameter.where(name='outcome').valueCode", "value": "not-subsumed", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$subsumes: identical codes are equivalent",
+      "description": "GET CodeSystem/$subsumes?codeA=root-condition&codeB=root-condition must report outcome=equivalent (warningOnly).",
+      "action": [
+        { "operation": { "type": { "code": "$subsumes" }, "method": "GET", "url": "CodeSystem/$subsumes?system=http://ignixa.io/testscript/codesystem/subsumes-demo&codeA=root-condition&codeB=root-condition", "responseId": "subsumes-equivalent", "description": "GET CodeSystem/$subsumes?codeA=root-condition&codeB=root-condition" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'outcome' part should equal 'equivalent' (warningOnly)", "expression": "Parameters.parameter.where(name='outcome').valueCode", "value": "equivalent", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$subsumes missing required parameters returns 400",
+      "description": "GET CodeSystem/$subsumes with no codeA/codeB must be rejected with 400.",
+      "action": [
+        { "operation": { "type": { "code": "$subsumes" }, "method": "GET", "url": "CodeSystem/$subsumes?system=http://ignixa.io/testscript/codesystem/subsumes-demo", "responseId": "subsumes-missing-required", "description": "GET CodeSystem/$subsumes?system=... (no codeA/codeB)" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "CodeSystem/ignixa-cs-subsumes-demo", "description": "Teardown: delete cs-subsumes-demo" } }
+    ]
+  }
+}

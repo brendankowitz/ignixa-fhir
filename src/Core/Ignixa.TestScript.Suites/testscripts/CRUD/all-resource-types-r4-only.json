@@ -1,0 +1,1324 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/all-resource-types-r4-only",
+  "description": "Creates and reads every concrete FHIR resource type that exists only in R4 (not present in STU3, removed again by R4B/R5), gated on the target declaring fhirVersion 4.0.x.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "effectEvidenceSynthesis-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "EffectEvidenceSynthesis"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProduct-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProduct"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductAuthorization-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductAuthorization"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductContraindication-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductContraindication"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductIndication-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductIndication"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductIngredient-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductIngredient"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductInteraction-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductInteraction"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductManufactured-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductManufactured"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductPackaged-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductPackaged"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductPharmaceutical-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductPharmaceutical"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicinalProductUndesirableEffect-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicinalProductUndesirableEffect"
+          }
+        ]
+      }
+    },
+    {
+      "id": "riskEvidenceSynthesis-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "RiskEvidenceSynthesis"
+          }
+        ]
+      }
+    },
+    {
+      "id": "substanceSpecification-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SubstanceSpecification"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "effectEvidenceSynthesisId",
+      "sourceId": "effectEvidenceSynthesis-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created EffectEvidenceSynthesis"
+    },
+    {
+      "name": "medicinalProductId",
+      "sourceId": "medicinalProduct-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProduct"
+    },
+    {
+      "name": "medicinalProductAuthorizationId",
+      "sourceId": "medicinalProductAuthorization-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductAuthorization"
+    },
+    {
+      "name": "medicinalProductContraindicationId",
+      "sourceId": "medicinalProductContraindication-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductContraindication"
+    },
+    {
+      "name": "medicinalProductIndicationId",
+      "sourceId": "medicinalProductIndication-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductIndication"
+    },
+    {
+      "name": "medicinalProductIngredientId",
+      "sourceId": "medicinalProductIngredient-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductIngredient"
+    },
+    {
+      "name": "medicinalProductInteractionId",
+      "sourceId": "medicinalProductInteraction-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductInteraction"
+    },
+    {
+      "name": "medicinalProductManufacturedId",
+      "sourceId": "medicinalProductManufactured-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductManufactured"
+    },
+    {
+      "name": "medicinalProductPackagedId",
+      "sourceId": "medicinalProductPackaged-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductPackaged"
+    },
+    {
+      "name": "medicinalProductPharmaceuticalId",
+      "sourceId": "medicinalProductPharmaceutical-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductPharmaceutical"
+    },
+    {
+      "name": "medicinalProductUndesirableEffectId",
+      "sourceId": "medicinalProductUndesirableEffect-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicinalProductUndesirableEffect"
+    },
+    {
+      "name": "riskEvidenceSynthesisId",
+      "sourceId": "riskEvidenceSynthesis-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created RiskEvidenceSynthesis"
+    },
+    {
+      "name": "substanceSpecificationId",
+      "sourceId": "substanceSpecification-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SubstanceSpecification"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "Can create and read EffectEvidenceSynthesis",
+      "description": "When the target server declares EffectEvidenceSynthesis create and read interactions, POST /EffectEvidenceSynthesis must create a synthetic EffectEvidenceSynthesis and GET /EffectEvidenceSynthesis/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='EffectEvidenceSynthesis').interaction.where(code='create').exists() and rest.resource.where(type='EffectEvidenceSynthesis').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "EffectEvidenceSynthesis",
+            "sourceId": "effectEvidenceSynthesis-fixture",
+            "responseId": "effectEvidenceSynthesis-create-response",
+            "description": "POST a synthetic EffectEvidenceSynthesis"
+          }
+        },
+        {
+          "assert": {
+            "description": "EffectEvidenceSynthesis create must return HTTP 201 Created",
+            "sourceId": "effectEvidenceSynthesis-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a EffectEvidenceSynthesis",
+            "sourceId": "effectEvidenceSynthesis-create-response",
+            "resource": "EffectEvidenceSynthesis"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "effectEvidenceSynthesis-create-response",
+            "expression": "EffectEvidenceSynthesis.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "EffectEvidenceSynthesis/${effectEvidenceSynthesisId}",
+            "responseId": "effectEvidenceSynthesis-read-response",
+            "description": "GET the created EffectEvidenceSynthesis by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "EffectEvidenceSynthesis read must return HTTP 200 OK",
+            "sourceId": "effectEvidenceSynthesis-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a EffectEvidenceSynthesis",
+            "sourceId": "effectEvidenceSynthesis-read-response",
+            "resource": "EffectEvidenceSynthesis"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "effectEvidenceSynthesis-read-response",
+            "expression": "EffectEvidenceSynthesis.id",
+            "value": "${effectEvidenceSynthesisId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProduct",
+      "description": "When the target server declares MedicinalProduct create and read interactions, POST /MedicinalProduct must create a synthetic MedicinalProduct and GET /MedicinalProduct/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProduct').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProduct').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProduct",
+            "sourceId": "medicinalProduct-fixture",
+            "responseId": "medicinalProduct-create-response",
+            "description": "POST a synthetic MedicinalProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProduct create must return HTTP 201 Created",
+            "sourceId": "medicinalProduct-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProduct",
+            "sourceId": "medicinalProduct-create-response",
+            "resource": "MedicinalProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProduct-create-response",
+            "expression": "MedicinalProduct.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProduct/${medicinalProductId}",
+            "responseId": "medicinalProduct-read-response",
+            "description": "GET the created MedicinalProduct by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProduct read must return HTTP 200 OK",
+            "sourceId": "medicinalProduct-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProduct",
+            "sourceId": "medicinalProduct-read-response",
+            "resource": "MedicinalProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProduct-read-response",
+            "expression": "MedicinalProduct.id",
+            "value": "${medicinalProductId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductAuthorization",
+      "description": "When the target server declares MedicinalProductAuthorization create and read interactions, POST /MedicinalProductAuthorization must create a synthetic MedicinalProductAuthorization and GET /MedicinalProductAuthorization/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductAuthorization').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductAuthorization').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductAuthorization",
+            "sourceId": "medicinalProductAuthorization-fixture",
+            "responseId": "medicinalProductAuthorization-create-response",
+            "description": "POST a synthetic MedicinalProductAuthorization"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductAuthorization create must return HTTP 201 Created",
+            "sourceId": "medicinalProductAuthorization-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductAuthorization",
+            "sourceId": "medicinalProductAuthorization-create-response",
+            "resource": "MedicinalProductAuthorization"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductAuthorization-create-response",
+            "expression": "MedicinalProductAuthorization.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductAuthorization/${medicinalProductAuthorizationId}",
+            "responseId": "medicinalProductAuthorization-read-response",
+            "description": "GET the created MedicinalProductAuthorization by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductAuthorization read must return HTTP 200 OK",
+            "sourceId": "medicinalProductAuthorization-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductAuthorization",
+            "sourceId": "medicinalProductAuthorization-read-response",
+            "resource": "MedicinalProductAuthorization"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductAuthorization-read-response",
+            "expression": "MedicinalProductAuthorization.id",
+            "value": "${medicinalProductAuthorizationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductContraindication",
+      "description": "When the target server declares MedicinalProductContraindication create and read interactions, POST /MedicinalProductContraindication must create a synthetic MedicinalProductContraindication and GET /MedicinalProductContraindication/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductContraindication').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductContraindication').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductContraindication",
+            "sourceId": "medicinalProductContraindication-fixture",
+            "responseId": "medicinalProductContraindication-create-response",
+            "description": "POST a synthetic MedicinalProductContraindication"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductContraindication create must return HTTP 201 Created",
+            "sourceId": "medicinalProductContraindication-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductContraindication",
+            "sourceId": "medicinalProductContraindication-create-response",
+            "resource": "MedicinalProductContraindication"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductContraindication-create-response",
+            "expression": "MedicinalProductContraindication.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductContraindication/${medicinalProductContraindicationId}",
+            "responseId": "medicinalProductContraindication-read-response",
+            "description": "GET the created MedicinalProductContraindication by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductContraindication read must return HTTP 200 OK",
+            "sourceId": "medicinalProductContraindication-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductContraindication",
+            "sourceId": "medicinalProductContraindication-read-response",
+            "resource": "MedicinalProductContraindication"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductContraindication-read-response",
+            "expression": "MedicinalProductContraindication.id",
+            "value": "${medicinalProductContraindicationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductIndication",
+      "description": "When the target server declares MedicinalProductIndication create and read interactions, POST /MedicinalProductIndication must create a synthetic MedicinalProductIndication and GET /MedicinalProductIndication/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductIndication').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductIndication').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductIndication",
+            "sourceId": "medicinalProductIndication-fixture",
+            "responseId": "medicinalProductIndication-create-response",
+            "description": "POST a synthetic MedicinalProductIndication"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductIndication create must return HTTP 201 Created",
+            "sourceId": "medicinalProductIndication-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductIndication",
+            "sourceId": "medicinalProductIndication-create-response",
+            "resource": "MedicinalProductIndication"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductIndication-create-response",
+            "expression": "MedicinalProductIndication.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductIndication/${medicinalProductIndicationId}",
+            "responseId": "medicinalProductIndication-read-response",
+            "description": "GET the created MedicinalProductIndication by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductIndication read must return HTTP 200 OK",
+            "sourceId": "medicinalProductIndication-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductIndication",
+            "sourceId": "medicinalProductIndication-read-response",
+            "resource": "MedicinalProductIndication"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductIndication-read-response",
+            "expression": "MedicinalProductIndication.id",
+            "value": "${medicinalProductIndicationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductIngredient",
+      "description": "When the target server declares MedicinalProductIngredient create and read interactions, POST /MedicinalProductIngredient must create a synthetic MedicinalProductIngredient and GET /MedicinalProductIngredient/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductIngredient').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductIngredient').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductIngredient",
+            "sourceId": "medicinalProductIngredient-fixture",
+            "responseId": "medicinalProductIngredient-create-response",
+            "description": "POST a synthetic MedicinalProductIngredient"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductIngredient create must return HTTP 201 Created",
+            "sourceId": "medicinalProductIngredient-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductIngredient",
+            "sourceId": "medicinalProductIngredient-create-response",
+            "resource": "MedicinalProductIngredient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductIngredient-create-response",
+            "expression": "MedicinalProductIngredient.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductIngredient/${medicinalProductIngredientId}",
+            "responseId": "medicinalProductIngredient-read-response",
+            "description": "GET the created MedicinalProductIngredient by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductIngredient read must return HTTP 200 OK",
+            "sourceId": "medicinalProductIngredient-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductIngredient",
+            "sourceId": "medicinalProductIngredient-read-response",
+            "resource": "MedicinalProductIngredient"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductIngredient-read-response",
+            "expression": "MedicinalProductIngredient.id",
+            "value": "${medicinalProductIngredientId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductInteraction",
+      "description": "When the target server declares MedicinalProductInteraction create and read interactions, POST /MedicinalProductInteraction must create a synthetic MedicinalProductInteraction and GET /MedicinalProductInteraction/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductInteraction').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductInteraction').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductInteraction",
+            "sourceId": "medicinalProductInteraction-fixture",
+            "responseId": "medicinalProductInteraction-create-response",
+            "description": "POST a synthetic MedicinalProductInteraction"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductInteraction create must return HTTP 201 Created",
+            "sourceId": "medicinalProductInteraction-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductInteraction",
+            "sourceId": "medicinalProductInteraction-create-response",
+            "resource": "MedicinalProductInteraction"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductInteraction-create-response",
+            "expression": "MedicinalProductInteraction.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductInteraction/${medicinalProductInteractionId}",
+            "responseId": "medicinalProductInteraction-read-response",
+            "description": "GET the created MedicinalProductInteraction by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductInteraction read must return HTTP 200 OK",
+            "sourceId": "medicinalProductInteraction-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductInteraction",
+            "sourceId": "medicinalProductInteraction-read-response",
+            "resource": "MedicinalProductInteraction"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductInteraction-read-response",
+            "expression": "MedicinalProductInteraction.id",
+            "value": "${medicinalProductInteractionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductManufactured",
+      "description": "When the target server declares MedicinalProductManufactured create and read interactions, POST /MedicinalProductManufactured must create a synthetic MedicinalProductManufactured and GET /MedicinalProductManufactured/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductManufactured').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductManufactured').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductManufactured",
+            "sourceId": "medicinalProductManufactured-fixture",
+            "responseId": "medicinalProductManufactured-create-response",
+            "description": "POST a synthetic MedicinalProductManufactured"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductManufactured create must return HTTP 201 Created",
+            "sourceId": "medicinalProductManufactured-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductManufactured",
+            "sourceId": "medicinalProductManufactured-create-response",
+            "resource": "MedicinalProductManufactured"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductManufactured-create-response",
+            "expression": "MedicinalProductManufactured.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductManufactured/${medicinalProductManufacturedId}",
+            "responseId": "medicinalProductManufactured-read-response",
+            "description": "GET the created MedicinalProductManufactured by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductManufactured read must return HTTP 200 OK",
+            "sourceId": "medicinalProductManufactured-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductManufactured",
+            "sourceId": "medicinalProductManufactured-read-response",
+            "resource": "MedicinalProductManufactured"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductManufactured-read-response",
+            "expression": "MedicinalProductManufactured.id",
+            "value": "${medicinalProductManufacturedId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductPackaged",
+      "description": "When the target server declares MedicinalProductPackaged create and read interactions, POST /MedicinalProductPackaged must create a synthetic MedicinalProductPackaged and GET /MedicinalProductPackaged/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductPackaged').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductPackaged').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductPackaged",
+            "sourceId": "medicinalProductPackaged-fixture",
+            "responseId": "medicinalProductPackaged-create-response",
+            "description": "POST a synthetic MedicinalProductPackaged"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductPackaged create must return HTTP 201 Created",
+            "sourceId": "medicinalProductPackaged-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductPackaged",
+            "sourceId": "medicinalProductPackaged-create-response",
+            "resource": "MedicinalProductPackaged"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductPackaged-create-response",
+            "expression": "MedicinalProductPackaged.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductPackaged/${medicinalProductPackagedId}",
+            "responseId": "medicinalProductPackaged-read-response",
+            "description": "GET the created MedicinalProductPackaged by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductPackaged read must return HTTP 200 OK",
+            "sourceId": "medicinalProductPackaged-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductPackaged",
+            "sourceId": "medicinalProductPackaged-read-response",
+            "resource": "MedicinalProductPackaged"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductPackaged-read-response",
+            "expression": "MedicinalProductPackaged.id",
+            "value": "${medicinalProductPackagedId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductPharmaceutical",
+      "description": "When the target server declares MedicinalProductPharmaceutical create and read interactions, POST /MedicinalProductPharmaceutical must create a synthetic MedicinalProductPharmaceutical and GET /MedicinalProductPharmaceutical/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductPharmaceutical').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductPharmaceutical').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductPharmaceutical",
+            "sourceId": "medicinalProductPharmaceutical-fixture",
+            "responseId": "medicinalProductPharmaceutical-create-response",
+            "description": "POST a synthetic MedicinalProductPharmaceutical"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductPharmaceutical create must return HTTP 201 Created",
+            "sourceId": "medicinalProductPharmaceutical-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductPharmaceutical",
+            "sourceId": "medicinalProductPharmaceutical-create-response",
+            "resource": "MedicinalProductPharmaceutical"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductPharmaceutical-create-response",
+            "expression": "MedicinalProductPharmaceutical.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductPharmaceutical/${medicinalProductPharmaceuticalId}",
+            "responseId": "medicinalProductPharmaceutical-read-response",
+            "description": "GET the created MedicinalProductPharmaceutical by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductPharmaceutical read must return HTTP 200 OK",
+            "sourceId": "medicinalProductPharmaceutical-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductPharmaceutical",
+            "sourceId": "medicinalProductPharmaceutical-read-response",
+            "resource": "MedicinalProductPharmaceutical"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductPharmaceutical-read-response",
+            "expression": "MedicinalProductPharmaceutical.id",
+            "value": "${medicinalProductPharmaceuticalId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicinalProductUndesirableEffect",
+      "description": "When the target server declares MedicinalProductUndesirableEffect create and read interactions, POST /MedicinalProductUndesirableEffect must create a synthetic MedicinalProductUndesirableEffect and GET /MedicinalProductUndesirableEffect/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicinalProductUndesirableEffect').interaction.where(code='create').exists() and rest.resource.where(type='MedicinalProductUndesirableEffect').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicinalProductUndesirableEffect",
+            "sourceId": "medicinalProductUndesirableEffect-fixture",
+            "responseId": "medicinalProductUndesirableEffect-create-response",
+            "description": "POST a synthetic MedicinalProductUndesirableEffect"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductUndesirableEffect create must return HTTP 201 Created",
+            "sourceId": "medicinalProductUndesirableEffect-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicinalProductUndesirableEffect",
+            "sourceId": "medicinalProductUndesirableEffect-create-response",
+            "resource": "MedicinalProductUndesirableEffect"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicinalProductUndesirableEffect-create-response",
+            "expression": "MedicinalProductUndesirableEffect.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicinalProductUndesirableEffect/${medicinalProductUndesirableEffectId}",
+            "responseId": "medicinalProductUndesirableEffect-read-response",
+            "description": "GET the created MedicinalProductUndesirableEffect by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicinalProductUndesirableEffect read must return HTTP 200 OK",
+            "sourceId": "medicinalProductUndesirableEffect-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicinalProductUndesirableEffect",
+            "sourceId": "medicinalProductUndesirableEffect-read-response",
+            "resource": "MedicinalProductUndesirableEffect"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicinalProductUndesirableEffect-read-response",
+            "expression": "MedicinalProductUndesirableEffect.id",
+            "value": "${medicinalProductUndesirableEffectId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read RiskEvidenceSynthesis",
+      "description": "When the target server declares RiskEvidenceSynthesis create and read interactions, POST /RiskEvidenceSynthesis must create a synthetic RiskEvidenceSynthesis and GET /RiskEvidenceSynthesis/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='RiskEvidenceSynthesis').interaction.where(code='create').exists() and rest.resource.where(type='RiskEvidenceSynthesis').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "RiskEvidenceSynthesis",
+            "sourceId": "riskEvidenceSynthesis-fixture",
+            "responseId": "riskEvidenceSynthesis-create-response",
+            "description": "POST a synthetic RiskEvidenceSynthesis"
+          }
+        },
+        {
+          "assert": {
+            "description": "RiskEvidenceSynthesis create must return HTTP 201 Created",
+            "sourceId": "riskEvidenceSynthesis-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a RiskEvidenceSynthesis",
+            "sourceId": "riskEvidenceSynthesis-create-response",
+            "resource": "RiskEvidenceSynthesis"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "riskEvidenceSynthesis-create-response",
+            "expression": "RiskEvidenceSynthesis.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "RiskEvidenceSynthesis/${riskEvidenceSynthesisId}",
+            "responseId": "riskEvidenceSynthesis-read-response",
+            "description": "GET the created RiskEvidenceSynthesis by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "RiskEvidenceSynthesis read must return HTTP 200 OK",
+            "sourceId": "riskEvidenceSynthesis-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a RiskEvidenceSynthesis",
+            "sourceId": "riskEvidenceSynthesis-read-response",
+            "resource": "RiskEvidenceSynthesis"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "riskEvidenceSynthesis-read-response",
+            "expression": "RiskEvidenceSynthesis.id",
+            "value": "${riskEvidenceSynthesisId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SubstanceSpecification",
+      "description": "When the target server declares SubstanceSpecification create and read interactions, POST /SubstanceSpecification must create a synthetic SubstanceSpecification and GET /SubstanceSpecification/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SubstanceSpecification').interaction.where(code='create').exists() and rest.resource.where(type='SubstanceSpecification').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SubstanceSpecification",
+            "sourceId": "substanceSpecification-fixture",
+            "responseId": "substanceSpecification-create-response",
+            "description": "POST a synthetic SubstanceSpecification"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceSpecification create must return HTTP 201 Created",
+            "sourceId": "substanceSpecification-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SubstanceSpecification",
+            "sourceId": "substanceSpecification-create-response",
+            "resource": "SubstanceSpecification"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "substanceSpecification-create-response",
+            "expression": "SubstanceSpecification.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SubstanceSpecification/${substanceSpecificationId}",
+            "responseId": "substanceSpecification-read-response",
+            "description": "GET the created SubstanceSpecification by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SubstanceSpecification read must return HTTP 200 OK",
+            "sourceId": "substanceSpecification-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SubstanceSpecification",
+            "sourceId": "substanceSpecification-read-response",
+            "resource": "SubstanceSpecification"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "substanceSpecification-read-response",
+            "expression": "SubstanceSpecification.id",
+            "value": "${substanceSpecificationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": []
+  },
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "fhirVersion.startsWith('4.0')"
+    }
+  ]
+}

@@ -1,0 +1,453 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/composite",
+  "description": "Composite search parameter conformance tests (from CompositeSearchTests): verifies that a composite param ANDs its two components against the SAME element/component group on Observation (code-value-quantity, code-value-string, combo-code-value-quantity, combo-code-value-concept) and DocumentReference (relationship). The OR-across-multiple-relatesTo scenario is intentionally omitted, matching a known gap in the upstream suite (fhir-server issue #523).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "obs-apgar1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-APGAR1" }],
+        "code": {
+          "coding": [
+            { "system": "http://loinc.org", "code": "9272-6", "display": "1 minute Apgar Score" },
+            { "system": "http://snomed.info/sct", "code": "169895004", "display": "Apgar at 1 minute" }
+          ]
+        },
+        "valueQuantity": { "value": 0, "system": "http://unitsofmeasure.org", "code": "{score}" },
+        "component": [
+          {
+            "code": {
+              "coding": [
+                { "system": "http://loinc.org", "code": "32406-1", "display": "1 minute Apgar Color" },
+                { "system": "http://snomed.info/sct", "code": "249227004", "display": "Apgar color score" }
+              ]
+            },
+            "valueCodeableConcept": {
+              "coding": [
+                { "system": "http://loinc.org/la", "code": "LA6722-8", "display": "The baby's whole body is completely bluish-gray or pale" },
+                { "system": "http:/acme.ped/apgarcolor", "code": "0" }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "obs-apgar20",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-APGAR20" }],
+        "code": {
+          "coding": [{ "system": "http://snomed.info/sct", "code": "443849008", "display": "Apgar score at 20 minutes" }]
+        },
+        "valueQuantity": { "value": 10, "system": "http://unitsofmeasure.org", "code": "{score}" },
+        "component": [
+          {
+            "code": {
+              "coding": [{ "system": "http://snomed.info/sct", "code": "249227004", "display": "Apgar color score" }]
+            },
+            "valueCodeableConcept": {
+              "coding": [
+                { "system": "http://loinc.org/la", "code": "LA6724-4", "display": "Good color all over" },
+                { "system": "http:/acme.ped/apgarcolor", "code": "2" }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "obs-temperature",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-TEMP" }],
+        "code": {
+          "coding": [
+            { "system": "http://acme.lab", "code": "BT", "display": "Body temperature" },
+            { "system": "http://loinc.org", "code": "8310-5", "display": "Body temperature" },
+            { "system": "http://loinc.org", "code": "8331-1", "display": "Oral temperature" },
+            { "system": "http://snomed.info/sct", "code": "56342008", "display": "Temperature taking" }
+          ]
+        },
+        "valueQuantity": { "value": 39, "unit": "degrees C", "system": "http://unitsofmeasure.org", "code": "Cel" }
+      }
+    },
+    {
+      "id": "obs-bloodpressure",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-BP" }],
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "85354-9", "display": "Blood pressure panel with all children optional" }]
+        },
+        "component": [
+          {
+            "code": {
+              "coding": [
+                { "system": "http://loinc.org", "code": "8480-6", "display": "Systolic blood pressure" },
+                { "system": "http://snomed.info/sct", "code": "271649006", "display": "Systolic blood pressure" }
+              ]
+            },
+            "valueQuantity": { "value": 107, "unit": "mmHg", "system": "http://unitsofmeasure.org", "code": "mm[Hg]" }
+          },
+          {
+            "code": {
+              "coding": [{ "system": "http://loinc.org", "code": "8462-4", "display": "Diastolic blood pressure" }]
+            },
+            "valueQuantity": { "value": 60, "unit": "mmHg", "system": "http://unitsofmeasure.org", "code": "mm[Hg]" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "obs-eyecolor",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-EYE" }],
+        "code": {
+          "coding": [{ "system": "http://snomed.info/sct", "code": "162806009", "display": "On examination - general eye examination (finding)" }]
+        },
+        "valueString": "blue"
+      }
+    },
+    {
+      "id": "obs-longeyecolor",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-EYE-LONG" }],
+        "code": {
+          "coding": [{ "system": "http://snomed.info/sct", "code": "162806009", "display": "On examination - general eye examination (finding)" }]
+        },
+        "valueString": "Lorem ipsum dolor sit amet consectetur adipiscing elit. Ut eget ultricies justo. Maecenas bibendum convallis sodales. Vestibulum quis molestie dui. Nulla porta elementum tristique. Aenean neque libero convallis sit amet dui ullamcorper congue lacinia erat. Sed finibus ex ac massa tincidunt tristique. In sed auctor massa. Proin cursus porttitor arcu. Maecenas a leo nunc. Sed pretium porta volutpat. In aliquet tempor sapien vitae laoreet nisl tempor ac. Vestibulum lacus leo luctus vitae pharetra at tempus ac diam. Integer at dui eu dolor gravida vehicula. Phasellus malesuada elit orci quis maximus purus consectetur ac. In semper consequat augue sit amet ultricies."
+      }
+    },
+    {
+      "id": "docref-appends",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DocumentReference",
+        "status": "current",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-DOCREF-APPENDS" }],
+        "content": [{ "attachment": { "contentType": "application/hl7-v3+xml", "url": "http://example.org/xds/mhd/Binary/07a6483f-732b-461e-86b6-edb665c45510" } }],
+        "relatesTo": [
+          { "code": "appends", "target": { "reference": "DocumentReference/example-appends" } }
+        ]
+      }
+    },
+    {
+      "id": "docref-replaces",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DocumentReference",
+        "status": "current",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/composite", "value": "COMPOSITE-DOCREF-REPLACES" }],
+        "content": [{ "attachment": { "contentType": "application/hl7-v3+xml", "url": "http://example.org/xds/mhd/Binary/07a6483f-732b-461e-86b6-edb665c45510" } }],
+        "relatesTo": [
+          { "code": "transforms", "target": { "reference": "DocumentReference/example-transforms" } },
+          { "code": "replaces", "target": { "reference": "DocumentReference/example-replaces" } }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "apgar1Id", "sourceId": "create-obs-apgar1", "path": "id", "description": "Id for obs-apgar1 (1 minute Apgar score, color component 0/pale)" },
+    { "name": "apgar20Id", "sourceId": "create-obs-apgar20", "path": "id", "description": "Id for obs-apgar20 (20 minute Apgar score, color component 2/good)" },
+    { "name": "temperatureId", "sourceId": "create-obs-temperature", "path": "id", "description": "Id for obs-temperature (39 degrees C)" },
+    { "name": "bloodPressureId", "sourceId": "create-obs-bloodpressure", "path": "id", "description": "Id for obs-bloodpressure (systolic 107 / diastolic 60 mmHg)" },
+    { "name": "eyeColorId", "sourceId": "create-obs-eyecolor", "path": "id", "description": "Id for obs-eyecolor (valueString 'blue')" },
+    { "name": "longEyeColorId", "sourceId": "create-obs-longeyecolor", "path": "id", "description": "Id for obs-longeyecolor (long Lorem ipsum valueString)" },
+    { "name": "docRefAppendsId", "sourceId": "create-docref-appends", "path": "id", "description": "Id for docref-appends (relatesTo code=appends)" },
+    { "name": "docRefReplacesId", "sourceId": "create-docref-replaces", "path": "id", "description": "Id for docref-replaces (relatesTo codes=transforms,replaces)" }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-apgar1", "responseId": "create-obs-apgar1", "description": "Create obs-apgar1" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-apgar20", "responseId": "create-obs-apgar20", "description": "Create obs-apgar20" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-temperature", "responseId": "create-obs-temperature", "description": "Create obs-temperature" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-bloodpressure", "responseId": "create-obs-bloodpressure", "description": "Create obs-bloodpressure" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-eyecolor", "responseId": "create-obs-eyecolor", "description": "Create obs-eyecolor" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-longeyecolor", "responseId": "create-obs-longeyecolor", "description": "Create obs-longeyecolor" } },
+      { "operation": { "type": { "code": "create" }, "resource": "DocumentReference", "sourceId": "docref-appends", "responseId": "create-docref-appends", "description": "Create docref-appends" } },
+      { "operation": { "type": { "code": "create" }, "resource": "DocumentReference", "sourceId": "docref-replaces", "responseId": "create-docref-replaces", "description": "Create docref-replaces" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "code-value-quantity: fully qualified system|code$prefix|value|system|unit",
+      "description": "code-value-quantity ANDs a token (Observation.code) with a quantity (Observation.valueQuantity) on the SAME resource. http://snomed.info/sct|443849008$eq10|http://unitsofmeasure.org|{score} must match only obs-apgar20 (code 443849008, value 10 {score}).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-quantity=http://snomed.info/sct|443849008$eq10|http://unitsofmeasure.org|%7Bscore%7D&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvq-full-response", "description": "GET /Observation?code-value-quantity=snomed|443849008$eq10|uom|%7Bscore%7D" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-apgar20", "expression": "entry.where(resource.id = '${apgar20Id}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-apgar1 (value 0, not 10)", "expression": "entry.where(resource.id = '${apgar1Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include obs-temperature (different code)", "expression": "entry.where(resource.id = '${temperatureId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-quantity: bare code and bare value (no systems)",
+      "description": "code-value-quantity=443849008$10 (no system prefixes on either component) must still match obs-apgar20 by code+value alone.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-quantity=443849008$10&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvq-bare-response", "description": "GET /Observation?code-value-quantity=443849008$10" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-apgar20", "expression": "entry.where(resource.id = '${apgar20Id}').exists()" } }
+      ]
+    },
+    {
+      "name": "code-value-quantity: ne prefix excludes the exact-value match",
+      "description": "code-value-quantity with the ne (not-equal) prefix on the quantity component must NOT match the observation whose value is exactly 10 (obs-apgar20).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-quantity=http://snomed.info/sct|443849008$ne10|http://unitsofmeasure.org|%7Bscore%7D&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvq-ne-response", "description": "GET /Observation?code-value-quantity=snomed|443849008$ne10|uom|%7Bscore%7D" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include obs-apgar20 (value equals 10, ne excludes it)", "expression": "entry.where(resource.id = '${apgar20Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-quantity: unrelated quantity system does not match",
+      "description": "code-value-quantity=unknownSystem|443849008$10 pairs the right code with a value-system that does not exist on obs-apgar20's valueQuantity, so it must not match.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-quantity=unknownSystem|443849008$10&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvq-unknown-response", "description": "GET /Observation?code-value-quantity=unknownSystem|443849008$10" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include obs-apgar20 (code system does not match unknownSystem)", "expression": "entry.where(resource.id = '${apgar20Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-quantity: OR via comma matches two different observations",
+      "description": "Comma-separated composite values are ORed. loinc|8310-5$39|uom|Cel,snomed|443849008$10|uom|{score} must match both obs-temperature and obs-apgar20.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-quantity=http://loinc.org|8310-5$39|http://unitsofmeasure.org|Cel,http://snomed.info/sct|443849008$10|http://unitsofmeasure.org|%7Bscore%7D&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvq-or-response", "description": "GET /Observation?code-value-quantity=temperature OR apgar20" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-temperature", "expression": "entry.where(resource.id = '${temperatureId}').exists()" } },
+        { "assert": { "description": "Must include obs-apgar20", "expression": "entry.where(resource.id = '${apgar20Id}').exists()" } }
+      ]
+    },
+    {
+      "name": "code-value-quantity: mixed prefix OR",
+      "description": "loinc|8310-5$gt36.6|uom|Cel (temperature above 36.6) OR loinc|9272-6$0|uom|{score} (1 minute Apgar value 0) must match obs-temperature (39 > 36.6) and obs-apgar1 (value 0).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-quantity=http://loinc.org|8310-5$gt36.6|http://unitsofmeasure.org|Cel,http://loinc.org|9272-6$0|http://unitsofmeasure.org|%7Bscore%7D&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvq-mixed-response", "description": "GET /Observation?code-value-quantity=temperature>36.6 OR apgar1==0" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-apgar1", "expression": "entry.where(resource.id = '${apgar1Id}').exists()" } },
+        { "assert": { "description": "Must include obs-temperature", "expression": "entry.where(resource.id = '${temperatureId}').exists()" } }
+      ]
+    },
+    {
+      "name": "combo-code-value-quantity: matches when code and value come from the same component (systolic)",
+      "description": "combo-code-value-quantity spans Observation | Observation.component, ANDing a token with a quantity from the SAME group. loinc|8480-6$107|uom|mm[Hg] must match obs-bloodpressure's component[0] (systolic code 8480-6 paired with value 107 mmHg).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?combo-code-value-quantity=http://loinc.org|8480-6$107|http://unitsofmeasure.org|mm%5BHg%5D&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "ccvq-systolic-response", "description": "GET /Observation?combo-code-value-quantity=8480-6$107|uom|mm[Hg] (brackets percent-encoded in the actual request)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-bloodpressure", "expression": "entry.where(resource.id = '${bloodPressureId}').exists()" } }
+      ]
+    },
+    {
+      "name": "combo-code-value-quantity: does not match code from one component paired with another component's value",
+      "description": "combo-code-value-quantity must not match a code from one component paired with a value from a different component (systolic code with diastolic value).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?combo-code-value-quantity=http://loinc.org|8480-6$60&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "ccvq-crosscomponent-response", "description": "GET /Observation?combo-code-value-quantity=8480-6 (component[0].code)$60 (component[1].valueQuantity)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include obs-bloodpressure (code and value are from different components)", "expression": "entry.where(resource.id = '${bloodPressureId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-string: fully qualified system|code$value exact match",
+      "description": "code-value-string ANDs a token with a string. http://snomed.info/sct|162806009$blue must match only obs-eyecolor (valueString exactly 'blue'), not obs-longeyecolor.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-string=http://snomed.info/sct|162806009$blue&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvs-exact-response", "description": "GET /Observation?code-value-string=snomed|162806009$blue" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-eyecolor", "expression": "entry.where(resource.id = '${eyeColorId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-longeyecolor", "expression": "entry.where(resource.id = '${longEyeColorId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-string: prefix (starts-with) match on a long string",
+      "description": "The string component uses starts-with matching per the FHIR string search semantics. code-value-string=162806009$Lorem must match obs-longeyecolor (whose value starts with 'Lorem ipsum...'), not obs-eyecolor.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-string=162806009$Lorem&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvs-prefix-response", "description": "GET /Observation?code-value-string=162806009$Lorem" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-longeyecolor", "expression": "entry.where(resource.id = '${longEyeColorId}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-eyecolor ('blue' does not start with 'Lorem')", "expression": "entry.where(resource.id = '${eyeColorId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-string: exact match on the full long string",
+      "description": "code-value-string=162806009$<full Lorem ipsum text> must match obs-longeyecolor by exact string match, even though the value exceeds typical short-string lengths.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-string=162806009$Lorem%20ipsum%20dolor%20sit%20amet%20consectetur%20adipiscing%20elit.%20Ut%20eget%20ultricies%20justo.%20Maecenas%20bibendum%20convallis%20sodales.%20Vestibulum%20quis%20molestie%20dui.%20Nulla%20porta%20elementum%20tristique.%20Aenean%20neque%20libero%20convallis%20sit%20amet%20dui%20ullamcorper%20congue%20lacinia%20erat.%20Sed%20finibus%20ex%20ac%20massa%20tincidunt%20tristique.%20In%20sed%20auctor%20massa.%20Proin%20cursus%20porttitor%20arcu.%20Maecenas%20a%20leo%20nunc.%20Sed%20pretium%20porta%20volutpat.%20In%20aliquet%20tempor%20sapien%20vitae%20laoreet%20nisl%20tempor%20ac.%20Vestibulum%20lacus%20leo%20luctus%20vitae%20pharetra%20at%20tempus%20ac%20diam.%20Integer%20at%20dui%20eu%20dolor%20gravida%20vehicula.%20Phasellus%20malesuada%20elit%20orci%20quis%20maximus%20purus%20consectetur%20ac.%20In%20semper%20consequat%20augue%20sit%20amet%20ultricies.&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvs-full-response", "description": "GET /Observation?code-value-string=162806009$<full long string> (URL-encoded)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-longeyecolor", "expression": "entry.where(resource.id = '${longEyeColorId}').exists()" } }
+      ]
+    },
+    {
+      "name": "code-value-string: no match when the value has a trailing suffix",
+      "description": "Appending 'Not' after the full long string no longer starts-with-matches or exact-matches obs-longeyecolor's actual value, so it must not match.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-string=162806009$Lorem%20ipsum%20dolor%20sit%20amet%20consectetur%20adipiscing%20elit.%20Ut%20eget%20ultricies%20justo.%20Maecenas%20bibendum%20convallis%20sodales.%20Vestibulum%20quis%20molestie%20dui.%20Nulla%20porta%20elementum%20tristique.%20Aenean%20neque%20libero%20convallis%20sit%20amet%20dui%20ullamcorper%20congue%20lacinia%20erat.%20Sed%20finibus%20ex%20ac%20massa%20tincidunt%20tristique.%20In%20sed%20auctor%20massa.%20Proin%20cursus%20porttitor%20arcu.%20Maecenas%20a%20leo%20nunc.%20Sed%20pretium%20porta%20volutpat.%20In%20aliquet%20tempor%20sapien%20vitae%20laoreet%20nisl%20tempor%20ac.%20Vestibulum%20lacus%20leo%20luctus%20vitae%20pharetra%20at%20tempus%20ac%20diam.%20Integer%20at%20dui%20eu%20dolor%20gravida%20vehicula.%20Phasellus%20malesuada%20elit%20orci%20quis%20maximus%20purus%20consectetur%20ac.%20In%20semper%20consequat%20augue%20sit%20amet%20ultriciesNot&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvs-suffix-response", "description": "GET /Observation?code-value-string=162806009$<full long string>Not (URL-encoded)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include obs-longeyecolor (value does not end with 'Not')", "expression": "entry.where(resource.id = '${longEyeColorId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "code-value-string: OR via comma matches two different observations",
+      "description": "162806009$Lorem,162806009$blue ORs two string components and must match both obs-longeyecolor and obs-eyecolor.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?code-value-string=162806009$Lorem,162806009$blue&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "cvs-or-response", "description": "GET /Observation?code-value-string=162806009$Lorem OR 162806009$blue" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-longeyecolor", "expression": "entry.where(resource.id = '${longEyeColorId}').exists()" } },
+        { "assert": { "description": "Must include obs-eyecolor", "expression": "entry.where(resource.id = '${eyeColorId}').exists()" } }
+      ]
+    },
+    {
+      "name": "relationship: fully qualified system|code matches",
+      "description": "DocumentReference.relationship composite ANDs a reference (relatesTo.target) with a token (relatesTo.code). relationship=DocumentReference/example-appends$http://hl7.org/fhir/document-relationship-type|appends must match docref-appends (its only relatesTo targets that reference with code=appends), not docref-replaces.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "DocumentReference", "params": "?relationship=DocumentReference/example-appends$http://hl7.org/fhir/document-relationship-type|appends&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "rel-full-response", "description": "GET /DocumentReference?relationship=example-appends$system|appends" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include docref-appends", "expression": "entry.where(resource.id = '${docRefAppendsId}').exists()" } },
+        { "assert": { "description": "Must NOT include docref-replaces", "expression": "entry.where(resource.id = '${docRefReplacesId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "relationship: short code-only token matches",
+      "description": "relationship=DocumentReference/example-appends$appends (code without system) must still match docref-appends.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "DocumentReference", "params": "?relationship=DocumentReference/example-appends$appends&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "rel-short-response", "description": "GET /DocumentReference?relationship=example-appends$appends" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include docref-appends", "expression": "entry.where(resource.id = '${docRefAppendsId}').exists()" } }
+      ]
+    },
+    {
+      "name": "relationship: code mismatch does not match",
+      "description": "relationship=DocumentReference/example-appends$replaces pairs the right target reference with the wrong relatesTo code, so it must not match docref-appends (whose relatesTo code is 'appends', not 'replaces').",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "DocumentReference", "params": "?relationship=DocumentReference/example-appends$replaces&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "rel-mismatch-response", "description": "GET /DocumentReference?relationship=example-appends$replaces" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include docref-appends", "expression": "entry.where(resource.id = '${docRefAppendsId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "relationship: matches the second relatesTo entry on a document with multiple",
+      "description": "docref-replaces has two relatesTo entries (transforms, replaces). relationship=DocumentReference/example-replaces$replaces must match it via the second entry, not docref-appends.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "DocumentReference", "params": "?relationship=DocumentReference/example-replaces$replaces&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "rel-second-response", "description": "GET /DocumentReference?relationship=example-replaces$replaces" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include docref-replaces", "expression": "entry.where(resource.id = '${docRefReplacesId}').exists()" } },
+        { "assert": { "description": "Must NOT include docref-appends", "expression": "entry.where(resource.id = '${docRefAppendsId}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "combo-code-value-concept: matches when code and value come from the same component (1 minute Apgar color)",
+      "description": "combo-code-value-concept spans Observation | Observation.component, ANDing a token with a CodeableConcept value from the SAME group. snomed|249227004$loinc/la|LA6722-8 must match obs-apgar1's component[0] (color code 249227004 paired with valueCodeableConcept LA6722-8), not obs-apgar20.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?combo-code-value-concept=http://snomed.info/sct|249227004$http://loinc.org/la|LA6722-8&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "ccvc-apgar1-response", "description": "GET /Observation?combo-code-value-concept=249227004$LA6722-8" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-apgar1", "expression": "entry.where(resource.id = '${apgar1Id}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-apgar20 (different valueCodeableConcept, LA6724-4)", "expression": "entry.where(resource.id = '${apgar20Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "combo-code-value-concept: matches when code and value come from the same component (20 minute Apgar color)",
+      "description": "snomed|249227004$loinc/la|LA6724-4 must match obs-apgar20's component[0] (color code 249227004 paired with valueCodeableConcept LA6724-4), not obs-apgar1.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?combo-code-value-concept=http://snomed.info/sct|249227004$http://loinc.org/la|LA6724-4&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "ccvc-apgar20-response", "description": "GET /Observation?combo-code-value-concept=249227004$LA6724-4" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-apgar20", "expression": "entry.where(resource.id = '${apgar20Id}').exists()" } },
+        { "assert": { "description": "Must NOT include obs-apgar1 (different valueCodeableConcept, LA6722-8)", "expression": "entry.where(resource.id = '${apgar1Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "combo-code-value-concept: top-level code does not pair with a component's value (cross-group mismatch)",
+      "description": "combo-code-value-concept must not match a top-level Observation.code paired with a component's valueCodeableConcept; both parts must come from the same group.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?combo-code-value-concept=http://snomed.info/sct|443849008$http://loinc.org/la|LA6724-4&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "ccvc-crossgroup-response", "description": "GET /Observation?combo-code-value-concept=443849008 (top-level code)$LA6724-4 (component value)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include obs-apgar20 (code and value are from different groups)", "expression": "entry.where(resource.id = '${apgar20Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "combo-code-value-concept: OR via comma matches both Apgar observations",
+      "description": "snomed|249227004$loinc/la|LA6722-8,snomed|249227004$loinc/la|LA6724-4 ORs the two component pairings and must match both obs-apgar1 and obs-apgar20.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?combo-code-value-concept=http://snomed.info/sct|249227004$http://loinc.org/la|LA6722-8,http://snomed.info/sct|249227004$http://loinc.org/la|LA6724-4&identifier=http://ignixa.io/testscript/suite/composite|", "responseId": "ccvc-or-response", "description": "GET /Observation?combo-code-value-concept=LA6722-8 OR LA6724-4" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include obs-apgar1", "expression": "entry.where(resource.id = '${apgar1Id}').exists()" } },
+        { "assert": { "description": "Must include obs-apgar20", "expression": "entry.where(resource.id = '${apgar20Id}').exists()" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${apgar1Id}", "description": "Teardown: delete obs-apgar1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${apgar20Id}", "description": "Teardown: delete obs-apgar20" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${temperatureId}", "description": "Teardown: delete obs-temperature" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${bloodPressureId}", "description": "Teardown: delete obs-bloodpressure" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${eyeColorId}", "description": "Teardown: delete obs-eyecolor" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${longEyeColorId}", "description": "Teardown: delete obs-longeyecolor" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DocumentReference/${docRefAppendsId}", "description": "Teardown: delete docref-appends" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DocumentReference/${docRefReplacesId}", "description": "Teardown: delete docref-replaces" } }
+    ]
+  }
+}

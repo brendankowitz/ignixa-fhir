@@ -1,0 +1,168 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/sort",
+  "description": "Sort and paging conformance tests ported from fhir262 sort/paging blocks: _sort by birthdate (asc/desc), _sort by -_lastUpdated, and _count paging. Sort patients are created in sequence (s1, s2, s3) so -_lastUpdated yields s3, s2, s1. Position-ordering assertions are warningOnly because not all servers honor exact ordering identically.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-s1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "MRN-S1" }],
+        "birthDate": "1990-01-01"
+      }
+    },
+    {
+      "id": "patient-s2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "MRN-S2" }],
+        "birthDate": "1980-01-01"
+      }
+    },
+    {
+      "id": "patient-s3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "MRN-S3" }],
+        "birthDate": "2000-01-01"
+      }
+    },
+    {
+      "id": "patient-p1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "P-1" }]
+      }
+    },
+    {
+      "id": "patient-p2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "P-2" }]
+      }
+    },
+    {
+      "id": "patient-p3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "P-3" }]
+      }
+    },
+    {
+      "id": "patient-p4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "P-4" }]
+      }
+    },
+    {
+      "id": "patient-p5",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://fhir262/test", "value": "P-5" }]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "s1Id", "sourceId": "create-s1", "path": "id", "description": "Id for patient-s1 (born 1990, created first)" },
+    { "name": "s2Id", "sourceId": "create-s2", "path": "id", "description": "Id for patient-s2 (born 1980, created second)" },
+    { "name": "s3Id", "sourceId": "create-s3", "path": "id", "description": "Id for patient-s3 (born 2000, created third / most recent)" },
+    { "name": "p1Id", "sourceId": "create-p1", "path": "id", "description": "Id for patient-p1" },
+    { "name": "p2Id", "sourceId": "create-p2", "path": "id", "description": "Id for patient-p2" },
+    { "name": "p3Id", "sourceId": "create-p3", "path": "id", "description": "Id for patient-p3" },
+    { "name": "p4Id", "sourceId": "create-p4", "path": "id", "description": "Id for patient-p4" },
+    { "name": "p5Id", "sourceId": "create-p5", "path": "id", "description": "Id for patient-p5" }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-s1", "responseId": "create-s1", "description": "Create patient-s1 (born 1990) first" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-s2", "responseId": "create-s2", "description": "Create patient-s2 (born 1980) second" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-s3", "responseId": "create-s3", "description": "Create patient-s3 (born 2000) third / most recent" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-p1", "responseId": "create-p1", "description": "Create patient-p1" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-p2", "responseId": "create-p2", "description": "Create patient-p2" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-p3", "responseId": "create-p3", "description": "Create patient-p3" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-p4", "responseId": "create-p4", "description": "Create patient-p4" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-p5", "responseId": "create-p5", "description": "Create patient-p5" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "_sort=birthdate ascending by birth date",
+      "description": "GET /Patient?_id=s1,s2,s3&_sort=birthdate must return all three scoped patients ordered by birthDate ascending: s2 (1980), s1 (1990), s3 (2000).",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${s1Id},${s2Id},${s3Id}&_sort=birthdate", "responseId": "sort-asc-response", "description": "Search _sort=birthdate ascending scoped to s1,s2,s3" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include s2 (born 1980)", "expression": "entry.where(resource.id = '${s2Id}').exists()" } },
+        { "assert": { "description": "Must include s1 (born 1990)", "expression": "entry.where(resource.id = '${s1Id}').exists()" } },
+        { "assert": { "description": "Must include s3 (born 2000)", "expression": "entry.where(resource.id = '${s3Id}').exists()" } },
+        { "assert": { "description": "Position 0 should be s2 (earliest birthDate)", "expression": "entry[0].resource.id", "value": "${s2Id}", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 1 should be s1", "expression": "entry[1].resource.id", "value": "${s1Id}", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 2 should be s3 (latest birthDate)", "expression": "entry[2].resource.id", "value": "${s3Id}", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_sort=-birthdate descending by birth date",
+      "description": "GET /Patient?_id=s1,s2,s3&_sort=-birthdate must order by birthDate descending: s3 (2000), s1 (1990), s2 (1980).",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${s1Id},${s2Id},${s3Id}&_sort=-birthdate", "responseId": "sort-desc-response", "description": "Search _sort=-birthdate descending scoped to s1,s2,s3" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Position 0 should be s3 (latest birthDate)", "expression": "entry[0].resource.id", "value": "${s3Id}", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 1 should be s1", "expression": "entry[1].resource.id", "value": "${s1Id}", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 2 should be s2 (earliest birthDate)", "expression": "entry[2].resource.id", "value": "${s2Id}", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_sort=-_lastUpdated descending by system param",
+      "description": "GET /Patient?_id=s1,s2,s3&_sort=-_lastUpdated must order most-recently-updated first. Since setup created s1, s2, s3 in that order, the expected order is s3, s2, s1.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${s1Id},${s2Id},${s3Id}&_sort=-_lastUpdated", "responseId": "sort-lastupdated-response", "description": "Search _sort=-_lastUpdated scoped to s1,s2,s3" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Position 0 should be s3 (created last)", "expression": "entry[0].resource.id", "value": "${s3Id}", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 1 should be s2", "expression": "entry[1].resource.id", "value": "${s2Id}", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Position 2 should be s1 (created first)", "expression": "entry[2].resource.id", "value": "${s1Id}", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_count=2 returns at most 2 entries",
+      "description": "GET /Patient?_id=p1..p5&_count=2 must return a Bundle with at most 2 entries on the first page. warningOnly because not all servers honor _count exactly.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=${p1Id},${p2Id},${p3Id},${p4Id},${p5Id}&_count=2", "responseId": "count-response", "description": "Search _count=2 scoped to p1..p5" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Entry count must be at most 2", "expression": "entry.count() <= 2", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${s1Id}", "description": "Teardown: delete patient-s1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${s2Id}", "description": "Teardown: delete patient-s2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${s3Id}", "description": "Teardown: delete patient-s3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${p1Id}", "description": "Teardown: delete patient-p1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${p2Id}", "description": "Teardown: delete patient-p2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${p3Id}", "description": "Teardown: delete patient-p3" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${p4Id}", "description": "Teardown: delete patient-p4" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${p5Id}", "description": "Teardown: delete patient-p5" } }
+    ]
+  }
+}

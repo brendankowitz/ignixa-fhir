@@ -1,0 +1,168 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/docref-operation",
+  "description": "DocumentReference $docref conformance tests: single/multi-patient lookup, type filtering, and missing/unsupported/unknown parameter handling (from DocRefOperationTests). $docref is invoked type-level at DocumentReference/$docref?patient=... rather than as a Patient instance operation. Gated on the target advertising DocumentReference/$docref, either as a resource-scoped or a system-level operation.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='DocumentReference').operation.where(name='docref').exists() or rest.operation.where(name='docref').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "pat0",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-docref-pat0",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DOCREF-PAT0" }],
+        "name": [{ "family": "DocRef", "given": ["Zero"] }]
+      }
+    },
+    {
+      "id": "pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-docref-pat1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DOCREF-PAT1" }],
+        "name": [{ "family": "DocRef", "given": ["One"] }]
+      }
+    },
+    {
+      "id": "dr0a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "ignixa-docref-dr0a",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DOCREF-DR0A" }],
+        "status": "current",
+        "type": { "coding": [{ "system": "http://loinc.org", "code": "55107-7" }] },
+        "subject": { "reference": "ignixa-docref-pat0" },
+        "content": [{ "attachment": { "url": "https://example.org/ignixa-docref-dr0a.pdf" } }]
+      }
+    },
+    {
+      "id": "dr0b",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "ignixa-docref-dr0b",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DOCREF-DR0B" }],
+        "status": "current",
+        "type": { "coding": [{ "system": "http://loinc.org", "code": "74155-3" }] },
+        "subject": { "reference": "ignixa-docref-pat0" },
+        "content": [{ "attachment": { "url": "https://example.org/ignixa-docref-dr0b.pdf" } }]
+      }
+    },
+    {
+      "id": "dr1a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DocumentReference",
+        "id": "ignixa-docref-dr1a",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DOCREF-DR1A" }],
+        "status": "current",
+        "type": { "coding": [{ "system": "http://loinc.org", "code": "55107-7" }] },
+        "subject": { "reference": "ignixa-docref-pat1" },
+        "content": [{ "attachment": { "url": "https://example.org/ignixa-docref-dr1a.pdf" } }]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-docref-pat0", "sourceId": "pat0", "description": "PUT Patient/ignixa-docref-pat0" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-docref-pat1", "sourceId": "pat1", "description": "PUT Patient/ignixa-docref-pat1" } },
+      { "operation": { "type": { "code": "update" }, "url": "DocumentReference/ignixa-docref-dr0a", "sourceId": "dr0a", "description": "PUT DocumentReference/ignixa-docref-dr0a (subject=pat0, type=55107-7)" } },
+      { "operation": { "type": { "code": "update" }, "url": "DocumentReference/ignixa-docref-dr0b", "sourceId": "dr0b", "description": "PUT DocumentReference/ignixa-docref-dr0b (subject=pat0, type=74155-3)" } },
+      { "operation": { "type": { "code": "update" }, "url": "DocumentReference/ignixa-docref-dr1a", "sourceId": "dr1a", "description": "PUT DocumentReference/ignixa-docref-dr1a (subject=pat1, type=55107-7)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$docref: single patient returns only that patient's documents",
+      "description": "GET /DocumentReference/$docref?patient=ignixa-docref-pat0 must return both of pat0's DocumentReferences and none of pat1's.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$docref" }, "method": "GET", "url": "DocumentReference/$docref?patient=ignixa-docref-pat0", "responseId": "docref-single-patient", "description": "GET DocumentReference/$docref?patient=ignixa-docref-pat0" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include dr0a", "expression": "entry.where(resource.id = 'ignixa-docref-dr0a').exists()" } },
+        { "assert": { "description": "Must include dr0b", "expression": "entry.where(resource.id = 'ignixa-docref-dr0b').exists()" } },
+        { "assert": { "description": "Must NOT include dr1a (belongs to pat1)", "expression": "entry.where(resource.id = 'ignixa-docref-dr1a').empty()" } }
+      ]
+    },
+    {
+      "name": "$docref: comma-separated patient list returns documents for all listed patients",
+      "description": "GET /DocumentReference/$docref?patient=ignixa-docref-pat0,ignixa-docref-pat1 must return documents for both patients.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$docref" }, "method": "GET", "url": "DocumentReference/$docref?patient=ignixa-docref-pat0,ignixa-docref-pat1", "responseId": "docref-multi-patient", "description": "GET DocumentReference/$docref?patient=ignixa-docref-pat0,ignixa-docref-pat1" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include dr0a", "expression": "entry.where(resource.id = 'ignixa-docref-dr0a').exists()" } },
+        { "assert": { "description": "Must include dr0b", "expression": "entry.where(resource.id = 'ignixa-docref-dr0b').exists()" } },
+        { "assert": { "description": "Must include dr1a", "expression": "entry.where(resource.id = 'ignixa-docref-dr1a').exists()" } }
+      ]
+    },
+    {
+      "name": "$docref: type filter narrows results to the matching document type",
+      "description": "GET /DocumentReference/$docref?patient=ignixa-docref-pat0&type=http://loinc.org|55107-7 must return only dr0a (type 55107-7), excluding dr0b (type 74155-3).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$docref" }, "method": "GET", "url": "DocumentReference/$docref?patient=ignixa-docref-pat0&type=http://loinc.org|55107-7", "responseId": "docref-type-filter", "description": "GET DocumentReference/$docref?patient=ignixa-docref-pat0&type=http://loinc.org|55107-7" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include dr0a (type=55107-7)", "expression": "entry.where(resource.id = 'ignixa-docref-dr0a').exists()" } },
+        { "assert": { "description": "Must NOT include dr0b (type=74155-3)", "expression": "entry.where(resource.id = 'ignixa-docref-dr0b').empty()" } }
+      ]
+    },
+    {
+      "name": "$docref: missing required 'patient' parameter returns 400",
+      "description": "A request with no patient parameter must be rejected with 400.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$docref" }, "method": "GET", "url": "DocumentReference/$docref?start=-01:01:00", "responseId": "docref-missing-patient", "description": "GET DocumentReference/$docref?start=-01:01:00 (no patient parameter)" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$docref: unsupported parameter (on-demand) short-circuits to an OperationOutcome-only bundle",
+      "description": "The unsupported on-demand parameter must short-circuit to an OperationOutcome-only Bundle (error/not-supported) with zero DocumentReference entries.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$docref" }, "method": "GET", "url": "DocumentReference/$docref?patient=ignixa-docref-pat0&on-demand=true", "responseId": "docref-unsupported-param", "description": "GET DocumentReference/$docref?patient=ignixa-docref-pat0&on-demand=true" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must contain NO DocumentReference entries", "expression": "entry.resource.ofType(DocumentReference).empty()" } },
+        { "assert": { "description": "Bundle must contain an error-severity, not-supported OperationOutcome issue", "expression": "entry.resource.ofType(OperationOutcome).issue.where(severity = 'error' and code = 'not-supported').exists()" } }
+      ]
+    },
+    {
+      "name": "$docref: unknown parameter adds a warning outcome but real results still return",
+      "description": "An unrecognized query parameter must add a warning/not-supported OperationOutcome entry while real DocumentReference results still return.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$docref" }, "method": "GET", "url": "DocumentReference/$docref?patient=ignixa-docref-pat0&unknown=unknownvalue", "responseId": "docref-unknown-param", "description": "GET DocumentReference/$docref?patient=ignixa-docref-pat0&unknown=unknownvalue" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must still include dr0a", "expression": "entry.where(resource.id = 'ignixa-docref-dr0a').exists()" } },
+        { "assert": { "description": "Must still include dr0b", "expression": "entry.where(resource.id = 'ignixa-docref-dr0b').exists()" } },
+        { "assert": { "description": "Should contain a warning-severity not-supported OperationOutcome issue (warningOnly: exact severity/handling of unknown params may vary by server)", "expression": "entry.resource.ofType(OperationOutcome).issue.where(severity = 'warning' and code = 'not-supported').exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "DocumentReference/ignixa-docref-dr1a", "description": "Teardown: delete dr1a" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DocumentReference/ignixa-docref-dr0b", "description": "Teardown: delete dr0b" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DocumentReference/ignixa-docref-dr0a", "description": "Teardown: delete dr0a" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-docref-pat1", "description": "Teardown: delete pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-docref-pat0", "description": "Teardown: delete pat0" } }
+    ]
+  }
+}

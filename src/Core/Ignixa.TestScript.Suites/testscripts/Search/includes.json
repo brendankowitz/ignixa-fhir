@@ -1,0 +1,467 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/includes",
+  "description": "Search result parameter conformance tests for _include, _revinclude, and _include:iterate: forward/reverse/wildcard includes, multi-hop iteration, self-references, and interaction with _id, _summary, and _total (from IncludeSearchTests.cs).",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Organization').updateCreate = true and rest.resource.where(type='Practitioner').updateCreate = true and rest.resource.where(type='Patient').updateCreate = true and rest.resource.where(type='Observation').updateCreate = true and rest.resource.where(type='DiagnosticReport').updateCreate = true and rest.resource.where(type='Location').updateCreate = true" }
+  ],
+  "fixture": [
+    {
+      "id": "org-c",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-inc-org-c",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-ORG-C" }],
+        "name": "Include Test Org C (root)"
+      }
+    },
+    {
+      "id": "org-b",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-inc-org-b",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-ORG-B" }],
+        "name": "Include Test Org B (middle)",
+        "partOf": { "reference": "Organization/ignixa-inc-org-c" }
+      }
+    },
+    {
+      "id": "org-a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-inc-org-a",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-ORG-A" }],
+        "name": "Include Test Org A (leaf)",
+        "partOf": { "reference": "Organization/ignixa-inc-org-b" }
+      }
+    },
+    {
+      "id": "org",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-inc-org",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-ORG" }],
+        "name": "Include Test Managing Organization"
+      }
+    },
+    {
+      "id": "prac1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-inc-prac1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-PRAC1" }],
+        "name": [{ "family": "IncludeTest", "given": ["Practitioner1"] }]
+      }
+    },
+    {
+      "id": "pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-inc-pat1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-PAT1" }],
+        "name": [{ "family": "IncludeTest", "given": ["Patient1"] }],
+        "managingOrganization": { "reference": "Organization/ignixa-inc-org" },
+        "generalPractitioner": [{ "reference": "Practitioner/ignixa-inc-prac1" }]
+      }
+    },
+    {
+      "id": "obs1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-inc-obs1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-OBS1" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "12345-6" }] },
+        "subject": { "reference": "Patient/ignixa-inc-pat1" },
+        "performer": [
+          { "reference": "Practitioner/ignixa-inc-prac1" },
+          { "reference": "Organization/ignixa-inc-org" }
+        ]
+      }
+    },
+    {
+      "id": "dr1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "ignixa-inc-dr1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-DR1" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "24356-8" }] },
+        "subject": { "reference": "Patient/ignixa-inc-pat1" },
+        "result": [{ "reference": "Observation/ignixa-inc-obs1" }]
+      }
+    },
+    {
+      "id": "loc-self",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Location",
+        "id": "ignixa-inc-loc-self",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/includes", "value": "INC-LOC-SELF" }],
+        "name": "Include Test Self-Referencing Location",
+        "partOf": { "reference": "Location/ignixa-inc-loc-self" }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-inc-org-c", "sourceId": "org-c", "description": "PUT Organization/ignixa-inc-org-c (root, no partOf)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-inc-org-b", "sourceId": "org-b", "description": "PUT Organization/ignixa-inc-org-b (partOf org-c)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-inc-org-a", "sourceId": "org-a", "description": "PUT Organization/ignixa-inc-org-a (partOf org-b)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-inc-org", "sourceId": "org", "description": "PUT Organization/ignixa-inc-org (managing org)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-inc-prac1", "sourceId": "prac1", "description": "PUT Practitioner/ignixa-inc-prac1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-inc-pat1", "sourceId": "pat1", "description": "PUT Patient/ignixa-inc-pat1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-inc-obs1", "sourceId": "obs1", "description": "PUT Observation/ignixa-inc-obs1" } },
+      { "operation": { "type": { "code": "update" }, "url": "DiagnosticReport/ignixa-inc-dr1", "sourceId": "dr1", "description": "PUT DiagnosticReport/ignixa-inc-dr1" } },
+      { "operation": { "type": { "code": "update" }, "url": "Location/ignixa-inc-loc-self", "sourceId": "loc-self", "description": "PUT Location/ignixa-inc-loc-self (self-referencing partOf)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Forward _include pulls in the direct reference target",
+      "description": "Patient?_id=pat1&_include=Patient:organization must return pat1 plus its managingOrganization (org) as an included resource.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization", "responseId": "inc-forward", "description": "GET /Patient?_id=ignixa-inc-pat1&_include=Patient:organization" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include the matched patient", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()" } },
+        { "assert": { "description": "Must include the managing organization", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } },
+        { "assert": { "description": "Included organization entry must be marked as 'include'", "expression": "entry.where(resource.id = 'ignixa-inc-org').search.mode = 'include'" } }
+      ]
+    },
+    {
+      "name": "_include with no target type resolves references of any type",
+      "description": "Observation?_id=obs1&_include=Observation:performer (no target type restriction) must include both performer types: Practitioner (prac1) and Organization (org).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Observation').searchInclude.where($this='Observation:performer' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_id=ignixa-inc-obs1&_include=Observation:performer", "responseId": "inc-performer", "description": "GET /Observation?_id=ignixa-inc-obs1&_include=Observation:performer" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include the matched observation", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()" } },
+        { "assert": { "description": "Must include the practitioner performer", "expression": "entry.where(resource.id = 'ignixa-inc-prac1').exists()" } },
+        { "assert": { "description": "Must include the organization performer", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } }
+      ]
+    },
+    {
+      "name": "Wildcard _include=* pulls in every direct reference",
+      "description": "Patient?_id=pat1&_include=* must include both managingOrganization (org) and generalPractitioner (prac1).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=*", "responseId": "inc-wildcard", "description": "GET /Patient?_id=ignixa-inc-pat1&_include=*" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include managingOrganization", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } },
+        { "assert": { "description": "Must include generalPractitioner", "expression": "entry.where(resource.id = 'ignixa-inc-prac1').exists()" } }
+      ]
+    },
+    {
+      "name": "Multiple _include params combine their targets",
+      "description": "Patient?_id=pat1&_include=Patient:organization&_include=Patient:general-practitioner must include both org and prac1 in a single response.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists() and rest.resource.where(type='Patient').searchInclude.where($this='Patient:general-practitioner' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization&_include=Patient:general-practitioner", "responseId": "inc-multi", "description": "GET /Patient with two _include params" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include managingOrganization", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } },
+        { "assert": { "description": "Must include generalPractitioner", "expression": "entry.where(resource.id = 'ignixa-inc-prac1').exists()" } }
+      ]
+    },
+    {
+      "name": "_revinclude pulls in resources that reference the match",
+      "description": "Patient?_id=pat1&_revinclude=Observation:subject must return pat1 plus obs1 (which references pat1 as subject) as an included resource.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchRevInclude.where($this='Observation:subject' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_revinclude=Observation:subject", "responseId": "inc-revinclude", "description": "GET /Patient?_id=ignixa-inc-pat1&_revinclude=Observation:subject" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include the matched patient", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()" } },
+        { "assert": { "description": "Must include the referencing observation", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()" } },
+        { "assert": { "description": "Included observation entry must be marked as 'include'", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').search.mode = 'include'" } }
+      ]
+    },
+    {
+      "name": "Wildcard _revinclude=* pulls in every referencing resource type",
+      "description": "Patient?_id=pat1&_revinclude=* must include both obs1 (Observation.subject) and dr1 (DiagnosticReport.subject).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchRevInclude.where($this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_revinclude=*", "responseId": "inc-revinclude-wildcard", "description": "GET /Patient?_id=ignixa-inc-pat1&_revinclude=*" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include obs1", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()" } },
+        { "assert": { "description": "Must include dr1", "expression": "entry.where(resource.id = 'ignixa-inc-dr1').exists()" } }
+      ]
+    },
+    {
+      "name": "_include:iterate follows a second hop through the included resource",
+      "description": "Observation?_id=obs1&_include=Observation:subject&_include:iterate=Patient:organization must include pat1 (direct) and then org (iterated hop from pat1.managingOrganization). Iteration itself has no precise R4 CapabilityStatement flag, so iterated-hop assertions are informational.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Observation').searchInclude.where($this='Observation:subject' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_id=ignixa-inc-obs1&_include=Observation:subject&_include:iterate=Patient:organization", "responseId": "inc-iterate-hop", "description": "GET /Observation with _include + _include:iterate two-hop" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Must include obs1", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must include pat1 (direct include)", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must include org (iterated include via pat1.managingOrganization)", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_include:iterate wildcard target follows any reference type on the included resource",
+      "description": "Observation?_id=obs1&_include=Observation:subject&_include:iterate=Patient:general-practitioner must include pat1 (direct) and then prac1 (iterated hop from pat1.generalPractitioner). Iteration itself has no precise R4 CapabilityStatement flag, so iterated-hop assertions are informational.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Observation').searchInclude.where($this='Observation:subject' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_id=ignixa-inc-obs1&_include=Observation:subject&_include:iterate=Patient:general-practitioner", "responseId": "inc-iterate-gp", "description": "GET /Observation with _include:iterate on generalPractitioner" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Must include pat1", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must include prac1 (iterated hop)", "expression": "entry.where(resource.id = 'ignixa-inc-prac1').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_include:iterate on a same-type chain performs a single iteration, not unbounded recursion",
+      "description": "Organization?_id=org-a&_include:iterate=Organization:partof must include org-b (one iteration) but not org-c, confirming _include:iterate performs a single additional hop rather than a full transitive closure. Iteration itself has no precise R4 CapabilityStatement flag, so iterated-hop assertions are informational.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Organization", "params": "?_id=ignixa-inc-org-a&_include:iterate=Organization:partof", "responseId": "inc-iterate-chain", "description": "GET /Organization?_id=ignixa-inc-org-a&_include:iterate=Organization:partof" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Must include org-a (matched)", "expression": "entry.where(resource.id = 'ignixa-inc-org-a').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must include org-b (one iteration of partof)", "expression": "entry.where(resource.id = 'ignixa-inc-org-b').exists()", "warningOnly": true } },
+        { "assert": { "description": "Should NOT include org-c (would require a second iteration); behavior may vary by server", "expression": "entry.where(resource.id = 'ignixa-inc-org-c').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Matched-resource filters (_id) are not applied to the included resources",
+      "description": "Patient?_id=pat1&_include=Patient:organization must still include org even though org itself does not satisfy the _id=pat1 predicate -- the predicate only restricts the matched set, not the included set.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization", "responseId": "inc-id-not-applied", "description": "GET /Patient?_id=ignixa-inc-pat1&_include=Patient:organization" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Included org must be present despite not matching _id=pat1", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } }
+      ]
+    },
+    {
+      "name": "specimen:missing=true combined with _include still includes the referenced resource",
+      "description": "DiagnosticReport?specimen:missing=true&_id=dr1&_include=DiagnosticReport:result must match dr1 (no specimen) and include obs1 (result reference).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='DiagnosticReport').searchInclude.where($this='DiagnosticReport:result' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "DiagnosticReport", "params": "?specimen:missing=true&_id=ignixa-inc-dr1&_include=DiagnosticReport:result", "responseId": "inc-specimen-missing", "description": "GET /DiagnosticReport?specimen:missing=true&_id=ignixa-inc-dr1&_include=DiagnosticReport:result" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must match dr1 (no specimen)", "expression": "entry.where(resource.id = 'ignixa-inc-dr1').exists()" } },
+        { "assert": { "description": "Must include obs1 (result reference)", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()" } }
+      ]
+    },
+    {
+      "name": "A self-referencing partOf does not duplicate the matched resource as its own include",
+      "description": "Location?_id=loc-self&_include=Location:partof matches loc-self, whose partOf points at itself; the response must contain exactly one entry for loc-self (not a separate 'matched' entry plus a duplicate 'include' entry).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Location').searchInclude.where($this='Location:partof' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Location", "params": "?_id=ignixa-inc-loc-self&_include=Location:partof", "responseId": "inc-self-ref", "description": "GET /Location?_id=ignixa-inc-loc-self&_include=Location:partof" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include loc-self exactly once", "expression": "entry.where(resource.id = 'ignixa-inc-loc-self').count() = 1" } }
+      ]
+    },
+    {
+      "name": "_summary=count excludes included resources from the reported total",
+      "description": "Patient?_id=pat1&_include=Patient:organization&_summary=count must return total=1 (only the matched patient counts, not the included organization) and an empty entry list.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_summary').exists() or rest.searchParam.where(name='_summary').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization&_summary=count", "responseId": "inc-summary-count", "description": "GET /Patient?_id=ignixa-inc-pat1&_include=Patient:organization&_summary=count" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Entry list must be empty", "expression": "entry.count() = 0" } },
+        { "assert": { "description": "total must be exactly 1", "expression": "total = 1" } }
+      ]
+    },
+    {
+      "name": "_total=accurate excludes included resources from the reported total",
+      "description": "Patient?_id=pat1&_include=Patient:organization&_total=accurate must return total=1 (matched patient only) while still including org in the entry list.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_total').exists() or rest.searchParam.where(name='_total').exists())"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization&_total=accurate", "responseId": "inc-total-accurate", "description": "GET /Patient?_id=ignixa-inc-pat1&_include=Patient:organization&_total=accurate" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "total must be exactly 1", "expression": "total = 1" } },
+        { "assert": { "description": "Included org must still be present in the entry list", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } }
+      ]
+    },
+    {
+      "name": "Invalid target resource type on _include returns a Bad Request",
+      "description": "Informational handling check: without Prefer: handling=strict, base FHIR does not universally require rejection of an invalid _include target resource type.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization:NotAResourceType", "responseId": "inc-invalid-target", "description": "GET /Patient?_id=ignixa-inc-pat1&_include=Patient:organization:NotAResourceType" } },
+        { "assert": { "description": "Informational invalid-_include handling check: search should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational invalid-_include handling check: response should be an OperationOutcome error", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_include and _revinclude combine in a single request",
+      "description": "Patient?_id=pat1&_include=Patient:organization&_revinclude=Observation:subject must include both org (forward include) and obs1 (reverse include) alongside the matched patient.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists() and rest.resource.where(type='Patient').searchRevInclude.where($this='Observation:subject' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-inc-pat1&_include=Patient:organization&_revinclude=Observation:subject", "responseId": "inc-combined", "description": "GET /Patient with both _include and _revinclude" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Must include pat1", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()" } },
+        { "assert": { "description": "Must include org (forward include)", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()" } },
+        { "assert": { "description": "Must include obs1 (reverse include)", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "DiagnosticReport/ignixa-inc-dr1", "description": "Teardown: delete dr1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-inc-obs1", "description": "Teardown: delete obs1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-inc-pat1", "description": "Teardown: delete pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-inc-prac1", "description": "Teardown: delete prac1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-inc-org", "description": "Teardown: delete org" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-inc-org-a", "description": "Teardown: delete org-a" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-inc-org-b", "description": "Teardown: delete org-b" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-inc-org-c", "description": "Teardown: delete org-c" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Location/ignixa-inc-loc-self", "description": "Teardown: delete loc-self" } }
+    ]
+  }
+}

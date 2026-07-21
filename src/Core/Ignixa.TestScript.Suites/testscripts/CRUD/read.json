@@ -1,0 +1,78 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/read",
+  "description": "Conformance tests for GET /{type}/{id} read semantics: a successful read returns matching metadata and headers, and reads of a missing or deleted resource return 404/410 (from ReadTests).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "observation-read-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "READ-BASIC-1" }],
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8310-5", "display": "Body temperature" }] },
+        "valueQuantity": { "value": 37.0, "unit": "Cel", "system": "http://unitsofmeasure.org", "code": "Cel" }
+      }
+    }
+  ],
+  "variable": [
+    { "name": "obsId", "sourceId": "create-response", "path": "id", "description": "The server-assigned id from the create response" },
+    { "name": "obsVersionId", "sourceId": "create-response", "path": "meta.versionId", "description": "The server-assigned version id from the create response" },
+    { "name": "obsLastUpdated", "sourceId": "create-response", "path": "meta.lastUpdated", "description": "The server-assigned lastUpdated timestamp from the create response" }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Observation",
+          "sourceId": "observation-read-fixture",
+          "responseId": "create-response",
+          "description": "Create an Observation to obtain a server-assigned id/version for the read tests"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "read returns the resource with matching metadata and headers",
+      "description": "GET /Observation/{id} must return 200 with metadata (id/version/lastUpdated) matching the created resource, plus ETag and X-Content-Type-Options security headers.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "Observation/${obsId}", "responseId": "read-response", "description": "Read the Observation by server-assigned id" } },
+        { "assert": { "description": "Read must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response body must be an Observation", "resource": "Observation" } },
+        { "assert": { "description": "Returned id must match the one assigned at create", "expression": "Observation.id", "value": "${obsId}", "operator": "equals" } },
+        { "assert": { "description": "Returned meta.versionId must match the one assigned at create", "expression": "Observation.meta.versionId", "value": "${obsVersionId}", "operator": "equals" } },
+        { "assert": { "description": "Returned meta.lastUpdated must match the one assigned at create", "expression": "Observation.meta.lastUpdated", "value": "${obsLastUpdated}", "operator": "equals" } },
+        { "assert": { "description": "ETag header must be present for the current version", "headerField": "ETag", "operator": "notEmpty" } },
+        { "assert": { "description": "X-Content-Type-Options security header should be present and set to nosniff (warningOnly: security header is not a base FHIR requirement)", "headerField": "X-Content-Type-Options", "operator": "contains", "value": "nosniff", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "read of a never-existing id returns 404",
+      "description": "GET on an id that was never assigned by the server must return 404 Not Found.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "Observation/ignixa-read-never-existed", "responseId": "read-missing-response", "description": "Attempt to read an id that was never created" } },
+        { "assert": { "description": "Server must return 404 Not Found", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "read after delete returns 410 or 404",
+      "description": "GET after DELETE must return 410 Gone (primary assertion); 404 Not Found is accepted as a warningOnly alternative for servers that don't distinguish deleted from never-existed.",
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "url": "Observation/${obsId}", "responseId": "delete-response", "description": "Delete the Observation created in setup" } },
+        { "assert": { "description": "Delete must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "read" }, "url": "Observation/${obsId}", "responseId": "after-delete-read", "description": "Attempt to read the deleted Observation" } },
+        { "assert": { "sourceId": "after-delete-read", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "deleted-resource-readback" }], "description": "Preferred: 410 Gone for a deleted resource (warningOnly: FHIR also permits 404 when deleted resources are not tracked)", "response": "gone", "warningOnly": true } },
+        { "assert": { "sourceId": "after-delete-read", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "deleted-resource-readback" }], "description": "Alternative: 404 Not Found is accepted when the server does not track deleted resources", "response": "notFound", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${obsId}", "description": "Teardown: attempt to clean up the Observation (may already be deleted by the delete test — that is expected)" } }
+    ]
+  }
+}
