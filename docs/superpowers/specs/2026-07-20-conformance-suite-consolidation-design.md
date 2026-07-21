@@ -151,6 +151,13 @@ versioning.
 
 ## Migration steps
 
+Sequenced as two independent phases. Phase 1 lands entirely in `ignixa-fhir` and is
+self-contained; lab stays on its local `IgnixaLab.TestScript.Suites` package throughout
+and is never broken. Phase 2 happens only after `Ignixa.TestScript.Suites` has actually
+published.
+
+### Phase 1 — `ignixa-fhir` (this effort)
+
 1. Create `src/Core/Ignixa.TestScript.Suites/`; copy lab's `testscripts/`, `build/`, and
    csproj across.
 2. Hand-merge the 3 divergent files so the fhir-only assertions (10/12/1 lines) survive.
@@ -164,9 +171,29 @@ versioning.
    `--tests <path>` and needs no code change.
 7. Add the `RepoGuards` case (below).
 8. Add README + docs-site pointers to the new location.
-9. In `ignixa-lab`: delete `backend/src/Ignixa.Lab.Suites`, add
+
+### Phase 2 — `ignixa-lab` (deferred until first publish)
+
+9. Delete `backend/src/Ignixa.Lab.Suites`, add
    `PackageReference Include="Ignixa.TestScript.Suites"`, add a dev-time path override so
    a local `ignixa-fhir` checkout's `testscripts/` wins over the package during authoring.
+
+### Consequence of the split: a duplication window
+
+Between the two phases both copies exist, and lab's is still writable. If a suite is
+authored in lab during that window it is lost work — phase 2 deletes that tree wholesale.
+Mitigations, in preference order:
+
+- Keep the window short. Phase 2 should follow the first publish promptly, not sit.
+- Land a note in `backend/src/Ignixa.Lab.Suites/README.md` during phase 1 stating the tree
+  is frozen and pointing authors at `ignixa-fhir`. Cheap, and it is the only signal an
+  author actually encounters at the moment they would create the file.
+- Track phase 2 as an issue at the time phase 1 merges, so it is not remembered only by
+  this document.
+
+Note that phase 1 does not resolve the drift for lab — lab keeps running its own 87 until
+phase 2. What phase 1 fixes immediately is `ignixa-fhir`'s own conformance gate, which is
+the dishonest one.
 
 ## Guardrail
 
