@@ -242,6 +242,95 @@ internal static class SearchTraceFixtures
             "Patient", [new QueryParameter("name:missing", "true")], builder, resolver, CancellationToken.None);
     }
 
+    /// <summary>A resolvable leaf whose value type has no leaf lowering rule, so Lower throws after Resolve succeeds
+    /// -- the only shape that reaches SearchCompiler's Lower/Emit failure attribution.</summary>
+    public static Task<SearchTrace> TraceUnsupportedLeafValueAsync()
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var unsupportedValue = new CompositeIndexSearchValue([[new StringSearchValue("Smith")]]);
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, unsupportedValue)
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name", "Smith")], builder, resolver, CancellationToken.None);
+    }
+
+    /// <summary>The same unsupported leaf value behind a :not modifier -- Lower rebuilds the predicate as a positive
+    /// match before dispatching, so this covers the rebuilt clone carrying the original's span through to attribution.</summary>
+    public static Task<SearchTrace> TraceUnsupportedNotLeafValueAsync()
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var unsupportedValue = new CompositeIndexSearchValue([[new StringSearchValue("Smith")]]);
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), unsupportedValue)
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:not", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver, CancellationToken.None);
+    }
+
+    /// <summary>A composite whose component value types have no composite lowering rule, so the composite dispatcher
+    /// throws and attributes the failure to its first component's span.</summary>
+    public static Task<SearchTrace> TraceUnsupportedCompositeAsync()
+    {
+        var compositeParam = new SearchParameterInfo(
+            "code-value-string", "code-value-string", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code-value-string"));
+        var firstParam = new SearchParameterInfo("value-string", "value-string", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-string"));
+        var secondParam = new SearchParameterInfo("value-string-2", "value-string-2", SearchParamType.String, new Uri("http://example.org/fhir/SearchParameter/Observation-value-string-2"));
+
+        var firstPredicate = new SearchParameterPredicateExpression(firstParam, SearchComparator.Eq, modifier: null, new StringSearchValue("a"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 1),
+        };
+        var secondPredicate = new SearchParameterPredicateExpression(secondParam, SearchComparator.Eq, modifier: null, new StringSearchValue("b"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 2, 1),
+        };
+
+        var expression = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(firstParam, 0, firstPredicate) { Span = firstPredicate.Span },
+                new CompositeComponentExpression(secondParam, 1, secondPredicate) { Span = secondPredicate.Span },
+            ]));
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Observation", Expression = expression },
+            [new ParameterTrace(0, "code-value-string", "a$b", null, null, expression, new ParameterOutcome.Compiled())]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 302;
+        resolver.SearchParamIds[firstParam.Url!.ToString()] = 90;
+        resolver.SearchParamIds[secondParam.Url!.ToString()] = 91;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        return SearchCompiler.CompileAsync(
+            "Observation", [new QueryParameter("code-value-string", "a$b")], builder, resolver, CancellationToken.None);
+    }
+
     private sealed class FakeSearchOptionsBuilder(SearchOptions options, IReadOnlyList<ParameterTrace> outcomes) : ISearchOptionsBuilder
     {
         public SearchOptions Build(string? resourceType, IReadOnlyList<QueryParameter> parameters, ISchema? schemaProvider = null, IList<ParameterTrace>? outcomeCollector = null)

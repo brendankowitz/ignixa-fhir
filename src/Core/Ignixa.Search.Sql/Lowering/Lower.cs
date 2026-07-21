@@ -131,7 +131,10 @@ public static class Lower
 
         if (sp.Expression is SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } predicate)
         {
-            var positiveMatch = new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value);
+            var positiveMatch = new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value)
+            {
+                Span = predicate.Span,
+            };
             return context.LowerNot(context.Lower(positiveMatch, resourceType, provenanceNode: predicate), resourceType);
         }
 

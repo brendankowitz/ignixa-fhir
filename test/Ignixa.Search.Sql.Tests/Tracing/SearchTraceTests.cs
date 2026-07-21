@@ -117,4 +117,28 @@ public class SearchTraceTests
 
         failed.Stage.ShouldBe(TraceStage.Resolve);
     }
+
+    public static TheoryData<string, Func<Task<SearchTrace>>> LowerFailureCases() => new()
+    {
+        { "leaf", SearchTraceFixtures.TraceUnsupportedLeafValueAsync },
+        { ":not leaf", SearchTraceFixtures.TraceUnsupportedNotLeafValueAsync },
+        { "composite", SearchTraceFixtures.TraceUnsupportedCompositeAsync },
+    };
+
+    [Theory]
+    [MemberData(nameof(LowerFailureCases))]
+    public async Task GivenAShapeLowerCannotHandle_WhenTraced_ThenItIsAttributedToTheOwningParameterAtTheLowerStage(
+        string scenario, Func<Task<SearchTrace>> build)
+    {
+        var trace = await build();
+
+        trace.Plan.ShouldBeNull($"{scenario}: Lower should not have produced a plan");
+        trace.Sql.ShouldBeNull($"{scenario}: Emit should never have run");
+
+        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var failed = parameter.Outcome.ShouldBeOfType<ParameterOutcome.Failed>($"{scenario}: the failure was not attributed to its parameter");
+        failed.Stage.ShouldBe(TraceStage.Lower);
+        failed.Span.ShouldNotBeNull($"{scenario}: the attributed failure carries no source span");
+        failed.Message.ShouldNotBeNullOrWhiteSpace();
+    }
 }
