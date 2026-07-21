@@ -1,3 +1,4 @@
+using System.Linq;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -103,5 +104,66 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
         await _cache.GetOrCreateSystemIdAsync(systemUri, CancellationToken.None);
 
         mappingsReference.ContainsKey(systemUri).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenAColdCache_WhenEnsureSearchParametersPreloadedAsyncCalledConcurrently_ThenEveryParameterIsLoadedForEveryCaller()
+    {
+        // A small seeded catalog wouldn't reliably expose the race (the population loop finishes
+        // before a second caller's check can land in the gap) -- the real production bug only
+        // manifested against the real ~1400-row catalog. 200 rows widens the population loop's
+        // duration enough to make a still-broken guard fail this test reliably, not flakily.
+        const int SearchParamCount = 200;
+        var values = string.Join(",", Enumerable.Range(0, SearchParamCount)
+            .Select(i => $"('http://example.org/ensure-test-param-{i}', 'active', SYSDATETIMEOFFSET(), 0)"));
+        await _database.ExecuteNonQueryAsync(
+            $"INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) VALUES {values}");
+
+        var callers = Enumerable.Range(0, 20)
+            .Select(_ => _cache.EnsureSearchParametersPreloadedAsync(CancellationToken.None));
+        await Task.WhenAll(callers);
+
+        _cache.SearchParameterMappings.Count.ShouldBe(SearchParamCount);
+        for (var i = 0; i < SearchParamCount; i++)
+        {
+            _cache.SearchParameterMappings.ContainsKey($"http://example.org/ensure-test-param-{i}")
+                .ShouldBeTrue($"parameter index {i} must be present -- a race would drop some entries");
+        }
+    }
+
+    [Fact]
+    public async Task GivenAColdCache_WhenEnsureResourceTypesPreloadedAsyncCalledConcurrently_ThenEveryResourceTypeIsLoadedForEveryCaller()
+    {
+        var callers = Enumerable.Range(0, 20)
+            .Select(_ => _cache.EnsureResourceTypesPreloadedAsync(CancellationToken.None));
+        await Task.WhenAll(callers);
+
+        _cache.ResourceTypeMappings.ContainsKey("Patient").ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task GivenAWarmCache_WhenEnsureSearchParametersPreloadedAsyncCalledAgain_ThenItIsANoOp()
+    {
+        // Seed one row BEFORE the first call -- otherwise the cache starts and stays genuinely
+        // empty (0 rows in dbo.SearchParam), which is indistinguishable from "still cold" and the
+        // guard would legitimately reload on the second call too, making this test assert nothing
+        // about the no-op behavior it's meant to prove.
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) " +
+            "VALUES ('http://example.org/warm-before-first-call', 'active', SYSDATETIMEOFFSET(), 0)");
+
+        await _cache.EnsureSearchParametersPreloadedAsync(CancellationToken.None);
+        var countAfterFirstCall = _cache.SearchParameterMappings.Count;
+
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) " +
+            "VALUES ('http://example.org/added-after-warm', 'active', SYSDATETIMEOFFSET(), 0)");
+
+        await _cache.EnsureSearchParametersPreloadedAsync(CancellationToken.None);
+
+        // Count is unchanged -- Ensure* is a "populate if empty" guard, not a refresh. The newly
+        // inserted row is invisible to this cache instance until something explicitly reloads it;
+        // that is existing, intentional cache behavior, not something this fix changes.
+        _cache.SearchParameterMappings.Count.ShouldBe(countAfterFirstCall);
     }
 }

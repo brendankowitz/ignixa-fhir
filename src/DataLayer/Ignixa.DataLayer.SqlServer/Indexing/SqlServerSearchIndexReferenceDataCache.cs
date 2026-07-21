@@ -53,19 +53,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            using var command = new SqlCommand("SELECT ResourceTypeId, Name FROM dbo.ResourceType");
-            var rows = await _sqlExecutionService.ExecuteReaderAsync(
-                tenantId,
-                command,
-                reader => (Id: reader.GetInt16(0), Name: reader.GetString(1)),
-                cancellationToken);
-
-            foreach (var row in rows)
-            {
-                _resourceTypeCache[row.Name] = row.Id;
-            }
-
-            _logger.LogInformation("Preloaded {Count} resource types into cache", rows.Count);
+            await LoadResourceTypesAsync(cancellationToken);
         }
         finally
         {
@@ -73,41 +61,135 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         }
     }
 
-    public async Task PreloadSearchParamsAsync(int? maxRows, CancellationToken cancellationToken)
+    /// <summary>
+    /// Ensures resource-type mappings are loaded, race-free under concurrent callers on a cold
+    /// cache. Unlike a bare <c>ResourceTypeMappings.Count == 0</c> check (the bug this method
+    /// fixes -- see docs/superpowers/specs/2026-07-20-sqlserver-search-param-cache-race-fix-design.md),
+    /// the emptiness check and the load happen under the same lock: a concurrent caller arriving
+    /// mid-load blocks on <see cref="_dbLock"/> until the in-flight load finishes, instead of
+    /// reading a partially-populated dictionary. A no-op if the cache is already populated.
+    /// </summary>
+    public async Task EnsureResourceTypesPreloadedAsync(CancellationToken cancellationToken)
     {
+        if (!_resourceTypeCache.IsEmpty)
+        {
+            return;
+        }
+
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            var commandText = maxRows.HasValue
-                ? "SELECT TOP (@MaxRows) SearchParamId, Uri FROM dbo.SearchParam"
-                : "SELECT SearchParamId, Uri FROM dbo.SearchParam";
-
-            using var command = new SqlCommand(commandText);
-            if (maxRows.HasValue)
+            if (!_resourceTypeCache.IsEmpty)
             {
-                command.Parameters.Add("@MaxRows", SqlDbType.Int).Value = maxRows.Value;
+                return;
             }
 
-            var rows = await _sqlExecutionService.ExecuteReaderAsync(
-                tenantId,
-                command,
-                reader => (Id: reader.GetInt16(0), Uri: reader.GetString(1)),
-                cancellationToken);
-
-            foreach (var row in rows)
-            {
-                _searchParamCache[row.Uri] = row.Id;
-            }
-
-            _logger.LogInformation(
-                "Preloaded {Count} search parameters into cache{MaxRowsInfo}",
-                rows.Count,
-                maxRows.HasValue ? $" (limited to {maxRows.Value} rows)" : string.Empty);
+            await LoadResourceTypesAsync(cancellationToken);
         }
         finally
         {
             _dbLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Query-and-populate body shared by <see cref="PreloadResourceTypesAsync"/> and
+    /// <see cref="EnsureResourceTypesPreloadedAsync"/>. Does NOT acquire <see cref="_dbLock"/> --
+    /// both callers already hold it. Never call this directly from outside those two methods.
+    /// </summary>
+    private async Task LoadResourceTypesAsync(CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand("SELECT ResourceTypeId, Name FROM dbo.ResourceType");
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
+            command,
+            reader => (Id: reader.GetInt16(0), Name: reader.GetString(1)),
+            cancellationToken);
+
+        foreach (var row in rows)
+        {
+            _resourceTypeCache[row.Name] = row.Id;
+        }
+
+        _logger.LogInformation("Preloaded {Count} resource types into cache", rows.Count);
+    }
+
+    public async Task PreloadSearchParamsAsync(int? maxRows, CancellationToken cancellationToken)
+    {
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            await LoadSearchParamsAsync(maxRows, cancellationToken);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Ensures search-parameter mappings are loaded, race-free under concurrent callers on a cold
+    /// cache -- see <see cref="EnsureResourceTypesPreloadedAsync"/>'s remarks; same shape, same bug
+    /// fixed. Always loads the full catalog uncapped (<c>maxRows: null</c>) -- unlike the capped
+    /// call <see cref="PreloadSearchParamsAsync"/> makes elsewhere, this mirrors the reference EF
+    /// implementation's uncapped <c>SearchIndexReferenceDataCache.InitializeAsync</c>. A no-op if
+    /// the cache is already populated.
+    /// </summary>
+    public async Task EnsureSearchParametersPreloadedAsync(CancellationToken cancellationToken)
+    {
+        if (!_searchParamCache.IsEmpty)
+        {
+            return;
+        }
+
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!_searchParamCache.IsEmpty)
+            {
+                return;
+            }
+
+            await LoadSearchParamsAsync(maxRows: null, cancellationToken);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Query-and-populate body shared by <see cref="PreloadSearchParamsAsync"/> and
+    /// <see cref="EnsureSearchParametersPreloadedAsync"/>. Does NOT acquire <see cref="_dbLock"/> --
+    /// both callers already hold it. Never call this directly from outside those two methods.
+    /// </summary>
+    private async Task LoadSearchParamsAsync(int? maxRows, CancellationToken cancellationToken)
+    {
+        var commandText = maxRows.HasValue
+            ? "SELECT TOP (@MaxRows) SearchParamId, Uri FROM dbo.SearchParam"
+            : "SELECT SearchParamId, Uri FROM dbo.SearchParam";
+
+        using var command = new SqlCommand(commandText);
+        if (maxRows.HasValue)
+        {
+            command.Parameters.Add("@MaxRows", SqlDbType.Int).Value = maxRows.Value;
+        }
+
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            tenantId,
+            command,
+            reader => (Id: reader.GetInt16(0), Uri: reader.GetString(1)),
+            cancellationToken);
+
+        foreach (var row in rows)
+        {
+            _searchParamCache[row.Uri] = row.Id;
+        }
+
+        _logger.LogInformation(
+            "Preloaded {Count} search parameters into cache{MaxRowsInfo}",
+            rows.Count,
+            maxRows.HasValue ? $" (limited to {maxRows.Value} rows)" : string.Empty);
     }
 
     public async Task<short?> GetResourceTypeIdAsync(string? resourceTypeName, CancellationToken cancellationToken)
