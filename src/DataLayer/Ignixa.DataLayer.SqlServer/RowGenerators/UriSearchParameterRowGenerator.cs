@@ -8,6 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Microsoft.Data.SqlClient.Server;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.SqlServer.RowGenerators;
 
@@ -23,7 +24,8 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
         IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap,
+        ILogger logger)
     {
         // TVP schema matches original 97.sql definition (4 columns only)
         // Version/Fragment columns are updated post-merge via EF Core
@@ -52,7 +54,12 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                     continue;
 
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
+                {
+                    logger.LogWarning(
+                        "SearchParamId not found in cache for {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                     continue;
+                }
 
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);
@@ -75,7 +82,8 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
         IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap,
+        ILogger logger)
     {
         foreach (var resource in resources)
         {
@@ -98,7 +106,12 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                     continue;
 
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
+                {
+                    logger.LogWarning(
+                        "SearchParamId not found in cache for {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                     continue;
+                }
 
                 yield return new UriSearchParamExtensionData(
                     resourceTypeId,

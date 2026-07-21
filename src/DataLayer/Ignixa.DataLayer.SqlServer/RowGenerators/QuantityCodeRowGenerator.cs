@@ -8,6 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Microsoft.Data.SqlClient.Server;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.SqlServer.RowGenerators;
 
@@ -22,7 +23,8 @@ public class QuantityCodeRowGenerator : ISearchParameterRowGenerator
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
         IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap,
+        ILogger logger)
     {
         var metadata = new[]
         {

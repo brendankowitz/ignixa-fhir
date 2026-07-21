@@ -7,6 +7,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using Shouldly;
@@ -127,5 +128,55 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
         var identifierTypeCode = await _database.ExecuteScalarAsync<string>(
             $"SELECT TOP (1) IdentifierTypeCode FROM dbo.TokenSearchParam WHERE ResourceSurrogateId >= {transactionId}");
         identifierTypeCode.ShouldBe("MR");
+    }
+
+    [Fact]
+    public async Task GivenATokenSearchIndexWithAnUnregisteredSearchParameterUrl_WhenMerged_ThenAWarningIsLoggedAndTheRowIsSkipped()
+    {
+        var logger = new ListLogger<SqlServerMergeRepository>();
+        var repository = new SqlServerMergeRepository(
+            _database.SqlExecutionService, _database.TenantId, new GzipResourceCompressor(new RecyclableMemoryStreamManager()),
+            _cache, new SqlServerPostMergeExtensionUpdater(
+                _database.SqlExecutionService, _database.TenantId, NullLogger<SqlServerPostMergeExtensionUpdater>.Instance),
+            logger);
+
+        var (transactionId, _) = await repository.BeginTransactionAsync(resourceCount: 1, CancellationToken.None);
+        var resourceJson = ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"test-patient-unregistered-param"}""");
+        var searchParameter = new SearchParameterInfo(
+            "not-registered", "not-registered", SearchParamType.Token,
+            new Uri("http://example.org/not-a-real-search-parameter"));
+        var tokenValue = new TokenSearchValue(
+            system: null, code: "some-code", text: null, identifierTypeSystem: null, identifierTypeCode: null);
+        var wrapper = new ResourceWrapper(
+            "Patient", "test-patient-unregistered-param", "1", DateTimeOffset.UtcNow, resourceJson,
+            new ResourceRequest("PUT", "Patient/test-patient-unregistered-param"))
+        {
+            SearchIndices = [new SearchIndexEntry(searchParameter, tokenValue)]
+        };
+
+        await repository.MergeResourcesAsync(transactionId, singleTransaction: true, [wrapper], [0], CancellationToken.None);
+        await repository.CommitTransactionAsync(transactionId, cancellationToken: CancellationToken.None);
+
+        logger.Warnings.ShouldContain(w => w.Contains("http://example.org/not-a-real-search-parameter"));
+        var rowCount = await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.TokenSearchParam WHERE ResourceSurrogateId >= " + transactionId);
+        rowCount.ShouldBe(0);
+    }
+}
+
+internal sealed class ListLogger<T> : ILogger<T>
+{
+    public List<string> Warnings { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        if (logLevel == LogLevel.Warning)
+        {
+            Warnings.Add(formatter(state, exception));
+        }
     }
 }

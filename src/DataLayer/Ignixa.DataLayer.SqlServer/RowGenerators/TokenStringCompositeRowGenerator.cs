@@ -8,6 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Microsoft.Data.SqlClient.Server;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.SqlServer.RowGenerators;
 
@@ -33,7 +34,8 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
         IReadOnlyList<ResourceWrapper> resources,
         IReadOnlyDictionary<string, short> resourceTypeIdMap,
         IReadOnlyDictionary<string, short> searchParameterIdMap,
-        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap)
+        IReadOnlyDictionary<ResourceWrapper, long> resourceSurrogateIdMap,
+        ILogger logger)
     {
         var metadata = new[]
         {
@@ -64,7 +66,12 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
                     continue;
 
                 if (!SearchParameterIdLookupHelper.TryGetSearchParamId(searchIndex.SearchParameter, searchParameterIdMap, out var searchParamId))
+                {
+                    logger.LogWarning(
+                        "SearchParamId not found in cache for {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                     continue;
+                }
 
                 if (compositeValue.Components.Count < 2)
                     continue;

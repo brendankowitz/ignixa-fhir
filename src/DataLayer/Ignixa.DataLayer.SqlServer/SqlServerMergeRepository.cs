@@ -177,25 +177,25 @@ public class SqlServerMergeRepository(
 
         // Generate SqlDataRecord streams directly (eliminates DataTable intermediate step)
         // Materialize and check for empty - SQL Client requires NULL (not empty) for TVPs
-        var referenceSearchParams = MaterializeIfNotEmpty(_referenceRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
+        var referenceSearchParams = MaterializeIfNotEmpty(_referenceRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
         _logger.LogInformation("ReferenceSearchParams count: {Count}", referenceSearchParams?.Count ?? 0);
-        var tokenSearchParams = MaterializeIfNotEmpty(_tokenRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
+        var tokenSearchParams = MaterializeIfNotEmpty(_tokenRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
         _logger.LogInformation("TokenSearchParams count: {Count}", tokenSearchParams?.Count ?? 0);
-        var tokenTexts = MaterializeIfNotEmpty(_tokenTextRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var stringSearchParams = MaterializeIfNotEmpty(_stringRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var uriSearchParams = MaterializeIfNotEmpty(_uriRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var numberSearchParams = MaterializeIfNotEmpty(_numberRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var quantitySearchParams = MaterializeIfNotEmpty(_quantityRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var dateTimeSearchParams = MaterializeIfNotEmpty(_dateTimeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
+        var tokenTexts = MaterializeIfNotEmpty(_tokenTextRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var stringSearchParams = MaterializeIfNotEmpty(_stringRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var uriSearchParams = MaterializeIfNotEmpty(_uriRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var numberSearchParams = MaterializeIfNotEmpty(_numberRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var quantitySearchParams = MaterializeIfNotEmpty(_quantityRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var dateTimeSearchParams = MaterializeIfNotEmpty(_dateTimeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
 
         // Generate composite search param SqlDataRecord streams
         // Materialize and check for empty - SQL Client requires NULL (not empty) for TVPs
-        var refTokenCompositeParams = MaterializeIfNotEmpty(_refTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var tokenTokenCompositeParams = MaterializeIfNotEmpty(_tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var tokenDateTimeCompositeParams = MaterializeIfNotEmpty(_tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var tokenQuantityCompositeParams = MaterializeIfNotEmpty(_tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var tokenStringCompositeParams = MaterializeIfNotEmpty(_tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
-        var tokenNumberNumberCompositeParams = MaterializeIfNotEmpty(_tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap));
+        var refTokenCompositeParams = MaterializeIfNotEmpty(_refTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var tokenTokenCompositeParams = MaterializeIfNotEmpty(_tokenTokenCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var tokenDateTimeCompositeParams = MaterializeIfNotEmpty(_tokenDateTimeCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var tokenQuantityCompositeParams = MaterializeIfNotEmpty(_tokenQuantityCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var tokenStringCompositeParams = MaterializeIfNotEmpty(_tokenStringCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
+        var tokenNumberNumberCompositeParams = MaterializeIfNotEmpty(_tokenNumberNumberCompositeRowGenerator.GenerateSqlDataRecords(resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger));
 
         // Create stored procedure parameters
         // NOTE: Using SqlDataRecord streaming (proper TVP pattern) instead of DataTable
@@ -304,9 +304,9 @@ public class SqlServerMergeRepository(
 
         // Extract extension data before calling the SP (needed for post-merge update)
         var tokenExtensions = _tokenRowGenerator.ExtractExtensionData(
-            resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap).ToList();
+            resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToList();
         var uriExtensions = _uriRowGenerator.ExtractExtensionData(
-            resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap).ToList();
+            resources, resourceTypeIdMap, searchParameterIdMap, resourceSurrogateIdMap, _logger).ToList();
 
         try
         {
