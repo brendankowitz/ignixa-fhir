@@ -15,7 +15,7 @@
 - This plan covers **Phase 1 only** — everything lands in `ignixa-fhir`. `ignixa-lab` keeps its local `IgnixaLab.TestScript.Suites` package and is not modified except for the freeze note in Task 8. Do not delete or repoint anything in lab.
 - Source of truth for the suite content is `E:\data\src\ignixa-lab\backend\src\Ignixa.Lab.Suites\` (a local clone). Copy from there; never from `ignixa-fhir/conformance-tests/`, which is the stale copy.
 - The folder name `testscripts/` and the pack `PackagePath="testscripts/"` are **frozen**. Lab's `Suites/SuiteCatalog.cs` reads that exact layout. Do not rename either.
-- Every `src/Core/**` project must declare `<PackageStability>` explicitly or `PackageStabilityGuardTests` fails (ADR 2606). Use `beta`. (No project in the repo declares `alpha`; the split is 17 `stable` / 10 `beta`. `beta` is unconstrained here regardless — the stability guard only forbids a package being *more* stable than its dependencies, and this package has no nuspec dependencies.)
+- Every `src/Core/**` project must declare `<PackageStability>` explicitly or `PackageStabilityGuardTests` fails (ADR 2606). Use `beta`. (Current split across `src/Core` and `tools`: 16 `stable`, 10 `beta`, 1 `alpha`. `beta` is unconstrained here regardless — the stability guard only forbids a package being *more* stable than its dependencies, and this package has no nuspec dependencies.)
 - Every packable project must contain a `README.md` or pack fails: root `Directory.Build.props:10` sets `PackageReadmeFile=README.md` unconditionally, but line 65 only packs it `Condition="Exists('README.md')"`.
 - `TreatWarningsAsErrors=true` is set repo-wide in `Directory.Build.props:14`.
 - Do **not** copy `bin/` or `obj/` from lab's project directory.
@@ -278,7 +278,7 @@ and README added for this repo's pack rules."
 
 ### Task 2: Reconcile the three divergent suites
 
-Ten of the thirteen files that exist in both trees are byte-identical and none exist only in `ignixa-fhir`. Three differ in both directions, so lab's copy is not a strict superset and a blind overwrite would silently drop assertions.
+Nine of the twelve files that exist in both trees are byte-identical and none exist only in `ignixa-fhir`. Three differ in both directions, so lab's copy is not a strict superset and a blind overwrite would silently drop assertions.
 
 **Files:**
 - Modify: `src/Core/Ignixa.TestScript.Suites/testscripts/Bundles/transaction.json`
@@ -302,7 +302,7 @@ done
 ```
 
 Expected: exactly three `DIFF` lines — `Bundles/transaction.json`, `Search/chaining.json`,
-`Validation/validate-op.json` — ten `same` lines, and zero `MISSING` lines. If this differs,
+`Validation/validate-op.json` — nine `same` lines, and zero `MISSING` lines. If this differs,
 stop and re-derive the reconciliation set before continuing.
 
 - [ ] **Step 2: Review each divergence**
@@ -363,7 +363,7 @@ copy is lost."
 
 ### Task 3: Point Ignixa.TestScript.Tests at the new location
 
-The existing `ConformanceScriptParseTests` hand-rolls an ancestor walk for a repo-root `conformance-tests` directory. Replace it with `AppContext.BaseDirectory/testscripts`, populated by the imported targets file. This is the task that proves the in-repo delivery path works, and it raises parse coverage from 13 scripts to 87.
+The existing `ConformanceScriptParseTests` hand-rolls an ancestor walk for a repo-root `conformance-tests` directory. Replace it with `AppContext.BaseDirectory/testscripts`, populated by the imported targets file. This is the task that proves the in-repo delivery path works, and it raises parse coverage from 12 scripts to 87.
 
 **Files:**
 - Modify: `test/Ignixa.TestScript.Tests/Ignixa.TestScript.Tests.csproj`
@@ -457,7 +457,7 @@ git commit -m "test(testscript): resolve conformance suites from output director
 Replaces the hand-rolled ancestor walk for repo-root conformance-tests
 with AppContext.BaseDirectory/testscripts, populated by the Suites
 targets file. The walk assumed a sibling-of-All.sln layout that is
-fragile under git worktrees. Parse coverage goes 13 -> 87 scripts."
+fragile under git worktrees. Parse coverage goes 12 -> 87 scripts."
 ```
 
 ---
@@ -568,7 +568,7 @@ git add test/Ignixa.Api.E2ETests
 git commit -m "test(e2e): resolve conformance suites from output directory
 
 Conformance report run now enumerates the canonical 87-script corpus
-instead of the stale repo-root 13. Expect new failures on the next
+instead of the stale repo-root 12. Expect new failures on the next
 IGNIXA_RUN_CONFORMANCE run; triage per the consolidation spec."
 ```
 
@@ -583,7 +583,7 @@ run it here; the corpus expansion surfaces in CI/docs deployment.
 Both consumers are rewired, so the old tree is now dead. Nothing reads it.
 
 **Files:**
-- Delete: `conformance-tests/` (13 files)
+- Delete: `conformance-tests/` (12 files)
 - Modify: `docs/adr/adr-2607-testscript-extensions.md` lines 11, 26, 49, 87, 104
 - Modify: `docs/site/docs/core-sdk/testscript.md` lines 263, 284
 - Modify: `tools/Ignixa.ConformanceMatrix.Cli/README.md` line 18
@@ -691,7 +691,7 @@ git add -A
 git commit -m "refactor(testscript): delete stale repo-root conformance-tests
 
 Both consumers now resolve suites from the output directory, so the
-13-script repo-root copy is dead. Path references updated in ADR 2607,
+12-script repo-root copy is dead. Path references updated in ADR 2607,
 the docs site, and the matrix CLI README; root README gains an explicit
 pointer to replace the discoverability repo-root placement provided."
 ```
@@ -703,13 +703,76 @@ pointer to replace the discoverability repo-root placement provided."
 The failure this prevents: a suite authored against an engine capability that the shipped engine does not have. That is the class of drift that produced the current split, and neither the parse test nor the E2E run catches it cheaply — an unknown non-modifier extension is silently ignored per the FHIR spec.
 
 **Files:**
+- Create: `test/Ignixa.RepoGuards.Tests/RepoRoot.cs`
+- Modify: `test/Ignixa.RepoGuards.Tests/PackageStabilityGuardTests.cs:144-154`
+- Modify: `test/Ignixa.RepoGuards.Tests/RuntimeMultiTargetingGuardTests.cs:66-76`
 - Create: `test/Ignixa.RepoGuards.Tests/ConformanceSuiteExtensionGuardTests.cs`
 
 **Interfaces:**
 - Consumes: the suite tree at `src/Core/Ignixa.TestScript.Suites/testscripts/`.
-- Produces: nothing.
+- Produces: `Ignixa.RepoGuards.Tests.RepoRoot.Find()` returning the repository root path as `string`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Extract the shared repo-root locator**
+
+`PackageStabilityGuardTests` and `RuntimeMultiTargetingGuardTests` each carry a byte-identical
+private `FindRepoRoot`. Adding a third copy for the new guard would make verbatim duplication
+the established pattern, so extract it first.
+
+Create `test/Ignixa.RepoGuards.Tests/RepoRoot.cs`:
+
+```csharp
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using Shouldly;
+
+namespace Ignixa.RepoGuards.Tests;
+
+/// <summary>
+/// Locates the repository root from the test output directory. Repo guards assert properties of
+/// the source tree rather than of compiled behaviour, so they all need this.
+/// </summary>
+internal static class RepoRoot
+{
+    public static string Find()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
+        {
+            dir = dir.Parent;
+        }
+
+        dir.ShouldNotBeNull($"Could not find repo root from {AppContext.BaseDirectory}");
+        return dir!.FullName;
+    }
+}
+```
+
+- [ ] **Step 2: Point the two existing guards at it**
+
+In `test/Ignixa.RepoGuards.Tests/PackageStabilityGuardTests.cs`, delete the private
+`FindRepoRoot` method (lines 144-154) and replace its single call site in
+`LoadPackableProjects` — `var repoRoot = FindRepoRoot();` — with `var repoRoot = RepoRoot.Find();`.
+
+In `test/Ignixa.RepoGuards.Tests/RuntimeMultiTargetingGuardTests.cs`, delete the private
+`FindRepoRoot` method (lines 66-76) and replace its single call site in `LoadCoreProjects` —
+`var repoRoot = FindRepoRoot();` — with `var repoRoot = RepoRoot.Find();`.
+
+Leave both files' `using` directives alone; `Shouldly` is still used by their assertions.
+
+- [ ] **Step 3: Verify the refactor is behaviour-neutral**
+
+```bash
+cd /e/data/src/ignixa-fhir
+dotnet test test/Ignixa.RepoGuards.Tests/Ignixa.RepoGuards.Tests.csproj
+```
+
+Expected: PASS, same test count as before the refactor. This is a pure extraction — if any
+test changes result, the extraction was not faithful.
+
+- [ ] **Step 4: Write the guard test**
 
 Create `test/Ignixa.RepoGuards.Tests/ConformanceSuiteExtensionGuardTests.cs`:
 
@@ -767,7 +830,7 @@ public class ConformanceSuiteExtensionGuardTests
     private static IEnumerable<string> EnumerateSuiteFiles()
     {
         var suitesRoot = Path.Combine(
-            FindRepoRoot(), "src", "Core", "Ignixa.TestScript.Suites", "testscripts");
+            RepoRoot.Find(), "src", "Core", "Ignixa.TestScript.Suites", "testscripts");
 
         Directory.Exists(suitesRoot).ShouldBeTrue($"Expected conformance suites at {suitesRoot}.");
         return Directory.EnumerateFiles(suitesRoot, "*.json", SearchOption.AllDirectories);
@@ -811,22 +874,10 @@ public class ConformanceSuiteExtensionGuardTests
                 break;
         }
     }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
-        {
-            dir = dir.Parent;
-        }
-
-        dir.ShouldNotBeNull($"Could not find repo root from {AppContext.BaseDirectory}");
-        return dir!.FullName;
-    }
 }
 ```
 
-- [ ] **Step 2: Run the test**
+- [ ] **Step 5: Run the test**
 
 ```bash
 cd /e/data/src/ignixa-fhir
@@ -838,7 +889,7 @@ invariant that already holds, and its job is to keep holding. If it FAILS, that 
 finding from lab's 74 newly-imported scripts: a suite uses an extension URL the engine does
 not implement. Do not widen `KnownExtensionUrls` to make it pass — investigate the suite.
 
-- [ ] **Step 3: Prove the guard actually detects drift**
+- [ ] **Step 6: Prove the guard actually detects drift**
 
 Temporarily introduce a violation so the assertion is known to be live rather than vacuous:
 
@@ -851,7 +902,7 @@ dotnet test test/Ignixa.RepoGuards.Tests/Ignixa.RepoGuards.Tests.csproj --filter
 
 Expected: FAIL, naming `intervals.json: http://ignixa.io/testscript/bogus`.
 
-- [ ] **Step 4: Revert the temporary violation**
+- [ ] **Step 7: Revert the temporary violation**
 
 ```bash
 cd /e/data/src/ignixa-fhir
@@ -861,17 +912,20 @@ dotnet test test/Ignixa.RepoGuards.Tests/Ignixa.RepoGuards.Tests.csproj --filter
 
 Expected: PASS, and `git status` shows no modification to `intervals.json`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 cd /e/data/src/ignixa-fhir
-git add test/Ignixa.RepoGuards.Tests/ConformanceSuiteExtensionGuardTests.cs
+git add test/Ignixa.RepoGuards.Tests
 git commit -m "test(guards): assert conformance suites use only implemented extensions
 
 Unknown non-modifier extensions are silently ignored per the FHIR spec,
 so a suite written against an unshipped capability passes parsing and
 quietly does nothing. Walks every url property because the fhirfakes
-extension lives inside fixture[].resource, not in an extension array."
+extension lives inside fixture[].resource, not in an extension array.
+
+Extracts the repo-root locator the two existing guards each carried a
+private copy of, rather than adding a third."
 ```
 
 ---
@@ -901,7 +955,7 @@ dotnet test All.sln -c Release --filter "FullyQualifiedName!~E2ETests"
 ```
 
 Expected: all tests PASS. `ConformanceScriptParseTests` contributes 87 cases per target
-framework where it previously contributed 13.
+framework where it previously contributed 12.
 
 - [ ] **Step 3: Confirm the pack step will pick up the new project**
 
@@ -1033,6 +1087,6 @@ issue manually with the same title and body and report the URL.
 
 **Deferred to follow-up, not covered by a task:** the spec's "Follow-up" section calls for an ADR-2607 amendment recording the location decision and the `AppContext.BaseDirectory` mechanism. Task 5 updates ADR-2607's *paths* but does not add the decision record. That is a separate ADR edit and should be raised with the maintainer per the repo's ADR process rather than folded into an implementation commit.
 
-**Type consistency:** `SuitesDirectoryName` is the constant name in both Task 3 and Task 4. `KnownExtensionUrls`, `IgnixaExtensionPrefix`, `CollectIgnixaExtensionUrls`, `CollectFromElement`, `EnumerateSuiteFiles` and `FindRepoRoot` are used consistently within Task 6. `FindRepoRoot` intentionally duplicates the helper in `PackageStabilityGuardTests` and `RuntimeMultiTargetingGuardTests` — matching the existing convention in that project, which already has two copies.
+**Type consistency:** `SuitesDirectoryName` is the constant name in both Task 3 and Task 4. `KnownExtensionUrls`, `IgnixaExtensionPrefix`, `CollectIgnixaExtensionUrls`, `CollectFromElement` and `EnumerateSuiteFiles` are used consistently within Task 6. `RepoRoot.Find()` is defined in Task 6 Step 1 and is the single locator used by all three guard tests after Step 2.
 
 **Placeholder scan:** no TBD/TODO; every code step contains complete code; every command has an expected result.

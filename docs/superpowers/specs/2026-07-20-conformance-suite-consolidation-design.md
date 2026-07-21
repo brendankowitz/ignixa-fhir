@@ -9,7 +9,7 @@ The TestScript conformance corpus exists twice, and the copies have diverged.
 
 | | `ignixa-fhir/conformance-tests/` | `ignixa-lab/backend/src/Ignixa.Lab.Suites/testscripts/` |
 |---|---|---|
-| Scripts | 13 | 87 |
+| Scripts | 12 | 87 |
 | Categories | Bundles, CRUD, Search, Validation | + Foundation, Microsoft, Operations, Regression, Subscriptions |
 | CRUD | 2 | 25 |
 | Search | 8 | 23 |
@@ -29,7 +29,7 @@ That repointing never happened, and lab's copy grew 6.7x in the interim.
 
 ### Divergence detail
 
-Of the 13 overlapping files, 10 are byte-identical and 0 exist only in `ignixa-fhir`.
+Of the 12 overlapping files, 9 are byte-identical and 0 exist only in `ignixa-fhir`.
 Three differ in both directions, so this is a merge and not a fast-forward:
 
 | File | Lines only in `ignixa-fhir` |
@@ -210,7 +210,7 @@ against an engine capability that the shipped engine does not have.
 
 ## Expected fallout
 
-The E2E conformance gate will go red when the corpus jumps 13 → 87. That is the intended
+The E2E conformance gate will go red when the corpus jumps 12 → 87. That is the intended
 outcome — the current green is dishonest. Triage each new failure into:
 
 - **Fix now** — a real server bug the expanded corpus exposed.
