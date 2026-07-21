@@ -8,6 +8,7 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
@@ -151,7 +152,7 @@ public class SearchTraceRealParserTests
         cte.ShouldNotBeNull("no CTE was attributed to the parameter");
 
         trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Ranges.ShouldContain(r => r.Label == $"cte{cte.CteIndex}");
+        trace.Sql!.Ranges.ShouldContain(r => r.Label == PlanExplainer.CteLabel(cte.CteIndex));
     }
 
     private static string Slice(ParameterTrace parameter, SourceSpan span)

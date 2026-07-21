@@ -1,5 +1,6 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Tracing;
 
 namespace Ignixa.Search.Sql.Tests.Tracing;
@@ -61,7 +62,7 @@ public class SearchTraceTests
                 ctes[i].ParameterOrdinal.ShouldBeNull($"{scenario}: cte{i} should be exempt from provenance");
             }
 
-            trace.Sql!.Ranges.ShouldContain(r => r.Label == $"cte{i}", $"{scenario}: cte{i} has no SQL text range");
+            trace.Sql!.Ranges.ShouldContain(r => r.Label == PlanExplainer.CteLabel(i), $"{scenario}: {PlanExplainer.CteLabel(i)} has no SQL text range");
         }
     }
 
