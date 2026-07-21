@@ -18,6 +18,7 @@ public sealed class TestScriptConformanceReportTests
     private const string ReportPathEnvironmentVariable = "IGNIXA_CONFORMANCE_REPORT_PATH";
     private const string FhirVersion = "4.0";
     private const string ImplementationName = "ignixa";
+    private const string SuitesDirectoryName = "testscripts";
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
@@ -36,7 +37,7 @@ public sealed class TestScriptConformanceReportTests
 
         var startedAt = DateTimeOffset.UtcNow;
         var startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
-        var testsDirectory = FindRepositoryDirectory("conformance-tests");
+        var testsDirectory = Path.Combine(AppContext.BaseDirectory, SuitesDirectoryName);
         var evaluator = CreateEvaluator();
         var results = new List<ConformanceResult>();
 
@@ -129,18 +130,4 @@ public sealed class TestScriptConformanceReportTests
         await File.WriteAllTextAsync(reportPath, json, cancellationToken);
     }
 
-    private static string FindRepositoryDirectory(string directoryName)
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            var candidate = Path.Combine(current.FullName, directoryName);
-            if (Directory.Exists(candidate))
-                return candidate;
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException($"Could not find '{directoryName}' from '{AppContext.BaseDirectory}'.");
-    }
 }

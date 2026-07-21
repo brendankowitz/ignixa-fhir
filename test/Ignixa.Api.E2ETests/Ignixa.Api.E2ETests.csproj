@@ -41,4 +41,12 @@
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
   </ItemGroup>
 
+  <!--
+    Explicit import, not a ProjectReference: NuGet auto-imports build/*.targets for
+    PackageReference consumers only. This gives the in-repo test the same suite-delivery
+    path that packaged consumers get, so a break in the targets file fails here rather
+    than downstream after a publish.
+  -->
+  <Import Project="..\..\src\Core\Ignixa.TestScript.Suites\build\Ignixa.TestScript.Suites.targets" />
+
 </Project>
