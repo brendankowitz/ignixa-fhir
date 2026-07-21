@@ -42,6 +42,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="161.8905.0" />
     <!-- SQL Server -->
     <!-- OpenIddict -->
     <PackageVersion Include="OpenIddict.AspNetCore" Version="6.4.0" />

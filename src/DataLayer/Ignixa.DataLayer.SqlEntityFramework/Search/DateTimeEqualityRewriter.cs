@@ -3,19 +3,29 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Search.Expressions;
 using Ignixa.Specification.ValueSets.Normative;
 
-namespace Ignixa.Search.Expressions;
+// Ported from fhir-server in a nullable-oblivious style (declare non-nullable, assign null). Kept
+// oblivious rather than rewritten to satisfy this project's nullable context, to preserve the port.
+#nullable disable
+
+namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 
 /// <summary>
-/// Rewrites (And (FieldGreaterThanOrEqual DateTimeStart x) (FieldLessThanOrEqual DateTimeEnd y)) to
-/// (And (FieldGreaterThanOrEqual DateTimeStart x) (FieldLessThanOrEqual DateTimeEnd y) (FieldLessThanOrEqual DateTimeStart y)).
-/// It looks specifically for this pattern because it is what we emit in the core layer for an equals search over a date parameter.
-/// This rewriting constrains the range scan over the index (DateTimeStart, DateTimeEnd).
+/// A SQL-index optimization: adds a redundant <c>DateTimeStart &lt;= y</c> bound to a containment-shaped
+/// date predicate — <c>And(DateTimeStart &gt;= x, DateTimeEnd &lt;= y)</c> becomes
+/// <c>And(DateTimeStart &gt;= x, DateTimeStart &lt;= y, DateTimeEnd &lt;= y)</c> — which constrains the
+/// range scan over the <c>(DateTimeStart, DateTimeEnd)</c> index. Only the <c>:ap</c> comparator
+/// produces the containment shape today; ordinary date equality uses an overlap shape
+/// (<c>DateTimeStart &lt;= end AND DateTimeEnd &gt;= start</c>) that this rewriter deliberately leaves
+/// untouched. It lives in the SQL layer, not the shared <see cref="LegacyExpressionLowerer"/> bridge,
+/// because it is specific to the SQL search-index schema — other old-shape backends (e.g. CosmosDB) share
+/// the bridge but must not inherit this SQL-only rewrite. Runs on the lowered field-level tree.
 /// </summary>
-internal class DateTimeEqualityRewriter : ExpressionRewriterWithInitialContext<object>
+public class DateTimeEqualityRewriter : ExpressionRewriterWithInitialContext<object>
 {
-    internal static readonly DateTimeEqualityRewriter Instance = new();
+    public static readonly DateTimeEqualityRewriter Instance = new();
 
     public override Expression VisitSearchParameter(SearchParameterExpression expression, object context)
     {

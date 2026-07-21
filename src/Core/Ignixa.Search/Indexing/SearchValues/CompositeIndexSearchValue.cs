@@ -9,15 +9,21 @@ using EnsureThat;
 namespace Ignixa.Search.Indexing.SearchValues;
 
 /// <summary>
-/// Represents a composite search value.
+/// Represents a composite search-parameter value during indexing. Constructed only by
+/// <see cref="ElementSearchIndexer"/> on the write path -- neither the legacy query parser
+/// (<see cref="Ignixa.Search.Expressions.Parsers.Legacy.LegacySearchParameterExpressionParser"/>)
+/// nor the current query parser (<see cref="Ignixa.Search.Expressions.Parsers.SearchExpressionBinder"/>)
+/// ever construct or consume this type. Composite query-side handling decomposes into per-component
+/// atomic values before any aggregate value exists -- see
+/// docs/superpowers/specs/2026-07-15-search-semantic-ir-design.md.
 /// </summary>
-public class CompositeSearchValue : ISearchValue
+public class CompositeIndexSearchValue : ISearchValue
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="CompositeSearchValue"/> class.
+    /// Initializes a new instance of the <see cref="CompositeIndexSearchValue"/> class.
     /// </summary>
     /// <param name="components">The composite component values.</param>
-    public CompositeSearchValue(IReadOnlyList<IReadOnlyList<ISearchValue>> components)
+    public CompositeIndexSearchValue(IReadOnlyList<IReadOnlyList<ISearchValue>> components)
     {
         EnsureArg.IsNotNull(components, nameof(components));
         EnsureArg.HasItems(components, nameof(components));
@@ -45,7 +51,7 @@ public class CompositeSearchValue : ISearchValue
     {
         if (other == null) return false;
 
-        var compositeSearchValueOther = other as CompositeSearchValue;
+        var compositeSearchValueOther = other as CompositeIndexSearchValue;
 
         if (compositeSearchValueOther == null) return false;
 

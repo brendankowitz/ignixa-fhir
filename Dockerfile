@@ -41,6 +41,8 @@ COPY src/Core/Ignixa.FhirPath/Ignixa.FhirPath.csproj src/Core/Ignixa.FhirPath/
 COPY src/Core/Ignixa.FhirPath.Generators/Ignixa.FhirPath.Generators.csproj src/Core/Ignixa.FhirPath.Generators/
 COPY src/Core/Ignixa.PackageManagement/Ignixa.PackageManagement.csproj src/Core/Ignixa.PackageManagement/
 COPY src/Core/Ignixa.Search/Ignixa.Search.csproj src/Core/Ignixa.Search/
+COPY src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj src/Core/Ignixa.Search.Sql/
+COPY src/Core/Ignixa.Search.Sql.Generators/Ignixa.Search.Sql.Generators.csproj src/Core/Ignixa.Search.Sql.Generators/
 COPY src/Core/Ignixa.Serialization/Ignixa.Serialization.csproj src/Core/Ignixa.Serialization/
 COPY src/Core/Ignixa.Specification/Ignixa.Specification.csproj src/Core/Ignixa.Specification/
 COPY src/Core/Ignixa.SqlOnFhir/Ignixa.SqlOnFhir.csproj src/Core/Ignixa.SqlOnFhir/

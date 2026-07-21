@@ -81,7 +81,71 @@ public partial class ElementSearchIndexer : ISearchIndexer
                 entries.AddRange(ProcessNonCompositeSearchParameter(searchParameter, resource, context));
         }
 
+        MarkMinMaxValues(entries);
+
         return entries;
+    }
+
+    /// <summary>
+    /// A resource's search parameter can have multiple values (e.g. multiple HumanName entries for
+    /// Patient.name). This marks which of those values is the min and which is the max for each
+    /// distinct search parameter, so a compiled sort can seek directly against IsMin/IsMax-flagged
+    /// rows instead of aggregating at query time. Ported from microsoft/fhir-server's
+    /// ResourceWrapperFactory.ExtractMinAndMaxValues -- see
+    /// docs/superpowers/plans/2026-07-18-search-indexer-min-max-flags.md's Global Constraints for the
+    /// exact source method this mirrors.
+    /// </summary>
+    private static void MarkMinMaxValues(IReadOnlyCollection<SearchIndexEntry> searchIndices)
+    {
+        var minValues = new Dictionary<Uri, ISupportSortSearchValue>();
+        var maxValues = new Dictionary<Uri, ISupportSortSearchValue>();
+
+        foreach (SearchIndexEntry currentEntry in searchIndices)
+        {
+            if (currentEntry.Value is not ISupportSortSearchValue currentValue)
+            {
+                continue;
+            }
+
+            if (currentEntry.SearchParameter.SortStatus == SortParameterStatus.Disabled)
+            {
+                continue;
+            }
+
+            if (minValues.TryGetValue(currentEntry.SearchParameter.Url, out ISupportSortSearchValue existingMinValue))
+            {
+                if (currentValue.CompareTo(existingMinValue, ComparisonRange.Min) < 0)
+                {
+                    minValues[currentEntry.SearchParameter.Url] = currentValue;
+                }
+            }
+            else
+            {
+                minValues.Add(currentEntry.SearchParameter.Url, currentValue);
+            }
+
+            if (maxValues.TryGetValue(currentEntry.SearchParameter.Url, out ISupportSortSearchValue existingMaxValue))
+            {
+                if (currentValue.CompareTo(existingMaxValue, ComparisonRange.Max) > 0)
+                {
+                    maxValues[currentEntry.SearchParameter.Url] = currentValue;
+                }
+            }
+            else
+            {
+                maxValues.Add(currentEntry.SearchParameter.Url, currentValue);
+            }
+        }
+
+        foreach (KeyValuePair<Uri, ISupportSortSearchValue> kvp in minValues)
+        {
+            kvp.Value.IsMin = true;
+        }
+
+        foreach (KeyValuePair<Uri, ISupportSortSearchValue> kvp in maxValues)
+        {
+            kvp.Value.IsMax = true;
+        }
     }
 
     private IEnumerable<SearchIndexEntry> ProcessCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context)
@@ -148,7 +212,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
             if (skip) continue;
 
-            yield return new SearchIndexEntry(compositeSearchParameterInfo, new CompositeSearchValue(componentValues));
+            yield return new SearchIndexEntry(compositeSearchParameterInfo, new CompositeIndexSearchValue(componentValues));
         }
     }
 
@@ -430,7 +494,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
             case SearchParamType.Reference:
                 return typeof(ReferenceSearchValue);
             case SearchParamType.Composite:
-                return typeof(CompositeSearchValue);
+                return typeof(CompositeIndexSearchValue);
             case SearchParamType.Quantity:
                 return typeof(QuantitySearchValue);
             case SearchParamType.Uri:

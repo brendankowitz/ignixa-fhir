@@ -1,0 +1,130 @@
+using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Lowering;
+using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
+using Shouldly;
+using Xunit;
+
+namespace Ignixa.Search.Sql.Tests.Lowering;
+
+public class ResourceColumnLoweringRuleTests
+{
+    private static LeafContext ContextResolving(string resourceType, short resourceTypeId)
+        => new(new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { [resourceType] = resourceTypeId }));
+
+    private static SearchParameterInfo IdParameter()
+        => new("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+
+    private static SearchParameterInfo TypeParameter()
+        => new("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+
+    [Fact]
+    public void GivenAnOrdinaryTokenParameter_WhenTried_ThenReturnsNull()
+    {
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null));
+
+        ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)).ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAnIdParameter_WhenTried_ThenComparesResourceId()
+    {
+        var predicate = new SearchParameterPredicateExpression(IdParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null));
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        var equal = result.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Column.ShouldBe("ResourceId");
+        equal.Value.Value.ShouldBe("123");
+    }
+
+    [Fact]
+    public void GivenASystemQualifiedIdParameter_WhenTried_ThenThrows()
+    {
+        var predicate = new SearchParameterPredicateExpression(IdParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://example.org", code: "123", text: null));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    [Fact]
+    public void GivenATypeParameter_WhenTried_ThenComparesResourceTypeIdViaTheResolver()
+    {
+        var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Patient", text: null));
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        var equal = result.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Column.ShouldBe("ResourceTypeId");
+        equal.Value.Value.ShouldBe((short)103);
+    }
+
+    [Fact]
+    public void GivenAnIdParameterWithANotModifier_WhenTried_ThenThrowsRatherThanSilentlyDroppingTheNegation()
+    {
+        // Arrange -- _id:not=123. Without this guard, the modifier would be silently discarded and
+        // this would lower to a POSITIVE match (WHERE ResourceId = '123'), the exact opposite of what
+        // :not means -- the same bug class Lower.LowerSearchParameter's own :not handling exists to
+        // prevent, just reachable here through the resource-column extraction path instead.
+        var predicate = new SearchParameterPredicateExpression(IdParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "123", text: null));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    [Fact]
+    public void GivenATypeParameterWithANotModifier_WhenTried_ThenThrows()
+    {
+        var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "Patient", text: null));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    private static SearchParameterInfo LastUpdatedParameter()
+        => new("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+
+    [Fact]
+    public void GivenAnExactInstantLastUpdatedParameter_WhenTried_ThenComparesResourceSurrogateId()
+    {
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, modifier: null, value);
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        var ge = result.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("ResourceSurrogateId");
+        // 2023-06-15T12:30:00.000Z truncated-to-millisecond ticks, left-shifted 3 bits
+        var expectedTicks = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks;
+        ge.Value.Value.ShouldBe(expectedTicks << 3);
+    }
+
+    [Fact]
+    public void GivenAPartialPrecisionLastUpdatedParameter_WhenTried_ThenThrows()
+    {
+        // Arrange -- "_lastUpdated=2023" (year-only precision). DateTimeSearchValue.Parse("2023") runs
+        // it through PartialDateTime.Parse (only Year is set) and widens it to a non-degenerate range
+        // ([2023-01-01T00:00:00.0000000Z, 2023-12-31T23:59:59.9999999Z]), not a single instant.
+        var value = DateTimeSearchValue.Parse("2023");
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, modifier: null, value);
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    [Fact]
+    public void GivenALastUpdatedParameterWithAModifier_WhenTried_ThenThrowsRatherThanSilentlyIgnoringIt()
+    {
+        // Arrange -- no modifier is supported on _lastUpdated yet. Without this guard the modifier
+        // would be silently dropped and the query would run as if it were never specified -- the same
+        // bug class already found and fixed twice this increment for _id/_type, just for a different
+        // parameter and modifier.
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Missing), new DateTimeSearchValue(DateTimeOffset.UtcNow));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+}

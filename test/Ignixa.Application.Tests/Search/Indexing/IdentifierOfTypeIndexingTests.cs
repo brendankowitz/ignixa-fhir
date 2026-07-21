@@ -128,9 +128,13 @@ public class IdentifierOfTypeIndexingTests
         var identifier = identifiers[0];
 
         // Act - Test FHIRPath expressions
-        var value = identifier.Scalar("value") as string;
-        var typeSystem = identifier.Scalar("type.coding.first().system") as string;
-        var typeCode = identifier.Scalar("type.coding.first().code") as string;
+        // Fully qualified: Ignixa.Search.Indexing.Converters.ElementExtensions declares its own
+        // internal (now InternalsVisibleTo'd here) non-FHIRPath "Scalar(IElement, string)" - a
+        // literal single-level child lookup - which is an exact-match overload that silently wins
+        // over the real FHIRPath evaluator for chained paths like "type.coding.first().system".
+        var value = FhirPath.Evaluation.TypedElementExtensions.Scalar(identifier, "value") as string;
+        var typeSystem = FhirPath.Evaluation.TypedElementExtensions.Scalar(identifier, "type.coding.first().system") as string;
+        var typeCode = FhirPath.Evaluation.TypedElementExtensions.Scalar(identifier, "type.coding.first().code") as string;
 
         // Assert
         value.ShouldBe("SSN-123");

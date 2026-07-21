@@ -211,6 +211,15 @@ namespace Ignixa.Search {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Composite search parameter &apos;{0}&apos; component {1} (definition: {2}) is not properly resolved. This indicates the search parameter was not properly built during initialization..
+        /// </summary>
+        internal static string CompositeSearchParameterComponentNotResolved {
+            get {
+                return ResourceManager.GetString("CompositeSearchParameterComponentNotResolved", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to The _count parameter must be between {0} and {1}..
         /// </summary>
         internal static string ConditionalDeleteCountOutOfRange {
@@ -631,6 +640,15 @@ namespace Ignixa.Search {
         internal static string LinksCantBeCreated {
             get {
                 return ResourceManager.GetString("LinksCantBeCreated", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Malformed {0} at line {1}, column {2}: {3}.
+        /// </summary>
+        internal static string MalformedSearchSyntax {
+            get {
+                return ResourceManager.GetString("MalformedSearchSyntax", resourceCulture);
             }
         }
 

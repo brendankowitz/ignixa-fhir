@@ -72,6 +72,13 @@ public class SearchExpressionQueryBuilder
     {
         ArgumentNullException.ThrowIfNull(expression);
 
+        // Bridge: this class dispatches on the OLD field-level Expression shape via a hand-written
+        // type-switch, not IExpressionVisitor, but the parser's canonical output is now the typed
+        // predicate tree. Lower it back to the shape this class handles, then apply the SQL-only
+        // date-index optimization (which matches the lowered shape, not the typed IR).
+        expression = LegacyExpressionLowerer.LowerToLegacy(expression)
+            .AcceptVisitor(DateTimeEqualityRewriter.Instance, null);
+
         _logger.LogDebug(
             "ApplySearchExpressionAsync: ExpressionType={ExpressionType}, ResourceTypeId={ResourceTypeId}",
             expression.GetType().Name,

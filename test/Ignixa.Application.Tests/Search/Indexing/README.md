@@ -11,7 +11,7 @@ The diagnostic tests in `CompositeSearchIndexingDiagnosticTests.cs` confirm that
 ### ✅ What's Working
 
 1. **Search Parameter Extraction**: The `code-value-quantity` search parameter is correctly identified and extracted from Observation resources
-2. **CompositeSearchValue Creation**: The indexer creates `CompositeSearchValue` with 2 components
+2. **CompositeIndexSearchValue Creation**: The indexer creates `CompositeIndexSearchValue` with 2 components
 3. **Component 0 (Token)**: Correctly extracts `TokenSearchValue` from `Observation.code.coding`:
    - System: `http://loinc.org`
    - Code: `9272-6`

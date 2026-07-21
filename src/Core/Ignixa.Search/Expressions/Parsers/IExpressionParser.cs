@@ -5,9 +5,12 @@
 
 namespace Ignixa.Search.Expressions.Parsers;
 
+/// <summary>Parses a raw search key/value pair (and <c>_include</c>/<c>_revinclude</c>) into a search <see cref="Expression"/>.</summary>
 public interface IExpressionParser
 {
     Expression Parse(string[] resourceTypes, string key, string value);
+
+    ParseResult ParseWithSyntax(string[] resourceTypes, string key, string value);
 
     IncludeExpression ParseInclude(string[] resourceTypes, string includeValue, bool isReversed, bool iterate);
 }

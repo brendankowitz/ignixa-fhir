@@ -8,6 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Catalog;
 using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
@@ -18,9 +19,11 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// Supports min/max flags for sorting optimization.
 /// </summary>
 /// <remarks>
-/// Text storage strategy for FHIR string search:
-/// - Text column stores first 256 chars of ORIGINAL case text (for :exact modifier support)
-/// - TextOverflow stores remaining chars for strings longer than 256 chars
+/// Text storage strategy for FHIR string search (matches microsoft/fhir-server's convention):
+/// - Text column stores a redundant first-256-char prefix of ORIGINAL case text, so an index seek
+///   is still possible without touching TextOverflow (for :exact modifier support)
+/// - TextOverflow stores the WHOLE value (not just the remainder) for strings longer than 256 chars,
+///   so LIKE/= against TextOverflow alone is correct once a value overflows
 /// - Query-time collation is used for case-sensitivity:
 ///   - No modifier / :contains: Latin1_General_100_CI_AI (case-insensitive, accent-insensitive)
 ///   - :exact: Latin1_General_100_CS_AS (case-sensitive, accent-sensitive)
@@ -30,9 +33,11 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </remarks>
 public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    // Text column max length matches the database column definition (256 chars)
-    // TextOverflow (nvarchar(max)) handles any additional characters
-    private const int StringColumnMaxLength = 256;
+    // Inline width sourced from SqlCatalog (Phase 3) instead of a locally hardcoded constant --
+    // matches dbo.StringSearchParam.Text's real DDL width (Resources/97.sql).
+    private static readonly int InlineWidth =
+        SqlCatalog.Default.Table("StringSearchParam").Column("Text").MaxLength
+        ?? throw new InvalidOperationException("StringSearchParam.Text has no MaxLength in SqlCatalog.");
 
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
@@ -78,10 +83,13 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
                 // Store text in ORIGINAL case for :exact modifier support
                 // Case-insensitive search is handled via query-time collation (Latin1_General_100_CI_AI)
                 var textValue = stringValue.String;
-                if (textValue != null && textValue.Length > StringColumnMaxLength)
+                if (textValue != null && textValue.Length > InlineWidth)
                 {
-                    record.SetString(3, textValue.Substring(0, StringColumnMaxLength));
-                    record.SetString(4, textValue.Substring(StringColumnMaxLength));
+                    // Text keeps a redundant prefix so the index can still seek (fhir-server's convention);
+                    // TextOverflow holds the WHOLE value -- not the remainder -- so LIKE/= against
+                    // TextOverflow alone is correct for the >InlineWidth case.
+                    record.SetString(3, textValue.Substring(0, InlineWidth));
+                    record.SetString(4, textValue);
                 }
                 else
                 {

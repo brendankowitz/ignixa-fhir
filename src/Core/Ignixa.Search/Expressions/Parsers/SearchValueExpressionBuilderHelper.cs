@@ -12,7 +12,13 @@ using Ignixa.Search.Indexing.SearchValues;
 
 namespace Ignixa.Search.Expressions.Parsers;
 
-internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
+/// <summary>
+/// Flattens a typed <see cref="ISearchValue"/> into the old field-level <see cref="Expression"/> shape
+/// (via <see cref="ISearchValueVisitor"/>) and validates the modifier/comparator against the value type.
+/// The counterpart to <see cref="SearchPredicateExpressionBuilder"/>, which keeps the typed value instead
+/// of flattening it.
+/// </summary>
+internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
     private const decimal ApproximateMultiplier = .1M;
     private SearchComparator _comparator;
@@ -23,7 +29,7 @@ internal class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
     private string _searchParameterName;
 
-    void ISearchValueVisitor.Visit(CompositeSearchValue composite)
+    void ISearchValueVisitor.Visit(CompositeIndexSearchValue composite)
     {
         // Composite search values will be broken down into individual components,
         // and therefore this method should not be called.

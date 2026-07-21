@@ -107,6 +107,11 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
             var referenceParser = new ReferenceSearchValueParser(schemaProvider);
 
             // Create version-specific SearchParameterExpressionParser (needs both parser and provider)
+            // Rollback lever: if this parser (PR #332's handwritten-scanner rewrite) causes a
+            // production issue, swap both lines below to Ignixa.Search.Expressions.Parsers.Legacy.
+            // LegacySearchParameterExpressionParser/LegacyExpressionParser (same constructor
+            // signatures) and redeploy. See that namespace and docs/features/search/investigations/
+            // superpower-search-expression-parser.md for context.
             var searchParamExpressionParser = new SearchParameterExpressionParser(referenceParser, schemaProvider);
 
             // Create version-specific ExpressionParser

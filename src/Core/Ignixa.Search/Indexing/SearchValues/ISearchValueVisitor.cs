@@ -8,10 +8,10 @@ namespace Ignixa.Search.Indexing.SearchValues;
 public interface ISearchValueVisitor
 {
     /// <summary>
-    /// Visits the <see cref="CompositeSearchValue"/>.
+    /// Visits the <see cref="CompositeIndexSearchValue"/>.
     /// </summary>
     /// <param name="composite">The composite search value to visit.</param>
-    void Visit(CompositeSearchValue composite);
+    void Visit(CompositeIndexSearchValue composite);
 
     /// <summary>
     /// Visits the <see cref="DateTimeSearchValue"/>.

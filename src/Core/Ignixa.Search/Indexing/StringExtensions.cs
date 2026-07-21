@@ -67,34 +67,6 @@ internal static class StringExtensions
     }
 
     /// <summary>
-    /// Splits the <paramref name="s"/> using composite separator.
-    /// </summary>
-    /// <param name="s">The string to be parsed.</param>
-    /// <returns>An <see cref="IList{T}"/> that contains strings split by using composite separator.</returns>
-    /// <remarks>Since the composite separator character has special rule defined, if the character appears in the actual value,
-    /// it needs to be escaped. More detail can be found here: http://hl7.org/fhir/search.html#escaping </remarks>
-    public static IReadOnlyList<string> SplitByCompositeSeparator(this string s)
-    {
-        EnsureArg.IsNotNull(s, nameof(s));
-
-        return Split(s, CompositeSeparator);
-    }
-
-    /// <summary>
-    /// Splits the <paramref name="s"/> using or separator.
-    /// </summary>
-    /// <param name="s">The string to be parsed.</param>
-    /// <returns>An <see cref="IList{T}"/> that contains strings split by using or separator.</returns>
-    /// <remarks>Since the or separator character has special rule defined, if the character appears in the actual value,
-    /// it needs to be escaped. More detail can be found here: http://hl7.org/fhir/search.html#escaping </remarks>
-    public static IReadOnlyList<string> SplitByOrSeparator(this string s)
-    {
-        EnsureArg.IsNotNull(s, nameof(s));
-
-        return Split(s, OrSeparator);
-    }
-
-    /// <summary>
     /// Joins the <paramref name="strings"/>> using or separator.
     /// </summary>
     /// <param name="strings">String to be joined.</param>
