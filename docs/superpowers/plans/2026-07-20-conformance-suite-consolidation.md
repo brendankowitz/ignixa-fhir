@@ -585,8 +585,8 @@ Both consumers are rewired, so the old tree is now dead. Nothing reads it.
 **Files:**
 - Delete: `conformance-tests/` (12 files)
 - Modify: `docs/adr/adr-2607-testscript-extensions.md` lines 11, 26, 49, 87, 104
-- Modify: `docs/site/docs/core-sdk/testscript.md` lines 263, 284
-- Modify: `tools/Ignixa.ConformanceMatrix.Cli/README.md` line 18
+- Modify: `docs/site/docs/core-sdk/testscript.md` lines 279, 283, 307
+- Modify: `tools/Ignixa.ConformanceMatrix.Cli/README.md` lines 19, 26, 35
 - Modify: `README.md`
 
 **Interfaces:**
@@ -624,21 +624,25 @@ surrounding prose is unchanged; only the paths move. Specifically:
 - Line 87: "From `conformance-tests/CRUD/basic.json`:" → "From `src/Core/Ignixa.TestScript.Suites/testscripts/CRUD/basic.json`:"
 - Line 104: "...across source, tests, `conformance-tests/`, and `docs/`" → "...across source, tests, `src/Core/Ignixa.TestScript.Suites/testscripts/`, and `docs/`"
 
-- [ ] **Step 4: Update the docs-site CLI example and report note**
+- [ ] **Step 4: Update the docs-site CLI examples and report note**
 
-In `docs/site/docs/core-sdk/testscript.md`, line 263:
+In `docs/site/docs/core-sdk/testscript.md` there are **three** references. Lines 279 and 283
+are both `ignixa-matrix` invocations of the form:
 
 ```bash
 ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
 ```
 
-becomes:
+Each becomes:
 
 ```bash
 ignixa-matrix run --server https://your-fhir-server --tests ./src/Core/Ignixa.TestScript.Suites/testscripts \
 ```
 
-And line 284, replace:
+Line 283's invocation additionally carries `--format json` on its continuation line; leave
+that and every other flag untouched — only the `--tests` value changes.
+
+And line 307, replace:
 
 ```
 - The report is generated during docs deployment by running the `conformance-tests` suite through the same SQL Server/Azurite-backed E2E test environment used by CI.
@@ -650,11 +654,26 @@ with:
 - The report is generated during docs deployment by running the canonical suite corpus (`src/Core/Ignixa.TestScript.Suites/testscripts/`, also published as the `Ignixa.TestScript.Suites` package) through the same SQL Server/Azurite-backed E2E test environment used by CI.
 ```
 
-- [ ] **Step 5: Update the CLI README example**
+- [ ] **Step 5: Update the CLI README examples**
 
-In `tools/Ignixa.ConformanceMatrix.Cli/README.md`, line 18, replace `./conformance-tests`
-with `./src/Core/Ignixa.TestScript.Suites/testscripts`. The CLI itself takes `--tests <path>`
-and needs no code change.
+In `tools/Ignixa.ConformanceMatrix.Cli/README.md` there are **three** `--tests ./conformance-tests`
+occurrences, at lines 19, 26 and 35 — the basic run, the `--auth-header` variant, and the
+`--format json` variant. Replace `./conformance-tests` with
+`./src/Core/Ignixa.TestScript.Suites/testscripts` in all three. Change only the `--tests`
+value; leave every other flag on those command lines untouched.
+
+The CLI itself takes `--tests <path>` (`Commands/RunCommand.cs:36`, described as "Folder
+containing TestScript .json files") and needs no code change.
+
+- [ ] **Step 5a: Verify no `--tests ./conformance-tests` occurrence was missed**
+
+```bash
+cd /e/data/src/ignixa-fhir
+grep -rn "conformance-tests" --include=*.md . | grep -v '\.superpowers/' | grep -v 'docs/superpowers/'
+```
+
+Expected: **no output**. Any hit is a reference Steps 3-5 missed. (The plan and spec under
+`docs/superpowers/` legitimately discuss the old path in past tense and are excluded.)
 
 - [ ] **Step 6: Add a discoverability pointer to the root README**
 
