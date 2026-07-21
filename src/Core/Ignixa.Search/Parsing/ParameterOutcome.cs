@@ -10,8 +10,16 @@ using Ignixa.Search.Expressions;
 namespace Ignixa.Search.Parsing;
 
 /// <summary>What happened to one search parameter during parsing.</summary>
+/// <remarks>
+/// A closed union: the private constructor keeps the nested records the only possible cases, so a consumer
+/// switching over them can rely on exhaustiveness. Nested types can still reach it, external ones cannot.
+/// </remarks>
 public abstract record ParameterOutcome
 {
+    private ParameterOutcome()
+    {
+    }
+
     /// <summary>The parameter parsed and contributed to the search expression.</summary>
     public sealed record Compiled : ParameterOutcome;
 

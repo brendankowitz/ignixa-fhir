@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
@@ -13,15 +13,18 @@ namespace Ignixa.Search.Sql.Tracing;
 
 /// <summary>
 /// The compiler's single orchestration entry point: runs Build, Resolve, Lower, and Emit in sequence and
-/// assembles a <see cref="SearchTrace"/> spanning all four stages. Production wiring and the tracing test
-/// suite both call this — neither re-implements any stage, so the two can never drift.
+/// assembles a <see cref="SearchTrace"/> spanning all four stages. Today the tracing test suite is its only
+/// caller; it exists so that future production wiring runs the same sequence rather than re-implementing the
+/// stage order alongside it.
 /// </summary>
 public static class SearchCompiler
 {
     /// <summary>
     /// Compiles a search end to end and traces every stage. Failures are recorded as data on the
-    /// returned trace rather than thrown: an unresolved search parameter is reported at
-    /// <see cref="TraceStage.Resolve"/> directly from <see cref="ResolvedSymbols.Unresolved"/>, and a
+    /// returned trace rather than thrown: an unresolved search parameter always reaches
+    /// <see cref="SearchTrace.Failure"/> at <see cref="TraceStage.Resolve"/> directly from
+    /// <see cref="ResolvedSymbols.Unresolved"/> — and additionally marks its own parameter outcome when one
+    /// of them owns a <see cref="ParameterTrace"/> to mark — and a
     /// <see cref="NotSupportedException"/>/<see cref="KeyNotFoundException"/> from Lower or Emit is
     /// caught at this boundary, recorded on <see cref="SearchTrace.Failure"/>, and attributed to the
     /// parameter the failing dispatcher named.
@@ -58,7 +61,12 @@ public static class SearchCompiler
 
         QueryPlanTrace? planTrace = null;
         EmittedSqlTrace? sqlTrace = null;
-        TraceFailure? failure = null;
+
+        // MarkUnresolved can only attribute a parameter that owns a ParameterTrace, and the builder raises
+        // one for ParameterCategory.Search alone -- an unresolved _include, _revinclude, _sort, or synthesized
+        // compartment parameter is attributable to nothing. Recording the failure unconditionally guarantees
+        // the absent plan below always has a stated cause, whether or not attribution found an owner.
+        var failure = ResolveFailure(resolved.Unresolved);
 
         // An unresolved parameter guarantees Lower will throw KeyNotFoundException the moment it looks
         // up that parameter's SearchParamId -- skip the call rather than let a second, less specific
@@ -89,10 +97,23 @@ public static class SearchCompiler
             }
         }
 
-        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace, failure)
+        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace)
         {
+            Failure = failure,
             Implicit = DetectImplicit(parameters, options),
         };
+    }
+
+    /// <summary>Names every parameter Resolve could not find in one top-level failure, or null when it found them all.</summary>
+    private static TraceFailure? ResolveFailure(IReadOnlyList<SearchParameterInfo> unresolved)
+    {
+        if (unresolved.Count == 0)
+        {
+            return null;
+        }
+
+        var codes = string.Join(", ", unresolved.Select(p => $"'{p.Code}'"));
+        return new TraceFailure(TraceStage.Resolve, $"Search parameters could not be resolved: {codes}.", null);
     }
 
     /// <summary>
@@ -103,8 +124,9 @@ public static class SearchCompiler
     /// <remarks>
     /// Supplied-ness is decided by <see cref="QueryParameter.Category"/>, the same classification the
     /// builder switches on, so a name form the builder would not treat as <c>_count</c> is not treated as
-    /// one here either. A resolved value carrying no decision (<see cref="TotalType.None"/>,
-    /// <see cref="SummaryType.None"/>) is skipped: a chip reading "nothing happened" is noise.
+    /// one here either. A resolved value carrying no decision (<see cref="TotalType.None"/>) is skipped: a
+    /// chip reading "nothing happened" is noise. <c>_summary</c> is never reported, because the builder
+    /// only ever sets it from an explicit <c>_summary</c>, which by definition is not implicit.
     /// </remarks>
     private static IReadOnlyList<ImplicitParameter> DetectImplicit(IReadOnlyList<QueryParameter> parameters, SearchOptions options)
     {
@@ -123,15 +145,9 @@ public static class SearchCompiler
 
         if (!supplied.Contains(ParameterCategory.Total) && options.Total != TotalType.None)
         {
-            // SearchOptionsBuilder promotes Total to Accurate for _summary=count. Naming the cause beats
-            // "server default", which would suggest a total the caller could not have predicted.
-            var reason = options.Summary == SummaryType.Count ? "implied by _summary=count" : ServerDefault;
-            implicitParameters.Add(new ImplicitParameter("_total", options.Total.ToString(), reason));
-        }
-
-        if (!supplied.Contains(ParameterCategory.Summary) && options.Summary != SummaryType.None)
-        {
-            implicitParameters.Add(new ImplicitParameter("_summary", options.Summary.ToString(), ServerDefault));
+            // Relies on the _summary=count promotion being the only way an unsupplied _total becomes
+            // non-None. A future server-set Total default must revisit this single reason.
+            implicitParameters.Add(new ImplicitParameter("_total", options.Total.ToString(), "implied by _summary=count"));
         }
 
         return implicitParameters;

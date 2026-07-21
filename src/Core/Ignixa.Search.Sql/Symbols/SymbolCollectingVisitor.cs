@@ -1,4 +1,4 @@
-﻿using Ignixa.Search.Expressions;
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Lowering;
@@ -20,9 +20,11 @@ namespace Ignixa.Search.Sql.Symbols;
 /// its own context (notably the query's target resource type). The exceptions collect a resource type
 /// directly off a leaf this visitor already walks: a <see cref="ReferenceSearchValue"/>'s type, a
 /// <c>_type</c> predicate's own value (the resource type it names), and a <see cref="ChainedExpression"/>'s
-/// reference parameter plus both its type arrays. Includes, sort keys, and compartments never appear in
-/// the Expression tree, so Resolve feeds them in through the direct <see cref="CollectInclude"/>,
-/// <see cref="CollectSort"/>, and <see cref="VisitCompartment"/> entry points instead.
+/// reference parameter plus both its type arrays. Includes and sort keys never appear in the Expression
+/// tree — they live on their own <see cref="Search.Models.SearchOptions"/> lists — so Resolve feeds them in
+/// through the direct <see cref="CollectInclude"/> and <see cref="CollectSort"/> entry points instead.
+/// A compartment search, by contrast, is an ordinary tree node: <see cref="VisitCompartment"/> is a normal
+/// visitor override reached by the same walk as every other <c>Visit*</c>.
 /// </para>
 /// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
@@ -135,7 +137,8 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     /// <summary>
     /// Records a parameter for resolution, skipping the resource-column codes. Those target dbo.Resource's
     /// own columns and never reach a SearchParamId lookup -- Lower extracts them into the outer predicate,
-    /// sorting by one throws before any lookup, and the dispatchers reject them outright. Collecting them
+    /// BuildSortKey resolves _lastUpdated straight to its own sort kind and rejects _id/_type outright, and
+    /// the dispatchers reject them too. Collecting them
     /// would make a resolver with no row for _id report the query unresolvable when it compiles fine.
     /// </summary>
     private void AddParameter(SearchParameterInfo parameter)

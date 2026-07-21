@@ -13,6 +13,14 @@ public static class PlanExplainer
         => string.Join('\n', Describe(plan).Select(row => $"{row.Label} = {row.Body}"));
 
     /// <summary>
+    /// The label for the CTE at <paramref name="index"/>. Both this explainer's rows and the emitted SQL's
+    /// <see cref="Builders.SqlTextRange"/>s are labelled through here, because tooling joins a plan row to
+    /// its SQL text by that string — two independent format strings would be one silent typo from breaking
+    /// that join with nothing to fail at compile time.
+    /// </summary>
+    public static string CteLabel(int index) => $"cte{index}";
+
+    /// <summary>
     /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
     /// the label kept apart from the body. Tooling needs the label to address a row (and to join it to the
     /// owning parameter via <see cref="Tracing.CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
@@ -31,7 +39,7 @@ public static class PlanExplainer
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
             var isRoot = i == plan.Match.Index;
-            var label = isRoot ? "root" : $"cte{i}";
+            var label = isRoot ? "root" : CteLabel(i);
             var top = isRoot ? plan.Top : null;
             var body = PrintCte(plan.Ctes[i], top, ref parameterOrdinal);
             if (isRoot && plan.OuterPredicate is not null)

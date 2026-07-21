@@ -179,6 +179,19 @@ public class SearchTraceTests
     }
 
     [Fact]
+    public async Task GivenAnUnresolvedIncludeOwnedByNoParameterTrace_WhenTraced_ThenTheTraceStillStatesWhyThePlanIsMissing()
+    {
+        var trace = await SearchTraceFixtures.TraceUnresolvedIncludeAsync();
+
+        trace.Plan.ShouldBeNull();
+        trace.Parameters.ShouldAllBe(p => p.Outcome is ParameterOutcome.Compiled);
+
+        trace.Failure.ShouldNotBeNull("an absent plan with every parameter Compiled is an unexplained trace");
+        trace.Failure!.Stage.ShouldBe(TraceStage.Resolve);
+        trace.Failure.Message.ShouldContain("organization");
+    }
+
+    [Fact]
     public async Task GivenAFailureNamingNoParameter_WhenTraced_ThenItsMessageSurvivesOnTheTrace()
     {
         var trace = await SearchTraceFixtures.TraceSortKeyCapExceededAsync();

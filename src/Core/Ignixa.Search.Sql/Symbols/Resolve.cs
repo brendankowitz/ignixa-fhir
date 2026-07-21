@@ -1,4 +1,4 @@
-﻿using Ignixa.Search.Definition;
+using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
@@ -158,7 +158,16 @@ public static class Resolve
                             continue;
                         }
 
-                        var key = searchParam.Url.ToString();
+                        // Same null-Url reasoning as the leaf loop below: SymbolTable is keyed by Url, so a
+                        // compartment member carrying none could never be looked up even once resolved. Skip
+                        // it -- CompileAsync awaits this outside its try/catch, so a dereference here would
+                        // escape as an NRE and destroy the whole trace.
+                        if (searchParam.Url is not { } url)
+                        {
+                            continue;
+                        }
+
+                        var key = url.ToString();
                         if (!groups.TryGetValue(key, out var group))
                         {
                             group = (searchParam, []);

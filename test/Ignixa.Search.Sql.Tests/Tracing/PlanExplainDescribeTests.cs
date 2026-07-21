@@ -33,19 +33,6 @@ public class PlanExplainDescribeTests
     }
 
     [Fact]
-    public void GivenANonTrivialPlan_WhenDescribed_ThenEachRowRejoinsToItsOwnPrintedLine()
-    {
-        // Arrange
-        var plan = NonTrivialPlan();
-
-        // Act
-        var rows = PlanExplainer.Describe(plan);
-
-        // Assert
-        rows.Select(row => $"{row.Label} = {row.Body}").ShouldBe(plan.Explain().Split('\n'));
-    }
-
-    [Fact]
     public void GivenANonTrivialPlan_WhenDescribed_ThenTheLabelsNameEveryStageInTraversalOrder()
     {
         // Arrange
@@ -84,11 +71,10 @@ public class PlanExplainDescribeTests
 
         // Assert
         rows[^1].ShouldBe(new PlanExplainRow("countOnly", "true"));
-        rows.Select(row => $"{row.Label} = {row.Body}").ShouldBe(plan.Explain().Split('\n'));
     }
 
     [Fact]
-    public async Task GivenACompiledTrace_WhenReadingItsPlanRows_ThenTheyCarryTheSameContentAsItsExplainString()
+    public async Task GivenACompiledTrace_WhenReadingItsPlanRows_ThenEveryStageOfThatPlanIsAddressableByLabel()
     {
         // Arrange
         var trace = await SearchTraceFixtures.TracePatientActiveWithIncludeAsync();
@@ -97,7 +83,6 @@ public class PlanExplainDescribeTests
         var plan = trace.Plan.ShouldNotBeNull();
 
         // Assert
-        plan.Rows.Select(row => $"{row.Label} = {row.Body}").ShouldBe(plan.Explain.Split('\n'));
         plan.Rows.ShouldContain(row => row.Label == "root");
         plan.Rows.ShouldContain(row => row.Label == "inc0");
     }

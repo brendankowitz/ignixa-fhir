@@ -9,5 +9,6 @@ namespace Ignixa.Search.Sql.Tracing;
 /// text does not record, so they can only be surfaced from the resolved
 /// <see cref="Search.Models.SearchOptions"/>. <see cref="Value"/> is always read back off those resolved
 /// options rather than restated from a constant, so a changed default shows up here instead of drifting.
+/// It is display text only — never parse it back into a typed option, read the option itself.
 /// </remarks>
 public sealed record ImplicitParameter(string Name, string Value, string Reason);

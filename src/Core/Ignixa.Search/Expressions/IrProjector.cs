@@ -15,6 +15,12 @@ namespace Ignixa.Search.Expressions;
 /// This is a view computed on demand, deliberately not a field on
 /// <see cref="Parsing.ParameterTrace"/>: every traced parse would pay for it, and only a renderer ever
 /// wants it. Callers project <c>trace.Ir</c> at the point they need rows.
+/// <para>
+/// Covers the untyped field-level kinds as well as the typed ones: <c>:text</c> and <c>:of-type</c> bind
+/// through <c>SearchValueExpressionBuilderHelper</c> and so put a bare <see cref="StringExpression"/> or a
+/// multiary of them into a parameter's IR. Those are ordinary FHIR searches, not exotica, so refusing to
+/// project them would make <see cref="Describe"/> throw on real traffic.
+/// </para>
 /// </remarks>
 public static class IrProjector
 {
@@ -58,6 +64,9 @@ public static class IrProjector
         NotReferencedExpression => "notReferenced",
         IncludeExpression => "include",
         SortExpression => "sort",
+        StringExpression => "stringField",
+        BinaryExpression => "binaryField",
+        MissingFieldExpression => "missingField",
         _ => throw new NotSupportedException($"No IR projection for {node.GetType().Name}."),
     };
 

@@ -21,6 +21,12 @@ namespace Ignixa.Search.Parsing;
 /// shapes with no value tree (<c>_not-referenced</c>, includes), and either may be null when a
 /// parameter is <see cref="ParameterOutcome.Ignored"/> or <see cref="ParameterOutcome.Failed"/> before
 /// parsing completes.
+/// <para>
+/// <see cref="Ir"/> is a live <see cref="Expression"/> graph, not a data transfer object: it holds resolved
+/// <see cref="Models.SearchParameterInfo"/> and <see cref="Indexing.SearchValues.ISearchValue"/> instances
+/// and is not serializable. Anything crossing a wire or reaching a renderer must go through
+/// <see cref="IrProjector.Describe"/>, which flattens it to <see cref="IrRow"/>s.
+/// </para>
 /// </remarks>
 public sealed record ParameterTrace(
     int Ordinal,

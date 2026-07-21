@@ -32,7 +32,7 @@ public static class SqlBuilder
         if (plan.CountOnly)
         {
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, "cte");
+            writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
             writer.Append("\n");
             writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte{plan.Match.Index} m");
 
@@ -76,7 +76,7 @@ public static class SqlBuilder
             }
 
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, "cte");
+            writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
             writer.Append("\n");
             writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM cte{plan.Match.Index} m{sortJoins}");
 
@@ -162,7 +162,7 @@ public static class SqlBuilder
         }
 
         writer.Append(";WITH ");
-        writer.AppendJoin(",\n", cteBlocks, "cte");
+        writer.AppendJoin(",\n", cteBlocks, PlanExplainer.CteLabel);
         writer.Append(",\n");
         using (writer.Section("cteMatchPage"))
         {

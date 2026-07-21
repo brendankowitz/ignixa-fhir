@@ -16,7 +16,7 @@ internal sealed class SqlTextWriter(bool recordRanges)
 
     public void Append(string text) => _buffer.Append(text);
 
-    public void AppendJoin(string separator, IReadOnlyList<string> values, string labelPrefix)
+    public void AppendJoin(string separator, IReadOnlyList<string> values, Func<int, string> labelFor)
     {
         for (var i = 0; i < values.Count; i++)
         {
@@ -25,7 +25,7 @@ internal sealed class SqlTextWriter(bool recordRanges)
                 _buffer.Append(separator);
             }
 
-            using (Section($"{labelPrefix}{i}"))
+            using (Section(labelFor(i)))
             {
                 _buffer.Append(values[i]);
             }

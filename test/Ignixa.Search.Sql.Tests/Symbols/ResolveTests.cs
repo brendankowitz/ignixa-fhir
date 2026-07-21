@@ -272,6 +272,34 @@ public class ResolveTests
     }
 
     [Fact]
+    public async Task GivenACompartmentMemberParameterWithNoUrl_WhenResolved_ThenItIsSkippedRatherThanThrowing()
+    {
+        // Arrange -- SearchParameterInfo's Url is typed non-null but nullable at runtime, and CompileAsync
+        // awaits Resolve outside its try/catch, so a dereference here would escape as an NRE.
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+        var urllessParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, url: null);
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[Ignixa.Specification.ValueSets.Normative.CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", Ignixa.Specification.ValueSets.Normative.CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = urllessParam;
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var resolved = await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            compartmentManager, searchParamManager);
+
+        // Assert
+        resolved.Symbols.CompartmentMembership("Patient").ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenACompartmentSearchExpressionWithNoManagersSupplied_WhenResolved_ThenThrowsInvalidOperationException()
     {
         // Arrange

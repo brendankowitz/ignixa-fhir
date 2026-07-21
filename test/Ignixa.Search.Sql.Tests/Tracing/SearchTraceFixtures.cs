@@ -1,4 +1,4 @@
-﻿using Ignixa.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -171,6 +171,37 @@ internal static class SearchTraceFixtures
         return SearchCompiler.CompileAsync(
             "Patient",
             [new QueryParameter("active", "true"), new QueryParameter("_include", "Patient:organization")],
+            builder,
+            resolver);
+    }
+
+    /// <summary>Patient?name=Smith&amp;_include=Patient:organization where the include's reference parameter is
+    /// unregistered -- the builder raises a ParameterTrace for the search parameter only, so nothing owns the
+    /// unresolved include and per-parameter attribution cannot report it.</summary>
+    public static Task<SearchTrace> TraceUnresolvedIncludeAsync()
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", ["Organization"], wildCard: false, reversed: false, iterate: false);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression, Include = [include] },
+            [new ParameterTrace(0, "name", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        return SearchCompiler.CompileAsync(
+            "Patient",
+            [new QueryParameter("name", "Smith"), new QueryParameter("_include", "Patient:organization")],
             builder,
             resolver);
     }

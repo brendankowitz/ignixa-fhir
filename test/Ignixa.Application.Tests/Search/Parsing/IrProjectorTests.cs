@@ -168,6 +168,63 @@ public class IrProjectorTests
     }
 
     [Fact]
+    public void GivenAReverseChain_WhenDescribed_ThenTheChainRowSaysSo()
+    {
+        // Arrange
+        var subject = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference, new Uri("http://ignixa.test/SearchParameter/Observation-subject"));
+        var code = new SearchParameterInfo(
+            "code", "code", SearchParamType.Token, new Uri("http://ignixa.test/SearchParameter/Observation-code"));
+        var ir = new ChainedExpression(
+            ["Patient"],
+            subject,
+            ["Observation"],
+            reversed: true,
+            new SearchParameterExpression(
+                code,
+                new SearchParameterPredicateExpression(code, SearchComparator.Eq, modifier: null, new TokenSearchValue(null, "8480-6", null))));
+
+        // Act
+        var rows = IrProjector.Describe(ir);
+
+        // Assert
+        rows[0].Kind.ShouldBe("chain");
+        rows[0].Text.ShouldBe("Reverse Chain subject:Observation");
+    }
+
+    [Fact]
+    public void GivenATextModifier_WhenDescribed_ThenTheUntypedFieldShapeItBindsToStillProjects()
+    {
+        // Arrange -- :text binds through SearchValueExpressionBuilderHelper, not the typed predicate builder.
+        var ir = ParsePatient(("identifier", SearchParamType.Token), ("identifier:text", "diabetes"));
+
+        // Act
+        var rows = IrProjector.Describe(ir);
+
+        // Assert
+        rows.Select(row => (row.Kind, row.Depth)).ShouldBe([("param", 0), ("stringField", 1)]);
+        rows[1].Text.ShouldContain("diabetes");
+    }
+
+    [Fact]
+    public void GivenAnOfTypeModifier_WhenDescribed_ThenTheUntypedFieldShapesItBindsToStillProject()
+    {
+        // Arrange
+        var ir = ParsePatient(
+            ("identifier", SearchParamType.Token),
+            ("identifier:of-type", "http://ignixa.test/v2-0203|MR|446053"));
+
+        // Act
+        var rows = IrProjector.Describe(ir);
+
+        // Assert
+        rows[0].Kind.ShouldBe("param");
+        rows.ShouldContain(row => row.Kind == "and");
+        rows.Where(row => row.Kind == "stringField").ShouldNotBeEmpty();
+        rows[0].Depth.ShouldBe(0);
+    }
+
+    [Fact]
     public void GivenAnUnprojectableNode_WhenDescribed_ThenItThrowsRatherThanSilentlyDroppingIt()
     {
         // Arrange
