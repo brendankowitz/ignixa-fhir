@@ -11,21 +11,28 @@ using Xunit;
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 /// <summary>
-/// Reproduces the originally-observed production regression: concurrent first-writes against a
-/// cold SqlServerSearchIndexReferenceDataCache silently dropped search-parameter rows for
-/// whichever parameters hadn't finished loading yet (see
+/// End-to-end validation, at a production-representative scale, that concurrent first-writes
+/// against a cold SqlServerSearchIndexReferenceDataCache do not drop search-parameter rows (the
+/// originally-observed production regression -- see
 /// docs/superpowers/specs/2026-07-20-sqlserver-search-param-cache-race-fix-design.md). This test
 /// exercises SqlServerMergeRepository.MergeResourcesAsync directly (not just the cache in
 /// isolation, unlike SqlServerSearchIndexReferenceDataCacheTests' concurrency tests), through the
 /// same TestTenantDatabase fixture used by every other SqlServerMergeRepository test -- which
 /// deliberately does not eagerly preload search parameters, so the lazy Ensure*PreloadedAsync path
-/// is what's actually under test here.
+/// is what's actually under test here. It validates correctness and completeness under real
+/// concurrent load; it does NOT deterministically reproduce the narrow mid-population-loop race
+/// window itself -- that in-memory insert loop completes on a microsecond scale, so this test
+/// cannot guarantee landing a reader inside it under realistic timing. See
+/// SqlServerSearchIndexReferenceDataCacheTests.GivenALoadPausedMidPopulation_... for the
+/// deterministic reproduction of that specific race, using an injectable test hook.
 /// </summary>
 public sealed class SqlServerMergeRepositoryConcurrentColdCacheTests : IAsyncLifetime
 {
-    // 200 rows widens PreloadSearchParamsAsync's population loop enough that a still-broken guard
-    // would reliably observe a partial dictionary mid-load -- the real production bug only
-    // manifested against the real ~1400-row catalog, not a handful of seeded rows.
+    // 200 rows and 40 concurrent writers exercise the cold-cache load path at a
+    // production-representative scale to validate correctness and completeness under real
+    // concurrent load. This does NOT guarantee reproducing the narrow mid-population-loop race
+    // window -- that in-memory insert loop completes on a microsecond scale, so a still-broken
+    // guard is not reliably caught by scale/timing alone.
     private const int SearchParamCount = 200;
     private const int ConcurrentWriteCount = 40;
 

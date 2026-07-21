@@ -37,6 +37,20 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     private readonly ConcurrentDictionary<string, int> _systemCache = new();
     private readonly ConcurrentDictionary<string, int> _quantityCodeCache = new();
 
+    // Completion signals for Ensure*PreloadedAsync's double-checked locking. Dictionary emptiness is
+    // NOT a valid completion signal: ConcurrentDictionary is live-visible to readers DURING its own
+    // population loop below, so a fast-path IsEmpty check can observe a partially-populated map mid-load
+    // (the exact race this pair of flags exists to close). Only ever set to true from within _dbLock,
+    // after the corresponding Load*Async call has fully completed.
+    private volatile bool _resourceTypesLoaded;
+    private volatile bool _searchParametersLoaded;
+
+    // Test-only synchronization hook, invoked (if set) immediately after each row is inserted into
+    // _searchParamCache during LoadSearchParamsAsync's population loop. Always null in production --
+    // exists solely so a test can deterministically pause the loop mid-population and prove a
+    // concurrent Ensure*PreloadedAsync caller correctly blocks instead of observing a partial map.
+    internal Func<Task>? TestSearchParamRowInsertedHookAsync { get; set; }
+
     public IReadOnlyDictionary<string, short> ResourceTypeMappings => new SentinelFilteringDictionary(_resourceTypeCache);
 
     public IReadOnlyDictionary<string, short> SearchParameterMappings => new SentinelFilteringDictionary(_searchParamCache);
@@ -54,6 +68,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         try
         {
             await LoadResourceTypesAsync(cancellationToken);
+            _resourceTypesLoaded = true;
         }
         finally
         {
@@ -65,13 +80,17 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// Ensures resource-type mappings are loaded, race-free under concurrent callers on a cold
     /// cache. Unlike a bare <c>ResourceTypeMappings.Count == 0</c> check (the bug this method
     /// fixes -- see docs/superpowers/specs/2026-07-20-sqlserver-search-param-cache-race-fix-design.md),
-    /// the emptiness check and the load happen under the same lock: a concurrent caller arriving
-    /// mid-load blocks on <see cref="_dbLock"/> until the in-flight load finishes, instead of
-    /// reading a partially-populated dictionary. A no-op if the cache is already populated.
+    /// completion is tracked by <see cref="_resourceTypesLoaded"/>, a dedicated flag set only after
+    /// <see cref="LoadResourceTypesAsync"/> fully completes, while still holding <see cref="_dbLock"/>.
+    /// Dictionary emptiness is not a valid completion signal here: <see cref="_resourceTypeCache"/> is
+    /// live-visible to readers during its own population loop, so a caller whose fast-path check landed
+    /// mid-load could otherwise observe a partially-populated dictionary. A concurrent caller arriving
+    /// mid-load blocks on <see cref="_dbLock"/> until the in-flight load finishes and the flag flips,
+    /// instead of reading a partially-populated dictionary. A no-op once the flag is set.
     /// </summary>
     public async Task EnsureResourceTypesPreloadedAsync(CancellationToken cancellationToken)
     {
-        if (!_resourceTypeCache.IsEmpty)
+        if (_resourceTypesLoaded)
         {
             return;
         }
@@ -79,12 +98,13 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            if (!_resourceTypeCache.IsEmpty)
+            if (_resourceTypesLoaded)
             {
                 return;
             }
 
             await LoadResourceTypesAsync(cancellationToken);
+            _resourceTypesLoaded = true;
         }
         finally
         {
@@ -120,6 +140,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         try
         {
             await LoadSearchParamsAsync(maxRows, cancellationToken);
+            _searchParametersLoaded = true;
         }
         finally
         {
@@ -129,15 +150,16 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     /// <summary>
     /// Ensures search-parameter mappings are loaded, race-free under concurrent callers on a cold
-    /// cache -- see <see cref="EnsureResourceTypesPreloadedAsync"/>'s remarks; same shape, same bug
-    /// fixed. Always loads the full catalog uncapped (<c>maxRows: null</c>) -- unlike the capped
-    /// call <see cref="PreloadSearchParamsAsync"/> makes elsewhere, this mirrors the reference EF
-    /// implementation's uncapped <c>SearchIndexReferenceDataCache.InitializeAsync</c>. A no-op if
-    /// the cache is already populated.
+    /// cache -- see <see cref="EnsureResourceTypesPreloadedAsync"/>'s remarks; same shape, same
+    /// flag-based completion signal, same bug fixed. Always loads the full catalog uncapped
+    /// (<c>maxRows: null</c>) -- unlike the capped call <see cref="PreloadSearchParamsAsync"/> makes
+    /// elsewhere, this mirrors the reference EF implementation's uncapped
+    /// <c>SearchIndexReferenceDataCache.InitializeAsync</c>. A no-op once <see cref="_searchParametersLoaded"/>
+    /// is set.
     /// </summary>
     public async Task EnsureSearchParametersPreloadedAsync(CancellationToken cancellationToken)
     {
-        if (!_searchParamCache.IsEmpty)
+        if (_searchParametersLoaded)
         {
             return;
         }
@@ -145,12 +167,13 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            if (!_searchParamCache.IsEmpty)
+            if (_searchParametersLoaded)
             {
                 return;
             }
 
             await LoadSearchParamsAsync(maxRows: null, cancellationToken);
+            _searchParametersLoaded = true;
         }
         finally
         {
@@ -184,6 +207,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         foreach (var row in rows)
         {
             _searchParamCache[row.Uri] = row.Id;
+            if (TestSearchParamRowInsertedHookAsync != null)
+            {
+                await TestSearchParamRowInsertedHookAsync();
+            }
         }
 
         _logger.LogInformation(

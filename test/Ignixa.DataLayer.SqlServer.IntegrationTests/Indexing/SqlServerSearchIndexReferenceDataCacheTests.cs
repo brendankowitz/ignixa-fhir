@@ -109,10 +109,12 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
     [Fact]
     public async Task GivenAColdCache_WhenEnsureSearchParametersPreloadedAsyncCalledConcurrently_ThenEveryParameterIsLoadedForEveryCaller()
     {
-        // A small seeded catalog wouldn't reliably expose the race (the population loop finishes
-        // before a second caller's check can land in the gap) -- the real production bug only
-        // manifested against the real ~1400-row catalog. 200 rows widens the population loop's
-        // duration enough to make a still-broken guard fail this test reliably, not flakily.
+        // This validates correctness and completeness under real concurrent load at a
+        // production-representative scale (20 concurrent callers, 200 rows) -- it does NOT
+        // reliably force a reader into the narrow mid-population-loop race window (that in-memory
+        // insert loop completes on a microsecond scale, so a still-broken guard can pass this test
+        // by sheer timing luck; see GivenALoadPausedMidPopulation_... below for the deterministic
+        // reproduction of that specific race).
         const int SearchParamCount = 200;
         var values = string.Join(",", Enumerable.Range(0, SearchParamCount)
             .Select(i => $"('http://example.org/ensure-test-param-{i}', 'active', SYSDATETIMEOFFSET(), 0)"));
@@ -165,5 +167,50 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
         // inserted row is invisible to this cache instance until something explicitly reloads it;
         // that is existing, intentional cache behavior, not something this fix changes.
         _cache.SearchParameterMappings.Count.ShouldBe(countAfterFirstCall);
+    }
+
+    [Fact]
+    public async Task GivenALoadPausedMidPopulation_WhenASecondCallerInvokesEnsureSearchParametersPreloadedAsyncConcurrently_ThenItBlocksUntilTheLoadCompletesAndNeverObservesAPartialMap()
+    {
+        const int SearchParamCount = 10;
+        var values = string.Join(",", Enumerable.Range(0, SearchParamCount)
+            .Select(i => $"('http://example.org/paused-load-param-{i}', 'active', SYSDATETIMEOFFSET(), 0)"));
+        await _database.ExecuteNonQueryAsync(
+            $"INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) VALUES {values}");
+
+        var firstRowInserted = new TaskCompletionSource();
+        var releaseLoad = new TaskCompletionSource();
+        var rowsSeenSoFar = 0;
+
+        _cache.TestSearchParamRowInsertedHookAsync = async () =>
+        {
+            var seen = Interlocked.Increment(ref rowsSeenSoFar);
+            if (seen == 1)
+            {
+                firstRowInserted.SetResult();
+                await releaseLoad.Task;
+            }
+        };
+
+        var firstCallerTask = _cache.EnsureSearchParametersPreloadedAsync(CancellationToken.None);
+
+        // Wait until the first caller has inserted exactly one row and is paused inside the loop --
+        // this is the exact window the original bug escaped through.
+        await firstRowInserted.Task;
+
+        var secondCallerTask = _cache.EnsureSearchParametersPreloadedAsync(CancellationToken.None);
+
+        // Give the second caller every opportunity to race ahead if it were going to (the pre-fix
+        // guard would return here immediately, before the load finishes).
+        var completedEarly = await Task.WhenAny(secondCallerTask, Task.Delay(200)) == secondCallerTask;
+        completedEarly.ShouldBeFalse(
+            "the second caller must block until the first caller's load finishes -- returning early " +
+            "here means it would go on to read a partially-populated cache, reproducing the original bug");
+
+        releaseLoad.SetResult();
+        await firstCallerTask;
+        await secondCallerTask;
+
+        _cache.SearchParameterMappings.Count.ShouldBe(SearchParamCount);
     }
 }
