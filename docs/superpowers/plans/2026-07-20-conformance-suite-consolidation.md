@@ -15,7 +15,7 @@
 - This plan covers **Phase 1 only** — everything lands in `ignixa-fhir`. `ignixa-lab` keeps its local `IgnixaLab.TestScript.Suites` package and is not modified except for the freeze note in Task 8. Do not delete or repoint anything in lab.
 - Source of truth for the suite content is `E:\data\src\ignixa-lab\backend\src\Ignixa.Lab.Suites\` (a local clone). Copy from there; never from `ignixa-fhir/conformance-tests/`, which is the stale copy.
 - The folder name `testscripts/` and the pack `PackagePath="testscripts/"` are **frozen**. Lab's `Suites/SuiteCatalog.cs` reads that exact layout. Do not rename either.
-- Every `src/Core/**` project must declare `<PackageStability>` explicitly or `PackageStabilityGuardTests` fails (ADR 2606). Use `alpha`.
+- Every `src/Core/**` project must declare `<PackageStability>` explicitly or `PackageStabilityGuardTests` fails (ADR 2606). Use `beta`. (No project in the repo declares `alpha`; the split is 17 `stable` / 10 `beta`. `beta` is unconstrained here regardless — the stability guard only forbids a package being *more* stable than its dependencies, and this package has no nuspec dependencies.)
 - Every packable project must contain a `README.md` or pack fails: root `Directory.Build.props:10` sets `PackageReadmeFile=README.md` unconditionally, but line 65 only packs it `Condition="Exists('README.md')"`.
 - `TreatWarningsAsErrors=true` is set repo-wide in `Directory.Build.props:14`.
 - Do **not** copy `bin/` or `obj/` from lab's project directory.
@@ -69,7 +69,7 @@ Create `src/Core/Ignixa.TestScript.Suites/Ignixa.TestScript.Suites.csproj`. This
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <IsPackable>true</IsPackable>
     <PackageId>Ignixa.TestScript.Suites</PackageId>
-    <PackageStability>alpha</PackageStability>
+    <PackageStability>beta</PackageStability>
     <Description>
       Canonical FHIR TestScript conformance suites for the Ignixa TestScript engine,
       packaged as NuGet content. Consumers receive the suites in their build output
@@ -257,7 +257,7 @@ cd /e/data/src/ignixa-fhir
 dotnet test test/Ignixa.RepoGuards.Tests/Ignixa.RepoGuards.Tests.csproj
 ```
 
-Expected: PASS. `PackageStabilityGuardTests` proves the `<PackageStability>alpha</PackageStability>`
+Expected: PASS. `PackageStabilityGuardTests` proves the `<PackageStability>beta</PackageStability>`
 declaration is present. `RuntimeMultiTargetingGuardTests` passes because `netstandard2.0`
 does not overlap `{net9.0, net10.0}` and is exempt by design.
 
