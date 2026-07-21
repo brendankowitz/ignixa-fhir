@@ -143,6 +143,14 @@ Open `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Indexing/SqlServerSearchI
     [Fact]
     public async Task GivenAWarmCache_WhenEnsureSearchParametersPreloadedAsyncCalledAgain_ThenItIsANoOp()
     {
+        // Seed one row BEFORE the first call -- otherwise the cache starts and stays genuinely
+        // empty (0 rows in dbo.SearchParam), which is indistinguishable from "still cold" and the
+        // guard would legitimately reload on the second call too, making this test assert nothing
+        // about the no-op behavior it's meant to prove.
+        await _database.ExecuteNonQueryAsync(
+            "INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) " +
+            "VALUES ('http://example.org/warm-before-first-call', 'active', SYSDATETIMEOFFSET(), 0)");
+
         await _cache.EnsureSearchParametersPreloadedAsync(CancellationToken.None);
         var countAfterFirstCall = _cache.SearchParameterMappings.Count;
 
