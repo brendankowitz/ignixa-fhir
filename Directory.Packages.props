@@ -44,7 +44,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="161.8905.0" />
+    <!-- 180.18.1 (not 161.8905.0): Microsoft.SqlServer.DacFx 170.4.83 has a transitive floor of >= 180.18.1 -->
+    <PackageVersion Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.18.1" />
     <!-- SQL Server -->
     <PackageVersion Include="Microsoft.SqlServer.DacFx" Version="170.4.83" />
     <!-- OpenIddict -->

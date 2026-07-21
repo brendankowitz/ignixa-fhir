@@ -6,6 +6,7 @@ using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
+using Ignixa.Models;
 using Ignixa.Serialization.Models;
 using Ignixa.Serialization.SourceNodes;
 using Microsoft.Data.SqlClient;
@@ -179,7 +180,7 @@ public class SqlServerFhirRepository(
         // compresses resource.Resource into RawResource bytes, so the version/timestamp needs to be
         // baked in first (matches legacy SqlEntityFrameworkRepository.cs:159-160 exactly).
         resource.Resource.Meta.VersionId = newVersion.ToString();
-        resource.Resource.Meta.LastUpdated = transactionId.Value.ToDate();
+        resource.Resource.Meta.LastUpdatedOffset = transactionId.Value.ToDate();
 
         var resourceList = new[] { resource };
         var entryIndices = new[] { 0 };
@@ -203,7 +204,7 @@ public class SqlServerFhirRepository(
             resource.ResourceType, resource.ResourceId, newVersion);
 
         var compressedData = _compressor.SerializeAndCompress(resource.Resource);
-        var lastModified = resource.Resource.Meta.LastUpdated ?? DateTimeOffset.UtcNow;
+        var lastModified = resource.Resource.Meta.LastUpdatedOffset ?? DateTimeOffset.UtcNow;
 
         var key = new ResourceKey(
             ResourceType: resource.ResourceType,
@@ -295,10 +296,10 @@ public class SqlServerFhirRepository(
         {
             ResourceType = key.ResourceType,
             Id = key.Id,
-            Meta = new MetaJsonNode
+            Meta = new Meta
             {
                 VersionId = newVersion.ToString(),
-                LastUpdated = DateTimeOffset.UtcNow
+                LastUpdatedOffset = DateTimeOffset.UtcNow
             }
         };
         var compressedTombstone = _compressor.SerializeAndCompress(tombstoneJsonNode);
@@ -411,13 +412,13 @@ public class SqlServerFhirRepository(
             // has the correct meta.versionId and meta.lastUpdated (same IdHelper mechanism as
             // CreateOrUpdateAsync).
             resource.Meta.VersionId = newVersion.ToString();
-            resource.Meta.LastUpdated = transactionId.Value.ToDate();
+            resource.Meta.LastUpdatedOffset = transactionId.Value.ToDate();
 
             var wrapper = new ResourceWrapper(
                 ResourceType: resourceType,
                 ResourceId: resourceId,
                 VersionId: newVersion.ToString(),
-                LastModified: resource.Meta.LastUpdated.Value,
+                LastModified: resource.Meta.LastUpdatedOffset.Value,
                 Resource: resource,
                 Request: new ResourceRequest(httpMethod, $"{resourceType}/{resourceId}"),
                 IsDeleted: false)
