@@ -47,6 +47,9 @@ internal sealed class SearchOptionsBuilderHarness
         return new SearchOptionsBuilderHarness(new SearchOptionsBuilder(context.Parser, context.DefinitionManager));
     }
 
+    /// <summary>The real builder behind this harness, for callers that need to hand it to another stage.</summary>
+    public ISearchOptionsBuilder Builder => _builder;
+
     public SearchOptions Build(IReadOnlyList<(string Key, string Value)> parameters, IList<ParameterTrace>? outcomes = null)
     {
         var queryParameters = parameters

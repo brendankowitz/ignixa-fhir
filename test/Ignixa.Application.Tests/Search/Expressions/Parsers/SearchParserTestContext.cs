@@ -46,7 +46,8 @@ internal sealed class SearchParserTestContext
         string code,
         SearchParamType type,
         string[]? targets = null,
-        SearchParameterComponentInfo[]? components = null)
+        SearchParameterComponentInfo[]? components = null,
+        Uri? url = null)
     {
         var parameter = new SearchParameterInfo(
             name: code,
@@ -54,7 +55,8 @@ internal sealed class SearchParserTestContext
             searchParamType: type,
             components: components!,
             targetResourceTypes: targets!,
-            baseResourceTypes: new[] { resourceType });
+            baseResourceTypes: new[] { resourceType },
+            url: url ?? new Uri($"http://ignixa.test/SearchParameter/{resourceType}-{code}"));
 
         Register(resourceType, parameter);
 

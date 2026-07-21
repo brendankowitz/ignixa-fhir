@@ -1,4 +1,4 @@
-using Ignixa.Search.Definition;
+﻿using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
@@ -76,9 +76,13 @@ public static class Resolve
         foreach (var parameter in collector.Parameters)
         {
             var id = await resolver.GetSearchParamIdAsync(parameter, cancellationToken);
-            if (id.HasValue)
+
+            // A null Url is unresolvable, not a crash: SymbolTable is keyed by Url, so such a parameter
+            // could never be looked up even with an id in hand -- SymbolTable.SearchParamId says exactly
+            // that on the lookup side. Report it the same way as a resolver miss.
+            if (id.HasValue && parameter.Url is { } url)
             {
-                searchParamIds[parameter.Url.ToString()] = id.Value;
+                searchParamIds[url.ToString()] = id.Value;
             }
             else
             {
