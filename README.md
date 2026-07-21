@@ -192,9 +192,19 @@ The heart of Ignixa is a set of high-performance, reusable **dotnet libraries** 
 | **[Ignixa.Serialization](src/Core/Ignixa.Serialization)** | **System.Text.Json** based serialization optimized for high-throughput. |
 | **[Ignixa.Specification](src/Core/Ignixa.Specification)** | **FHIR structure definitions** and auto-generated providers for R4/R4B/R5/R6/STU3. |
 | **[Ignixa.SqlOnFhir](src/Core/Ignixa.SqlOnFhir)** | Implementation of the **SQL on FHIR v2** specification for data transformation. |
+| **[Ignixa.TestScript.Suites](src/Core/Ignixa.TestScript.Suites)** | The **canonical FHIR conformance corpus** as `TestScript` suites, shipped as NuGet content so any server can run it. |
 | **[Ignixa.Validation](src/Core/Ignixa.Validation)** | **Three-tier validation engine** (Fast, Spec, Profile) for robust data integrity. |
 
 See the [Core SDK Documentation](src/Core/README.md) for full details.
+
+### Conformance suites
+
+The canonical FHIR `TestScript` conformance corpus lives in
+[`src/Core/Ignixa.TestScript.Suites/testscripts/`](src/Core/Ignixa.TestScript.Suites/testscripts/)
+and is published as the **Ignixa.TestScript.Suites** package so other servers can run it.
+Point the matrix CLI at it with
+`ignixa-matrix run --tests ./src/Core/Ignixa.TestScript.Suites/testscripts`; results are
+published to the [conformance matrix](https://brendankowitz.github.io/ignixa-fhir/conformance/).
 
 ## 🤝 Contributing
 

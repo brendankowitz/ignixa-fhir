@@ -26,6 +26,7 @@ This folder contains the **Core** libraries that are published as NuGet packages
 | Package | Description | Documentation |
 |---------|-------------|---------------|
 | **Ignixa.FhirFakes** | 4-layer FHIR test data generation library with realistic patient populations, demographics, and clinical scenarios | [README](Ignixa.FhirFakes/README.md) |
+| **Ignixa.TestScript.Suites** | Canonical FHIR conformance corpus as `TestScript` suites, packaged as NuGet content and copied to the consumer's output under `testscripts/` | [README](Ignixa.TestScript.Suites/README.md) |
 
 ### Advanced Features
 

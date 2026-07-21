@@ -16,14 +16,14 @@ Run a conformance suite against a server. `--out` is the report file; `--format`
 defaulting to a FHIR `Bundle` of `TestReport` resources — one per executed TestScript:
 
 ```bash
-ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+ignixa-matrix run --server https://your-fhir-server --tests ./src/Core/Ignixa.TestScript.Suites/testscripts \
   --impl my-server --out ./reports/my-server.json
 ```
 
 To authenticate requests, supply an auth header value:
 
 ```bash
-ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+ignixa-matrix run --server https://your-fhir-server --tests ./src/Core/Ignixa.TestScript.Suites/testscripts \
   --impl my-server --out ./reports/my-server.json \
   --auth-header "Bearer <token>"
 ```
@@ -32,7 +32,7 @@ ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests 
 `--format json` when the run feeds the matrix:
 
 ```bash
-ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+ignixa-matrix run --server https://your-fhir-server --tests ./src/Core/Ignixa.TestScript.Suites/testscripts \
   --impl my-server --out ./reports/my-server.json --format json
 ```
 

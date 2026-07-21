@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-The FHIR `TestScript` resource drives the `Ignixa.TestScript` engine and the `ignixa-matrix` CLI, which runs `conformance-tests/` unattended in CI against multiple FHIR versions and publishes a conformance matrix to the docs site. TestScript's structure is fixed by the spec — the only sanctioned way to add engine behavior is extensions. Four behaviors the base R4/R5 resource cannot express turned out to be load-bearing for a fully automated pipeline:
+The FHIR `TestScript` resource drives the `Ignixa.TestScript` engine and the `ignixa-matrix` CLI, which runs `src/Core/Ignixa.TestScript.Suites/testscripts/` unattended in CI against multiple FHIR versions and publishes a conformance matrix to the docs site. TestScript's structure is fixed by the spec — the only sanctioned way to add engine behavior is extensions. Four behaviors the base R4/R5 resource cannot express turned out to be load-bearing for a fully automated pipeline:
 
 1. **Data-driven tests** — run one test body once per input value. Native TestScript has `variable.defaultValue` but no repetition mechanism; the alternative is copy-pasting a test N times per value (the date-interval suite would be ~64 hand-maintained tests instead of 16).
 2. **FHIR-version applicability per test** — one suite folder runs against R4, R4B, and R5 servers. TestScript has no per-test (or even per-script) FHIR-version applicability element.
@@ -23,7 +23,7 @@ All extension URLs live under `http://ignixa.io/testscript/*`.
 
 Complex extension on `TestScript.test[]` (0..1; the parser warns and uses the first if repeated — `TestScriptParser.ParseParametrize`). Sub-extensions: `variable` (valueString, must name a `TestScript.variable`) and `values` (valueString, comma-separated). The evaluator executes the test once per value with the variable bound, reporting each execution as `"{test.name} [{value}]"`.
 
-From `conformance-tests/Search/intervals.json`:
+From `src/Core/Ignixa.TestScript.Suites/testscripts/Search/intervals.json`:
 
 ```json
 {
@@ -46,7 +46,7 @@ Designed to degrade gracefully: the referenced variable carries a `defaultValue`
 
 ### 2. `http://ignixa.io/testscript/fhirVersions` — per-test FHIR-version gate
 
-`valueString` extension on `TestScript.test[]` with a comma-separated version list. When `ignixa-matrix run --fhir-version 4.3` is given, the evaluator (`IsVersionCompatible`) skips tests whose list does not contain the requested version; no extension, or no `--fhir-version`, means run everywhere. From `conformance-tests/Search/string-modifiers.json`:
+`valueString` extension on `TestScript.test[]` with a comma-separated version list. When `ignixa-matrix run --fhir-version 4.3` is given, the evaluator (`IsVersionCompatible`) skips tests whose list does not contain the requested version; no extension, or no `--fhir-version`, means run everywhere. From `src/Core/Ignixa.TestScript.Suites/testscripts/Search/string-modifiers.json`:
 
 ```json
 {
@@ -84,7 +84,7 @@ Compared point-by-point with native `TestScript.metadata.capability`: `capabilit
 
 ### 4. `http://ignixa.io/testscript/fhirfakes` — synthesized fixtures
 
-`valueCode` (resource type) extension placed **inside the inline resource object carried by `fixture[].resource`** — not as a sibling of `fixture`. (Note: the engine already treats `fixture.resource` as an inline resource body; spec-pure R4 `fixture.resource` is a `Reference`.) Consumed by `FhirFakesFixtureProvider` (`src/Core/Ignixa.TestScript.FhirFakes/FhirFakesFixtureProvider.cs`), which generates a schema-valid fake via `SchemaBasedFhirResourceFaker`. From `conformance-tests/CRUD/basic.json`:
+`valueCode` (resource type) extension placed **inside the inline resource object carried by `fixture[].resource`** — not as a sibling of `fixture`. (Note: the engine already treats `fixture.resource` as an inline resource body; spec-pure R4 `fixture.resource` is a `Reference`.) Consumed by `FhirFakesFixtureProvider` (`src/Core/Ignixa.TestScript.FhirFakes/FhirFakesFixtureProvider.cs`), which generates a schema-valid fake via `SchemaBasedFhirResourceFaker`. From `src/Core/Ignixa.TestScript.Suites/testscripts/CRUD/basic.json`:
 
 ```json
 {
@@ -101,7 +101,7 @@ Co-location with the fixture body imposes a provider-ordering constraint: `Compo
 
 **Naming discrepancy resolved:** `http://ignixa.io/testscript-fhirfakes-generation` (with a `valueString` C# faker-expression DSL) appears only in the pre-implementation investigation `docs/features/testscript/investigations/execution-engine.md`. Neither that URL nor the expression DSL shipped; the implemented contract is `http://ignixa.io/testscript/fhirfakes` with `valueCode` = resource type only (no profile-driven generation yet). The investigation doc is historical; the implemented URL is authoritative.
 
-No other custom extensions were found (`grep -rn "ignixa.io/testscript"` across source, tests, `conformance-tests/`, and `docs/`).
+No other custom extensions were found (`grep -rn "ignixa.io/testscript"` across source, tests, `src/Core/Ignixa.TestScript.Suites/testscripts/`, and `docs/`).
 
 ## Consequences
 
