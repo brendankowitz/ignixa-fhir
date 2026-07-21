@@ -258,6 +258,30 @@ public class SqlServerFhirRepository(
         // via GetNextTransactionIdAsync(). No CommitTransactionAsync call anywhere in this method:
         // these statements run sequentially, uncommitted-as-a-unit, matching CLAUDE.md's documented
         // application-level-transaction philosophy.
+        //
+        // Deliberate, documented divergence from legacy on the transactionId != null path:
+        // legacy SqlEntityFrameworkRepository.DeleteAsync (SqlEntityFrameworkRepository.cs:205-316)
+        // only flushes its EF-tracked writes -- the IsHistory flip on the old row and the tombstone
+        // insert -- via `if (!transactionId.HasValue) { await _context.SaveChangesAsync(ct); }`
+        // (:304-307). When transactionId IS non-null (a bundle/batch context), that guard is skipped,
+        // so those two EF-tracked changes are only persisted as an incidental side effect of
+        // UpsertResourceTtlAsync's own SaveChangesAsync call (:1078/:1091) -- and legacy's delete path
+        // always passes expiresAt: null, so UpsertResourceTtlAsync only calls SaveChangesAsync at all
+        // if a TTL row already existed to remove (:1088-1096). Meanwhile DeleteSearchIndexEntriesAsync
+        // (:1112) is raw SQL (ExecuteSqlRawAsync) and always executes immediately, regardless of
+        // transactionId. Net effect: legacy's non-null-transactionId path can wipe a resource's
+        // search-index rows while never actually persisting the tombstone/history-flip that was
+        // supposed to replace them -- a latent data-loss/inconsistency bug, not an intended behavior.
+        //
+        // This port does NOT replicate that bug: every statement below (history flip, tombstone
+        // insert, TTL upsert, search-index wipe) executes immediately via ExecuteNonQueryAsync in ALL
+        // cases, whether transactionId is null or not. This is an intentional improvement, confirmed
+        // safe because the only real production caller (DeleteResourceHandler) always passes
+        // transactionId: null, so this divergence is currently inert in production -- but it is a
+        // real, deliberate change in behavior on the transactionId != null path, not an oversight.
+        // See SqlServerFhirRepositoryCrudTests for a test pinning this port's own
+        // transactionId != null semantics directly (not a differential test -- legacy's behavior here
+        // is a bug, not a baseline worth replicating).
         using (var historyCommand = new SqlCommand(
             "UPDATE dbo.Resource SET IsHistory=1, HistoryTransactionId=@HistoryTransactionId WHERE ResourceSurrogateId=@ResourceSurrogateId"))
         {

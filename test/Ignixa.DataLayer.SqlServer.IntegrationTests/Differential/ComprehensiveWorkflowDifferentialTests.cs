@@ -18,9 +18,13 @@ public class ComprehensiveWorkflowDifferentialTests : IAsyncLifetime
         // Exercises CreateOrUpdateAsync, GetNextTransactionIdAsync, BatchWriteAsync,
         // CommitTransactionAsync, and DeleteAsync in one realistic sequence per repository -- proving
         // composition, not exhaustive method coverage. GetAsync/the 3 history methods/
-        // GetStalledTransactionsAsync/GetExpiredResourcesAsync each already have dedicated coverage in
-        // Tasks 6, 8, and 9 and are deliberately NOT re-exercised here -- this test's value is the
-        // multi-method sequence, not a full-surface checklist.
+        // GetExpiredResourcesAsync each already have dedicated coverage in Tasks 6, 8, and 9 and are
+        // deliberately NOT re-exercised here -- this test's value is the multi-method sequence, not a
+        // full-surface checklist. GetStalledTransactionsAsync's positive path is covered by
+        // SqlServerFhirRepositoryBatchTests.
+        // GivenAnUncommittedTransaction_WhenGetStalledTransactionsAsyncCalledWithAZeroThreshold_ThenTheUncommittedTransactionIsReturned
+        // (an earlier version of this comment overstated that coverage as already existing here --
+        // it did not: only the empty-result case had a test before that one was added).
         //
         // HardDeleteResourceAsync is deliberately NOT included in this shared loop: Task 9 confirmed
         // legacy's HardDeleteResourceAsync (SqlEntityFrameworkRepository.cs:989-1026) throws

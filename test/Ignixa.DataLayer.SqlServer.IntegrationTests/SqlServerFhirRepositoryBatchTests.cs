@@ -80,4 +80,27 @@ public class SqlServerFhirRepositoryBatchTests : IAsyncLifetime
         var stalled = await _repository.GetStalledTransactionsAsync(TimeSpan.FromHours(1), CancellationToken.None);
         stalled.ShouldBeEmpty();
     }
+
+    /// <summary>
+    /// Positive-path proof for GetStalledTransactionsAsync -- the only prior coverage
+    /// (the test above) exercises the empty-result case, which would pass unchanged even if the
+    /// method's predicate were silently broken (e.g. a dropped "IsCompleted = 0" clause, wrong
+    /// column, or inverted comparison). This begins a real transaction via GetNextTransactionIdAsync
+    /// (dbo.Transactions.IsCompleted defaults to 0, HeartbeatDate defaults to getUTCdate() -- see
+    /// Ignixa.DataLayer.SqlServer.Database/Tables/Transactions.sql and StoredProcedures/
+    /// MergeResourcesBeginTransaction.sql), deliberately never commits it, and asserts it comes back.
+    /// A TimeSpan.Zero threshold is deterministic here (not flaky): the transaction's HeartbeatDate is
+    /// stamped at BeginTransaction time, strictly before this test's later
+    /// GetStalledTransactionsAsync call computes "now" -- any nonzero elapsed time between those two
+    /// points (guaranteed by the intervening round trip) satisfies HeartbeatDate &lt; now.
+    /// </summary>
+    [Fact]
+    public async Task GivenAnUncommittedTransaction_WhenGetStalledTransactionsAsyncCalledWithAZeroThreshold_ThenTheUncommittedTransactionIsReturned()
+    {
+        var transactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+
+        var stalled = await _repository.GetStalledTransactionsAsync(TimeSpan.Zero, CancellationToken.None);
+
+        stalled.ShouldContain(transactionId);
+    }
 }
