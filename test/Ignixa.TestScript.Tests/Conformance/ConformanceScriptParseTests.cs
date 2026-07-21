@@ -5,35 +5,18 @@ namespace Ignixa.TestScript.Tests.Conformance;
 
 public class ConformanceScriptParseTests
 {
-    private static string? LocateConformanceTestsRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, "conformance-tests");
-            if (Directory.Exists(candidate))
-                return candidate;
-
-            if (File.Exists(Path.Combine(dir.FullName, "All.sln")))
-            {
-                candidate = Path.Combine(dir.FullName, "conformance-tests");
-                if (Directory.Exists(candidate))
-                    return candidate;
-                break;
-            }
-
-            dir = dir.Parent;
-        }
-        return null;
-    }
+    private const string SuitesDirectoryName = "testscripts";
 
     public static IEnumerable<object[]> ConformanceScriptFiles()
     {
-        var root = LocateConformanceTestsRoot();
-        if (root is null)
+        var root = Path.Combine(AppContext.BaseDirectory, SuitesDirectoryName);
+        if (!Directory.Exists(root))
             throw new InvalidOperationException(
-                "conformance-tests directory not found. Expected it to be a sibling of All.sln or an ancestor of the test output directory. " +
-                "Ensure the conformance-tests directory exists at the repository root.");
+                $"Conformance suites not found at '{root}'. They are copied to the output " +
+                "directory by src/Core/Ignixa.TestScript.Suites/build/Ignixa.TestScript.Suites.targets, " +
+                "which this project imports explicitly — check that the <Import> is still present. " +
+                "A ProjectReference does not substitute: build/*.targets auto-import applies to " +
+                "PackageReference only.");
 
         return Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
             .Select(path => new object[] { path });
