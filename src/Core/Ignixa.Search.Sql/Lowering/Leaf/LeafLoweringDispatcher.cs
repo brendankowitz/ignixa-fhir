@@ -10,7 +10,23 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// </summary>
 public static class LeafLoweringDispatcher
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context, short resourceTypeId) => predicate.Value switch
+    /// <summary>The <see cref="Exception.Data"/> key a caught <see cref="NotSupportedException"/> carries its triggering predicate's <see cref="SourceSpan"/> under.</summary>
+    internal const string SpanDataKey = "Ignixa.SourceSpan";
+
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context, short resourceTypeId)
+    {
+        try
+        {
+            return LowerCore(predicate, context, resourceTypeId);
+        }
+        catch (NotSupportedException ex) when (predicate.Span is { } span && !ex.Data.Contains(SpanDataKey))
+        {
+            ex.Data[SpanDataKey] = span;
+            throw;
+        }
+    }
+
+    private static CteDefinition.ParamSource LowerCore(SearchParameterPredicateExpression predicate, LeafContext context, short resourceTypeId) => predicate.Value switch
     {
         StringSearchValue s => StringLoweringRule.Lower(predicate, s, context, resourceTypeId),
         TokenSearchValue t => TokenLoweringRule.Lower(predicate, t, context, resourceTypeId),

@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Lowering.Leaf;
 
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
@@ -21,6 +22,23 @@ public static class CompositeLoweringDispatcher
         short resourceTypeId)
     {
         var ordered = components.OrderBy(c => c.Position).ToList();
+        try
+        {
+            return LowerCore(compositeParameter, ordered, context, resourceTypeId);
+        }
+        catch (NotSupportedException ex) when (ordered[0].Span is { } span && !ex.Data.Contains(LeafLoweringDispatcher.SpanDataKey))
+        {
+            ex.Data[LeafLoweringDispatcher.SpanDataKey] = span;
+            throw;
+        }
+    }
+
+    private static CteDefinition.ParamSource LowerCore(
+        SearchParameterInfo compositeParameter,
+        IReadOnlyList<CompositeComponentExpression> ordered,
+        LeafContext context,
+        short resourceTypeId)
+    {
         var predicates = new SearchParameterPredicateExpression[ordered.Count];
         for (var i = 0; i < ordered.Count; i++)
         {
