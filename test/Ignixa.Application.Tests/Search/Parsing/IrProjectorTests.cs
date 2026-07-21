@@ -257,24 +257,47 @@ public class IrProjectorTests
         var node = Expression.CompartmentSearch("Patient", "123");
 
         // Act
-        var projected = IrProjector.TryDescribe(node, out var rows);
+        var projected = IrProjector.TryDescribe(node, out var rows, out var reason);
 
         // Assert -- no partial tree: a half-drawn projection misrepresents what will execute.
         projected.ShouldBeFalse();
         rows.ShouldBeEmpty();
+
+        // The reason must name the shape, or a blank IR panel is indistinguishable from a render bug.
+        reason.ShouldNotBeNull();
+        reason.ShouldContain(nameof(CompartmentSearchExpression));
     }
 
     [Fact]
-    public void GivenAProjectableNode_WhenTryDescribed_ThenItReturnsTheSameRowsAsDescribe()
+    public void GivenAProjectableRootOverAnUnprojectableChild_WhenTryDescribed_ThenNoPartialRowsEscape()
+    {
+        // Arrange -- the root projects fine and would have produced rows before the child threw. This is
+        // the case the all-or-nothing contract exists for; a root-level failure would not exercise it.
+        var node = Expression.And(
+            Expression.StringEquals(FieldName.String, null, "Smith", false),
+            Expression.CompartmentSearch("Patient", "123"));
+
+        // Act
+        var projected = IrProjector.TryDescribe(node, out var rows, out var reason);
+
+        // Assert
+        projected.ShouldBeFalse();
+        rows.ShouldBeEmpty();
+        reason.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenAProjectableNode_WhenTryDescribed_ThenItReturnsTheSameRowsAsDescribeAndNoReason()
     {
         // Arrange
         var ir = ParsePatient(("name", SearchParamType.String), ("name", "Smith"));
 
         // Act
-        var projected = IrProjector.TryDescribe(ir, out var rows);
+        var projected = IrProjector.TryDescribe(ir, out var rows, out var reason);
 
         // Assert
         projected.ShouldBeTrue();
+        reason.ShouldBeNull();
         rows.ShouldBe(IrProjector.Describe(ir));
     }
 

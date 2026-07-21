@@ -214,6 +214,31 @@ public class SearchTraceRealParserTests
         }
     }
 
+    [Fact]
+    public async Task GivenThreeAndedParameters_WhenTraced_ThenContributorsAccumulateThroughNestedIntersects()
+    {
+        // Arrange -- Lower folds ANDs left-deep: Intersect(Intersect(cte0, cte1), cte2). Reaching ordinal
+        // 0 from the outermost CTE therefore takes two levels of recursion, so a walk that stopped at
+        // depth 1 would still pass the two-parameter test and fail here.
+        var harness = SearchOptionsBuilderHarness.ForPatient(
+            ("name", SearchParamType.String),
+            ("gender", SearchParamType.Token),
+            ("birthdate", SearchParamType.Date));
+        var resolver = FakeSymbolResolver.For("name", "gender", "birthdate");
+
+        // Act
+        var trace = await CompileAsync(
+            harness, resolver, ("name", "Smith"), ("gender", "male"), ("birthdate", "2020-01-01"));
+
+        // Assert
+        trace.Plan.ShouldNotBeNull();
+        var structural = trace.Plan!.Ctes.Where(c => c.ParameterOrdinal is null).ToList();
+        structural.Count.ShouldBeGreaterThanOrEqualTo(2, "a three-way AND should nest intersects");
+
+        var outermost = trace.Plan.Ctes[trace.Plan.Ctes.Count - 1];
+        outermost.ContributingOrdinals.ShouldBe([0, 1, 2]);
+    }
+
     private static string Slice(ParameterTrace parameter, SourceSpan span)
     {
         var source = span.Origin == SourceOrigin.Key ? parameter.Key : parameter.Value;

@@ -7,9 +7,10 @@ namespace Ignixa.Search.Sql.Builders;
 /// </summary>
 /// <remarks>
 /// These strings carry two loads at once: SQL Server joins a CTE reference to its definition by them, and
-/// tooling joins a plan row to its parameter and to its slice of SQL text by them. Two independent format
-/// strings would be one silent typo from breaking either join with nothing to fail at compile time, so
-/// every producer routes through here.
+/// tooling is intended to join a plan row to its parameter and to its slice of SQL text by them. Two
+/// independent format strings would be one silent typo from breaking either join with nothing to fail at
+/// compile time, so every producer routes through here. Guarded by test, not by the compiler — nothing
+/// stops a future call site interpolating <c>$"cte{i}"</c> by hand.
 /// <para>
 /// Lives in <c>Builders</c> rather than on the explainer because these are SQL identifiers first and
 /// display text second: emission is the correctness-critical consumer, and a change made to render a
@@ -20,6 +21,21 @@ public static class SqlLabels
 {
     /// <summary>The identifier for the CTE at <paramref name="index"/>.</summary>
     public static string CteLabel(int index) => $"cte{index}";
+
+    /// <summary>The match-page CTE. A real SQL identifier, not just a range label.</summary>
+    public const string MatchPage = "cteMatchPage";
+
+    /// <summary>The range label for a WHERE clause body.</summary>
+    public const string Where = "where";
+
+    /// <summary>The range label for the keyset-seek predicate inside a WHERE.</summary>
+    public const string Seek = "seek";
+
+    /// <summary>The range label for an ORDER BY clause body.</summary>
+    public const string OrderBy = "orderBy";
+
+    /// <summary>The range label for the final UNION ALL that stitches the result together.</summary>
+    public const string Assembly = "assembly";
 
     /// <summary>The identifier for the include stage at <paramref name="index"/>.</summary>
     public static string IncludeLabel(int index) => $"inc{index}";

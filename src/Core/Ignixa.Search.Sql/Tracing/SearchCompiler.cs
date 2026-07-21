@@ -73,9 +73,15 @@ public static class SearchCompiler
         // failure land on top of the Resolve-stage one already recorded above.
         if (resolved.Unresolved.Count == 0)
         {
+            // Tracks whether Lower itself completed. Keying the reported stage off planTrace instead would
+            // blame the lowerer for anything BuildPlanTrace throws -- and BuildPlanTrace runs the explainer,
+            // whose NotSupportedException means a CteDefinition case is missing from PlanExplainer, not
+            // that lowering went wrong. Filing that under Lower sends the next reader to the wrong file.
+            LoweredPlan? lowered = null;
+
             try
             {
-                var lowered = Lower.Run(
+                lowered = Lower.Run(
                     options.Expression,
                     resolved.Symbols,
                     resourceType,
@@ -91,9 +97,13 @@ public static class SearchCompiler
                 var emitted = SqlBuilder.Run(lowered.Plan, new EmitOptions(IncludeTextRanges: true));
                 sqlTrace = new EmittedSqlTrace(emitted.Sql, emitted.TextRanges ?? []);
             }
+            // Deliberately does NOT catch ArgumentException. The trace records' construction guards
+            // (SqlTextRange, CteProvenance, PlanExplainRow) throw it, but none can trip on a well-formed
+            // plan -- they detect programmer error, so swallowing them into a TraceFailure would file a
+            // bug in this compiler as though it were a property of the user's query.
             catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
             {
-                failure = RecordFailure(outcomes, planTrace is null ? TraceStage.Lower : TraceStage.Emit, ex);
+                failure = RecordFailure(outcomes, lowered is null ? TraceStage.Lower : TraceStage.Emit, ex);
             }
         }
 
@@ -208,10 +218,12 @@ public static class SearchCompiler
         for (var i = 0; i < ctes.Length; i++)
         {
             ctes[i] = new CteProvenance(
-                i, directOrdinals[i], spans[i], ContributingOrdinals(i, rows, directOrdinals));
+                i, directOrdinals[i], spans[i], ContributingOrdinals(i, lowered.Plan, directOrdinals));
         }
 
-        return new QueryPlanTrace(lowered.Plan.Explain(), ctes, rows);
+        // Print off the rows already computed rather than calling Explain(), which would run Describe a
+        // second time -- same output, twice the work, and two chances to disagree.
+        return new QueryPlanTrace(PlanExplainer.Print(rows), ctes, rows);
     }
 
     /// <summary>
@@ -220,14 +232,13 @@ public static class SearchCompiler
     /// parameters does this join belong to" has to walk the plan itself.
     /// </summary>
     /// <remarks>
-    /// Depth-first over <see cref="PlanExplainRow.ReferencedCteIndexes"/>, which the explainer reads
-    /// straight off the plan node. Plan CTE references form a DAG (a CTE may only reference lower indices),
-    /// so the walk terminates; <paramref name="visited"/> keeps a diamond from being counted twice.
+    /// Reads the child references off <paramref name="plan"/> rather than off the explainer's rows: the
+    /// rows are a display projection, and provenance should not depend on how something renders. Plan CTE
+    /// references only ever point at lower indices — every structural factory appends itself after its
+    /// children — so the walk terminates. The visited set exists for a diamond, where two branches share a
+    /// child; ordinals land in a set, so revisiting would be harmless but wasteful.
     /// </remarks>
-    private static IReadOnlyList<int> ContributingOrdinals(
-        int index,
-        IReadOnlyList<PlanExplainRow> rows,
-        int?[] directOrdinals)
+    private static IReadOnlyList<int> ContributingOrdinals(int index, QueryPlan plan, int?[] directOrdinals)
     {
         var ordinals = new SortedSet<int>();
         var visited = new HashSet<int>();
@@ -246,8 +257,7 @@ public static class SearchCompiler
                 ordinals.Add(ordinal);
             }
 
-            var row = rows.FirstOrDefault(r => r.CanonicalLabel == SqlLabels.CteLabel(cteIndex));
-            foreach (var child in row?.ReferencedCteIndexes ?? [])
+            foreach (var child in PlanExplainer.ReferencedCteIndexesOf(plan.Ctes[cteIndex]))
             {
                 Collect(child);
             }

@@ -41,7 +41,7 @@ public static class SqlBuilder
             {
                 var outerPredicateText = EmitPredicate(plan.OuterPredicate, parameters);
                 writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\nWHERE ");
-                using (writer.Section("where", SqlRangeKind.Where))
+                using (writer.Section(Where, SqlRangeKind.Where))
                 {
                     writer.Append(outerPredicateText);
                 }
@@ -88,14 +88,14 @@ public static class SqlBuilder
                     : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
                 writer.Append(resourceJoin);
                 writer.Append("\nWHERE ");
-                using (writer.Section("where", SqlRangeKind.Where))
+                using (writer.Section(Where, SqlRangeKind.Where))
                 {
                     WriteAndJoinedClauses(writer, whereClauses, seekClauseIndex);
                 }
             }
 
             writer.Append("\nORDER BY ");
-            using (writer.Section("orderBy", SqlRangeKind.OrderBy))
+            using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
             {
                 writer.Append(orderByText);
             }
@@ -153,29 +153,29 @@ public static class SqlBuilder
 
         var unionBlocks = new List<string>
         {
-            $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM cteMatchPage",
+            $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}",
         };
         for (var i = 0; i < includes.Count; i++)
         {
             unionBlocks.Add(
                 $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
-                $"WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+                $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 
         writer.Append(";WITH ");
         writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
         writer.Append(",\n");
-        using (writer.Section("cteMatchPage", SqlRangeKind.MatchPage))
+        using (writer.Section(MatchPage, SqlRangeKind.MatchPage))
         {
             writer.Append(
-                $"cteMatchPage AS (\n" +
+                $"{MatchPage} AS (\n" +
                 $"    SELECT {top}m.T1, m.Sid1{matchSortColumns}\n" +
                 $"    FROM {CteLabel(plan.Match.Index)} m{matchSortJoins}{matchResourceJoin}");
 
             if (matchWhereClauses.Count > 0)
             {
                 writer.Append("\n    WHERE ");
-                using (writer.Section("where", SqlRangeKind.Where))
+                using (writer.Section(Where, SqlRangeKind.Where))
                 {
                     WriteAndJoinedClauses(writer, matchWhereClauses, matchSeekClauseIndex);
                 }
@@ -202,16 +202,16 @@ public static class SqlBuilder
 
         writer.Append("\n");
 
-        // The final UNION ALL is the only emitted section that belongs to no single plan row -- it is the
-        // assembly that stitches the match page to every include stage. Labelled anyway, so a UI can
-        // highlight it instead of leaving a stretch of SQL that maps to nothing.
-        using (writer.Section("assembly", SqlRangeKind.Assembly))
+        // The final UNION ALL stitches the match page to every include stage, so like the other
+        // structural sections it belongs to no single plan row. Sectioned anyway: until it was, this
+        // stretch carried no range at all and could not be addressed even as structure.
+        using (writer.Section(Assembly, SqlRangeKind.Assembly))
         {
             writer.Append(string.Join("\nUNION ALL\n", unionBlocks));
         }
 
         writer.Append("\nORDER BY ");
-        using (writer.Section("orderBy", SqlRangeKind.OrderBy))
+        using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
         {
             writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
         }
@@ -234,7 +234,7 @@ public static class SqlBuilder
 
             if (i == seekClauseIndex)
             {
-                using (writer.Section("seek", SqlRangeKind.Seek))
+                using (writer.Section(Seek, SqlRangeKind.Seek))
                 {
                     writer.Append(clauses[i]);
                 }
@@ -562,12 +562,12 @@ public static class SqlBuilder
         var branches = new List<string>();
         if (stage.SeedFromMatch)
         {
-            branches.Add($"SELECT 1 FROM cteMatchPage m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            branches.Add($"SELECT 1 FROM {MatchPage} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         foreach (var seedStageIndex in stage.SeedStages)
         {
-            branches.Add($"SELECT 1 FROM inc{seedStageIndex}lim m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            branches.Add($"SELECT 1 FROM {IncludeLimitLabel(seedStageIndex)} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";

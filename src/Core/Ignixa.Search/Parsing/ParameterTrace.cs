@@ -29,17 +29,21 @@ namespace Ignixa.Search.Parsing;
 /// <see cref="IrProjector.Describe"/>, which flattens it to <see cref="IrRow"/>s.
 /// </para>
 /// <para>
-/// <see cref="Ordinal"/> and <see cref="Key"/> are validated on construction because <see cref="Ordinal"/>
-/// is what <see cref="Sql.Tracing.CteProvenance.ParameterOrdinal"/> is built from — an unchecked value here
-/// surfaces as a failure several stages downstream, naming a parameter the producer never touched. Those
-/// two are get-only so a <c>with</c> cannot bypass the checks; the rest stay <c>init</c> because later
-/// stages legitimately restamp <see cref="Outcome"/> when lowering or emission fails.
+/// Construction validates <see cref="Ordinal"/>, <see cref="Key"/>, <see cref="Value"/> and
+/// <see cref="Outcome"/>. <see cref="Ordinal"/> earns its guard by being what
+/// <see cref="Sql.Tracing.CteProvenance.ParameterOrdinal"/> is built from — an unchecked value here
+/// surfaces as a failure several stages downstream, naming a parameter the producer never touched.
+/// <see cref="Outcome"/> is the only <c>init</c> property, because later stages legitimately restamp it
+/// when lowering or emission fails; every other property is get-only so a <c>with</c> cannot copy around
+/// a check. (<see cref="Outcome"/>'s own null guard is therefore bypassable by
+/// <c>with { Outcome = null! }</c> — accepted, since that requires suppressing nullability to reach.)
 /// </para>
 /// <para>
 /// The parameter order groups <see cref="Key"/> with <see cref="KeySyntax"/> and <see cref="Value"/> with
 /// <see cref="ValueSyntax"/>. That reads better than separating each pair, but it is not a safety
 /// mechanism: <see cref="Key"/> and <see cref="Value"/> are both <see cref="string"/>, so transposing them
-/// still compiles. Producers use named arguments, which is what actually prevents it.
+/// still compiles, and the test fixtures construct these positionally. The production call sites in
+/// <see cref="SearchOptionsBuilder"/> use named arguments by convention; nothing enforces it.
 /// </para>
 /// </remarks>
 public sealed record ParameterTrace
@@ -75,15 +79,20 @@ public sealed record ParameterTrace
     /// <summary>The parameter name as written, including any modifier.</summary>
     public string Key { get; }
 
-    public SyntaxNode? KeySyntax { get; init; }
+    public SyntaxNode? KeySyntax { get; }
 
     /// <summary>The parameter value as written. Empty for shapes that carry no value.</summary>
-    public string Value { get; init; }
+    public string Value { get; }
 
-    public SyntaxNode? ValueSyntax { get; init; }
+    public SyntaxNode? ValueSyntax { get; }
 
-    public Expression? Ir { get; init; }
+    public Expression? Ir { get; }
 
+    /// <summary>
+    /// How this parameter fared. The only settable property: <see cref="Sql.Tracing.SearchCompiler"/>
+    /// restamps it with a <see cref="ParameterOutcome.Failed"/> when a later stage attributes a failure
+    /// back to this parameter.
+    /// </summary>
     public ParameterOutcome Outcome { get; init; }
 
     /// <summary>
@@ -91,5 +100,5 @@ public sealed record ParameterTrace
     /// <see cref="ParseResult.DataType"/>. Null when the parameter never bound a value, which includes
     /// every parameter that was ignored before parsing completed.
     /// </summary>
-    public SearchParamType? DataType { get; init; }
+    public SearchParamType? DataType { get; }
 }

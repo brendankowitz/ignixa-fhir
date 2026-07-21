@@ -21,21 +21,100 @@ namespace Ignixa.Search.Sql.Ast;
 /// structural node composes. <see cref="Body"/> is display text and is free to change wording.
 /// </para>
 /// <para>
-/// Rows with no SQL of their own (<c>sort</c>, <c>page</c>, <c>countOnly</c>) repeat their display name as
-/// the canonical one, so a consumer never has to special-case a null.
+/// Every row repeats its display name as the canonical one except the match CTE, so a consumer never has
+/// to special-case a null. Note that <c>sort</c>, <c>page</c> and <c>countOnly</c> do affect the emitted
+/// SQL — they contribute ORDER BY, TOP, seek predicates and the COUNT_BIG shape — they simply own no
+/// <see cref="Builders.SqlTextRange"/> carrying their name, so looking one up by their label finds
+/// nothing.
+/// </para>
+/// <para>
+/// Not a positional record, for the same reason as its siblings: the labels and kind are identifiers a
+/// consumer addresses rows by, and an empty one addresses nothing. <see cref="ReferencedCteIndexes"/> is
+/// copied on the way in and compared element-wise by <see cref="Equals(PlanExplainRow)"/> — a record's
+/// synthesized equality compares a collection property by reference, which would make two rows describing
+/// the same plan node unequal.
 /// </para>
 /// </remarks>
-/// <param name="Label">Display name for the row.</param>
-/// <param name="CanonicalLabel">The identifier this row is addressable by in the emitted SQL.</param>
-/// <param name="Kind">Which plan node produced the row — see <see cref="PlanRowKind"/>.</param>
-/// <param name="Body">Formatted, human-facing description. Not a stable contract.</param>
-/// <param name="ReferencedCteIndexes">
-/// Indexes of the CTEs this row's node composes, in the order the node names them. Empty for leaf
-/// sources and for non-CTE rows.
-/// </param>
-public sealed record PlanExplainRow(
-    string Label,
-    string CanonicalLabel,
-    string Kind,
-    string Body,
-    IReadOnlyList<int> ReferencedCteIndexes);
+public sealed record PlanExplainRow
+{
+    public PlanExplainRow(
+        string label,
+        string canonicalLabel,
+        string kind,
+        string body,
+        IReadOnlyList<int> referencedCteIndexes)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(label);
+        ArgumentException.ThrowIfNullOrEmpty(canonicalLabel);
+        ArgumentException.ThrowIfNullOrEmpty(kind);
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentNullException.ThrowIfNull(referencedCteIndexes);
+
+        foreach (var index in referencedCteIndexes)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(index, nameof(referencedCteIndexes));
+        }
+
+        Label = label;
+        CanonicalLabel = canonicalLabel;
+        Kind = kind;
+        Body = body;
+        ReferencedCteIndexes = [.. referencedCteIndexes];
+    }
+
+    /// <summary>Display name for the row.</summary>
+    public string Label { get; }
+
+    /// <summary>The identifier this row is addressable by in the emitted SQL.</summary>
+    public string CanonicalLabel { get; }
+
+    /// <summary>Which plan node produced the row — see <see cref="PlanRowKind"/>.</summary>
+    public string Kind { get; }
+
+    /// <summary>Formatted, human-facing description. Not a stable contract.</summary>
+    public string Body { get; }
+
+    /// <summary>
+    /// Indexes of the CTEs this row's node composes, in the order the node names them — the order is
+    /// load-bearing for <see cref="PlanRowKind.Except"/>, where left and right are not interchangeable.
+    /// Empty for leaf sources and for non-CTE rows.
+    /// </summary>
+    public IReadOnlyList<int> ReferencedCteIndexes { get; }
+
+    public bool Equals(PlanExplainRow? other)
+        => other is not null
+            && Label == other.Label
+            && CanonicalLabel == other.CanonicalLabel
+            && Kind == other.Kind
+            && Body == other.Body
+            && ReferencedCteIndexes.SequenceEqual(other.ReferencedCteIndexes);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Label);
+        hash.Add(CanonicalLabel);
+        hash.Add(Kind);
+        hash.Add(Body);
+        foreach (var index in ReferencedCteIndexes)
+        {
+            hash.Add(index);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    public void Deconstruct(
+        out string label,
+        out string canonicalLabel,
+        out string kind,
+        out string body,
+        out IReadOnlyList<int> referencedCteIndexes)
+    {
+        label = Label;
+        canonicalLabel = CanonicalLabel;
+        kind = Kind;
+        body = Body;
+        referencedCteIndexes = ReferencedCteIndexes;
+    }
+}

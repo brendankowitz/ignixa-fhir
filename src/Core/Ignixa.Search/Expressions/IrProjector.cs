@@ -5,6 +5,8 @@
 
 #nullable enable
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Ignixa.Search.Expressions;
 
 /// <summary>
@@ -46,31 +48,41 @@ public static class IrProjector
 
     /// <summary>
     /// <see cref="Describe"/> for callers that must not fail the request over an unprojectable node —
-    /// returns <see langword="false"/> and no rows where <see cref="Describe"/> would throw.
+    /// returns <see langword="false"/>, no rows, and the reason where <see cref="Describe"/> would throw.
     /// </summary>
     /// <remarks>
     /// The strict overload stays the default on purpose. A partial tree misrepresents what the server will
     /// execute, so anything asserting the projection is complete — tests, golden output — must keep using
     /// <see cref="Describe"/> and let it throw. This exists so a renderer showing a trace alongside a
-    /// successful search can degrade to "no IR available" instead of turning a diagnostic into a 500, and
-    /// so that choice is made once here rather than by a catch block at every call site.
+    /// successful search can degrade to "no IR available" instead of turning a diagnostic into a 500.
+    /// <para>
+    /// <paramref name="unsupportedReason"/> is not optional politeness: it names the node kind that could
+    /// not be projected. Without it a blank IR panel is indistinguishable from a rendering bug, and the
+    /// one fact needed to diagnose it — which shape the projector does not cover — is exactly what the
+    /// swallowed exception was carrying.
+    /// </para>
     /// </remarks>
     /// <returns>
     /// <see langword="true"/> and the complete rows, or <see langword="false"/> and an empty list. Never a
     /// partial projection — a half-drawn tree is the failure mode this whole type is built to avoid.
     /// </returns>
-    public static bool TryDescribe(Expression node, out IReadOnlyList<IrRow> rows)
+    public static bool TryDescribe(
+        Expression node,
+        out IReadOnlyList<IrRow> rows,
+        [NotNullWhen(false)] out string? unsupportedReason)
     {
         ArgumentNullException.ThrowIfNull(node);
 
         try
         {
             rows = Describe(node);
+            unsupportedReason = null;
             return true;
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException ex)
         {
             rows = [];
+            unsupportedReason = ex.Message;
             return false;
         }
     }

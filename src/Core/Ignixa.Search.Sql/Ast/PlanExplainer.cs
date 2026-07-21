@@ -10,8 +10,18 @@ namespace Ignixa.Search.Sql.Ast;
 /// </summary>
 public static class PlanExplainer
 {
-    public static string Print(QueryPlan plan)
-        => string.Join('\n', Describe(plan).Select(row => $"{row.Label} = {row.Body}"));
+    public static string Print(QueryPlan plan) => Print(Describe(plan));
+
+    /// <summary>
+    /// The flat text for rows already described. Callers holding both the rows and the printed form take
+    /// this overload so <see cref="Describe"/> runs once — the two can then never disagree.
+    /// </summary>
+    public static string Print(IReadOnlyList<PlanExplainRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        return string.Join('\n', rows.Select(row => $"{row.Label} = {row.Body}"));
+    }
 
     /// <summary>
     /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
@@ -101,13 +111,21 @@ public static class PlanExplainer
     /// The CTEs a structural node composes, in the order it names them — the same fields
     /// <see cref="PrintCte"/> renders into the body, kept as data so consumers need not parse it back out.
     /// </summary>
-    private static IReadOnlyList<int> ReferencedCteIndexesOf(CteDefinition cte) => cte switch
+    /// <remarks>
+    /// The leaf sources are listed explicitly rather than caught by a default arm, and an unknown case
+    /// throws like <see cref="KindOf"/> does. A silent <c>[]</c> here would let a new composing
+    /// <see cref="CteDefinition"/> report no children, which
+    /// <see cref="Tracing.SearchCompiler"/> would turn into silently-wrong parameter provenance with
+    /// nothing to fail.
+    /// </remarks>
+    internal static IReadOnlyList<int> ReferencedCteIndexesOf(CteDefinition cte) => cte switch
     {
         CteDefinition.Intersect x => [x.Left.Index, x.Right.Index],
         CteDefinition.Union u => [.. u.Parts.Select(r => r.Index)],
         CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
         CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
-        _ => [],
+        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource => [],
+        _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
     };
 
     private static string PrintSortSpec(SortSpec sort)

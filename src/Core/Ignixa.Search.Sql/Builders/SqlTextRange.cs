@@ -2,11 +2,16 @@ namespace Ignixa.Search.Sql.Builders;
 
 /// <summary>A labelled range of emitted SQL text — which characters a plan section produced.</summary>
 /// <remarks>
-/// <see cref="Label"/> says which section this is and is unique within one emitted statement;
-/// <see cref="Kind"/> says what sort of section it is. Both are needed: a consumer joins a range to its
-/// <see cref="Ast.PlanExplainRow"/> by label (via <see cref="Ast.PlanExplainRow.CanonicalLabel"/>), but the
-/// structural ranges have no row to join to and are rendered from <see cref="Kind"/> alone. See
-/// <see cref="SqlRangeKind"/>.
+/// <see cref="Label"/> says which section this is; <see cref="Kind"/> says what sort of section it is.
+/// Both are needed: a consumer joins a range to its <see cref="Ast.PlanExplainRow"/> by label (via
+/// <see cref="Ast.PlanExplainRow.CanonicalLabel"/>), but several ranges have no row bearing their label
+/// and are rendered from <see cref="Kind"/> alone. See <see cref="SqlRangeKind"/>.
+/// <para>
+/// Labels are unique within one emitted statement — the three emit paths are mutually exclusive, so the
+/// repeated <c>where</c> and <c>orderBy</c> sections never co-occur, and the rest are index-derived. That
+/// is a property of <see cref="SqlBuilder"/> and of the range sequence, not of this type: a single range
+/// cannot know what else was emitted, and nothing stops a future nested section from breaking it.
+/// </para>
 /// <para>
 /// Not a positional record: <see cref="Start"/> and <see cref="Length"/> are buffer offsets and must be
 /// non-negative, so construction validates rather than trusting every producer to get the arithmetic
