@@ -343,6 +343,11 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             _loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>());
 #pragma warning restore CA2000
         sqlServerSearchIndexCache.PreloadResourceTypesAsync(CancellationToken.None).GetAwaiter().GetResult();
+        // Eager, uncapped warm-up -- mirrors MultiTenantSearchIndexCache.GetOrCreateCacheForTenant's
+        // InitializeAsync() call for the EF-based searchIndexCache above: guarantees no caller of
+        // this factory's createRepository delegate ever observes a partially-populated cache. See
+        // docs/superpowers/specs/2026-07-20-sqlserver-search-param-cache-race-fix-design.md.
+        sqlServerSearchIndexCache.PreloadSearchParamsAsync(maxRows: null, CancellationToken.None).GetAwaiter().GetResult();
 
         // Create factory delegate for Repository (accepts DbContext parameter, retained for
         // GetSearchServiceAsync's benefit -- see createSearchService below -- but unused here since
