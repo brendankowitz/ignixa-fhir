@@ -14,6 +14,13 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class ResourceColumnLoweringRule
 {
+    /// <summary>
+    /// True for the parameter codes this rule handles. These target dbo.Resource's own columns, so they
+    /// never need a SearchParamId — callers that resolve or dispatch by SearchParamId must skip them.
+    /// </summary>
+    public static bool IsResourceColumnCode(string parameterCode)
+        => parameterCode is "_id" or "_type" or "_lastUpdated";
+
     public static Predicate? TryLower(SearchParameterPredicateExpression predicate, LeafContext context) => predicate.Parameter.Code switch
     {
         "_id" => IdEquals(predicate, context),

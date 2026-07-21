@@ -140,5 +140,55 @@ public class SearchTraceTests
         failed.Stage.ShouldBe(TraceStage.Lower);
         failed.Span.ShouldNotBeNull($"{scenario}: the attributed failure carries no source span");
         failed.Message.ShouldNotBeNullOrWhiteSpace();
+
+        trace.Failure.ShouldNotBeNull($"{scenario}: the trace records no failure");
+        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
+    }
+
+    [Fact]
+    public async Task GivenTwoParametersSharingASpan_WhenOneFailsToLower_ThenOnlyThatParameterIsMarkedFailed()
+    {
+        var trace = await SearchTraceFixtures.TraceCollidingSpansWithOneFailureAsync();
+
+        var gender = trace.Parameters.Single(p => p.Key == "gender");
+        var name = trace.Parameters.Single(p => p.Key == "name");
+
+        gender.Outcome.ShouldBeOfType<ParameterOutcome.Compiled>("the innocent same-length neighbour was smeared with the failure");
+        name.Outcome.ShouldBeOfType<ParameterOutcome.Failed>();
+    }
+
+    [Fact]
+    public async Task GivenAResourceColumnParameter_WhenTraced_ThenItIsNotReportedUnresolvedAndTheQueryStillCompiles()
+    {
+        var trace = await SearchTraceFixtures.TraceResourceColumnIdAsync();
+
+        trace.Parameters.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        trace.Failure.ShouldBeNull();
+        trace.Plan.ShouldNotBeNull("_id needs no SearchParamId, so Lower should have run");
+        trace.Sql.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenAnUnresolvedChainReferenceParameter_WhenTraced_ThenItIsAttributedToTheChainsParameter()
+    {
+        var trace = await SearchTraceFixtures.TraceUnresolvedChainReferenceParameterAsync();
+
+        var failed = trace.Parameters.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Failed>();
+        failed.Stage.ShouldBe(TraceStage.Resolve);
+        failed.Message.ShouldContain("organization");
+    }
+
+    [Fact]
+    public async Task GivenAFailureNamingNoParameter_WhenTraced_ThenItsMessageSurvivesOnTheTrace()
+    {
+        var trace = await SearchTraceFixtures.TraceSortKeyCapExceededAsync();
+
+        trace.Plan.ShouldBeNull();
+        trace.Parameters.ShouldAllBe(p => p.Outcome is ParameterOutcome.Compiled);
+
+        trace.Failure.ShouldNotBeNull("the sort-key cap message would otherwise be lost entirely");
+        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
+        trace.Failure.Message.ShouldContain("_sort supports at most 3 keys");
+        trace.Failure.Span.ShouldBeNull();
     }
 }

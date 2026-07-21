@@ -1,4 +1,4 @@
-using Ignixa.Search.Definition;
+﻿using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
@@ -22,16 +22,17 @@ public static class SearchCompiler
     /// returned trace rather than thrown: an unresolved search parameter is reported at
     /// <see cref="TraceStage.Resolve"/> directly from <see cref="ResolvedSymbols.Unresolved"/>, and a
     /// <see cref="NotSupportedException"/>/<see cref="KeyNotFoundException"/> from Lower or Emit is
-    /// caught at this boundary and attributed to the parameter whose predicate span it names.
+    /// caught at this boundary, recorded on <see cref="SearchTrace.Failure"/>, and attributed to the
+    /// parameter the failing dispatcher named.
     /// </summary>
     public static async Task<SearchTrace> CompileAsync(
         string resourceType,
         IReadOnlyList<QueryParameter> parameters,
         ISearchOptionsBuilder optionsBuilder,
         ISymbolResolver resolver,
-        CancellationToken cancellationToken,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
-        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null)
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -56,6 +57,7 @@ public static class SearchCompiler
 
         QueryPlanTrace? planTrace = null;
         EmittedSqlTrace? sqlTrace = null;
+        TraceFailure? failure = null;
 
         // An unresolved parameter guarantees Lower will throw KeyNotFoundException the moment it looks
         // up that parameter's SearchParamId -- skip the call rather than let a second, less specific
@@ -82,14 +84,14 @@ public static class SearchCompiler
             }
             catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
             {
-                RecordFailure(outcomes, planTrace is null ? TraceStage.Lower : TraceStage.Emit, ex);
+                failure = RecordFailure(outcomes, planTrace is null ? TraceStage.Lower : TraceStage.Emit, ex);
             }
         }
 
-        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace);
+        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace, failure);
     }
 
-    /// <summary>Marks the owning trace Failed(Resolve, ...) for every parameter Resolve could not find, matching by the exact <see cref="SearchParameterInfo"/> instance appearing on a predicate in that trace's IR.</summary>
+    /// <summary>Marks the owning trace Failed(Resolve, ...) for every parameter Resolve could not find, matching against every parameter-bearing node in that trace's IR -- not leaf predicates alone, since a chain's or a :missing's parameter appears nowhere else.</summary>
     private static void MarkUnresolved(IList<ParameterTrace> outcomes, IReadOnlyList<SearchParameterInfo> unresolved)
     {
         if (unresolved.Count == 0)
@@ -106,9 +108,9 @@ public static class SearchCompiler
             }
 
             var match = Flatten(trace.Ir)
-                .OfType<SearchParameterPredicateExpression>()
-                .FirstOrDefault(p => unresolved.Any(u => ReferenceEquals(u, p.Parameter)));
-            if (match is null)
+                .SelectMany(ParametersOf)
+                .FirstOrDefault(p => unresolved.Any(u => u.Equals(p.Parameter)));
+            if (match.Parameter is null)
             {
                 continue;
             }
@@ -144,23 +146,62 @@ public static class SearchCompiler
         return new QueryPlanTrace(lowered.Plan.Explain(), ctes);
     }
 
-    /// <summary>Attributes a Lower/Emit-stage failure to every parameter whose IR carries the span the failing dispatcher attached to the exception. Leaves outcomes untouched when no span was attached or none matches -- the null Plan/Sql on the returned trace is itself the visible signal in that case.</summary>
-    private static void RecordFailure(IList<ParameterTrace> outcomes, TraceStage stage, Exception ex)
+    /// <summary>
+    /// Records a Lower/Emit-stage failure, and attributes it to the owning parameter when the failing
+    /// dispatcher named one. Attribution is by parameter, never by span alone: spans repeat across
+    /// parameters, so a span-only match would mark same-length neighbours failed too. Guards that throw
+    /// from outside the dispatchers name no parameter; their message still reaches the caller through the
+    /// returned <see cref="TraceFailure"/>.
+    /// </summary>
+    private static TraceFailure RecordFailure(IList<ParameterTrace> outcomes, TraceStage stage, Exception ex)
     {
-        if (ex.Data[LeafLoweringDispatcher.SpanDataKey] is not SourceSpan span)
+        var span = ex.Data[LeafLoweringDispatcher.SpanDataKey] as SourceSpan?;
+        var failure = new TraceFailure(stage, ex.Message, span);
+
+        if (ex.Data[LeafLoweringDispatcher.ParameterDataKey] is not SearchParameterInfo parameter)
         {
-            return;
+            return failure;
         }
 
         for (var i = 0; i < outcomes.Count; i++)
         {
             var trace = outcomes[i];
-            if (trace.Ir is null || !Flatten(trace.Ir).Any(n => ExtractSpan(n) == span))
+            if (trace.Ir is null || !Flatten(trace.Ir).SelectMany(ParametersOf).Any(p => p.Parameter.Equals(parameter)))
             {
                 continue;
             }
 
             outcomes[i] = trace with { Outcome = new ParameterOutcome.Failed(stage, ex.Message, span) };
+        }
+
+        return failure;
+    }
+
+    /// <summary>
+    /// Yields every search parameter one IR node names, with the node's own span where it has one. Covers
+    /// the four node kinds that carry a parameter, not just leaf predicates: a chain names its reference
+    /// parameter, a wrapper names a composite's own identity, and :missing names its subject -- each of
+    /// which Resolve can report unresolved without any leaf predicate mentioning it.
+    /// </summary>
+    private static IEnumerable<(SearchParameterInfo Parameter, SourceSpan? Span)> ParametersOf(Expression node)
+    {
+        switch (node)
+        {
+            case SearchParameterPredicateExpression p:
+                yield return (p.Parameter, p.Span);
+                break;
+            case CompositeComponentExpression c:
+                yield return (c.ComponentSearchParameter, c.Span);
+                break;
+            case SearchParameterExpression sp:
+                yield return (sp.Parameter, null);
+                break;
+            case ChainedExpression chain:
+                yield return (chain.ReferenceSearchParameter, null);
+                break;
+            case MissingSearchParameterExpression missing:
+                yield return (missing.Parameter, null);
+                break;
         }
     }
 

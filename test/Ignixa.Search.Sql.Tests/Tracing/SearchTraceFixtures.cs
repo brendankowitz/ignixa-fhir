@@ -1,4 +1,4 @@
-using Ignixa.Abstractions;
+﻿using Ignixa.Abstractions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -35,7 +35,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver);
     }
 
     public static Task<SearchTrace> TraceUnregisteredParameterAsync()
@@ -55,7 +55,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("unknown", "value")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("unknown", "value")], builder, resolver);
     }
 
     /// <summary>Patient?active=true -- a bare leaf predicate, unwrapped in a SearchParameterExpression as the real binder shapes it.</summary>
@@ -77,7 +77,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("active", "true")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("active", "true")], builder, resolver);
     }
 
     /// <summary>Observation?code-value-concept=8480-6$high -- a token-token composite.</summary>
@@ -117,7 +117,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Observation"] = 104;
 
         return SearchCompiler.CompileAsync(
-            "Observation", [new QueryParameter("code-value-concept", "8480-6$high")], builder, resolver, CancellationToken.None);
+            "Observation", [new QueryParameter("code-value-concept", "8480-6$high")], builder, resolver);
     }
 
     /// <summary>Patient?organization.name=Acme -- a forward chain.</summary>
@@ -142,7 +142,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Organization"] = 105;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("organization.name", "Acme")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("organization.name", "Acme")], builder, resolver);
     }
 
     /// <summary>Patient?active=true&amp;_include=Patient:organization -- a leaf match plus an include stage (which contributes no ParamSource CTE of its own).</summary>
@@ -172,8 +172,7 @@ internal static class SearchTraceFixtures
             "Patient",
             [new QueryParameter("active", "true"), new QueryParameter("_include", "Patient:organization")],
             builder,
-            resolver,
-            CancellationToken.None);
+            resolver);
     }
 
     /// <summary>Patient?active=true&amp;_sort=name -- a leaf match plus a sort key (which contributes no ParamSource CTE of its own).</summary>
@@ -199,7 +198,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "name")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "name")], builder, resolver);
     }
 
     /// <summary>Patient?name:not=Smith -- a single-value :not (modifier on the predicate itself, not a NotExpression wrapper).</summary>
@@ -221,7 +220,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver);
     }
 
     /// <summary>Patient?name:missing=true -- :missing lowers to a presence ParamSource that is deliberately exempt from CTE provenance.</summary>
@@ -239,7 +238,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:missing", "true")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("name:missing", "true")], builder, resolver);
     }
 
     /// <summary>A resolvable leaf whose value type has no leaf lowering rule, so Lower throws after Resolve succeeds
@@ -263,7 +262,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name", "Smith")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("name", "Smith")], builder, resolver);
     }
 
     /// <summary>The same unsupported leaf value behind a :not modifier -- Lower rebuilds the predicate as a positive
@@ -287,7 +286,7 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver, CancellationToken.None);
+            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver);
     }
 
     /// <summary>A composite whose component value types have no composite lowering rule, so the composite dispatcher
@@ -328,7 +327,125 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Observation"] = 104;
 
         return SearchCompiler.CompileAsync(
-            "Observation", [new QueryParameter("code-value-string", "a$b")], builder, resolver, CancellationToken.None);
+            "Observation", [new QueryParameter("code-value-string", "a$b")], builder, resolver);
+    }
+
+    /// <summary>Two parameters whose values are the same length, so the real parser gives them identical spans, and
+    /// only the second can lower. Attribution must follow the parameter, not the span they share.</summary>
+    public static Task<SearchTrace> TraceCollidingSpansWithOneFailureAsync()
+    {
+        var genderParam = new SearchParameterInfo("gender", "gender", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-gender"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var sharedSpan = new SourceSpan(SourceOrigin.Value, 0, 4);
+
+        var genderPredicate = new SearchParameterPredicateExpression(genderParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "male", text: null))
+        {
+            Span = sharedSpan,
+        };
+        var namePredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new CompositeIndexSearchValue([[new StringSearchValue("abcd")]]))
+        {
+            Span = sharedSpan,
+        };
+
+        var genderExpression = new SearchParameterExpression(genderParam, genderPredicate);
+        var nameExpression = new SearchParameterExpression(nameParam, namePredicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions
+            {
+                ResourceType = "Patient",
+                Expression = new MultiaryExpression(MultiaryOperator.And, [genderExpression, nameExpression]),
+            },
+            [
+                new ParameterTrace(0, "gender", "male", null, null, genderExpression, new ParameterOutcome.Compiled()),
+                new ParameterTrace(1, "name", "abcd", null, null, nameExpression, new ParameterOutcome.Compiled()),
+            ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[genderParam.Url!.ToString()] = 33;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("gender", "male"), new QueryParameter("name", "abcd")], builder, resolver);
+    }
+
+    /// <summary>Patient?_id=123 against a resolver holding no _id row -- a resource-column parameter needs no
+    /// SearchParamId, so it must not be reported unresolved and must not gate Lower off.</summary>
+    public static Task<SearchTrace> TraceResourceColumnIdAsync()
+    {
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var predicate = new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 3),
+        };
+        var expression = new SearchParameterExpression(idParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "_id", "123", null, null, expression, new ParameterOutcome.Compiled())]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("_id", "123")], builder, resolver);
+    }
+
+    /// <summary>Patient?organization.name=Acme where the chain's own reference parameter is unregistered -- the
+    /// unresolved parameter lives on the ChainedExpression, not on any leaf predicate.</summary>
+    public static Task<SearchTrace> TraceUnresolvedChainReferenceParameterAsync()
+    {
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
+        var innerPredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 4),
+        };
+        var chain = new ChainedExpression(["Patient"], orgParam, ["Organization"], reversed: false, new SearchParameterExpression(nameParam, innerPredicate));
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = chain },
+            [new ParameterTrace(0, "organization.name", "Acme", null, null, chain, new ParameterOutcome.Compiled())]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("organization.name", "Acme")], builder, resolver);
+    }
+
+    /// <summary>Patient?active=true&amp;_sort=a,b,c,d -- the sort-key cap throws from outside both lowering
+    /// dispatchers, so the failure names no parameter and exists only on the trace's own Failure.</summary>
+    public static Task<SearchTrace> TraceSortKeyCapExceededAsync()
+    {
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 4),
+        };
+        var expression = new SearchParameterExpression(activeParam, predicate);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        var sorts = new List<SortExpression>();
+        foreach (var code in (string[])["a", "b", "c", "d"])
+        {
+            var sortParam = new SearchParameterInfo(code, code, SearchParamType.String, new Uri($"http://hl7.org/fhir/SearchParameter/Patient-{code}"));
+            resolver.SearchParamIds[sortParam.Url!.ToString()] = 500;
+            sorts.Add(new SortExpression(sortParam, SortOrder.Ascending));
+        }
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression, Sort = sorts },
+            [new ParameterTrace(0, "active", "true", null, null, expression, new ParameterOutcome.Compiled())]);
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "a,b,c,d")], builder, resolver);
     }
 
     private sealed class FakeSearchOptionsBuilder(SearchOptions options, IReadOnlyList<ParameterTrace> outcomes) : ISearchOptionsBuilder

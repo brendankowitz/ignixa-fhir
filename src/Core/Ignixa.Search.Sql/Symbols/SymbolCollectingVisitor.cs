@@ -1,6 +1,7 @@
-using Ignixa.Search.Expressions;
+﻿using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Lowering;
 
 namespace Ignixa.Search.Sql.Symbols;
 
@@ -10,7 +11,7 @@ namespace Ignixa.Search.Sql.Symbols;
 /// keeps tree traversal separate from symbol lookup.
 /// </summary>
 /// <remarks>
-/// Collects the parameter off every <see cref="SearchParameterPredicateExpression"/>,
+/// Collects the parameter off every non-resource-column <see cref="SearchParameterPredicateExpression"/>,
 /// <see cref="CompositeComponentExpression"/>, <see cref="SearchParameterExpression"/>, and
 /// <see cref="MissingSearchParameterExpression"/>. The <c>VisitSearchParameter</c> override captures a
 /// composite's own identity, which lives only on the wrapper, then recurses to reach the leaves beneath.
@@ -32,7 +33,7 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 
     public override Expression VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, object? context)
     {
-        Parameters.Add(expression.Parameter);
+        AddParameter(expression.Parameter);
         if (expression.Value is ReferenceSearchValue { ResourceType: { Length: > 0 } resourceType })
         {
             ResourceTypes.Add(resourceType);
@@ -48,25 +49,25 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 
     public override Expression VisitCompositeComponent(CompositeComponentExpression expression, object? context)
     {
-        Parameters.Add(expression.ComponentSearchParameter);
+        AddParameter(expression.ComponentSearchParameter);
         return base.VisitCompositeComponent(expression, context);
     }
 
     public override Expression VisitSearchParameter(SearchParameterExpression expression, object? context)
     {
-        Parameters.Add(expression.Parameter);
+        AddParameter(expression.Parameter);
         return base.VisitSearchParameter(expression, context);
     }
 
     public override Expression VisitMissingSearchParameter(MissingSearchParameterExpression expression, object? context)
     {
-        Parameters.Add(expression.Parameter);
+        AddParameter(expression.Parameter);
         return base.VisitMissingSearchParameter(expression, context);
     }
 
     public override Expression VisitChained(ChainedExpression expression, object? context)
     {
-        Parameters.Add(expression.ReferenceSearchParameter);
+        AddParameter(expression.ReferenceSearchParameter);
         foreach (var resourceType in expression.ResourceTypes)
         {
             ResourceTypes.Add(resourceType);
@@ -105,7 +106,7 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     {
         if (include.ReferenceSearchParameter is not null)
         {
-            Parameters.Add(include.ReferenceSearchParameter);
+            AddParameter(include.ReferenceSearchParameter);
             foreach (var targetType in include.ReferenceSearchParameter.TargetResourceTypes)
             {
                 AddResourceType(targetType);
@@ -121,16 +122,27 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// Collects a sort key's search parameter for resolution. Skips _lastUpdated, which needs no
-    /// SearchParamId because it orders directly by ResourceSurrogateId — adding it would later fail
-    /// SymbolTable.SearchParamId. Called directly by Resolve per sort key, since a SortExpression is never
-    /// part of the Expression tree.
+    /// Collects a sort key's search parameter for resolution, skipping the resource-column codes:
+    /// _lastUpdated orders directly by ResourceSurrogateId, and _id/_type are rejected by BuildSortKey
+    /// before any lookup. Called directly by Resolve per sort key, since a SortExpression is never part of
+    /// the Expression tree.
     /// </summary>
     public void CollectSort(SortExpression sort)
     {
-        if (sort.Parameter.Code != "_lastUpdated")
+        AddParameter(sort.Parameter);
+    }
+
+    /// <summary>
+    /// Records a parameter for resolution, skipping the resource-column codes. Those target dbo.Resource's
+    /// own columns and never reach a SearchParamId lookup -- Lower extracts them into the outer predicate,
+    /// sorting by one throws before any lookup, and the dispatchers reject them outright. Collecting them
+    /// would make a resolver with no row for _id report the query unresolvable when it compiles fine.
+    /// </summary>
+    private void AddParameter(SearchParameterInfo parameter)
+    {
+        if (!ResourceColumnLoweringRule.IsResourceColumnCode(parameter.Code))
         {
-            Parameters.Add(sort.Parameter);
+            Parameters.Add(parameter);
         }
     }
 

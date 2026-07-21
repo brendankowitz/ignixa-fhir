@@ -125,7 +125,7 @@ public sealed class StructuralContext
 
     private static void RejectResourceColumnCode(string parameterCode)
     {
-        if (parameterCode is "_id" or "_type" or "_lastUpdated")
+        if (ResourceColumnLoweringRule.IsResourceColumnCode(parameterCode))
         {
             throw new NotSupportedException(
                 $"A resource-column predicate ('{parameterCode}') reached the leaf/composite dispatch — only " +
