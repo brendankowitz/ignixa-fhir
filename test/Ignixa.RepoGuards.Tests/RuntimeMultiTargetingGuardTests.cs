@@ -35,7 +35,7 @@ public class RuntimeMultiTargetingGuardTests
 
     private static IEnumerable<CoreProject> LoadCoreProjects()
     {
-        var repoRoot = FindRepoRoot();
+        var repoRoot = RepoRoot.Find();
         var coreDir = Path.Combine(repoRoot, "src", "Core");
         Directory.Exists(coreDir).ShouldBeTrue($"Expected Core source directory at {coreDir}.");
 
@@ -61,18 +61,6 @@ public class RuntimeMultiTargetingGuardTests
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return new CoreProject(Path.GetFileNameWithoutExtension(csprojPath), frameworks);
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
-        {
-            dir = dir.Parent;
-        }
-
-        dir.ShouldNotBeNull($"Could not find repo root from {AppContext.BaseDirectory}");
-        return dir!.FullName;
     }
 
     private sealed record CoreProject(string Name, HashSet<string> TargetFrameworks);
