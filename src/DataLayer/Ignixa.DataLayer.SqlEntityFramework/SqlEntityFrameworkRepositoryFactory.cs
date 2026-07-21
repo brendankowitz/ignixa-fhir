@@ -11,6 +11,7 @@ using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlServer;
+using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -35,6 +36,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
     private readonly ISchemaDeployer _schemaDeployer;
+    private readonly ISqlExecutionService _sqlExecutionService;
     private readonly string _environment;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
@@ -60,6 +62,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// <param name="memoryStreamManager">The recyclable memory stream manager for efficient memory management.</param>
     /// <param name="multiTenantCache">Singleton multi-tenant cache for search index reference data.</param>
     /// <param name="schemaDeployer">Deploys the SSDT-built schema to brand-new, empty tenant databases.</param>
+    /// <param name="sqlExecutionService">Tenant-scoped raw ADO.NET execution service backing the SqlServer write path (<see cref="SqlServerFhirRepository"/>).</param>
     /// <param name="environment">The environment name (e.g., Development, Production).</param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
@@ -67,6 +70,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         RecyclableMemoryStreamManager memoryStreamManager,
         MultiTenantSearchIndexCache multiTenantCache,
         ISchemaDeployer schemaDeployer,
+        ISqlExecutionService sqlExecutionService,
         string environment = "Production")
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
@@ -74,6 +78,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
         _schemaDeployer = schemaDeployer ?? throw new ArgumentNullException(nameof(schemaDeployer));
+        _sqlExecutionService = sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
         _environment = environment;
         _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
         _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
@@ -322,25 +327,55 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Get tenant-specific cache instance (reused across all requests for this tenant)
         var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
 
-        // Create factory delegate for Repository (accepts DbContext parameter)
-        // Uses tenant-specific cache from multi-tenant cache manager
-        Func<FhirDbContext, IFhirRepository> createRepository = (dbContext) =>
+        // Tenant-scoped raw-ADO.NET reference data cache backing the SqlServer write path
+        // (SqlServerFhirRepository). Distinct from the EF-based searchIndexCache above, which
+        // remains dedicated to the (still EF-based) read/search path. Preloaded once here, up front,
+        // synchronously -- mirroring the schema-deployment calls above -- rather than per-request.
+        // CA2000: this cache is tenant-scoped and captured by the createRepository closure below,
+        // living for the lifetime of this cached TenantServiceFactory -- disposal is out of scope
+        // for this factory method, matching the FhirDbContext instances created elsewhere in this
+        // class (GetRepositoryAsync/GetSearchServiceAsync/GetDbContextAsync), whose disposal is
+        // likewise the calling code's responsibility.
+#pragma warning disable CA2000 // Dispose objects before losing scope
+        var sqlServerSearchIndexCache = new SqlServerSearchIndexReferenceDataCache(
+            _sqlExecutionService,
+            tenantId,
+            _loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>());
+#pragma warning restore CA2000
+        sqlServerSearchIndexCache.PreloadResourceTypesAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+        // Create factory delegate for Repository (accepts DbContext parameter, retained for
+        // GetSearchServiceAsync's benefit -- see createSearchService below -- but unused here since
+        // SqlServerFhirRepository writes through ISqlExecutionService directly, not the DbContext).
+        // CUTOVER (Phase D, Task 11): writes go through SqlServerFhirRepository, not
+        // SqlEntityFrameworkRepository/SqlMergeRepository. Straight, unconditional swap -- no
+        // feature flag (design doc §5). Reads (createSearchService below) are untouched and remain
+        // on the EF-based search path; it receives whatever IFhirRepository it's handed purely
+        // through the IFhirRepository interface, with no downcast, so it is unaffected by this swap.
+        Func<FhirDbContext, IFhirRepository> createRepository = (_) =>
         {
-            var compressor = new GzipResourceCompressor(_memoryStreamManager);
+            var compressor = new Ignixa.DataLayer.SqlServer.Compression.GzipResourceCompressor(_memoryStreamManager);
 
-            var sqlMergeRepository = new SqlMergeRepository(
-                dbContext,
-                compressor,
-                _loggerFactory.CreateLogger<SqlMergeRepository>(),
-                searchIndexCache,
-                _loggerFactory.CreateLogger<PostMergeExtensionUpdater>());
+            var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
+                _sqlExecutionService,
+                tenantId,
+                _loggerFactory.CreateLogger<SqlServerPostMergeExtensionUpdater>());
 
-            return new SqlEntityFrameworkRepository(
-                dbContext,
+            var sqlServerMergeRepository = new SqlServerMergeRepository(
+                _sqlExecutionService,
+                tenantId,
                 compressor,
-                sqlMergeRepository,
-                searchIndexCache,
-                _loggerFactory.CreateLogger<SqlEntityFrameworkRepository>());
+                sqlServerSearchIndexCache,
+                extensionUpdater,
+                _loggerFactory.CreateLogger<SqlServerMergeRepository>());
+
+            return new SqlServerFhirRepository(
+                _sqlExecutionService,
+                tenantId,
+                compressor,
+                sqlServerSearchIndexCache,
+                sqlServerMergeRepository,
+                _loggerFactory.CreateLogger<SqlServerFhirRepository>());
         };
 
         // Create factory delegate for SearchService (accepts DbContext and Repository parameters)

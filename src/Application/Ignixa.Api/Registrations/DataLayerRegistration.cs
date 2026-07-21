@@ -168,6 +168,7 @@ public static class DataLayerRegistration
                 c.Resolve<RecyclableMemoryStreamManager>(),
                 c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
                 c.Resolve<ISchemaDeployer>(),
+                c.Resolve<ISqlExecutionService>(),
                 environmentName))
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
