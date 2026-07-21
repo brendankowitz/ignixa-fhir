@@ -44,8 +44,11 @@ namespace Ignixa.DataLayer.SqlServer;
 /// and then yields the successfully-mapped ones -- the public surface is still
 /// <see cref="IAsyncEnumerable{T}"/>, per-row try/catch-and-skip is preserved exactly.
 ///
-/// The remaining 2 members are intentionally unimplemented placeholders (Task 9 fills them in on
-/// this same class).
+/// Phase D Task 9 adds <see cref="GetExpiredResourcesAsync"/>/<see cref="HardDeleteResourceAsync"/>,
+/// porting <c>SqlEntityFrameworkRepository.cs:934-1026</c>: the former translates a 3-way LINQ join
+/// (ResourceTtl JOIN Resource JOIN ResourceType) to raw SQL, the latter transcribes the original's
+/// already-raw-SQL statement text nearly verbatim (the one method in the whole port with no LINQ to
+/// translate) -- this completes all 12 <see cref="IFhirRepository"/> members on this class.
 /// </summary>
 public class SqlServerFhirRepository(
     ISqlExecutionService sqlExecutionService,
@@ -684,17 +687,104 @@ public class SqlServerFhirRepository(
         string? ResourceTypeName);
 
     /// <inheritdoc/>
-    public Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
+    // Ports SqlEntityFrameworkRepository.cs:934-967's 3-way LINQ join (ResourceTtl JOIN Resource JOIN
+    // ResourceType) to raw SQL. The Resource join restricts to current (non-history, non-deleted) rows
+    // -- a resource can carry a stale ResourceTtl row after being superseded or deleted, and TTL
+    // cleanup must never try to hard-delete something that isn't the live current version.
+    public async Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
         int batchSize,
         CancellationToken ct = default)
-        => throw new System.NotImplementedException("GetExpiredResourcesAsync is implemented in a later Phase D task.");
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        _logger.LogDebug(
+            "Querying for expired resources (ExpiresAt < {Now}, limit {BatchSize})",
+            now,
+            batchSize);
+
+        using var command = new SqlCommand(
+            """
+            SELECT TOP (@BatchSize) t.ResourceTypeId, t.ResourceId, t.ExpiresAt, rt.Name
+            FROM dbo.ResourceTtl t
+            JOIN dbo.Resource r ON r.ResourceTypeId = t.ResourceTypeId AND r.ResourceId = t.ResourceId AND r.IsHistory = 0 AND r.IsDeleted = 0
+            JOIN dbo.ResourceType rt ON rt.ResourceTypeId = t.ResourceTypeId
+            WHERE t.ExpiresAt < @Now;
+            """);
+        command.Parameters.Add("@BatchSize", SqlDbType.Int).Value = batchSize;
+        command.Parameters.Add("@Now", SqlDbType.DateTimeOffset).Value = now;
+
+        var expiredResources = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId,
+            command,
+            reader => new ExpiredResourceInfo(
+                reader.GetInt16(0),
+                reader.GetString(1),
+                reader.GetDateTimeOffset(2),
+                reader.GetString(3)),
+            ct);
+
+        _logger.LogDebug(
+            "Found {Count} expired resources",
+            expiredResources.Count);
+
+        return expiredResources;
+    }
 
     /// <inheritdoc/>
-    public Task HardDeleteResourceAsync(
+    // Ports SqlEntityFrameworkRepository.cs:989-1026 nearly verbatim -- already raw SQL in the
+    // original (the one method in the whole port with no LINQ to translate), so only the execution
+    // wrapper changes (ExecuteSqlInterpolatedAsync -> a parameterized SqlCommand via
+    // ISqlExecutionService). Statement sequence unchanged: stash surrogate IDs, delete every
+    // search-index table row for them, delete every dbo.Resource row (current + history), then delete
+    // the dbo.ResourceTtl entry.
+    public async Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
         CancellationToken ct = default)
-        => throw new System.NotImplementedException("HardDeleteResourceAsync is implemented in a later Phase D task.");
+    {
+        _logger.LogDebug(
+            "Hard deleting resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
+            resourceTypeId,
+            resourceId);
+
+        var deleteStatements = string.Join("\n              ", SearchIndexTables.Select(table =>
+            $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId IN (SELECT ResourceSurrogateId FROM @SurrogateIds);"));
+
+        // CA2100 suppressed: deleteStatements is built exclusively from the fixed, hardcoded
+        // SearchIndexTables array above -- never from caller/user input -- matching the identical
+        // rationale used by DeleteSearchIndexEntriesAsync above.
+#pragma warning disable CA2100
+        using var command = new SqlCommand(
+            $"""
+            -- Create temp table to hold surrogate IDs
+            DECLARE @SurrogateIds TABLE (ResourceSurrogateId BIGINT PRIMARY KEY);
+
+            -- Find all surrogate IDs for this resource
+            INSERT INTO @SurrogateIds (ResourceSurrogateId)
+            SELECT ResourceSurrogateId
+            FROM dbo.Resource
+            WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+
+            -- Delete all search parameter indexes
+            {deleteStatements}
+
+            -- Delete all resource versions (current + history)
+            DELETE FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+
+            -- Delete TTL entry (after successfully deleting resource)
+            DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;
+            """);
+#pragma warning restore CA2100
+        command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
+        command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
+
+        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, ct);
+
+        _logger.LogInformation(
+            "Successfully hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
+            resourceTypeId,
+            resourceId);
+    }
 
     // Corrected during plan review: an earlier draft routed the insert path through
     // _cache.GetResourceTypeIdAsync (the read-only lookup, which caches a "confirmed missing"
