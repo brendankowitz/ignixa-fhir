@@ -1,5 +1,6 @@
 using System.Text;
 using Ignixa.Search.Expressions;
+using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Ast;
 
@@ -13,21 +14,15 @@ public static class PlanExplainer
         => string.Join('\n', Describe(plan).Select(row => $"{row.Label} = {row.Body}"));
 
     /// <summary>
-    /// The label for the CTE at <paramref name="index"/>. This is the single producer of the <c>cte{i}</c>
-    /// identifier everywhere it appears: this explainer's rows, the emitted SQL's CTE definitions and
-    /// references (<see cref="Builders.SqlBuilder"/>), and the <see cref="Builders.SqlTextRange"/> labels.
-    /// Tooling joins a plan row to its parameter and its SQL text by that string, and SQL Server joins a
-    /// CTE reference to its definition by it — two independent format strings would be one silent typo from
-    /// breaking those joins with nothing to fail at compile time.
-    /// </summary>
-    public static string CteLabel(int index) => $"cte{index}";
-
-    /// <summary>
     /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
     /// the label kept apart from the body. Tooling needs the label to address a row (and to join it to the
     /// owning parameter via <see cref="Tracing.CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
     /// terms of this method so the two can never disagree.
     /// </summary>
+    /// <remarks>
+    /// Every row carries both the name it displays and the identifier it is addressable by — see
+    /// <see cref="PlanExplainRow.CanonicalLabel"/>. The match CTE is the row where those differ.
+    /// </remarks>
     public static IReadOnlyList<PlanExplainRow> Describe(QueryPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -41,6 +36,10 @@ public static class PlanExplainer
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
             var isRoot = i == plan.Match.Index;
+
+            // The match CTE prints as "root" because that reads better in a plan dump, but it is emitted
+            // as cte{i} like every other CTE. Carrying both keeps the display name from being mistaken
+            // for something a consumer can join on.
             var label = isRoot ? "root" : CteLabel(i);
             var top = isRoot ? plan.Top : null;
             var body = PrintCte(plan.Ctes[i], top, ref parameterOrdinal);
@@ -49,34 +48,67 @@ public static class PlanExplainer
                 body += $" WHERE {PrintPredicate(plan.OuterPredicate, ref parameterOrdinal)}";
             }
 
-            rows.Add(new PlanExplainRow(label, body));
+            rows.Add(new PlanExplainRow(
+                label, CteLabel(i), KindOf(plan.Ctes[i]), body, ReferencedCteIndexesOf(plan.Ctes[i])));
         }
 
         if (plan.Includes is { Count: > 0 } includes)
         {
             for (var i = 0; i < includes.Count; i++)
             {
-                rows.Add(new PlanExplainRow($"inc{i}", PrintIncludeStage(includes[i])));
+                rows.Add(new PlanExplainRow(
+                    IncludeLabel(i), IncludeLabel(i), PlanRowKind.IncludeStage, PrintIncludeStage(includes[i]), []));
             }
         }
 
         if (plan.Sort is { } sort)
         {
-            rows.Add(new PlanExplainRow("sort", PrintSortSpec(sort)));
+            rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
         }
 
         if (plan.Page is { } page)
         {
-            rows.Add(new PlanExplainRow("page", PrintPageSpec(page, ref parameterOrdinal)));
+            rows.Add(new PlanExplainRow(
+                "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
         }
 
         if (plan.CountOnly)
         {
-            rows.Add(new PlanExplainRow("countOnly", "true"));
+            rows.Add(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
         }
 
         return rows;
     }
+
+    /// <summary>
+    /// Which <see cref="CteDefinition"/> case produced a row. Deliberately a separate switch from
+    /// <see cref="PrintCte"/> rather than a tuple returned alongside the body: the two answer different
+    /// questions (what it is vs how it reads), and the compiler still flags either one if a case is added.
+    /// </summary>
+    private static string KindOf(CteDefinition cte) => cte switch
+    {
+        CteDefinition.ParamSource => PlanRowKind.ParamSource,
+        CteDefinition.Intersect => PlanRowKind.Intersect,
+        CteDefinition.Union => PlanRowKind.Union,
+        CteDefinition.ResourceSource => PlanRowKind.ResourceSource,
+        CteDefinition.Except => PlanRowKind.Except,
+        CteDefinition.ChainJoin => PlanRowKind.ChainJoin,
+        CteDefinition.CompartmentSource => PlanRowKind.CompartmentSource,
+        _ => throw new NotSupportedException($"No Explain() kind for {cte.GetType().Name}."),
+    };
+
+    /// <summary>
+    /// The CTEs a structural node composes, in the order it names them — the same fields
+    /// <see cref="PrintCte"/> renders into the body, kept as data so consumers need not parse it back out.
+    /// </summary>
+    private static IReadOnlyList<int> ReferencedCteIndexesOf(CteDefinition cte) => cte switch
+    {
+        CteDefinition.Intersect x => [x.Left.Index, x.Right.Index],
+        CteDefinition.Union u => [.. u.Parts.Select(r => r.Index)],
+        CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
+        CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
+        _ => [],
+    };
 
     private static string PrintSortSpec(SortSpec sort)
     {
@@ -103,7 +135,7 @@ public static class PlanExplainer
         var refParam = stage.ReferenceSearchParamId is { } id ? $"{id}" : "*";
         var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
         var outputTypes = stage.OutputTypeIds is null ? "*" : $"[{string.Join(",", stage.OutputTypeIds)}]";
-        var seedStageLabels = stage.SeedStages.Select(s => $"inc{s}");
+        var seedStageLabels = stage.SeedStages.Select(IncludeLabel);
         var seeds = stage.SeedFromMatch ? seedStageLabels.Prepend("match") : seedStageLabels;
         var iterate = stage.Iterate ? " iterate" : string.Empty;
         return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={stage.Limit}{iterate}, {stage.Direction})";

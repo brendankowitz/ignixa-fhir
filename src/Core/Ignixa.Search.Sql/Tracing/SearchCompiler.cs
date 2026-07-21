@@ -190,22 +190,68 @@ public static class SearchCompiler
     /// <summary>Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against every trace's IR subtree. Origins with no owner (:missing, compartment, structural CTEs) keep a null ordinal.</summary>
     private static QueryPlanTrace BuildPlanTrace(LoweredPlan lowered, IReadOnlyList<ParameterTrace> outcomes)
     {
-        var ctes = new CteProvenance[lowered.Plan.Ctes.Count];
-        for (var i = 0; i < ctes.Length; i++)
-        {
-            ctes[i] = new CteProvenance(i, null, null);
-        }
+        var rows = PlanExplainer.Describe(lowered.Plan);
+        var directOrdinals = new int?[lowered.Plan.Ctes.Count];
+        var spans = new SourceSpan?[lowered.Plan.Ctes.Count];
 
         foreach (var origin in lowered.Provenance.Origins)
         {
             var owner = outcomes.FirstOrDefault(t => t.Ir is not null && Flatten(t.Ir).Any(n => ReferenceEquals(n, origin.SourceNode)));
             if (owner is not null)
             {
-                ctes[origin.CteIndex] = new CteProvenance(origin.CteIndex, owner.Ordinal, ExtractSpan(origin.SourceNode));
+                directOrdinals[origin.CteIndex] = owner.Ordinal;
+                spans[origin.CteIndex] = ExtractSpan(origin.SourceNode);
             }
         }
 
-        return new QueryPlanTrace(lowered.Plan.Explain(), ctes, PlanExplainer.Describe(lowered.Plan));
+        var ctes = new CteProvenance[lowered.Plan.Ctes.Count];
+        for (var i = 0; i < ctes.Length; i++)
+        {
+            ctes[i] = new CteProvenance(
+                i, directOrdinals[i], spans[i], ContributingOrdinals(i, rows, directOrdinals));
+        }
+
+        return new QueryPlanTrace(lowered.Plan.Explain(), ctes, rows);
+    }
+
+    /// <summary>
+    /// Every parameter ordinal the CTE at <paramref name="index"/> draws from, closed over the CTEs it
+    /// composes. A structural CTE has no ordinal of its own, so without this a consumer wanting "which
+    /// parameters does this join belong to" has to walk the plan itself.
+    /// </summary>
+    /// <remarks>
+    /// Depth-first over <see cref="PlanExplainRow.ReferencedCteIndexes"/>, which the explainer reads
+    /// straight off the plan node. Plan CTE references form a DAG (a CTE may only reference lower indices),
+    /// so the walk terminates; <paramref name="visited"/> keeps a diamond from being counted twice.
+    /// </remarks>
+    private static IReadOnlyList<int> ContributingOrdinals(
+        int index,
+        IReadOnlyList<PlanExplainRow> rows,
+        int?[] directOrdinals)
+    {
+        var ordinals = new SortedSet<int>();
+        var visited = new HashSet<int>();
+        Collect(index);
+        return [.. ordinals];
+
+        void Collect(int cteIndex)
+        {
+            if (!visited.Add(cteIndex))
+            {
+                return;
+            }
+
+            if (directOrdinals[cteIndex] is { } ordinal)
+            {
+                ordinals.Add(ordinal);
+            }
+
+            var row = rows.FirstOrDefault(r => r.CanonicalLabel == SqlLabels.CteLabel(cteIndex));
+            foreach (var child in row?.ReferencedCteIndexes ?? [])
+            {
+                Collect(child);
+            }
+        }
     }
 
     /// <summary>

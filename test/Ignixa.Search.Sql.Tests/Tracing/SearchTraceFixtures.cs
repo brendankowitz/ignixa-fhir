@@ -28,7 +28,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -49,7 +49,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "unknown", null, "value", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "unknown", null, "value", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
@@ -70,7 +70,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
@@ -108,7 +108,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Observation", Expression = expression },
-            [new ParameterTrace(0, "code-value-concept", null, "8480-6$high", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "code-value-concept", null, "8480-6$high", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
@@ -133,7 +133,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = chain },
-            [new ParameterTrace(0, "organization.name", null, "Acme", null, chain, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "organization.name", null, "Acme", null, chain, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
@@ -160,7 +160,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Include = [include] },
-            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
@@ -192,7 +192,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Include = [include] },
-            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -221,7 +221,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Sort = [sort] },
-            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
@@ -244,7 +244,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name:not", null, "Smith", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:not", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -262,7 +262,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = missing },
-            [new ParameterTrace(0, "name:missing", null, "true", null, missing, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:missing", null, "true", null, missing, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -286,7 +286,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -310,7 +310,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name:not", null, "Smith", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:not", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -349,7 +349,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Observation", Expression = expression },
-            [new ParameterTrace(0, "code-value-string", null, "a$b", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "code-value-string", null, "a$b", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[compositeParam.Url!.ToString()] = 302;
@@ -388,8 +388,8 @@ internal static class SearchTraceFixtures
                 Expression = new MultiaryExpression(MultiaryOperator.And, [genderExpression, nameExpression]),
             },
             [
-                new ParameterTrace(0, "gender", null, "male", null, genderExpression, new ParameterOutcome.Compiled()),
-                new ParameterTrace(1, "name", null, "abcd", null, nameExpression, new ParameterOutcome.Compiled()),
+                new ParameterTrace(0, "gender", null, "male", null, genderExpression, new ParameterOutcome.Compiled(), null),
+                new ParameterTrace(1, "name", null, "abcd", null, nameExpression, new ParameterOutcome.Compiled(), null),
             ]);
 
         var resolver = new FakeSymbolResolver();
@@ -414,7 +414,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "_id", null, "123", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "_id", null, "123", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
@@ -437,7 +437,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = chain },
-            [new ParameterTrace(0, "organization.name", null, "Acme", null, chain, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "organization.name", null, "Acme", null, chain, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -473,7 +473,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Sort = sorts },
-            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         return SearchCompiler.CompileAsync(
             "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "a,b,c,d")], builder, resolver);

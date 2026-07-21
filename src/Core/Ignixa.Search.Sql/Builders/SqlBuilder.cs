@@ -2,7 +2,7 @@
 
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
-using static Ignixa.Search.Sql.Ast.PlanExplainer;
+using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Builders;
 
@@ -33,7 +33,7 @@ public static class SqlBuilder
         if (plan.CountOnly)
         {
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, CteLabel);
+            writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
             writer.Append("\n");
             writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
 
@@ -41,7 +41,7 @@ public static class SqlBuilder
             {
                 var outerPredicateText = EmitPredicate(plan.OuterPredicate, parameters);
                 writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\nWHERE ");
-                using (writer.Section("where"))
+                using (writer.Section("where", SqlRangeKind.Where))
                 {
                     writer.Append(outerPredicateText);
                 }
@@ -77,7 +77,7 @@ public static class SqlBuilder
             }
 
             writer.Append(";WITH ");
-            writer.AppendJoin(",\n", cteBlocks, CteLabel);
+            writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
             writer.Append("\n");
             writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
 
@@ -88,14 +88,14 @@ public static class SqlBuilder
                     : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
                 writer.Append(resourceJoin);
                 writer.Append("\nWHERE ");
-                using (writer.Section("where"))
+                using (writer.Section("where", SqlRangeKind.Where))
                 {
                     WriteAndJoinedClauses(writer, whereClauses, seekClauseIndex);
                 }
             }
 
             writer.Append("\nORDER BY ");
-            using (writer.Section("orderBy"))
+            using (writer.Section("orderBy", SqlRangeKind.OrderBy))
             {
                 writer.Append(orderByText);
             }
@@ -144,7 +144,7 @@ public static class SqlBuilder
             incLimBlocks.Add(
                 $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
                 $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
-                $"    FROM inc{i}\n" +
+                $"    FROM {IncludeLabel(i)}\n" +
                 $"    ORDER BY T1 ASC, Sid1 ASC");
         }
 
@@ -158,14 +158,14 @@ public static class SqlBuilder
         for (var i = 0; i < includes.Count; i++)
         {
             unionBlocks.Add(
-                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM inc{i}lim i\n" +
+                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
                 $"WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 
         writer.Append(";WITH ");
-        writer.AppendJoin(",\n", cteBlocks, CteLabel);
+        writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
         writer.Append(",\n");
-        using (writer.Section("cteMatchPage"))
+        using (writer.Section("cteMatchPage", SqlRangeKind.MatchPage))
         {
             writer.Append(
                 $"cteMatchPage AS (\n" +
@@ -175,7 +175,7 @@ public static class SqlBuilder
             if (matchWhereClauses.Count > 0)
             {
                 writer.Append("\n    WHERE ");
-                using (writer.Section("where"))
+                using (writer.Section("where", SqlRangeKind.Where))
                 {
                     WriteAndJoinedClauses(writer, matchWhereClauses, matchSeekClauseIndex);
                 }
@@ -188,22 +188,30 @@ public static class SqlBuilder
         for (var i = 0; i < includes.Count; i++)
         {
             writer.Append(",\n");
-            using (writer.Section($"inc{i}"))
+            using (writer.Section(IncludeLabel(i), SqlRangeKind.Include))
             {
-                writer.Append($"inc{i} AS (\n{incBlocks[i]}\n)");
+                writer.Append($"{IncludeLabel(i)} AS (\n{incBlocks[i]}\n)");
             }
 
             writer.Append(",\n");
-            using (writer.Section($"inc{i}lim"))
+            using (writer.Section(IncludeLimitLabel(i), SqlRangeKind.IncludeLimit))
             {
-                writer.Append($"inc{i}lim AS (\n{incLimBlocks[i]}\n)");
+                writer.Append($"{IncludeLimitLabel(i)} AS (\n{incLimBlocks[i]}\n)");
             }
         }
 
         writer.Append("\n");
-        writer.Append(string.Join("\nUNION ALL\n", unionBlocks));
+
+        // The final UNION ALL is the only emitted section that belongs to no single plan row -- it is the
+        // assembly that stitches the match page to every include stage. Labelled anyway, so a UI can
+        // highlight it instead of leaving a stretch of SQL that maps to nothing.
+        using (writer.Section("assembly", SqlRangeKind.Assembly))
+        {
+            writer.Append(string.Join("\nUNION ALL\n", unionBlocks));
+        }
+
         writer.Append("\nORDER BY ");
-        using (writer.Section("orderBy"))
+        using (writer.Section("orderBy", SqlRangeKind.OrderBy))
         {
             writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
         }
@@ -226,7 +234,7 @@ public static class SqlBuilder
 
             if (i == seekClauseIndex)
             {
-                using (writer.Section("seek"))
+                using (writer.Section("seek", SqlRangeKind.Seek))
                 {
                     writer.Append(clauses[i]);
                 }

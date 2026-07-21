@@ -16,7 +16,7 @@ internal sealed class SqlTextWriter(bool recordRanges)
 
     public void Append(string text) => _buffer.Append(text);
 
-    public void AppendJoin(string separator, IReadOnlyList<string> values, Func<int, string> labelFor)
+    public void AppendJoin(string separator, IReadOnlyList<string> values, Func<int, string> labelFor, string kind)
     {
         for (var i = 0; i < values.Count; i++)
         {
@@ -25,22 +25,22 @@ internal sealed class SqlTextWriter(bool recordRanges)
                 _buffer.Append(separator);
             }
 
-            using (Section(labelFor(i)))
+            using (Section(labelFor(i), kind))
             {
                 _buffer.Append(values[i]);
             }
         }
     }
 
-    public SectionScope Section(string label) => new(this, label, _buffer.Length);
+    public SectionScope Section(string label, string kind) => new(this, label, kind, _buffer.Length);
 
     public override string ToString() => _buffer.ToString();
 
-    private void Close(string label, int start)
-        => _ranges?.Add(new SqlTextRange(label, start, _buffer.Length - start));
+    private void Close(string label, string kind, int start)
+        => _ranges?.Add(new SqlTextRange(label, kind, start, _buffer.Length - start));
 
-    internal readonly struct SectionScope(SqlTextWriter writer, string label, int start) : IDisposable
+    internal readonly struct SectionScope(SqlTextWriter writer, string label, string kind, int start) : IDisposable
     {
-        public void Dispose() => writer.Close(label, start);
+        public void Dispose() => writer.Close(label, kind, start);
     }
 }

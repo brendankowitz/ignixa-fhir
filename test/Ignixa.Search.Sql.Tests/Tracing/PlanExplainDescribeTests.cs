@@ -46,6 +46,56 @@ public class PlanExplainDescribeTests
     }
 
     [Fact]
+    public void GivenANonTrivialPlan_WhenDescribed_ThenOnlyTheMatchRowsDisplayAndCanonicalLabelsDiffer()
+    {
+        // Arrange
+        var plan = NonTrivialPlan();
+
+        // Act
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- "root" is cosmetic; cte2 is what the SQL and CteProvenance actually use.
+        rows.Select(row => row.CanonicalLabel).ShouldBe(["cte0", "cte1", "cte2", "inc0", "sort", "page"]);
+        rows.Count(row => row.Label != row.CanonicalLabel).ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenANonTrivialPlan_WhenDescribed_ThenEachRowCarriesItsNodeKind()
+    {
+        // Arrange
+        var plan = NonTrivialPlan();
+
+        // Act
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- the kind comes off the plan node, so a consumer never prefix-matches the body text.
+        rows.Select(row => row.Kind).ShouldBe([
+            PlanRowKind.ParamSource,
+            PlanRowKind.ParamSource,
+            PlanRowKind.Intersect,
+            PlanRowKind.IncludeStage,
+            PlanRowKind.SortSpec,
+            PlanRowKind.PageSpec,
+        ]);
+    }
+
+    [Fact]
+    public void GivenAStructuralCte_WhenDescribed_ThenItNamesTheCtesItComposesAsData()
+    {
+        // Arrange
+        var plan = NonTrivialPlan();
+
+        // Act
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- these are the same indices the body renders, kept as data so no consumer has to
+        // regex cte(\d+) out of generated prose to rebuild the tree.
+        var root = rows.First(r => r.Label == "root");
+        root.ReferencedCteIndexes.ShouldBe([0, 1]);
+        rows.Where(r => r.Kind == PlanRowKind.ParamSource).ShouldAllBe(r => r.ReferencedCteIndexes.Count == 0);
+    }
+
+    [Fact]
     public void GivenANonTrivialPlan_WhenDescribed_ThenTheRootRowBodyExcludesItsOwnLabel()
     {
         // Arrange
@@ -70,7 +120,7 @@ public class PlanExplainDescribeTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert
-        rows[^1].ShouldBe(new PlanExplainRow("countOnly", "true"));
+        rows[^1].ShouldBe(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
     }
 
     [Fact]

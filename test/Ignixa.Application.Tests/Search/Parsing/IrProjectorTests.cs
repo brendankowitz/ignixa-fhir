@@ -250,6 +250,34 @@ public class IrProjectorTests
             .Message.ShouldContain(nameof(MissingFieldExpression));
     }
 
+    [Fact]
+    public void GivenAnUnprojectableNode_WhenTryDescribed_ThenItReportsFailureInsteadOfThrowing()
+    {
+        // Arrange
+        var node = Expression.CompartmentSearch("Patient", "123");
+
+        // Act
+        var projected = IrProjector.TryDescribe(node, out var rows);
+
+        // Assert -- no partial tree: a half-drawn projection misrepresents what will execute.
+        projected.ShouldBeFalse();
+        rows.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenAProjectableNode_WhenTryDescribed_ThenItReturnsTheSameRowsAsDescribe()
+    {
+        // Arrange
+        var ir = ParsePatient(("name", SearchParamType.String), ("name", "Smith"));
+
+        // Act
+        var projected = IrProjector.TryDescribe(ir, out var rows);
+
+        // Assert
+        projected.ShouldBeTrue();
+        rows.ShouldBe(IrProjector.Describe(ir));
+    }
+
     private static Expression ParsePatient(
         (string Code, SearchParamType Type) searchParameter,
         (string Key, string Value) query)

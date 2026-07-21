@@ -44,6 +44,37 @@ public static class IrProjector
         return rows;
     }
 
+    /// <summary>
+    /// <see cref="Describe"/> for callers that must not fail the request over an unprojectable node —
+    /// returns <see langword="false"/> and no rows where <see cref="Describe"/> would throw.
+    /// </summary>
+    /// <remarks>
+    /// The strict overload stays the default on purpose. A partial tree misrepresents what the server will
+    /// execute, so anything asserting the projection is complete — tests, golden output — must keep using
+    /// <see cref="Describe"/> and let it throw. This exists so a renderer showing a trace alongside a
+    /// successful search can degrade to "no IR available" instead of turning a diagnostic into a 500, and
+    /// so that choice is made once here rather than by a catch block at every call site.
+    /// </remarks>
+    /// <returns>
+    /// <see langword="true"/> and the complete rows, or <see langword="false"/> and an empty list. Never a
+    /// partial projection — a half-drawn tree is the failure mode this whole type is built to avoid.
+    /// </returns>
+    public static bool TryDescribe(Expression node, out IReadOnlyList<IrRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        try
+        {
+            rows = Describe(node);
+            return true;
+        }
+        catch (NotSupportedException)
+        {
+            rows = [];
+            return false;
+        }
+    }
+
     private static void Visit(Expression node, int depth, List<IrRow> rows)
     {
         rows.Add(new IrRow(KindOf(node), TextOf(node), depth));

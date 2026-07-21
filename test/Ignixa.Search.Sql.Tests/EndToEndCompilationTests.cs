@@ -1576,14 +1576,14 @@ public class EndToEndCompilationTests
         // cteMatchPage's own FROM clause points at cte{plan.Match.Index} -- the Except CTE -- proving
         // the includes path is agnostic to the match CTE's own internal shape.
         emitted.Sql.ShouldContain(
-            $"cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM {PlanExplainer.CteLabel(plan.Match.Index)} m\n    ORDER BY m.T1 ASC, m.Sid1 ASC\n)");
+            $"cteMatchPage AS (\n    SELECT TOP (50) m.T1, m.Sid1\n    FROM {SqlLabels.CteLabel(plan.Match.Index)} m\n    ORDER BY m.T1 ASC, m.Sid1 ASC\n)");
         emitted.Sql.ShouldContain("UNION ALL");
         emitted.Sql.ShouldContain(
-            $"    SELECT {PlanExplainer.CteLabel(except.Left.Index)}.T1, {PlanExplainer.CteLabel(except.Left.Index)}.Sid1\n" +
-            $"    FROM {PlanExplainer.CteLabel(except.Left.Index)}\n" +
+            $"    SELECT {SqlLabels.CteLabel(except.Left.Index)}.T1, {SqlLabels.CteLabel(except.Left.Index)}.Sid1\n" +
+            $"    FROM {SqlLabels.CteLabel(except.Left.Index)}\n" +
             $"    WHERE NOT EXISTS (\n" +
-            $"        SELECT 1 FROM {PlanExplainer.CteLabel(except.Right.Index)}\n" +
-            $"        WHERE {PlanExplainer.CteLabel(except.Right.Index)}.T1 = {PlanExplainer.CteLabel(except.Left.Index)}.T1 AND {PlanExplainer.CteLabel(except.Right.Index)}.Sid1 = {PlanExplainer.CteLabel(except.Left.Index)}.Sid1)");
+            $"        SELECT 1 FROM {SqlLabels.CteLabel(except.Right.Index)}\n" +
+            $"        WHERE {SqlLabels.CteLabel(except.Right.Index)}.T1 = {SqlLabels.CteLabel(except.Left.Index)}.T1 AND {SqlLabels.CteLabel(except.Right.Index)}.Sid1 = {SqlLabels.CteLabel(except.Left.Index)}.Sid1)");
     }
 
     [Fact]

@@ -7,6 +7,7 @@
 
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Parsing;
 
@@ -28,16 +29,67 @@ namespace Ignixa.Search.Parsing;
 /// <see cref="IrProjector.Describe"/>, which flattens it to <see cref="IrRow"/>s.
 /// </para>
 /// <para>
-/// The parameter order interleaves <see cref="Key"/> with <see cref="KeySyntax"/> and <see cref="Value"/>
-/// with <see cref="ValueSyntax"/> on purpose: no two adjacent constructor parameters share a type, so a
-/// positional transposition at a call site is a compile error rather than a silent swap.
+/// <see cref="Ordinal"/> and <see cref="Key"/> are validated on construction because <see cref="Ordinal"/>
+/// is what <see cref="Sql.Tracing.CteProvenance.ParameterOrdinal"/> is built from — an unchecked value here
+/// surfaces as a failure several stages downstream, naming a parameter the producer never touched. Those
+/// two are get-only so a <c>with</c> cannot bypass the checks; the rest stay <c>init</c> because later
+/// stages legitimately restamp <see cref="Outcome"/> when lowering or emission fails.
+/// </para>
+/// <para>
+/// The parameter order groups <see cref="Key"/> with <see cref="KeySyntax"/> and <see cref="Value"/> with
+/// <see cref="ValueSyntax"/>. That reads better than separating each pair, but it is not a safety
+/// mechanism: <see cref="Key"/> and <see cref="Value"/> are both <see cref="string"/>, so transposing them
+/// still compiles. Producers use named arguments, which is what actually prevents it.
 /// </para>
 /// </remarks>
-public sealed record ParameterTrace(
-    int Ordinal,
-    string Key,
-    SyntaxNode? KeySyntax,
-    string Value,
-    SyntaxNode? ValueSyntax,
-    Expression? Ir,
-    ParameterOutcome Outcome);
+public sealed record ParameterTrace
+{
+    public ParameterTrace(
+        int ordinal,
+        string key,
+        SyntaxNode? keySyntax,
+        string value,
+        SyntaxNode? valueSyntax,
+        Expression? ir,
+        ParameterOutcome outcome,
+        SearchParamType? dataType)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(ordinal);
+        ArgumentException.ThrowIfNullOrEmpty(key);
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(outcome);
+
+        Ordinal = ordinal;
+        Key = key;
+        KeySyntax = keySyntax;
+        Value = value;
+        ValueSyntax = valueSyntax;
+        Ir = ir;
+        Outcome = outcome;
+        DataType = dataType;
+    }
+
+    /// <summary>Position among the search parameters of this request, dense from zero.</summary>
+    public int Ordinal { get; }
+
+    /// <summary>The parameter name as written, including any modifier.</summary>
+    public string Key { get; }
+
+    public SyntaxNode? KeySyntax { get; init; }
+
+    /// <summary>The parameter value as written. Empty for shapes that carry no value.</summary>
+    public string Value { get; init; }
+
+    public SyntaxNode? ValueSyntax { get; init; }
+
+    public Expression? Ir { get; init; }
+
+    public ParameterOutcome Outcome { get; init; }
+
+    /// <summary>
+    /// The declared type of the search parameter this value was matched against — see
+    /// <see cref="ParseResult.DataType"/>. Null when the parameter never bound a value, which includes
+    /// every parameter that was ignored before parsing completed.
+    /// </summary>
+    public SearchParamType? DataType { get; init; }
+}
