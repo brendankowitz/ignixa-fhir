@@ -44,7 +44,7 @@ Current code (`SqlEntityFrameworkRepositoryFactory.cs`, lines 324-329):
 
 - [ ] **Step 1: Insert the seeding call**
 
-Insert the following immediately after line 328 (`var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);`) and before the blank line/comment that precedes the SqlServer cache construction block:
+Do not duplicate the two existing lines shown below (`GetOrCreateDefinitionManagers`/`GetOrCreateCacheForTenant`) — they're repeated here only so you can see exactly where the new code lands. The block below shows the RESULTING state of this section of the method; only the code from the `// Seed the search-parameter catalog...` comment onward (through the `logger.LogInformation` call) is new — insert just that new portion immediately after the existing `var searchIndexCache = ...;` line, before the blank line/comment that precedes the SqlServer cache construction block:
 
 ```csharp
         // Get or create cached definition managers (reused across tenants with same FHIR version)
@@ -236,9 +236,13 @@ with:
 
 Remove the whole method (the `/// <summary>...` doc comment through the closing `}` shown in the "Current code" block above, the block starting at `/// <summary>` and ending right before `private static string ExtractDatabaseName`).
 
-- [ ] **Step 3: Check for now-unused usings**
+- [ ] **Step 3: Remove now-unused usings**
 
-`SyncBaseSearchParametersAsync` was the only caller of `Services.GetRequiredService<IFhirVersionContext>()`/`Services.GetRequiredService<SqlEntityFrameworkRepositoryFactory>()` in this file — check whether removing it leaves any now-unused `using` directives (e.g. if `IFhirVersionContext` or `SqlEntityFrameworkRepositoryFactory`'s namespace was only imported for this method). Build in the next step will surface this as a warning if the project treats unused usings as a warning; if it doesn't, do a quick visual check of the usings block against what's still referenced elsewhere in the file before committing.
+`SyncBaseSearchParametersAsync` was the only user of two `using` directives in this file, both of which become dead once it's deleted — remove them both:
+- `using Ignixa.DataLayer.SqlEntityFramework;` (only referenced `SqlEntityFrameworkRepositoryFactory`)
+- `using Microsoft.Extensions.DependencyInjection;` (only referenced `GetRequiredService`)
+
+This project treats warnings as errors, so leaving either in place will fail Step 4's build (CS8019 unused using).
 
 - [ ] **Step 4: Build**
 
