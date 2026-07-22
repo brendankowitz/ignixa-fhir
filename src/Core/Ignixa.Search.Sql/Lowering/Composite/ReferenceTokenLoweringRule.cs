@@ -29,7 +29,7 @@ public static class ReferenceTokenLoweringRule
         var table = SqlCatalog.Default.Table("ReferenceTokenCompositeSearchParam");
 
         var referencePredicate = ReferenceColumnEquality((ReferenceSearchValue)referenceComponent.Value, table, context);
-        var tokenPredicate = TokenColumnEquality.Build(table, "Code2", (TokenSearchValue)tokenComponent.Value, context);
+        var tokenPredicate = TokenColumnEquality.Build(table, "SystemId2", "Code2", (TokenSearchValue)tokenComponent.Value, context);
 
         var predicate = new Predicate.And(referencePredicate, tokenPredicate);
         return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);

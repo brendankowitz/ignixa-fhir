@@ -5,31 +5,37 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the code-only equality predicate for a composite's Token slot (every composite type has one).
-/// Same semantics as <see cref="Leaf.TokenLoweringRule"/>: a system-qualified component (including the
-/// system-must-be-absent "|code" form) or a text-only component with no code throws rather than silently
-/// producing a wrong-scope or always-false predicate.
+/// Builds the token equality predicate for a composite's or leaf's token slot, supporting the full
+/// FHIR token qualifier semantics: bare code, |code, system|, system|code, unknown system → false,
+/// and text-only → unsupported.
 /// </summary>
 internal static class TokenColumnEquality
 {
-    public static Predicate Build(TableDescriptor table, string codeColumn, TokenSearchValue value, LeafContext context)
+    public static Predicate Build(TableDescriptor table, string systemColumn, string codeColumn, TokenSearchValue value, LeafContext context)
     {
-        if (value.System is not null)
+        int? systemId = value.System is { Length: > 0 } system ? context.SystemId(system) : null;
+        if (value.System is { Length: > 0 } && systemId is null)
         {
-            throw new NotSupportedException(
-                "System-qualified token components are not supported yet -- same SystemId resolution gap as " +
-                "TokenLoweringRule (ISymbolResolver has no SystemId lookup). This includes System = string.Empty " +
-                "(\"|code\" syntax, meaning system must be absent), which this rule cannot express either.");
+            return new Predicate.False();
         }
 
-        if (string.IsNullOrEmpty(value.Code))
+        Predicate? systemPredicate = value.System switch
         {
-            throw new NotSupportedException(
-                "This rule only supports code-bearing token components -- text-only components (Code is null/empty) " +
-                "are not supported yet.");
-        }
+            null => null,
+            "" => new Predicate.IsNull(new SqlColumnRef(table.TableName, systemColumn)),
+            _ => new Predicate.Equal(new SqlColumnRef(table.TableName, systemColumn), context.Parameter(systemId!.Value)),
+        };
 
-        var column = new SqlColumnRef(table.TableName, codeColumn);
-        return new Predicate.Equal(column, context.Parameter(value.Code));
+        Predicate? codePredicate = string.IsNullOrEmpty(value.Code)
+            ? null
+            : new Predicate.Equal(new SqlColumnRef(table.TableName, codeColumn), context.Parameter(value.Code));
+
+        return (systemPredicate, codePredicate) switch
+        {
+            ({ } systemOnly, null) => systemOnly,
+            (null, { } codeOnly) => codeOnly,
+            ({ } systemPart, { } codePart) => new Predicate.And(systemPart, codePart),
+            _ => throw new NotSupportedException("Token search requires a system or code; display text is not a code."),
+        };
     }
 }

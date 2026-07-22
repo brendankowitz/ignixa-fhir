@@ -20,8 +20,8 @@ public static class TokenTokenLoweringRule
     {
         var table = SqlCatalog.Default.Table("TokenTokenCompositeSearchParam");
         var predicate = new Predicate.And(
-            TokenColumnEquality.Build(table, "Code1", (TokenSearchValue)components[0].Value, context),
-            TokenColumnEquality.Build(table, "Code2", (TokenSearchValue)components[1].Value, context));
+            TokenColumnEquality.Build(table, "SystemId1", "Code1", (TokenSearchValue)components[0].Value, context),
+            TokenColumnEquality.Build(table, "SystemId2", "Code2", (TokenSearchValue)components[1].Value, context));
 
         return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(compositeParameter), predicate);
     }

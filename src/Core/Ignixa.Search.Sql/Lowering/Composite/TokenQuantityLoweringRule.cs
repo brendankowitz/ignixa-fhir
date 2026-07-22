@@ -23,7 +23,7 @@ public static class TokenQuantityLoweringRule
     {
         var table = SqlCatalog.Default.Table("TokenQuantityCompositeSearchParam");
 
-        var tokenPredicate = TokenColumnEquality.Build(table, "Code1", (TokenSearchValue)components[0].Value, context);
+        var tokenPredicate = TokenColumnEquality.Build(table, "SystemId1", "Code1", (TokenSearchValue)components[0].Value, context);
         var quantityPredicate = QuantityRangePredicate(table, components[1], context);
 
         var predicate = new Predicate.And(tokenPredicate, quantityPredicate);

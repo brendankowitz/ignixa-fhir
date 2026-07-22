@@ -13,10 +13,15 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class TokenQuantityLoweringRuleTests
 {
-    private static LeafContext ContextResolving(SearchParameterInfo compositeParameter, short searchParamId)
+    private static LeafContext ContextResolving(
+        SearchParameterInfo compositeParameter,
+        short searchParamId,
+        IReadOnlyDictionary<string, int?>? systemIds = null)
         => new(new SymbolTable(
             new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
-            new Dictionary<string, short>()));
+            new Dictionary<string, short>(),
+            compartmentMembership: null,
+            systemIds: systemIds));
 
     private static SearchParameterInfo CompositeParameter()
         => new("component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
@@ -54,9 +59,37 @@ public class TokenQuantityLoweringRuleTests
     }
 
     [Fact]
+    public void GivenASystemQualifiedTokenComponent_WhenLowered_ThenComparesSystemId1AndCode1()
+    {
+        // Arrange — system|code on the token slot (slot 1)
+        var composite = CompositeParameter();
+        var tokenParam = ComponentParameter("component-code");
+        var quantityParam = ComponentParameter("component-value-quantity");
+        var systemIds = new Dictionary<string, int?> { ["http://loinc.org"] = 42 };
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(tokenParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://loinc.org", code: "8480-6", text: null)),
+            new(quantityParam, SearchComparator.Eq, modifier: null, new QuantitySearchValue(system: null!, code: null!, 120m)),
+        };
+
+        // Act
+        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402, systemIds), 104);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var tokenAnd = and.Left.ShouldBeOfType<Predicate.And>();
+        var systemEqual = tokenAnd.Left.ShouldBeOfType<Predicate.Equal>();
+        systemEqual.Column.Column.ShouldBe("SystemId1");
+        systemEqual.Value.Value.ShouldBe(42);
+        var codeEqual = tokenAnd.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code1");
+        codeEqual.Value.Value.ShouldBe("8480-6");
+    }
+
+    [Fact]
     public void GivenASystemQualifiedQuantityComponent_WhenLowered_ThenThrows()
     {
-        // Arrange
+        // Arrange — quantity identity is Task 5; retain throw for now
         var composite = CompositeParameter();
         var tokenParam = ComponentParameter("component-code");
         var quantityParam = ComponentParameter("component-value-quantity");

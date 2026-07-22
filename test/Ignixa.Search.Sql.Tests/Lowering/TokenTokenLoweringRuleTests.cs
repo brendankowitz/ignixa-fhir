@@ -13,10 +13,15 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class TokenTokenLoweringRuleTests
 {
-    private static LeafContext ContextResolving(SearchParameterInfo compositeParameter, short searchParamId)
+    private static LeafContext ContextResolving(
+        SearchParameterInfo compositeParameter,
+        short searchParamId,
+        IReadOnlyDictionary<string, int?>? systemIds = null)
         => new(new SymbolTable(
             new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
-            new Dictionary<string, short>()));
+            new Dictionary<string, short>(),
+            compartmentMembership: null,
+            systemIds: systemIds));
 
     private static SearchParameterInfo CompositeParameter()
         => new("code-value-concept", "code-value-concept", SearchParamType.Composite,
@@ -56,19 +61,61 @@ public class TokenTokenLoweringRuleTests
     }
 
     [Fact]
-    public void GivenASystemQualifiedFirstComponent_WhenLowered_ThenThrowsRatherThanSilentlyIgnoringTheSystem()
+    public void GivenASystemQualifiedFirstComponent_WhenLowered_ThenComparesSystemId1AndCode1()
     {
-        // Arrange
+        // Arrange — system|code on slot 1
         var composite = CompositeParameter();
+        var systemIds = new Dictionary<string, int?> { ["http://loinc.org"] = 42 };
         var components = new[]
         {
             TokenComponent("code", system: "http://loinc.org", tokenCode: "8480-6"),
             TokenComponent("value-concept", system: null, tokenCode: "high"),
         };
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301), 104));
+        // Act
+        var cte = TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301, systemIds), 104);
+
+        // Assert
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var slot1 = outer.Left.ShouldBeOfType<Predicate.And>();
+        var systemEqual = slot1.Left.ShouldBeOfType<Predicate.Equal>();
+        systemEqual.Column.Column.ShouldBe("SystemId1");
+        systemEqual.Value.Value.ShouldBe(42);
+        var codeEqual = slot1.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code1");
+        codeEqual.Value.Value.ShouldBe("8480-6");
+        var slot2 = outer.Right.ShouldBeOfType<Predicate.Equal>();
+        slot2.Column.Column.ShouldBe("Code2");
+        slot2.Value.Value.ShouldBe("high");
+    }
+
+    [Fact]
+    public void GivenASystemQualifiedSecondComponent_WhenLowered_ThenComparesSystemId2AndCode2()
+    {
+        // Arrange — system|code on slot 2
+        var composite = CompositeParameter();
+        var systemIds = new Dictionary<string, int?> { ["http://snomed.info/sct"] = 99 };
+        var components = new[]
+        {
+            TokenComponent("code", system: null, tokenCode: "8480-6"),
+            TokenComponent("value-concept", system: "http://snomed.info/sct", tokenCode: "high"),
+        };
+
+        // Act
+        var cte = TokenTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 301, systemIds), 104);
+
+        // Assert
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var slot1 = outer.Left.ShouldBeOfType<Predicate.Equal>();
+        slot1.Column.Column.ShouldBe("Code1");
+        slot1.Value.Value.ShouldBe("8480-6");
+        var slot2 = outer.Right.ShouldBeOfType<Predicate.And>();
+        var systemEqual = slot2.Left.ShouldBeOfType<Predicate.Equal>();
+        systemEqual.Column.Column.ShouldBe("SystemId2");
+        systemEqual.Value.Value.ShouldBe(99);
+        var codeEqual = slot2.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code2");
+        codeEqual.Value.Value.ShouldBe("high");
     }
 
     [Fact]

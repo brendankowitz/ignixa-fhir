@@ -13,10 +13,17 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class ReferenceTokenLoweringRuleTests
 {
-    private static LeafContext ContextResolving(SearchParameterInfo compositeParameter, short searchParamId, string resourceType, short resourceTypeId)
+    private static LeafContext ContextResolving(
+        SearchParameterInfo compositeParameter,
+        short searchParamId,
+        string resourceType,
+        short resourceTypeId,
+        IReadOnlyDictionary<string, int?>? systemIds = null)
         => new(new SymbolTable(
             new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
-            new Dictionary<string, short> { [resourceType] = resourceTypeId }));
+            new Dictionary<string, short> { [resourceType] = resourceTypeId },
+            compartmentMembership: null,
+            systemIds: systemIds));
 
     private static SearchParameterInfo CompositeParameter()
         => new("relatesto", "relatesto", SearchParamType.Composite,
@@ -104,14 +111,27 @@ public class ReferenceTokenLoweringRuleTests
     }
 
     [Fact]
-    public void GivenASystemQualifiedTokenComponent_WhenLowered_ThenThrows()
+    public void GivenASystemQualifiedTokenComponent_WhenLowered_ThenComparesSystemId2AndCode2()
     {
-        // Arrange
+        // Arrange — system|code on the token slot (which is slot 2 in ReferenceToken)
         var composite = CompositeParameter();
+        var systemIds = new Dictionary<string, int?> { ["http://example.org/relationship-type"] = 88 };
         var components = new[] { ReferenceComponent("target"), TokenComponent("code", system: "http://example.org/relationship-type") };
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55));
+        // Act
+        var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55, systemIds), 55);
+
+        // Assert
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        // Reference part is still on the left
+        outer.Left.ShouldBeOfType<Predicate.And>();
+        // Token part is an And of system + code
+        var tokenAnd = outer.Right.ShouldBeOfType<Predicate.And>();
+        var systemEqual = tokenAnd.Left.ShouldBeOfType<Predicate.Equal>();
+        systemEqual.Column.Column.ShouldBe("SystemId2");
+        systemEqual.Value.Value.ShouldBe(88);
+        var codeEqual = tokenAnd.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code2");
+        codeEqual.Value.Value.ShouldBe("replaces");
     }
 }
