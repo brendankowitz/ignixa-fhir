@@ -1,0 +1,341 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/patch-body",
+  "description": "PATCH request-body-shape conformance tests (from PatchBodyTests): malformed bodies are rejected with 400 for both application/json-patch+json and application/fhir+json, while populated bodies succeed. Empty-body cases are approximated with a wrong-shaped non-empty body, since a bodyless request can't be sent here.",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='patch').exists()" }
+  ],
+  "fixture": [
+    {
+      "id": "patient-full",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/e2e-marker",
+            "value": "patch-body-e2e-full"
+          }
+        ],
+        "gender": "male"
+      }
+    },
+    {
+      "id": "empty-object-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {}
+    },
+    {
+      "id": "wrong-resource-type-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "gender": "unknown"
+      }
+    },
+    {
+      "id": "patch-replace-gender-female",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              {
+                "name": "type",
+                "valueString": "replace"
+              },
+              {
+                "name": "path",
+                "valueString": "Patient.gender"
+              },
+              {
+                "name": "value",
+                "valueCode": "female"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "patientId1",
+      "sourceId": "create1",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create1'"
+    },
+    {
+      "name": "patientId2",
+      "sourceId": "create2",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create2'"
+    },
+    {
+      "name": "patientId3",
+      "sourceId": "create3",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create3'"
+    },
+    {
+      "name": "patientId4",
+      "sourceId": "create4",
+      "path": "id",
+      "description": "Server-assigned id captured from 'create4'"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "json-patch+json request with a malformed (empty-object) body is rejected",
+      "description": "A malformed json-patch+json body (an empty object instead of the expected JSON Patch array) must be rejected with 400 -- approximates the original empty-body test, since a bodyless request can't be sent here (from PatchBodyTests).",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create1",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create1"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId1}",
+            "contentType": "application/json-patch+json",
+            "sourceId": "empty-object-body",
+            "responseId": "patch1",
+            "description": "Submit an empty JSON object with Content-Type: application/json-patch+json"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fhir+json patch request with a malformed (wrong resourceType) body is rejected",
+      "description": "A malformed application/fhir+json patch body (a Patient resource instead of the expected Parameters resource) must be rejected with 400 -- approximates the original empty-body test for the same reason (from PatchBodyTests).",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create2",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create2"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId2}",
+            "contentType": "application/fhir+json",
+            "sourceId": "wrong-resource-type-body",
+            "responseId": "patch2",
+            "description": "Submit a Patient resource body with Content-Type: application/fhir+json to the patch endpoint"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must return 400 Bad Request",
+            "response": "bad"
+          }
+        }
+      ]
+    },
+    {
+      "name": "json-patch-shaped edit with a populated body succeeds",
+      "description": "A populated JSON-Patch-equivalent edit (FHIRPath Patch replacing gender) must succeed with 200 (from PatchBodyTests; raw JSON Patch arrays aren't supported here).",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create3",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create3"
+          }
+        },
+        {
+          "assert": {
+            "description": "Fixture patient must start with gender male",
+            "sourceId": "create3",
+            "expression": "Patient.gender",
+            "value": "male",
+            "operator": "equals"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId3}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-gender-female",
+            "responseId": "patch3",
+            "description": "Submit a populated FHIRPath Patch body replacing gender with 'female'"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "gender must now be 'female'",
+            "expression": "Patient.gender",
+            "value": "female",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fhir-patch edit with a populated Parameters body succeeds",
+      "description": "A populated FHIRPath Patch body replacing Patient.gender must succeed with 200 (from PatchBodyTests).",
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Patient",
+            "sourceId": "patient-full",
+            "responseId": "create4",
+            "description": "Create a fresh Patient from fixture 'patient-full' to patch in this test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Setup create must have returned HTTP 201",
+            "response": "created",
+            "sourceId": "create4"
+          }
+        },
+        {
+          "assert": {
+            "description": "Fixture patient must start with gender male",
+            "sourceId": "create4",
+            "expression": "Patient.gender",
+            "value": "male",
+            "operator": "equals"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "patch"
+            },
+            "url": "Patient/${patientId4}",
+            "contentType": "application/fhir+json",
+            "sourceId": "patch-replace-gender-female",
+            "responseId": "patch4",
+            "description": "Submit a populated FHIRPath Patch body replacing gender with 'female'"
+          }
+        },
+        {
+          "assert": {
+            "description": "Patch must return HTTP 200 OK",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "gender must now be 'female'",
+            "expression": "Patient.gender",
+            "value": "female",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId1}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId2}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId3}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/${patientId4}",
+          "description": "Teardown: delete the Patient created for this suite (may already be gone)"
+        }
+      }
+    ]
+  }
+}

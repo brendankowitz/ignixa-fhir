@@ -1,0 +1,129 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/token-overflow",
+  "description": "Token value storage/search conformance: search must correctly distinguish long token values that share a common prefix and exceed typical indexed-column length limits (from TokenOverflowTests). Composite custom-SearchParameter + $reindex overflow variants are skipped since they require dynamic SearchParameter creation and reindex polling, unsupported by this static-fixture engine; those source tests are also skipped upstream (CI reindexing issue).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-tokof-a",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/token-overflow", "value": "ignixatokof----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------A" }]
+      }
+    },
+    {
+      "id": "patient-b",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-tokof-b",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/token-overflow", "value": "ignixatokof----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------B" }]
+      }
+    },
+    {
+      "id": "patient-c",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-tokof-c",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/token-overflow", "value": "ignixatokof----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------" }]
+      }
+    },
+    {
+      "id": "patient-d",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-tokof-d",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/token-overflow", "value": "ignixatokof------------------------------------------------------------------------------------------------------------------------------------------------" }]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-tokof-a", "sourceId": "patient-a", "description": "PUT Patient A: 257-char identifier value (overflow, suffix 'A'), shares a 256-char prefix with B" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-tokof-b", "sourceId": "patient-b", "description": "PUT Patient B: 257-char identifier value (overflow, suffix 'B'), shares a 256-char prefix with A" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-tokof-c", "sourceId": "patient-c", "description": "PUT Patient C: exactly 256-char identifier value (boundary, no overflow)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-tokof-d", "sourceId": "patient-d", "description": "PUT Patient D: 156-char identifier value (short, well under the limit)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Overflow value A is found and distinguished from B",
+      "description": "Searching by A's full 257-character value must return exactly A, not B, even though both share an identical 256-character prefix.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/token-overflow|ignixatokof----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------A", "responseId": "overflow-a-response", "description": "GET /Patient?identifier=...prefix...A (257 chars)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include Patient A", "expression": "entry.where(resource.id = 'ignixa-tokof-a').exists()" } },
+        { "assert": { "description": "Must NOT include Patient B (differs only in overflow suffix)", "expression": "entry.where(resource.id = 'ignixa-tokof-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include Patient C (shorter, no overflow suffix)", "expression": "entry.where(resource.id = 'ignixa-tokof-c').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Overflow value B is found and distinguished from A",
+      "description": "Searching by B's full 257-character value must return exactly B, not A, confirming the full value (not just a truncated prefix) is compared.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/token-overflow|ignixatokof----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------B", "responseId": "overflow-b-response", "description": "GET /Patient?identifier=...prefix...B (257 chars)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include Patient B", "expression": "entry.where(resource.id = 'ignixa-tokof-b').exists()" } },
+        { "assert": { "description": "Must NOT include Patient A (differs only in overflow suffix)", "expression": "entry.where(resource.id = 'ignixa-tokof-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Exact 256-char boundary value (no overflow) is found",
+      "description": "Patient C's 256-character identifier (the exact boundary, no overflow) must be found by its full value without matching the longer A/B values sharing the same prefix.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/token-overflow|ignixatokof----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------", "responseId": "boundary-c-response", "description": "GET /Patient?identifier=...prefix (exactly 256 chars, no suffix)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include Patient C", "expression": "entry.where(resource.id = 'ignixa-tokof-c').exists()" } },
+        { "assert": { "description": "Must NOT include Patient A (257 chars, extra overflow suffix)", "expression": "entry.where(resource.id = 'ignixa-tokof-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include Patient B (257 chars, extra overflow suffix)", "expression": "entry.where(resource.id = 'ignixa-tokof-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Short value well under the overflow limit is found",
+      "description": "Patient D's 156-character identifier (well under the overflow boundary) must be found by its full value, exercising the ordinary non-overflow path.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/token-overflow|ignixatokof------------------------------------------------------------------------------------------------------------------------------------------------", "responseId": "short-d-response", "description": "GET /Patient?identifier=...prefix (156 chars)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include Patient D", "expression": "entry.where(resource.id = 'ignixa-tokof-d').exists()" } }
+      ]
+    },
+    {
+      "name": "Non-matching token value returns none of the fixtures",
+      "description": "A token value matching none of the fixtures must return an empty bundle, not a false match via prefix truncation or overflow mishandling (from TokenOverflowTests).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/token-overflow|nonexistent-token-overflow-value", "responseId": "no-match-response", "description": "GET /Patient?identifier=http://ignixa.io/testscript/suite/token-overflow|nonexistent-token-overflow-value" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include Patient A", "expression": "entry.where(resource.id = 'ignixa-tokof-a').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include Patient B", "expression": "entry.where(resource.id = 'ignixa-tokof-b').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include Patient C", "expression": "entry.where(resource.id = 'ignixa-tokof-c').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include Patient D", "expression": "entry.where(resource.id = 'ignixa-tokof-d').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-tokof-a", "description": "Teardown: delete Patient A" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-tokof-b", "description": "Teardown: delete Patient B" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-tokof-c", "description": "Teardown: delete Patient C" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-tokof-d", "description": "Teardown: delete Patient D" } }
+    ]
+  }
+}

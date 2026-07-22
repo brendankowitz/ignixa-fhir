@@ -1,0 +1,343 @@
+{
+  "resourceType": "TestScript",
+  "name": "Validation/validate-modes",
+  "description": "$validate conformance tests covering the 'profile' parameter (via query string and via an embedded Parameters parameter), a resourceType mismatch between URL and body, a missing required element on a non-Patient resource, instance-level $validate by id (found and missing), and an unresolvable profile reference (from ValidateTests). Profile-enforcement assertions are warningOnly since custom StructureDefinition-based profile validation support varies across servers.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "profile-birthdate-required",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "StructureDefinition",
+        "url": "http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required",
+        "name": "IgnixaValidateModesPatientBirthDateRequired",
+        "status": "active",
+        "fhirVersion": "4.0.1",
+        "kind": "resource",
+        "abstract": false,
+        "type": "Patient",
+        "baseDefinition": "http://hl7.org/fhir/StructureDefinition/Patient",
+        "derivation": "constraint",
+        "differential": {
+          "element": [
+            { "id": "Patient.birthDate", "path": "Patient.birthDate", "min": 1 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "conformant-patient-birthdate",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": { "resourceType": "Patient", "gender": "female", "birthDate": "1990-05-17" }
+    },
+    {
+      "id": "nonconformant-patient-no-birthdate",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": { "resourceType": "Patient", "gender": "male" }
+    },
+    {
+      "id": "params-profile-conformant",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "profile", "valueUri": "http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required" },
+          { "name": "resource", "resource": { "resourceType": "Patient", "gender": "female", "birthDate": "1990-05-17" } }
+        ]
+      }
+    },
+    {
+      "id": "params-profile-nonconformant",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "profile", "valueUri": "http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required" },
+          { "name": "resource", "resource": { "resourceType": "Patient", "gender": "male" } }
+        ]
+      }
+    },
+    {
+      "id": "params-patient-for-observation-mismatch",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "resource", "resource": { "resourceType": "Patient", "gender": "unknown" } }
+        ]
+      }
+    },
+    {
+      "id": "observation-missing-status",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "code": {
+          "coding": [
+            { "system": "http://ignixa.io/fhir/testscript/validate-modes/system", "code": "vm-missing-status-check" }
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "profileSdId",
+      "sourceId": "create-profile-response",
+      "path": "id",
+      "description": "The server-assigned id of the custom validation profile StructureDefinition created for this suite"
+    },
+    {
+      "name": "conformantPatientId",
+      "sourceId": "create-conformant-patient-response",
+      "path": "id",
+      "description": "The server-assigned id of the Patient that conforms to the custom profile (has birthDate)"
+    },
+    {
+      "name": "nonconformantPatientId",
+      "sourceId": "create-nonconformant-patient-response",
+      "path": "id",
+      "description": "The server-assigned id of the Patient that does not conform to the custom profile (missing birthDate)"
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "StructureDefinition",
+          "sourceId": "profile-birthdate-required",
+          "responseId": "create-profile-response",
+          "description": "Create a custom StructureDefinition profile requiring Patient.birthDate (1..1)"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "conformant-patient-birthdate",
+          "responseId": "create-conformant-patient-response",
+          "description": "Create a profile-conformant Patient (has birthDate) for the GET-by-id tests"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "nonconformant-patient-no-birthdate",
+          "responseId": "create-nonconformant-patient-response",
+          "description": "Create a profile-non-conformant Patient (no birthDate) for the GET-by-id tests"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "type-level $validate: profile-conformant resource accepted (profile via query parameter)",
+      "description": "POST Patient/$validate?profile=<url> with a conformant Patient (has birthDate) as a raw body; the OperationOutcome must have no error/fatal issues.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "conformant-patient-birthdate",
+            "params": "?profile=http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required",
+            "responseId": "validate-profile-query-conformant-response",
+            "description": "POST to Patient/$validate?profile=... with a conformant Patient (raw body)"
+          }
+        },
+        { "assert": { "description": "Operation should return a 2xx success status (warningOnly: some servers use 422 for validation failures)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Conformant resource: OperationOutcome must have no error or fatal issues", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()" } }
+      ]
+    },
+    {
+      "name": "type-level $validate: profile-conformant resource accepted (profile via Parameters parameter)",
+      "description": "POST Patient/$validate with 'profile' and 'resource' both embedded in a Parameters body; a conformant Patient must produce no error/fatal issues.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "params-profile-conformant",
+            "responseId": "validate-profile-params-conformant-response",
+            "description": "POST to Patient/$validate with profile + conformant resource both embedded in Parameters"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Conformant resource: OperationOutcome must have no error or fatal issues", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()" } }
+      ]
+    },
+    {
+      "name": "type-level $validate: profile-non-conformant resource rejected (profile via query parameter)",
+      "description": "POST Patient/$validate?profile=<url> with a Patient missing birthDate; the OperationOutcome should flag an error/fatal issue (warningOnly: custom profile enforcement varies across servers).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "nonconformant-patient-no-birthdate",
+            "params": "?profile=http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required",
+            "responseId": "validate-profile-query-nonconformant-response",
+            "description": "POST to Patient/$validate?profile=... with a non-conformant Patient (raw body, no birthDate)"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Non-conformant resource: OperationOutcome should contain an error or fatal issue (warningOnly: custom profile enforcement varies across servers)", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "type-level $validate: profile-non-conformant resource rejected (profile via Parameters parameter)",
+      "description": "POST Patient/$validate with 'profile' and a non-conformant Patient (missing birthDate) both embedded in Parameters; should be flagged (warningOnly: custom profile enforcement varies across servers).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "params-profile-nonconformant",
+            "responseId": "validate-profile-params-nonconformant-response",
+            "description": "POST to Patient/$validate with profile + non-conformant resource both embedded in Parameters"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Non-conformant resource: OperationOutcome should contain an error or fatal issue (warningOnly: custom profile enforcement varies across servers)", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "type-level $validate: resourceType in the URL must match resourceType in the body",
+      "description": "POST Observation/$validate with a Patient resource body; the resourceType mismatch between URL and body must produce an error/fatal issue (from ValidateTests).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Observation",
+            "sourceId": "params-patient-for-observation-mismatch",
+            "responseId": "validate-type-mismatch-response",
+            "description": "POST to Observation/$validate with a Patient resource embedded in Parameters"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Type mismatch: OperationOutcome must contain at least one error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()" } },
+        { "assert": { "description": "An issue should reference the type mismatch via a 'TypeName' expression (warningOnly: exact expression/message format varies across servers)", "expression": "OperationOutcome.issue.where(expression = 'TypeName').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "type-level $validate: required element missing on a non-Patient resource (Observation.status)",
+      "description": "POST Observation/$validate with an Observation missing the required status element; the OperationOutcome must report an error/fatal issue for the missing element (from ValidateTests).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Observation",
+            "sourceId": "observation-missing-status",
+            "responseId": "validate-observation-missing-status-response",
+            "description": "POST to Observation/$validate with an Observation that omits the required status element"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Missing required element: OperationOutcome must contain at least one error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()" } },
+        { "assert": { "description": "An issue should reference Observation.status (warningOnly: issue expression format varies across servers)", "expression": "OperationOutcome.issue.where(expression = 'Observation.status').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "instance-level $validate (GET by id): conformant resource passes",
+      "description": "GET Patient/{id}/$validate?profile=<url> for a stored, profile-conformant Patient; must return an OperationOutcome with no error/fatal issues (from ValidateTests).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "method": "GET",
+            "url": "Patient/${conformantPatientId}/$validate?profile=http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required",
+            "responseId": "validate-by-id-conformant-response",
+            "description": "GET Patient/{id}/$validate?profile=... for the profile-conformant stored Patient"
+          }
+        },
+        { "assert": { "description": "Operation should return a 2xx success status (warningOnly: some servers use 422 for validation failures)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Conformant resource: OperationOutcome must have no error or fatal issues", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()" } }
+      ]
+    },
+    {
+      "name": "instance-level $validate (GET by id): non-conformant resource is rejected",
+      "description": "GET Patient/{id}/$validate?profile=<url> for a stored Patient that violates the profile; should be flagged (warningOnly: custom profile enforcement varies across servers).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "method": "GET",
+            "url": "Patient/${nonconformantPatientId}/$validate?profile=http://ignixa.io/fhir/testscript/validate-modes/StructureDefinition/patient-birthdate-required",
+            "responseId": "validate-by-id-nonconformant-response",
+            "description": "GET Patient/{id}/$validate?profile=... for the profile-non-conformant stored Patient"
+          }
+        },
+        { "assert": { "description": "Response body must be an OperationOutcome", "resource": "OperationOutcome" } },
+        { "assert": { "description": "Non-conformant resource: OperationOutcome should contain an error or fatal issue (warningOnly: custom profile enforcement varies across servers)", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "instance-level $validate (GET by id): non-existent id returns 404",
+      "description": "GET Patient/{id}/$validate for an id that was never created; the server must return 404 Not Found (from ValidateTests).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "method": "GET",
+            "url": "Patient/ignixa-validate-modes-missing-id-000000/$validate",
+            "responseId": "validate-by-id-missing-response",
+            "description": "GET Patient/{missing-id}/$validate for an id that was never created"
+          }
+        },
+        { "assert": { "description": "Server must return 404 Not Found for a non-existent id", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "type-level $validate: malformed profile parameter value",
+      "description": "POST Patient/$validate?profile=<unresolvable-url> with an otherwise-valid Patient; the server should return 400 Bad Request (warningOnly: some servers ignore unknown profiles instead).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$validate" },
+            "resource": "Patient",
+            "sourceId": "conformant-patient-birthdate",
+            "params": "?profile=not-a-resolvable-profile-url",
+            "responseId": "validate-malformed-profile-response",
+            "description": "POST to Patient/$validate?profile=not-a-resolvable-profile-url with a valid Patient body"
+          }
+        },
+        { "assert": { "description": "Server should return 400 Bad Request for an unresolvable profile reference (warningOnly: some servers ignore unknown profiles instead)", "response": "bad", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "StructureDefinition/${profileSdId}",
+          "description": "Teardown: delete the custom validation profile StructureDefinition"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${conformantPatientId}",
+          "description": "Teardown: delete the profile-conformant Patient"
+        }
+      },
+      {
+        "operation": {
+          "type": { "code": "delete" },
+          "url": "Patient/${nonconformantPatientId}",
+          "description": "Teardown: delete the profile-non-conformant Patient"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/validate-code-operation",
+  "description": "$validate-code conformance tests covering both CodeSystem/$validate-code and ValueSet/$validate-code (from HAPI FHIR's CodeSystemR4Test/ValueSetR4Test): a known-good code, a code that is valid in the code system but excluded from the ValueSet, an unknown code, and a missing-required-parameter error path. Each half is gated independently on the target advertising that resource type's $validate-code; the boolean 'result' assertions are warningOnly since real-world enforcement of ValueSet membership varies across servers.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "cs-validate-code-demo",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "CodeSystem",
+        "id": "ignixa-cs-validate-code-demo",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-validate-code" }] },
+        "url": "http://ignixa.io/testscript/codesystem/validate-code-demo",
+        "status": "active",
+        "content": "complete",
+        "concept": [
+          { "code": "included", "display": "Included Code" },
+          { "code": "excluded", "display": "Excluded Code" }
+        ]
+      }
+    },
+    {
+      "id": "vs-validate-code-demo",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-vs-validate-code-demo",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-validate-code" }] },
+        "url": "http://ignixa.io/testscript/valueset/validate-code-demo",
+        "status": "active",
+        "compose": {
+          "include": [
+            {
+              "system": "http://ignixa.io/testscript/codesystem/validate-code-demo",
+              "concept": [{ "code": "included" }]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "CodeSystem/ignixa-cs-validate-code-demo", "sourceId": "cs-validate-code-demo", "description": "PUT CodeSystem/ignixa-cs-validate-code-demo" } },
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-vs-validate-code-demo", "sourceId": "vs-validate-code-demo", "description": "PUT ValueSet/ignixa-vs-validate-code-demo (includes only 'included')" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "CodeSystem/$validate-code: known code is valid",
+      "description": "GET CodeSystem/$validate-code?system=...&code=included must return result=true (from CodeSystemR4Test).",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='CodeSystem').operation.where(name='validate-code').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "$validate-code" }, "method": "GET", "url": "CodeSystem/$validate-code?system=http://ignixa.io/testscript/codesystem/validate-code-demo&code=included", "responseId": "cs-validate-known", "description": "GET CodeSystem/$validate-code?system=...&code=included" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Parameters resource", "resource": "Parameters" } },
+        { "assert": { "description": "Parameters 'result' part should be true (warningOnly: enforcement strictness varies by server)", "expression": "Parameters.parameter.where(name='result').valueBoolean", "value": "true", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "CodeSystem/$validate-code: unknown code is invalid",
+      "description": "GET CodeSystem/$validate-code?system=...&code=<unknown> must return result=false (from CodeSystemR4Test).",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='CodeSystem').operation.where(name='validate-code').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "$validate-code" }, "method": "GET", "url": "CodeSystem/$validate-code?system=http://ignixa.io/testscript/codesystem/validate-code-demo&code=does-not-exist", "responseId": "cs-validate-unknown", "description": "GET CodeSystem/$validate-code?system=...&code=does-not-exist" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'result' part should be false (warningOnly: enforcement strictness varies by server)", "expression": "Parameters.parameter.where(name='result').valueBoolean", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "ValueSet/$validate-code: code included in the ValueSet is valid",
+      "description": "GET ValueSet/{id}/$validate-code?system=...&code=included must return result=true (from ValueSetR4Test).",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='ValueSet').operation.where(name='validate-code').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "$validate-code" }, "method": "GET", "url": "ValueSet/ignixa-vs-validate-code-demo/$validate-code?system=http://ignixa.io/testscript/codesystem/validate-code-demo&code=included", "responseId": "vs-validate-included", "description": "GET ValueSet/ignixa-vs-validate-code-demo/$validate-code?system=...&code=included" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'result' part should be true (warningOnly: enforcement strictness varies by server)", "expression": "Parameters.parameter.where(name='result').valueBoolean", "value": "true", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "ValueSet/$validate-code: code valid in the code system but excluded from the ValueSet is invalid",
+      "description": "GET ValueSet/{id}/$validate-code?system=...&code=excluded must return result=false, since 'excluded' is a real code in the code system but not a member of this ValueSet's compose (from ValueSetR4Test).",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='ValueSet').operation.where(name='validate-code').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "$validate-code" }, "method": "GET", "url": "ValueSet/ignixa-vs-validate-code-demo/$validate-code?system=http://ignixa.io/testscript/codesystem/validate-code-demo&code=excluded", "responseId": "vs-validate-excluded", "description": "GET ValueSet/ignixa-vs-validate-code-demo/$validate-code?system=...&code=excluded" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Parameters 'result' part should be false: 'excluded' is not a member of this ValueSet (warningOnly: ValueSet-membership enforcement varies by server)", "expression": "Parameters.parameter.where(name='result').valueBoolean", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$validate-code missing required parameters returns 400",
+      "description": "GET CodeSystem/$validate-code with no system/code must be rejected with 400.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='CodeSystem').operation.where(name='validate-code').exists()" }],
+      "action": [
+        { "operation": { "type": { "code": "$validate-code" }, "method": "GET", "url": "CodeSystem/$validate-code", "responseId": "cs-validate-missing-required", "description": "GET CodeSystem/$validate-code (no parameters)" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-vs-validate-code-demo", "description": "Teardown: delete vs-validate-code-demo" } },
+      { "operation": { "type": { "code": "delete" }, "url": "CodeSystem/ignixa-cs-validate-code-demo", "description": "Teardown: delete cs-validate-code-demo" } }
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/resource-type-case-sensitivity",
+  "description": "Resource-type case-sensitivity conformance tests: a mis-cased resource type segment (e.g. 'patient'/'PATIENT') must return 404 Not Found for every HTTP method, while the correctly-cased 'Patient' routes successfully (from ResourceTypeCaseSensitivityTests).",
+  "status": "active",
+  "test": [
+    {
+      "name": "mis-cased resource type segments are rejected with 404 across all HTTP methods",
+      "description": "GET/PUT/DELETE/POST/PATCH requests using a lowercase ('patient') or uppercase ('PATIENT') resource type segment instead of the correctly-cased 'Patient' must all return 404 Not Found, since FHIR resource type names are case-sensitive.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "patient/ignixa-case-sensitivity-1", "responseId": "lower-read-response", "description": "GET patient/{id} (lowercase type)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } },
+
+        { "operation": { "type": { "code": "read" }, "url": "PATIENT/ignixa-case-sensitivity-1", "responseId": "upper-read-response", "description": "GET PATIENT/{id} (uppercase type)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } },
+
+        { "operation": { "type": { "code": "search" }, "url": "patient", "responseId": "lower-search-response", "description": "GET patient (lowercase type, type-level search)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } },
+
+        { "operation": { "type": { "code": "update" }, "url": "patient/ignixa-case-sensitivity-1", "responseId": "lower-update-response", "description": "PUT patient/{id} (lowercase type)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } },
+
+        { "operation": { "type": { "code": "delete" }, "url": "patient/ignixa-case-sensitivity-1", "responseId": "lower-delete-response", "description": "DELETE patient/{id} (lowercase type)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } },
+
+        { "operation": { "type": { "code": "create" }, "url": "patient", "responseId": "lower-create-response", "description": "POST patient (lowercase type)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } },
+
+        { "operation": { "type": { "code": "patch" }, "url": "patient/ignixa-case-sensitivity-1", "responseId": "lower-patch-response", "description": "PATCH patient/{id} (lowercase type)" } },
+        { "assert": { "description": "Must return 404 Not Found", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "correctly-cased resource type routes successfully",
+      "description": "GET /Patient (correctly-cased type-level search) must route successfully and return HTTP 200 with a Bundle, proving the case-sensitivity rejections above are specific to the mis-cased segment rather than a general routing failure.",
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "responseId": "correct-case-response", "description": "GET Patient (correctly-cased type-level search)" } },
+        { "assert": { "description": "Must return HTTP 200 OK", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } }
+      ]
+    }
+  ]
+}

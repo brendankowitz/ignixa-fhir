@@ -276,11 +276,11 @@ merges per-implementation reports into a published conformance matrix:
 dotnet tool install -g Ignixa.ConformanceMatrix.Cli
 
 # Run a conformance suite against a server, writing a Bundle of FHIR TestReport resources
-ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+ignixa-matrix run --server https://your-fhir-server --tests ./src/Core/Ignixa.TestScript.Suites/testscripts \
   --impl my-server --out ./reports/my-server.json
 
 # merge reads the native per-impl report, not TestReport, so ask for --format json
-ignixa-matrix run --server https://your-fhir-server --tests ./conformance-tests \
+ignixa-matrix run --server https://your-fhir-server --tests ./src/Core/Ignixa.TestScript.Suites/testscripts \
   --impl my-server --out ./reports/my-server.json --format json
 
 # Merge per-impl reports into the matrix (runs/ + index.json)
@@ -304,7 +304,7 @@ Ignixa publishes the latest R4 TestScript conformance run to the documentation s
 **[Open FHIR Conformance Report](/fhir-conformance)**
 
 - **Raw Report**: [conformance/latest.json](https://brendankowitz.github.io/ignixa-fhir/conformance/latest.json)
-- The report is generated during docs deployment by running the `conformance-tests` suite through the same SQL Server/Azurite-backed E2E test environment used by CI.
+- The report is generated during docs deployment by running the canonical suite corpus (`src/Core/Ignixa.TestScript.Suites/testscripts/`, also published as the `Ignixa.TestScript.Suites` package) through the same SQL Server/Azurite-backed E2E test environment used by CI.
 - Failing conformance cells are published honestly; TestScript parse or evaluator errors fail docs generation.
 
 ## Related Documentation

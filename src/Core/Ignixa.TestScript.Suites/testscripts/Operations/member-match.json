@@ -1,0 +1,164 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/member-match",
+  "description": "$member-match operation conformance tests (from MemberMatchTests): request/response shape for MemberPatient/OldCoverage Parameters, and a self-seeded Patient+Coverage match. Match outcomes depend on data already present on the target server, so most assertions here are warningOnly. Gated on the target advertising Patient/$member-match, either as a resource-scoped or a system-level operation.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='Patient').operation.where(name='member-match').exists() or rest.operation.where(name='member-match').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "member-match-non-parameters-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": { "resourceType": "Patient", "id": "member-match-not-parameters" }
+    },
+    {
+      "id": "member-match-shape-only-request",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "MemberPatient",
+            "resource": {
+              "resourceType": "Patient",
+              "address": [ { "city": "Seattle" } ],
+              "name": [ { "family": "Robinson" } ]
+            }
+          },
+          {
+            "name": "OldCoverage",
+            "resource": {
+              "resourceType": "Coverage",
+              "status": "active",
+              "type": { "coding": [ { "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "EHCPOL" } ] },
+              "beneficiary": { "reference": "Patient/example" },
+              "payor": [ { "reference": "Patient/example" } ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "member-match-setup-bundle",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+          {
+            "fullUrl": "urn:uuid:9c6f6a2e-2f0a-4b8c-9f0a-3f6b2c1a7e01",
+            "resource": {
+              "resourceType": "Patient",
+              "address": [ { "city": "IgnixaMemberMatchCityXYZ" } ],
+              "name": [ { "family": "IgnixaMemberMatchFamilyXYZ" } ],
+              "identifier": [
+                {
+                  "system": "http://ignixa.io/testscript/member-match",
+                  "value": "mm-001",
+                  "type": { "coding": [ { "system": "http://terminology.hl7.org/CodeSystem/v2-0203", "code": "MB", "display": "Member Number" } ] }
+                }
+              ]
+            },
+            "request": { "method": "POST", "url": "Patient" }
+          },
+          {
+            "resource": {
+              "resourceType": "Coverage",
+              "status": "active",
+              "type": { "coding": [ { "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "IGNIXAMMTESTXYZ" } ] },
+              "beneficiary": { "reference": "urn:uuid:9c6f6a2e-2f0a-4b8c-9f0a-3f6b2c1a7e01" },
+              "payor": [ { "reference": "urn:uuid:9c6f6a2e-2f0a-4b8c-9f0a-3f6b2c1a7e01" } ]
+            },
+            "request": { "method": "POST", "url": "Coverage" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "member-match-request-for-setup-patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "MemberPatient",
+            "resource": {
+              "resourceType": "Patient",
+              "address": [ { "city": "IgnixaMemberMatchCityXYZ" } ],
+              "name": [ { "family": "IgnixaMemberMatchFamilyXYZ" } ]
+            }
+          },
+          {
+            "name": "OldCoverage",
+            "resource": {
+              "resourceType": "Coverage",
+              "status": "active",
+              "type": { "coding": [ { "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "IGNIXAMMTESTXYZ" } ] },
+              "beneficiary": { "reference": "Patient/example" },
+              "payor": [ { "reference": "Patient/example" } ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "memberMatchSetupPatientId",
+      "sourceId": "member-match-setup-response",
+      "expression": "entry[0].resource.id",
+      "description": "Server-assigned id of the distinctively-tagged Patient created for the member-match setup test, used for teardown"
+    },
+    {
+      "name": "memberMatchSetupCoverageId",
+      "sourceId": "member-match-setup-response",
+      "expression": "entry[1].resource.id",
+      "description": "Server-assigned id of the Coverage created for the member-match setup test, used for teardown"
+    }
+  ],
+  "test": [
+    {
+      "name": "$member-match rejects a non-Parameters request body with 400 Bad Request",
+      "description": "POST Patient/$member-match with a plain Patient body (not wrapped in Parameters) must return 400 Bad Request. warningOnly: target may not implement $member-match at all.",
+      "action": [
+        { "operation": { "type": { "code": "$member-match" }, "resource": "Patient", "sourceId": "member-match-non-parameters-body", "responseId": "member-match-not-params-response", "description": "POST Patient/$member-match with a bare Patient body" } },
+        { "assert": { "description": "Server should reject a non-Parameters body with 400 Bad Request (warningOnly)", "response": "bad", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$member-match request/response shape with unseeded data",
+      "description": "POST Patient/$member-match with a well-formed but unseeded MemberPatient/OldCoverage request. warningOnly and informational: the outcome (422 no-match vs. 200 match) depends entirely on data already present on the target.",
+      "action": [
+        { "operation": { "type": { "code": "$member-match" }, "resource": "Patient", "sourceId": "member-match-shape-only-request", "responseId": "member-match-shape-response", "description": "POST Patient/$member-match with a plausible but unseeded MemberPatient/OldCoverage pair" } },
+        { "assert": { "description": "Most likely on a target with no matching seed data: 422 Unprocessable Entity, no match found (warningOnly, informational)", "response": "unprocessable", "warningOnly": true } },
+        { "assert": { "description": "Response should be an OperationOutcome when no/multiple match is reported (warningOnly, informational)", "resource": "OperationOutcome", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$member-match finds a self-seeded, distinctively-tagged Patient via its matching Coverage",
+      "description": "Creates a distinctively-tagged Patient and a matching Coverage via a transaction Bundle, then calls $member-match on the same values, expecting a single 200 match (from MemberMatchTests). warningOnly: depends on transaction Bundle support, $member-match support, and no coincidental data collisions on the target.",
+      "action": [
+        { "operation": { "type": { "code": "transaction" }, "method": "POST", "sourceId": "member-match-setup-bundle", "responseId": "member-match-setup-response", "description": "POST transaction Bundle creating the distinctively-tagged Patient + Coverage" } },
+        { "assert": { "description": "Setup transaction should return 200 with both entries created (warningOnly: depends on transaction Bundle support)", "response": "okay", "warningOnly": true } },
+        { "operation": { "type": { "code": "$member-match" }, "resource": "Patient", "sourceId": "member-match-request-for-setup-patient", "responseId": "member-match-setup-match-response", "description": "POST Patient/$member-match for the just-created distinctively-tagged Patient/Coverage" } },
+        { "assert": { "description": "Should find exactly one match and return 200 OK (warningOnly)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response should be a Parameters resource containing the matched MemberPatient (warningOnly)", "resource": "Parameters", "warningOnly": true } },
+        { "assert": { "description": "Matched Patient should carry a 'UMB'-typed identifier copied from the seeded 'MB' identifier (warningOnly)", "expression": "Parameters.parameter.where(name = 'MemberPatient').resource.identifier.where(type.coding.code = 'UMB').exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Coverage/${memberMatchSetupCoverageId}", "description": "Teardown: delete the Coverage created for the member-match setup test" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${memberMatchSetupPatientId}", "description": "Teardown: delete the Patient created for the member-match setup test" } }
+    ]
+  }
+}

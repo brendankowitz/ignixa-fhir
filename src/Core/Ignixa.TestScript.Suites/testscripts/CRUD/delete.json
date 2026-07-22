@@ -1,0 +1,82 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/delete",
+  "description": "Instance delete (DELETE) conformance tests: a deleted resource returns 410/404 on read while its pre-delete version remains vread-able and it is excluded from search (from DeleteTests). Hard delete and $purge-history — both server extensions not mandated by base FHIR R4 — are covered separately in Microsoft/ms-hard-delete-purge-history.json.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-delete-basic",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DELETE-BASIC-1" }],
+        "name": [{ "family": "DeleteBasic", "given": ["Case"] }]
+      }
+    },
+    {
+      "id": "patient-delete-search",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DELETE-SEARCH-1" }],
+        "name": [{ "family": "DeleteSearch", "given": ["Case"] }]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "deleteBasicId", "sourceId": "create-basic-response", "path": "id", "description": "server-assigned id of the basic delete-lifecycle Patient" },
+    { "name": "deleteBasicVersion", "sourceId": "create-basic-response", "path": "meta.versionId", "description": "server-assigned initial versionId of the basic delete-lifecycle Patient, expected to remain vread-able after delete" },
+    { "name": "deleteSearchId", "sourceId": "create-search-response", "path": "id", "description": "server-assigned id of the Patient used for the deleted-excluded-from-search test" }
+  ],
+  "test": [
+    {
+      "name": "delete removes the resource; a plain read is Gone/NotFound while the original version remains vread-able",
+      "description": "DELETE Patient/{id} must succeed. A subsequent plain read must return 410 Gone (or 404 Not Found as a warningOnly alternative), while a vread of the version that existed before the delete must still succeed.",
+      "action": [
+        { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-delete-basic", "responseId": "create-basic-response", "description": "Create the Patient that will be deleted" } },
+        { "assert": { "description": "Create must return HTTP 201", "response": "created" } },
+        { "operation": { "type": { "code": "delete" }, "url": "Patient/${deleteBasicId}", "responseId": "delete-basic-response", "description": "Delete the Patient" } },
+        { "assert": { "description": "Delete must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "read" }, "url": "Patient/${deleteBasicId}", "responseId": "after-delete-read-response", "description": "Attempt to read the deleted Patient" } },
+        { "assert": { "sourceId": "after-delete-read-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "deleted-resource-readback" }], "description": "Preferred: 410 Gone for a deleted resource (warningOnly: FHIR also permits 404 when deleted resources are not tracked)", "response": "gone", "warningOnly": true } },
+        { "assert": { "sourceId": "after-delete-read-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "deleted-resource-readback" }], "description": "Alternative: 404 Not Found is accepted when the server does not track deleted resources", "response": "notFound", "warningOnly": true } },
+        { "operation": { "type": { "code": "vread" }, "url": "Patient/${deleteBasicId}/_history/${deleteBasicVersion}", "responseId": "vread-original-response", "description": "vread the pre-delete version of the Patient" } },
+        { "assert": { "description": "vread of the pre-delete version must still return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response body must be a Patient", "resource": "Patient" } },
+        { "assert": { "description": "Returned id must match the deleted Patient's id", "expression": "Patient.id", "value": "${deleteBasicId}", "operator": "equals" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='vread').exists() and rest.resource.where(type='Patient').where(versioning.exists() and versioning != 'no-version').exists()"
+        }
+      ]
+    },
+    {
+      "name": "deleted resource does not appear in subsequent searches",
+      "description": "A Patient tagged with a unique identifier is created, confirmed searchable, deleted, and then confirmed absent from the same identifier search.",
+      "action": [
+        { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-delete-search", "responseId": "create-search-response", "description": "Create the Patient that will be searched for, then deleted" } },
+        { "assert": { "description": "Create must return HTTP 201", "response": "created" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/test|DELETE-SEARCH-1", "responseId": "presearch-response", "description": "Search by identifier before delete; the Patient must be present" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include the created Patient before delete", "expression": "entry.where(resource.id = '${deleteSearchId}').exists()" } },
+        { "operation": { "type": { "code": "delete" }, "url": "Patient/${deleteSearchId}", "responseId": "delete-search-response", "description": "Delete the Patient" } },
+        { "assert": { "description": "Delete must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/test|DELETE-SEARCH-1", "responseId": "postsearch-response", "description": "Search by the same identifier after delete; the Patient must be excluded" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include the deleted Patient after delete", "expression": "entry.where(resource.id = '${deleteSearchId}').exists()", "value": "false", "operator": "equals" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${deleteBasicId}", "description": "Teardown: delete the basic delete-lifecycle Patient (already deleted by the test, best effort)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${deleteSearchId}", "description": "Teardown: delete the search-exclusion Patient (already deleted by the test, best effort)" } }
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "resourceType": "TestScript",
+  "name": "Regression/capability-statement-version",
+  "description": "GET /metadata returns the correct CapabilityStatement.fhirVersion for the server's configured FHIR release (from VersionSpecificTests.cs, R4/R4B/R5/STU3). Only the version-check aspect is covered; per-resource-type creation coverage is out of scope.",
+  "status": "active",
+  "test": [
+    {
+      "name": "GET /metadata returns a CapabilityStatement with a populated fhirVersion",
+      "description": "GET /metadata must return 200 with a CapabilityStatement whose fhirVersion is present; the value is also informationally checked against known released version literals (warningOnly since the target's configured version isn't known ahead of time).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "url": "metadata",
+            "responseId": "capability-metadata-response",
+            "description": "GET /metadata"
+          }
+        },
+        { "assert": { "description": "Server must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response body must be a CapabilityStatement", "resource": "CapabilityStatement" } },
+        { "assert": { "description": "CapabilityStatement.fhirVersion must be present", "expression": "CapabilityStatement.fhirVersion.exists()" } },
+        { "assert": { "description": "fhirVersion should be one of the known released FHIR version literals (warningOnly: list isn't exhaustive)", "expression": "CapabilityStatement.fhirVersion", "value": "1.0.2,3.0.1,3.0.2,4.0.0,4.0.1,4.3.0,5.0.0", "operator": "in", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "R4: CapabilityStatement.fhirVersion is 4.0.1",
+      "description": "Runs only when this suite targets an R4 server; reuses the /metadata response from the first test.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0" }],
+      "action": [
+        { "assert": { "description": "CapabilityStatement.fhirVersion must equal '4.0.1' for an R4 server", "sourceId": "capability-metadata-response", "expression": "CapabilityStatement.fhirVersion", "value": "4.0.1", "operator": "equals" } }
+      ]
+    },
+    {
+      "name": "R4B: CapabilityStatement.fhirVersion is 4.3.0",
+      "description": "Runs only when this suite targets an R4B server; reuses the /metadata response from the first test.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.3" }],
+      "action": [
+        { "assert": { "description": "CapabilityStatement.fhirVersion must equal '4.3.0' for an R4B server", "sourceId": "capability-metadata-response", "expression": "CapabilityStatement.fhirVersion", "value": "4.3.0", "operator": "equals" } }
+      ]
+    },
+    {
+      "name": "R5: CapabilityStatement.fhirVersion is 5.0.0",
+      "description": "Runs only when this suite targets an R5 server; reuses the /metadata response from the first test.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "5.0" }],
+      "action": [
+        { "assert": { "description": "CapabilityStatement.fhirVersion must equal '5.0.0' for an R5 server", "sourceId": "capability-metadata-response", "expression": "CapabilityStatement.fhirVersion", "value": "5.0.0", "operator": "equals" } }
+      ]
+    },
+    {
+      "name": "STU3: CapabilityStatement.fhirVersion is 3.0.2",
+      "description": "Runs only when this suite targets a STU3 server; reuses the /metadata response from the first test.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "3.0" }],
+      "action": [
+        { "assert": { "description": "CapabilityStatement.fhirVersion must equal '3.0.2' for a STU3 server", "sourceId": "capability-metadata-response", "expression": "CapabilityStatement.fhirVersion", "value": "3.0.2", "operator": "equals" } }
+      ]
+    }
+  ]
+}

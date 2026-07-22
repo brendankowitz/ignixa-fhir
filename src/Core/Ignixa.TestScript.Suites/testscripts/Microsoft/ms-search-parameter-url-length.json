@@ -1,0 +1,87 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-search-parameter-url-length",
+  "description": "MS FHIR Server-specific SearchParameter.url length cap (from CustomSearchParamTests, split out of Search/custom-search-param.json): a SearchParameter.url of 129 characters is rejected on create, and an existing SearchParameter cannot be updated from a 128-character (at-cap) url to a 129-character url. The 128-character cap is an implementation limit, not a universal FHIR R4 requirement, so all assertions are warningOnly.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "sp-url-toolong",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-urltoolong",
+        "url": "http://example.org/fhir/SearchParameter/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "Fhir262UrlTooLong",
+        "status": "draft",
+        "description": "MS FHIR Server-specific: url is 129 characters, one over the implementation's 128-character cap.",
+        "code": "ignixa-urltoolong",
+        "base": ["Person"],
+        "type": "string",
+        "expression": "Person.name"
+      }
+    },
+    {
+      "id": "sp-url-valid",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-urlupdate",
+        "url": "http://example.org/fhir/SearchParameter/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "Fhir262UrlValid",
+        "status": "draft",
+        "description": "Valid: url is exactly 128 characters (at the MS FHIR Server implementation cap, not over it).",
+        "code": "ignixa-urlvalid",
+        "base": ["Person"],
+        "type": "string",
+        "expression": "Person.name"
+      }
+    },
+    {
+      "id": "sp-url-valid-then-toolong",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-urlupdate",
+        "url": "http://example.org/fhir/SearchParameter/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "name": "Fhir262UrlValid",
+        "status": "draft",
+        "description": "Same resource id as sp-url-valid, but url has been changed to 129 characters — used to PUT-update an existing, previously-valid SearchParameter to an over-the-cap url.",
+        "code": "ignixa-urlvalid",
+        "base": ["Person"],
+        "type": "string",
+        "expression": "Person.name"
+      }
+    }
+  ],
+  "test": [
+    {
+      "name": "SearchParameter.url longer than 128 characters is rejected on create (MS FHIR Server-specific)",
+      "description": "A SearchParameter.url of 129 characters (one over the server's 128-character cap) is rejected with HTTP 400 on create (warningOnly: not a universal FHIR requirement).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-urltoolong", "sourceId": "sp-url-toolong", "description": "PUT SearchParameter/ignixa-sp-urltoolong (url is 129 characters)" } },
+        { "assert": { "description": "Should return HTTP 400 Bad Request (warningOnly: the 128-character url cap is an MS FHIR Server-specific implementation limit, not a universal FHIR R4 requirement)", "response": "bad", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "an existing SearchParameter cannot be updated to a url longer than 128 characters (MS FHIR Server-specific)",
+      "description": "A SearchParameter created with a 128-character url (at the cap) cannot then be updated to a 129-character url (warningOnly: custom SearchParameter registration and the length cap are both server-specific, not universal FHIR requirements).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-urlupdate", "sourceId": "sp-url-valid", "description": "PUT SearchParameter/ignixa-sp-urlupdate (url is exactly 128 characters)" } },
+        { "assert": { "description": "Should return HTTP 201 Created (warningOnly: custom SearchParameter registration support varies across servers)", "response": "created", "warningOnly": true } },
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-urlupdate", "sourceId": "sp-url-valid-then-toolong", "description": "PUT SearchParameter/ignixa-sp-urlupdate again, this time with a 129-character url" } },
+        { "assert": { "description": "Should return HTTP 400 Bad Request (warningOnly: the 128-character url cap is an MS FHIR Server-specific implementation limit, not a universal FHIR R4 requirement)", "response": "bad", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-urltoolong", "description": "Teardown: delete ignixa-sp-urltoolong (only present if this server does not enforce the 128-character url cap)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-urlupdate", "description": "Teardown: delete ignixa-sp-urlupdate (only present if this server supports custom SearchParameter registration)" } }
+    ]
+  }
+}

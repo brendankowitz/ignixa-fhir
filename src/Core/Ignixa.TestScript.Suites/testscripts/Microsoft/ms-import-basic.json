@@ -1,0 +1,308 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-import-basic",
+  "description": "$import bulk-data-load operation conformance tests (from ImportTests.cs / ImportBasicSearchTests.cs): kickoff request validation (400 for malformed headers, body, or input URLs) and job-status polling for an unknown job id. Real end-to-end import needs real blob storage and async job completion this suite can't provide, so only synchronous request validation is covered, and two tests are best-effort/warningOnly since reaching 202 requires a storage account matching the target server's configuration.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.operation.where(name='import').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "import-params-wellformed",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://ignixa-lab-testscript-placeholder.blob.core.windows.net/container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-empty",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": { "resourceType": "Parameters", "parameter": [] }
+    },
+    {
+      "id": "import-params-bad-format",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+xml" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-bad-storage-type",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "aws-s3" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-missing-input",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] }
+        ]
+      }
+    },
+    {
+      "id": "import-params-duplicate-urls",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-invalid-type",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Invalid" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-relative-url",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-query-string-url",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson?sv=2024-01-01&sig=abc123" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-unconfigured-host",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-searchparameter-type",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "SearchParameter" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/searchparameter.ndjson" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "import-params-invalid-mode",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://unconfigured.example.org/container/patient.ndjson" }
+            ]
+          },
+          { "name": "mode", "valueString": "not-a-real-mode" }
+        ]
+      }
+    }
+  ],
+  "test": [
+    {
+      "name": "$import kickoff requires the Prefer: respond-async and Content-Type: application/fhir+json headers",
+      "description": "Missing Prefer: respond-async, or a Content-Type other than application/fhir+json, must each return 400 Bad Request.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "sourceId": "import-params-wellformed", "responseId": "missing-prefer-response", "description": "POST $import with a well-formed body but no Prefer header" } },
+        { "assert": { "description": "Missing Prefer: respond-async must return 400 Bad Request", "sourceId": "missing-prefer-response", "response": "bad" } },
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "contentType": "application/json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-wellformed", "responseId": "wrong-content-type-response", "description": "POST $import with Prefer: respond-async but Content-Type: application/json" } },
+        { "assert": { "description": "Wrong Content-Type must return 400 Bad Request", "sourceId": "wrong-content-type-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects an empty Parameters body and an unsupported inputFormat",
+      "description": "An empty Parameters body and an unsupported inputFormat value (application/fhir+xml) must each return 400 Bad Request.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-empty", "responseId": "empty-params-response", "description": "POST $import with an empty Parameters (no parameter entries)" } },
+        { "assert": { "description": "Empty Parameters must return 400 Bad Request", "sourceId": "empty-params-response", "response": "bad" } },
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-bad-format", "responseId": "bad-format-response", "description": "POST $import with inputFormat=application/fhir+xml (only application/fhir+ndjson is allowed)" } },
+        { "assert": { "description": "Unsupported inputFormat must return 400 Bad Request", "sourceId": "bad-format-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects an unsupported storageDetail.type and a missing input array",
+      "description": "An unsupported storageDetail.type and a request missing the input array must each return 400 Bad Request.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-bad-storage-type", "responseId": "bad-storage-response", "description": "POST $import with storageDetail.type=aws-s3 (only azure-blob is allowed)" } },
+        { "assert": { "description": "Unsupported storageDetail.type must return 400 Bad Request", "sourceId": "bad-storage-response", "response": "bad" } },
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-missing-input", "responseId": "missing-input-response", "description": "POST $import with no input parameter at all" } },
+        { "assert": { "description": "Missing input array must return 400 Bad Request", "sourceId": "missing-input-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects duplicate input file URLs",
+      "description": "Two input entries with the same file URL must return 400 Bad Request (from ImportTests).",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-duplicate-urls", "responseId": "duplicate-urls-response", "description": "POST $import with two input entries pointing at the same URL" } },
+        { "assert": { "description": "Duplicate input URLs must return 400 Bad Request", "sourceId": "duplicate-urls-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects an unrecognized input resource type",
+      "description": "An input entry with an unrecognized resource type must return 400 Bad Request (from ImportTests).",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-invalid-type", "responseId": "invalid-type-response", "description": "POST $import with input[0].type=Invalid" } },
+        { "assert": { "description": "Unrecognized input resource type must return 400 Bad Request", "sourceId": "invalid-type-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects an input URL that is relative or that contains a query string",
+      "description": "An input URL that is relative, or that includes a query string, must each return 400 Bad Request.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-relative-url", "responseId": "relative-url-response", "description": "POST $import with a relative input URL (container/patient.ndjson)" } },
+        { "assert": { "description": "Relative input URL must return 400 Bad Request", "sourceId": "relative-url-response", "response": "bad" } },
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-query-string-url", "responseId": "query-string-url-response", "description": "POST $import with an absolute input URL that has a query string" } },
+        { "assert": { "description": "Input URL with a query string must return 400 Bad Request", "sourceId": "query-string-url-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects an input URL for an unconfigured storage account",
+      "description": "An input URL pointing at a storage account the server hasn't configured must return 400 Bad Request (from ImportTests).",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-unconfigured-host", "responseId": "unconfigured-host-response", "description": "POST $import with input[0].url on a domain no server configures" } },
+        { "assert": { "description": "Input URL on an unconfigured storage account must return 400 Bad Request", "sourceId": "unconfigured-host-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects the SearchParameter resource type via its explicit denylist",
+      "description": "An input entry with resource type SearchParameter must return 400 Bad Request; SearchParameter is explicitly denylisted for import even though it's a valid resource type. Note: on this target, the 400 may come from the storage-host check firing first rather than the denylist itself.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-searchparameter-type", "responseId": "searchparameter-type-response", "description": "POST $import with input[0].type=SearchParameter" } },
+        { "assert": { "description": "SearchParameter input type must return 400 Bad Request", "sourceId": "searchparameter-type-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "status check for a never-issued $import job id returns 404 Not Found",
+      "description": "A status check for an import job id that was never issued must return 404 Not Found.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "method": "GET", "url": "_operations/import/999999999999", "responseId": "unknown-job-status-response", "description": "GET /_operations/import/999999999999 for a job id that was never created" } },
+        { "assert": { "description": "Status check for an unknown import job id must return 404 Not Found", "sourceId": "unknown-job-status-response", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "$import kickoff rejects an unrecognized mode value (best-effort)",
+      "description": "An unrecognized mode value must return 400 Bad Request (best-effort: on this target, the 400 may come from the storage-host check rather than the mode check itself).",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-invalid-mode", "responseId": "invalid-mode-response", "description": "POST $import with mode=not-a-real-mode" } },
+        { "assert": { "description": "Unrecognized mode value must return 400 Bad Request", "sourceId": "invalid-mode-response", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "well-formed $import kickoff shape (best-effort, environment-dependent)",
+      "description": "A well-formed $import kickoff should return 202 Accepted with a Content-Location header; both assertions are warningOnly since reaching 202 depends on the target's real storage account, which this suite can't know.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-wellformed", "responseId": "wellformed-kickoff-response", "description": "POST $import with a syntactically well-formed body (valid inputFormat/storageDetail/input shape)" } },
+        { "assert": { "description": "202 Accepted if the input URL happens to match the server's configured storage account (rarely true for a portable suite).", "sourceId": "wellformed-kickoff-response", "responseCode": "202", "warningOnly": true } },
+        { "assert": { "description": "400 Bad Request otherwise, which is the far more likely outcome.", "sourceId": "wellformed-kickoff-response", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "If 202 was returned, Content-Location must be present (only meaningful on the 202 branch).", "sourceId": "wellformed-kickoff-response", "headerField": "Content-Location", "warningOnly": true } }
+      ]
+    }
+  ]
+}

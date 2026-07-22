@@ -1,0 +1,157 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/uri",
+  "description": "Uri search-parameter conformance tests on ValueSet.url: exact (case-sensitive, non-prefix) matching plus the :above and :below modifiers (from UriSearchTests). Omits inputs that aren't well-formed absolute URIs, since handling of those is server-specific and non-normative.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "vs-plain",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-uri-plain",
+        "status": "active",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-uri-suite" }] },
+        "url": "http://ignixa.example.com/test/system"
+      }
+    },
+    {
+      "id": "vs-urn",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-uri-urn",
+        "status": "active",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-uri-suite" }] },
+        "url": "urn://ignixa-localhost/test"
+      }
+    },
+    {
+      "id": "vs-frag",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-uri-frag",
+        "status": "active",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-uri-suite" }] },
+        "url": "http://ignixa.example.com/rdf#54135-9"
+      }
+    },
+    {
+      "id": "vs-frag-longer",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-uri-frag-longer",
+        "status": "active",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-uri-suite" }] },
+        "url": "http://ignixa.example.com/rdf#54135-9-9"
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-uri-plain", "sourceId": "vs-plain", "description": "PUT ValueSet/ignixa-uri-plain (url=http://ignixa.example.com/test/system)" } },
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-uri-urn", "sourceId": "vs-urn", "description": "PUT ValueSet/ignixa-uri-urn (url=urn://ignixa-localhost/test)" } },
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-uri-frag", "sourceId": "vs-frag", "description": "PUT ValueSet/ignixa-uri-frag (url=http://ignixa.example.com/rdf#54135-9)" } },
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-uri-frag-longer", "sourceId": "vs-frag-longer", "description": "PUT ValueSet/ignixa-uri-frag-longer (url=http://ignixa.example.com/rdf#54135-9-9, superstring of vs-frag's url)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "uri: default modifier is an exact, case-sensitive match",
+      "description": "ValueSet?url=http://ignixa.example.com/test/system must match vs-plain exactly. The same query with the host upper-cased (http://ignixa.EXAMPLE.com/test/system) must NOT match, because uri values are compared byte-for-byte, not case-insensitively like a hostname would be.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url=http://ignixa.example.com/test/system&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-exact", "description": "GET ValueSet?url=http://ignixa.example.com/test/system" } },
+        { "assert": { "description": "Exact: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Exact: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Exact: must include vs-plain", "expression": "entry.where(resource.id = 'ignixa-uri-plain').exists()" } },
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url=http://ignixa.EXAMPLE.com/test/system&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-case", "description": "GET ValueSet?url=http://ignixa.EXAMPLE.com/test/system (different case)" } },
+        { "assert": { "description": "Case-sensitive: HTTP 200", "response": "okay", "sourceId": "uri-case" } },
+        { "assert": { "description": "Case-sensitive: returns a Bundle", "resource": "Bundle", "sourceId": "uri-case" } },
+        { "assert": { "description": "Case-sensitive: must NOT include vs-plain (case differs)", "expression": "entry.where(resource.id = 'ignixa-uri-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true, "sourceId": "uri-case" } }
+      ]
+    },
+    {
+      "name": "uri: default modifier does not do prefix matching",
+      "description": "ValueSet?url=http://ignixa.example.com/rdf#54135-9 must match only vs-frag; vs-frag-longer has a URL that starts with the same string but is longer, and must NOT match a non-prefix exact search.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url=http://ignixa.example.com/rdf%2354135-9&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-no-prefix", "description": "GET ValueSet?url=http://ignixa.example.com/rdf#54135-9" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include vs-frag", "expression": "entry.where(resource.id = 'ignixa-uri-frag').exists()" } },
+        { "assert": { "description": "Must NOT include vs-frag-longer (longer URL, not an exact match)", "expression": "entry.where(resource.id = 'ignixa-uri-frag-longer').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "uri :above — stored value is an ancestor prefix of the query value",
+      "description": "ValueSet?url:above=http://ignixa.example.com/test/system/123 must match vs-plain, whose url is a prefix of the (longer) query value. ValueSet?url:above=http://ignixa.example.com/rdf#54135-9-9-10 must match BOTH vs-frag and vs-frag-longer, since both of their urls are prefixes of that longer query value.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:above=http://ignixa.example.com/test/system/123&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-above-single", "description": "GET ValueSet?url:above=http://ignixa.example.com/test/system/123" } },
+        { "assert": { "description": "Single-ancestor: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Single-ancestor: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Single-ancestor: must include vs-plain", "expression": "entry.where(resource.id = 'ignixa-uri-plain').exists()" } },
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:above=http://ignixa.example.com/rdf%2354135-9-9-10&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-above-multi", "description": "GET ValueSet?url:above=http://ignixa.example.com/rdf#54135-9-9-10" } },
+        { "assert": { "description": "Multi-ancestor: HTTP 200", "response": "okay", "sourceId": "uri-above-multi" } },
+        { "assert": { "description": "Multi-ancestor: returns a Bundle", "resource": "Bundle", "sourceId": "uri-above-multi" } },
+        { "assert": { "description": "Multi-ancestor: must include vs-frag", "expression": "entry.where(resource.id = 'ignixa-uri-frag').exists()", "sourceId": "uri-above-multi" } },
+        { "assert": { "description": "Multi-ancestor: must include vs-frag-longer", "expression": "entry.where(resource.id = 'ignixa-uri-frag-longer').exists()", "sourceId": "uri-above-multi" } }
+      ]
+    },
+    {
+      "name": "uri :above — no match when the query value shares no ancestor with any fixture",
+      "description": "ValueSet?url:above=http://ignixa-unrelated.example.com/x must not match any fixture, since none of their urls are prefixes of an unrelated domain.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:above=http://ignixa-unrelated.example.com/x&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-above-none", "description": "GET ValueSet?url:above=http://ignixa-unrelated.example.com/x" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include vs-plain", "expression": "entry.where(resource.id = 'ignixa-uri-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include vs-frag", "expression": "entry.where(resource.id = 'ignixa-uri-frag').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include vs-frag-longer", "expression": "entry.where(resource.id = 'ignixa-uri-frag-longer').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "uri :below — stored value is a descendant superstring of the query value",
+      "description": "ValueSet?url:below=http://ignixa.example.com must match vs-plain, vs-frag, and vs-frag-longer (all start with that domain prefix), but not vs-urn (a urn:// scheme url).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:below=http://ignixa.example.com&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-below", "description": "GET ValueSet?url:below=http://ignixa.example.com" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include vs-plain", "expression": "entry.where(resource.id = 'ignixa-uri-plain').exists()" } },
+        { "assert": { "description": "Must include vs-frag", "expression": "entry.where(resource.id = 'ignixa-uri-frag').exists()" } },
+        { "assert": { "description": "Must include vs-frag-longer", "expression": "entry.where(resource.id = 'ignixa-uri-frag-longer').exists()" } },
+        { "assert": { "description": "Must NOT include vs-urn (urn scheme, not http)", "expression": "entry.where(resource.id = 'ignixa-uri-urn').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "uri :below — no match when the query value is not a prefix of any fixture",
+      "description": "ValueSet?url:below=http://ignixa-unrelated.example.com must not match any fixture, since none of their urls start with that unrelated domain.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "ValueSet", "params": "?url:below=http://ignixa-unrelated.example.com&_tag=http://ignixa.io/testscript/suite/test|ignixa-uri-suite", "responseId": "uri-below-none", "description": "GET ValueSet?url:below=http://ignixa-unrelated.example.com" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include vs-plain", "expression": "entry.where(resource.id = 'ignixa-uri-plain').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include vs-frag", "expression": "entry.where(resource.id = 'ignixa-uri-frag').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "Must NOT include vs-frag-longer", "expression": "entry.where(resource.id = 'ignixa-uri-frag-longer').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-uri-plain", "description": "Teardown: delete vs-plain" } },
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-uri-urn", "description": "Teardown: delete vs-urn" } },
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-uri-frag", "description": "Teardown: delete vs-frag" } },
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-uri-frag-longer", "description": "Teardown: delete vs-frag-longer" } }
+    ]
+  }
+}

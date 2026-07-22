@@ -1,0 +1,184 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/reference",
+  "description": "Reference search-parameter conformance tests on Patient.managingOrganization (single-type) and Patient.generalPractitioner (multi-type): typed vs bare-id references, exact id matching, resource-type case-sensitivity, the :type modifier, and multi-type reference ambiguity (from ReferenceSearchTests). Referenced Organization/Practitioner resources are intentionally not created, since reference search matches on the reference value itself.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "pat-org-typed",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-ref-org-typed",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-ref-suite" }] },
+        "managingOrganization": { "reference": "Organization/ignixa-ref-org-123" }
+      }
+    },
+    {
+      "id": "pat-org-other",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-ref-org-other",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-ref-suite" }] },
+        "managingOrganization": { "reference": "Organization/ignixa-ref-org-abc" }
+      }
+    },
+    {
+      "id": "pat-org-untyped",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-ref-org-untyped",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-ref-suite" }] },
+        "managingOrganization": { "reference": "ignixa-ref-ijk" }
+      }
+    },
+    {
+      "id": "pat-gp-typed",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-ref-gp-typed",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-ref-suite" }] },
+        "generalPractitioner": [{ "reference": "Practitioner/ignixa-ref-p1" }]
+      }
+    },
+    {
+      "id": "pat-gp-untyped",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-ref-gp-untyped",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-ref-suite" }] },
+        "generalPractitioner": [{ "reference": "ignixa-ref-p2" }]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-ref-org-typed", "sourceId": "pat-org-typed", "description": "PUT Patient/ignixa-ref-org-typed (managingOrganization=Organization/ignixa-ref-org-123, typed)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-ref-org-other", "sourceId": "pat-org-other", "description": "PUT Patient/ignixa-ref-org-other (managingOrganization=Organization/ignixa-ref-org-abc, typed, different org)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-ref-org-untyped", "sourceId": "pat-org-untyped", "description": "PUT Patient/ignixa-ref-org-untyped (managingOrganization=ignixa-ref-ijk, untyped — constrained to Organization by the field definition)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-ref-gp-typed", "sourceId": "pat-gp-typed", "description": "PUT Patient/ignixa-ref-gp-typed (generalPractitioner=Practitioner/ignixa-ref-p1, typed)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-ref-gp-untyped", "sourceId": "pat-gp-untyped", "description": "PUT Patient/ignixa-ref-gp-untyped (generalPractitioner=ignixa-ref-p2, untyped — generalPractitioner is multi-type so this cannot be resolved to a single type)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "reference: typed reference exact match on a single-type parameter",
+      "description": "Patient?organization=Organization/ignixa-ref-org-123 must match org-typed only; managingOrganization can only reference Organization so the type qualifier is informational here.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization=Organization/ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-org-typed", "description": "GET Patient?organization=Organization/ignixa-ref-org-123" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include org-typed", "expression": "entry.where(resource.id = 'ignixa-ref-org-typed').exists()" } },
+        { "assert": { "description": "Must NOT include org-other (different org)", "expression": "entry.where(resource.id = 'ignixa-ref-org-other').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "reference: bare id resolves for a single-type parameter (typed and bare-id forms are equivalent)",
+      "description": "Patient?organization=ignixa-ref-org-123 (no resource-type prefix) must match the same resource as the typed form, because managingOrganization is constrained to a single type (Organization) so the server can resolve the id unambiguously.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization=ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-org-bare", "description": "GET Patient?organization=ignixa-ref-org-123 (bare id)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include org-typed", "expression": "entry.where(resource.id = 'ignixa-ref-org-typed').exists()" } }
+      ]
+    },
+    {
+      "name": "reference: id matching is exact, not a prefix match",
+      "description": "Patient?organization=Organization/ignixa-ref-org-1 must NOT match org-typed (id is ignixa-ref-org-123) — reference id matching requires an exact id, not a prefix.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization=Organization/ignixa-ref-org-1&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-org-partial", "description": "GET Patient?organization=Organization/ignixa-ref-org-1 (partial id, should not match)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include org-typed (partial id must not prefix-match)", "expression": "entry.where(resource.id = 'ignixa-ref-org-typed').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "reference: resource type in a typed reference is case-sensitive",
+      "description": "Patient?organization=organization/ignixa-ref-org-123 (lowercase type) must NOT match org-typed — the resource type segment of a reference is case-sensitive per FHIR reference syntax.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization=organization/ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-org-lowercase", "description": "GET Patient?organization=organization/ignixa-ref-org-123 (lowercase type)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include org-typed (lowercase resource type must not match)", "expression": "entry.where(resource.id = 'ignixa-ref-org-typed').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "reference: untyped stored reference resolves via the field's single allowed type",
+      "description": "Patient?organization=Organization/ignixa-ref-ijk (typed query) and ?organization=ignixa-ref-ijk (bare query) must both match org-untyped, whose managingOrganization reference was stored without a type — since the field can only reference Organization, both forms resolve unambiguously.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization=Organization/ignixa-ref-ijk&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-org-untyped-typed-query", "description": "GET Patient?organization=Organization/ignixa-ref-ijk (typed query against untyped stored ref)" } },
+        { "assert": { "description": "Typed query: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Typed query: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Typed query: must include org-untyped", "expression": "entry.where(resource.id = 'ignixa-ref-org-untyped').exists()" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization=ignixa-ref-ijk&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-org-untyped-bare-query", "description": "GET Patient?organization=ignixa-ref-ijk (bare query against untyped stored ref)" } },
+        { "assert": { "description": "Bare query: HTTP 200", "response": "okay", "sourceId": "ref-org-untyped-bare-query" } },
+        { "assert": { "description": "Bare query: returns a Bundle", "resource": "Bundle", "sourceId": "ref-org-untyped-bare-query" } },
+        { "assert": { "description": "Bare query: must include org-untyped", "expression": "entry.where(resource.id = 'ignixa-ref-org-untyped').exists()", "sourceId": "ref-org-untyped-bare-query" } }
+      ]
+    },
+    {
+      "name": "reference: :type modifier on a multi-type parameter narrows to the specified type",
+      "description": "Patient?general-practitioner:Practitioner=Practitioner/ignixa-ref-p1 (with :type modifier) and ?general-practitioner=Practitioner/ignixa-ref-p1 (typed value, no modifier) must both match gp-typed, whose generalPractitioner reference is stored with an explicit Practitioner type.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?general-practitioner:Practitioner=Practitioner/ignixa-ref-p1&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-gp-type-modifier", "description": "GET Patient?general-practitioner:Practitioner=Practitioner/ignixa-ref-p1" } },
+        { "assert": { "description": ":type modifier: HTTP 200", "response": "okay" } },
+        { "assert": { "description": ":type modifier: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": ":type modifier: must include gp-typed", "expression": "entry.where(resource.id = 'ignixa-ref-gp-typed').exists()" } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?general-practitioner=Practitioner/ignixa-ref-p1&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-gp-no-modifier", "description": "GET Patient?general-practitioner=Practitioner/ignixa-ref-p1 (no modifier, typed value)" } },
+        { "assert": { "description": "No modifier: HTTP 200", "response": "okay", "sourceId": "ref-gp-no-modifier" } },
+        { "assert": { "description": "No modifier: returns a Bundle", "resource": "Bundle", "sourceId": "ref-gp-no-modifier" } },
+        { "assert": { "description": "No modifier: must include gp-typed", "expression": "entry.where(resource.id = 'ignixa-ref-gp-typed').exists()", "sourceId": "ref-gp-no-modifier" } }
+      ]
+    },
+    {
+      "name": "reference: multi-type parameter cannot resolve an untyped stored reference when the query specifies a type",
+      "description": "Patient?general-practitioner=Practitioner/ignixa-ref-p2 and ?general-practitioner:Practitioner=ignixa-ref-p2 must NOT match gp-untyped: since generalPractitioner may reference Practitioner, Organization, or PractitionerRole, and the stored reference has no type, the server cannot confirm it is a Practitioner and correctly excludes it.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?general-practitioner=Practitioner/ignixa-ref-p2&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-gp-typed-query-untyped-stored", "description": "GET Patient?general-practitioner=Practitioner/ignixa-ref-p2 (typed query, untyped stored ref)" } },
+        { "assert": { "description": "Typed query: HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Typed query: returns a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Typed query: must NOT include gp-untyped (ambiguous multi-type reference)", "expression": "entry.where(resource.id = 'ignixa-ref-gp-untyped').exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?general-practitioner:Practitioner=ignixa-ref-p2&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-gp-type-modifier-untyped-stored", "description": "GET Patient?general-practitioner:Practitioner=ignixa-ref-p2 (:type modifier, untyped stored ref)" } },
+        { "assert": { "description": ":type modifier: HTTP 200", "response": "okay", "sourceId": "ref-gp-type-modifier-untyped-stored" } },
+        { "assert": { "description": ":type modifier: returns a Bundle", "resource": "Bundle", "sourceId": "ref-gp-type-modifier-untyped-stored" } },
+        { "assert": { "description": ":type modifier: must NOT include gp-untyped (ambiguous multi-type reference)", "expression": "entry.where(resource.id = 'ignixa-ref-gp-untyped').exists()", "value": "false", "operator": "equals", "warningOnly": true, "sourceId": "ref-gp-type-modifier-untyped-stored" } }
+      ]
+    },
+    {
+      "name": "reference: bare untyped query matches a bare untyped stored reference",
+      "description": "Patient?general-practitioner=ignixa-ref-p2 (bare id, no type anywhere) must match gp-untyped, since both the query and the stored reference omit the type.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?general-practitioner=ignixa-ref-p2&_tag=http://ignixa.io/testscript/suite/test|ignixa-ref-suite&_count=100", "responseId": "ref-gp-bare-bare", "description": "GET Patient?general-practitioner=ignixa-ref-p2 (bare query, bare stored ref)" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include gp-untyped", "expression": "entry.where(resource.id = 'ignixa-ref-gp-untyped').exists()" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-ref-org-typed", "description": "Teardown: delete pat-org-typed" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-ref-org-other", "description": "Teardown: delete pat-org-other" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-ref-org-untyped", "description": "Teardown: delete pat-org-untyped" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-ref-gp-typed", "description": "Teardown: delete pat-gp-typed" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-ref-gp-untyped", "description": "Teardown: delete pat-gp-untyped" } }
+    ]
+  }
+}

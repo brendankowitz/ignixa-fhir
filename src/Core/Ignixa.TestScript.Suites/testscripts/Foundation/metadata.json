@@ -1,0 +1,152 @@
+{
+  "resourceType": "TestScript",
+  "name": "Foundation/metadata",
+  "description": "CapabilityStatement (/metadata) conformance tests: response shape, the patient-everything operation advertisement, and HTTP error handling for invalid _format/_pretty/_summary/_elements parameters (from MetadataTests).",
+  "status": "active",
+  "test": [
+    {
+      "name": "metadata returns a well-formed CapabilityStatement advertising patient-everything",
+      "description": "GET /metadata must return HTTP 200 with a CapabilityStatement that advertises the patient-everything operation (warningOnly: a server-specific extension, not required by base FHIR R4).",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "method": "GET",
+            "url": "metadata",
+            "responseId": "metadata-response",
+            "description": "Retrieve the server's CapabilityStatement"
+          }
+        },
+        {
+          "assert": {
+            "description": "Metadata endpoint must return HTTP 200",
+            "sourceId": "metadata-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response body must be a CapabilityStatement",
+            "sourceId": "metadata-response",
+            "resource": "CapabilityStatement"
+          }
+        },
+        {
+          "assert": {
+            "description": "CapabilityStatement should advertise the patient-everything operation with its canonical definition URI (warningOnly: server-specific extension)",
+            "sourceId": "metadata-response",
+            "expression": "CapabilityStatement.rest.operation.where(name='patient-everything').definition",
+            "value": "https://www.hl7.org/fhir/patient-operation-everything.html",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "metadata with an unsupported _format value returns 406 Not Acceptable",
+      "description": "An unsupported _format value must return HTTP 406 Not Acceptable.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "method": "GET",
+            "url": "metadata?_format=blah",
+            "responseId": "invalid-format-response",
+            "description": "Request metadata with an invalid _format value"
+          }
+        },
+        {
+          "assert": {
+            "description": "Invalid _format must return HTTP 406 Not Acceptable",
+            "sourceId": "invalid-format-response",
+            "responseCode": "406"
+          }
+        }
+      ]
+    },
+    {
+      "name": "metadata with an invalid _pretty value returns 400 Bad Request",
+      "description": "An invalid _pretty value must return HTTP 400 Bad Request, whether clearly non-boolean ('abc') or a near-miss boolean-like token ('1'); the near-miss case is warningOnly since some servers may leniently accept '1'/'0' as boolean.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "method": "GET",
+            "url": "metadata?_pretty=abc",
+            "responseId": "pretty-abc-response",
+            "description": "Request metadata with a non-boolean _pretty value ('abc')."
+          }
+        },
+        {
+          "assert": {
+            "description": "Non-boolean _pretty value must return HTTP 400",
+            "sourceId": "pretty-abc-response",
+            "response": "bad"
+          }
+        },
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "method": "GET",
+            "url": "metadata?_pretty=1",
+            "responseId": "pretty-1-response",
+            "description": "Request metadata with a near-miss boolean-like _pretty value ('1')."
+          }
+        },
+        {
+          "assert": {
+            "description": "Near-miss boolean-like _pretty value must return HTTP 400 (warningOnly: some servers may leniently accept '1'/'0')",
+            "sourceId": "pretty-1-response",
+            "response": "bad",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "metadata with an invalid _summary value returns 400 Bad Request",
+      "description": "An unrecognized _summary value must return HTTP 400 Bad Request.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "method": "GET",
+            "url": "metadata?_summary=abc",
+            "responseId": "summary-response",
+            "description": "Request metadata with an invalid _summary value"
+          }
+        },
+        {
+          "assert": {
+            "description": "Invalid _summary value must return HTTP 400",
+            "sourceId": "summary-response",
+            "response": "bad"
+          }
+        }
+      ]
+    },
+    {
+      "name": "metadata with an invalid _elements value returns 400 Bad Request",
+      "description": "An empty _elements list must return HTTP 400 Bad Request.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "capabilities" },
+            "method": "GET",
+            "url": "metadata?_elements=",
+            "responseId": "elements-response",
+            "description": "Request metadata with an empty _elements value"
+          }
+        },
+        {
+          "assert": {
+            "description": "Empty _elements value must return HTTP 400",
+            "sourceId": "elements-response",
+            "response": "bad"
+          }
+        }
+      ]
+    }
+  ]
+}

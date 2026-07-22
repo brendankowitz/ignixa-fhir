@@ -1,0 +1,62 @@
+{
+  "resourceType": "TestScript",
+  "name": "Foundation/health",
+  "description": "Informational hosting checks for /health/check, which is not part of base FHIR. Every assertion is warningOnly because this endpoint is server-specific hosting behavior.",
+  "status": "active",
+  "test": [
+    {
+      "name": "health/check returns 200 OK",
+      "description": "Informational only: /health/check is not part of base FHIR; this checks that a configured health endpoint returns HTTP 200.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "method": "GET",
+            "url": "health/check",
+            "responseId": "health-response",
+            "description": "Request /health/check, a server-specific endpoint that is not part of base FHIR"
+          }
+        },
+        {
+          "assert": {
+            "description": "Informational hosting check: /health/check should return HTTP 200 but is not part of base FHIR",
+            "sourceId": "health-response",
+            "response": "okay",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "health/check returns a JSON body (approximates the 'contains description' check)",
+      "description": "Informational only: /health/check is not part of base FHIR. Its server-specific JSON body check is approximated with Content-Type because raw body-text assertions are unsupported.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "read" },
+            "method": "GET",
+            "url": "health/check",
+            "responseId": "health-response-2",
+            "description": "Request /health/check again; this server-specific endpoint is not part of base FHIR"
+          }
+        },
+        {
+          "assert": {
+            "description": "Informational hosting check: /health/check should return HTTP 200 but is not part of base FHIR",
+            "sourceId": "health-response-2",
+            "response": "okay",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Informational hosting check: /health/check should return JSON but is not part of base FHIR",
+            "sourceId": "health-response-2",
+            "contentType": "application/json",
+            "warningOnly": true
+          }
+        }
+      ]
+    }
+  ]
+}

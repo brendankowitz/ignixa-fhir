@@ -1,0 +1,166 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/conditional-patch",
+  "description": "Conditional patch (PATCH /Patient?search-params with a FHIR Patch Parameters body) conformance tests: 404 on no match, 412 on no criteria or multiple matches, single-match patch application, and If-Match version precondition handling. Only the FHIR Patch (Parameters resource) body form is covered; the JSON Patch array body form is not supported by this suite's static-fixture model.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "fhir-patch-doc",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              { "name": "type", "valueCode": "replace" },
+              { "name": "path", "valueString": "Patient.gender" },
+              { "name": "value", "valueCode": "female" }
+            ]
+          },
+          {
+            "name": "operation",
+            "part": [
+              { "name": "type", "valueCode": "delete" },
+              { "name": "path", "valueString": "Patient.address" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "patient-onematch-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-patch", "value": "CP-ONEMATCH" }],
+        "name": [{ "family": "CondPatch", "given": ["OneMatch"] }],
+        "gender": "male",
+        "address": [{ "city": "Seattle" }]
+      }
+    },
+    {
+      "id": "patient-multi-a-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-patch", "value": "CP-MULTI" }],
+        "name": [{ "family": "CondPatch", "given": ["MultiA"] }],
+        "gender": "male",
+        "address": [{ "city": "Seattle" }]
+      }
+    },
+    {
+      "id": "patient-multi-b-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-patch", "value": "CP-MULTI" }],
+        "name": [{ "family": "CondPatch", "given": ["MultiB"] }],
+        "gender": "male",
+        "address": [{ "city": "Seattle" }]
+      }
+    },
+    {
+      "id": "patient-version-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-patch", "value": "CP-VERSION" }],
+        "name": [{ "family": "CondPatch", "given": ["Version"] }],
+        "gender": "male",
+        "address": [{ "city": "Seattle" }]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "versionPatientId",
+      "sourceId": "version-create-response",
+      "path": "id",
+      "description": "Server-assigned id of the Patient created in setup for the If-Match version tests (CP-VERSION)"
+    },
+    {
+      "name": "cpVersion",
+      "sourceId": "version-bump-response",
+      "path": "meta.versionId",
+      "description": "versionId assigned after the round-trip update in setup bumps the CP-VERSION Patient to its second version"
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-onematch-body", "responseId": "onematch-create-response", "description": "Unconditionally create the Patient that the single-match patch test will update (CP-ONEMATCH)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-multi-a-body", "responseId": "multi-a-response", "description": "Unconditionally create the first of two Patients sharing identifier CP-MULTI" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-multi-b-body", "responseId": "multi-b-response", "description": "Unconditionally create the second of two Patients sharing identifier CP-MULTI" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-version-body", "responseId": "version-create-response", "description": "Unconditionally create the Patient used for the If-Match version tests (CP-VERSION), initially at version 1" } },
+      { "operation": { "type": { "code": "read" }, "url": "Patient/${versionPatientId}", "responseId": "version-preupdate-read", "description": "Read the CP-VERSION Patient back so it can be round-tripped through an update" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/${versionPatientId}", "sourceId": "version-preupdate-read", "responseId": "version-bump-response", "description": "Round-trip PUT the CP-VERSION Patient to bump it from version 1 to version 2" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Conditional patch with no existing match returns 404",
+      "description": "PATCH /Patient?identifier=... matching no existing resource; the server must return 404 Not Found.",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-NOMATCH", "sourceId": "fhir-patch-doc", "responseId": "cp-nomatch-response", "description": "Conditional PATCH /Patient?identifier=...CP-NOMATCH, matches nothing" } },
+        { "assert": { "description": "Must return HTTP 404 Not Found", "response": "notFound" } }
+      ]
+    },
+    {
+      "name": "Conditional patch with no search criteria is rejected",
+      "description": "PATCH /Patient with no search criteria; the server must reject the request, expected as 412 Precondition Failed (400 Bad Request accepted as a warningOnly alternative since the spec doesn't mandate a specific status here).",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "resource": "Patient", "sourceId": "fhir-patch-doc", "responseId": "cp-nocriteria-response", "description": "Conditional PATCH /Patient with no query string" } },
+        { "assert": { "description": "Primary: expect 412 Precondition Failed", "response": "preconditionFailed", "warningOnly": false } },
+        { "assert": { "description": "Alternative: 400 Bad Request is also accepted", "response": "bad", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Conditional patch with exactly one match applies the patch",
+      "description": "PATCH /Patient?identifier=... matching exactly one existing Patient with a FHIR Patch replacing gender and deleting address; the server must apply the patch and return 200 OK with the updated content.",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-ONEMATCH", "sourceId": "fhir-patch-doc", "responseId": "cp-onematch-response", "description": "Conditional PATCH /Patient?identifier=...CP-ONEMATCH, matches the single seeded Patient" } },
+        { "assert": { "description": "Must return HTTP 200 OK", "response": "okay" } },
+        { "assert": { "description": "Response body must be a Patient", "resource": "Patient" } },
+        { "assert": { "description": "gender must have been replaced with female", "expression": "Patient.gender", "value": "female", "operator": "equals" } },
+        { "assert": { "description": "address must have been removed", "expression": "Patient.address.empty()" } }
+      ]
+    },
+    {
+      "name": "Conditional patch with multiple existing matches fails",
+      "description": "PATCH /Patient?identifier=... matching two existing Patients; the server must return 412 Precondition Failed.",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-MULTI", "sourceId": "fhir-patch-doc", "responseId": "cp-multi-response", "description": "Conditional PATCH /Patient?identifier=...CP-MULTI, matches both seeded Patients" } },
+        { "assert": { "description": "Must return HTTP 412 Precondition Failed", "response": "preconditionFailed" } }
+      ]
+    },
+    {
+      "name": "Conditional patch honors If-Match with the current version",
+      "description": "PATCH /Patient?identifier=... with an If-Match header matching the resource's current version; the server must apply the patch and return 200 OK.",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-VERSION", "sourceId": "fhir-patch-doc", "responseId": "cp-version-ok-response", "requestHeader": [{ "field": "If-Match", "value": "W/\"${cpVersion}\"" }], "description": "Conditional PATCH /Patient?identifier=...CP-VERSION with If-Match matching the current versionId" } },
+        { "assert": { "description": "Must return HTTP 200 OK", "response": "okay" } }
+      ]
+    },
+    {
+      "name": "Conditional patch with a mismatched If-Match version fails",
+      "description": "PATCH /Patient?identifier=... with an If-Match header carrying a stale version; the server must return 412 Precondition Failed and not apply the patch.",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-VERSION", "sourceId": "fhir-patch-doc", "responseId": "cp-version-mismatch-response", "requestHeader": [{ "field": "If-Match", "value": "W/\"99\"" }], "description": "Conditional PATCH /Patient?identifier=...CP-VERSION with a deliberately wrong If-Match version" } },
+        { "assert": { "description": "Must return HTTP 412 Precondition Failed", "response": "preconditionFailed" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-ONEMATCH", "description": "Teardown: conditional delete the CP-ONEMATCH Patient" } },
+      { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-MULTI", "description": "Teardown: conditional delete both CP-MULTI Patients" } },
+      { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-patch|CP-VERSION", "description": "Teardown: conditional delete the CP-VERSION Patient" } }
+    ]
+  }
+}

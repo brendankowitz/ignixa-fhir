@@ -1,7 +1,7 @@
 {
   "resourceType": "TestScript",
   "name": "Validation/validate-op",
-  "description": "$validate operation conformance tests ported from fhir262 validation/$validation-op. Covers type-level and system-level $validate with valid and invalid Patient resources, Parameters-wrapped and direct bodies, and an empty Parameters edge case. Assertions inspect the returned OperationOutcome for error/fatal issues rather than HTTP status, because servers differ on whether invalid input yields 200+OperationOutcome or 422.",
+  "description": "$validate operation conformance tests ported from fhir262 validation/$validation-op. Covers type-level and system-level $validate with valid and invalid Patient resources, Parameters-wrapped and direct bodies, and an empty Parameters edge case. Assertions inspect the returned OperationOutcome for error/fatal issues rather than HTTP status, because servers differ on whether invalid input yields 200+OperationOutcome or 422. Type-level tests are gated on the target advertising Patient/$validate, either as a resource-scoped or a system-level operation.",
   "status": "active",
   "fixture": [
     {
@@ -43,6 +43,7 @@
     {
       "name": "type-level $validate: valid patient in Parameters wrapper is accepted",
       "description": "POST /Patient/$validate with a Parameters-wrapped valid Patient must return an OperationOutcome with no error/fatal issues.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').operation.where(name='validate').exists() or rest.operation.where(name='validate').exists()" }],
       "action": [
         {
           "operation": {
@@ -61,6 +62,7 @@
     {
       "name": "type-level $validate: invalid patient in Parameters wrapper is rejected",
       "description": "POST /Patient/$validate with a Parameters-wrapped invalid Patient (name as a plain string) must return an OperationOutcome reporting at least one error/fatal issue.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').operation.where(name='validate').exists() or rest.operation.where(name='validate').exists()" }],
       "action": [
         {
           "operation": {
@@ -79,6 +81,7 @@
     {
       "name": "system-level $validate: valid patient accepted",
       "description": "POST /$validate (no resource type prefix) with a Parameters-wrapped valid Patient must return an OperationOutcome with no error/fatal issues.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.operation.where(name='validate').exists()" }],
       "action": [
         {
           "operation": {
@@ -96,6 +99,7 @@
     {
       "name": "system-level $validate: invalid patient rejected",
       "description": "POST /$validate (no resource type prefix) with a Parameters-wrapped invalid Patient must return an OperationOutcome reporting at least one error/fatal issue.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.operation.where(name='validate').exists()" }],
       "action": [
         {
           "operation": {
@@ -113,6 +117,7 @@
     {
       "name": "type-level $validate: direct resource body (no Parameters wrapper)",
       "description": "POST /Patient/$validate with a direct Patient body (not wrapped in Parameters) must return an OperationOutcome with no error/fatal issues.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').operation.where(name='validate').exists() or rest.operation.where(name='validate').exists()" }],
       "action": [
         {
           "operation": {
@@ -130,6 +135,7 @@
     {
       "name": "type-level $validate: empty Parameters is invalid",
       "description": "POST /Patient/$validate with an empty Parameters (no resource parameter) is an edge case. Both the OperationOutcome shape and the rejection behavior are warningOnly because server behavior varies.",
+      "extension": [{ "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').operation.where(name='validate').exists() or rest.operation.where(name='validate').exists()" }],
       "action": [
         {
           "operation": {

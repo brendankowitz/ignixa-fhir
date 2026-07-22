@@ -1,0 +1,160 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-reindex",
+  "description": "$reindex operation conformance tests: async job kickoff, job listing, job-status polling, and synchronous per-resource reindex (from ReindexTests). $reindex is a Microsoft-specific operation, commonly disabled or absent on other servers, so status assertions are warningOnly.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.operation.where(name='reindex').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "reindex-params-empty",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": []
+      }
+    },
+    {
+      "id": "reindex-params-tuned",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "maximumNumberOfResourcesPerQuery", "valueInteger": 2 },
+          { "name": "maximumNumberOfResourcesPerWrite", "valueInteger": 1 }
+        ]
+      }
+    },
+    {
+      "id": "reindex-params-invalid-numeric",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "maximumNumberOfResourcesPerQuery", "valueString": "not-a-number" }
+        ]
+      }
+    },
+    {
+      "id": "reindex-target-patient",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          { "url": "http://ignixa.io/testscript/fhirfakes", "valueCode": "Patient" }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "reindexJobLocation",
+      "sourceId": "reindex-kickoff-response",
+      "headerField": "Content-Location",
+      "defaultValue": "$reindex",
+      "description": "Job-status URL from the kickoff response's Content-Location header; falls back to GET $reindex (list jobs) if the header is absent."
+    },
+    {
+      "name": "reindexTargetPatientId",
+      "sourceId": "reindex-target-patient-create-response",
+      "path": "id",
+      "description": "Server-assigned id of the Patient created for the per-resource $reindex test"
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "create" },
+          "resource": "Patient",
+          "sourceId": "reindex-target-patient",
+          "responseId": "reindex-target-patient-create-response",
+          "description": "Create a synthetic Patient to use as the target of the per-resource $reindex test"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "$reindex kickoff returns 201 Created with a Content-Location job-status header",
+      "description": "POST $reindex with no parameters must return 201 Created with a Content-Location header pointing to the job status. warningOnly: $reindex may be disabled or unimplemented.",
+      "action": [
+        { "operation": { "type": { "code": "$reindex" }, "sourceId": "reindex-params-empty", "responseId": "reindex-kickoff-response", "description": "POST $reindex with empty Parameters" } },
+        { "assert": { "description": "Kickoff should return 201 Created (warningOnly: $reindex may be disabled or unimplemented on this target)", "response": "created" } },
+        { "assert": { "description": "Response body should be a Parameters resource describing the new job (warningOnly)", "resource": "Parameters" } },
+        { "assert": { "description": "Response should include a Content-Location header with the job status URL (warningOnly)", "headerField": "Content-Location" } }
+      ]
+    },
+    {
+      "name": "$reindex kickoff accepts maximumNumberOfResourcesPerQuery / maximumNumberOfResourcesPerWrite tuning parameters",
+      "description": "POST $reindex with maximumNumberOfResourcesPerQuery and maximumNumberOfResourcesPerWrite tuning parameters must also return 201 Created. warningOnly: same environment dependency as the basic kickoff test.",
+      "action": [
+        { "operation": { "type": { "code": "$reindex" }, "sourceId": "reindex-params-tuned", "responseId": "reindex-tuned-response", "description": "POST $reindex with tuning parameters" } },
+        { "assert": { "description": "Kickoff with tuning parameters should return 201 Created (warningOnly)", "response": "created" } }
+      ]
+    },
+    {
+      "name": "GET $reindex lists any active reindex jobs",
+      "description": "GET $reindex must return 200 with a Parameters resource listing active reindex jobs. warningOnly: $reindex may be disabled or unimplemented.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "$reindex", "responseId": "reindex-list-response", "description": "GET $reindex to list active jobs" } },
+        { "assert": { "description": "Listing jobs should return 200 OK (warningOnly)", "response": "okay" } },
+        { "assert": { "description": "Response body should be a Parameters resource (warningOnly)", "resource": "Parameters" } }
+      ]
+    },
+    {
+      "name": "$reindex with an invalid Prefer header value is rejected with 400 Bad Request",
+      "description": "POST $reindex with an unsupported Prefer header value must return 400 Bad Request. warningOnly: header validation is server-specific and $reindex may be unimplemented.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$reindex" },
+            "sourceId": "reindex-params-empty",
+            "responseId": "reindex-bad-prefer-response",
+            "requestHeader": [ { "field": "Prefer", "value": "not-a-supported-value" } ],
+            "description": "POST $reindex with an unsupported Prefer header value"
+          }
+        },
+        { "assert": { "description": "Server should reject the unsupported Prefer header with 400 Bad Request (warningOnly)", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$reindex with a non-numeric maximumNumberOfResourcesPerQuery is rejected with 400 Bad Request",
+      "description": "POST $reindex with a non-numeric maximumNumberOfResourcesPerQuery must return 400 Bad Request. warningOnly: some servers may coerce or ignore invalid tuning parameters instead of rejecting them.",
+      "action": [
+        { "operation": { "type": { "code": "$reindex" }, "sourceId": "reindex-params-invalid-numeric", "responseId": "reindex-bad-numeric-response", "description": "POST $reindex with a non-numeric maximumNumberOfResourcesPerQuery" } },
+        { "assert": { "description": "Server should reject the non-numeric parameter with 400 Bad Request (warningOnly)", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "Reindex job status can be polled via the Content-Location URL",
+      "description": "GET the job-status URL from the kickoff's Content-Location header must return 200 with a Parameters resource containing a 'status' parameter. warningOnly: depends on the kickoff test having returned a Content-Location header.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "${reindexJobLocation}", "responseId": "reindex-status-response", "description": "GET the reindex job status URL" } },
+        { "assert": { "description": "Status poll should return 200 OK (warningOnly)", "response": "okay" } },
+        { "assert": { "description": "Response should be a Parameters resource with a 'status' parameter (warningOnly)", "expression": "Parameters.parameter.where(name = 'status').exists()" } }
+      ]
+    },
+    {
+      "name": "Per-resource $reindex synchronously reindexes a single resource",
+      "description": "POST Patient/{id}/$reindex must synchronously reindex the resource and return 200 with a Parameters result. warningOnly: $reindex may be disabled or unimplemented.",
+      "action": [
+        { "operation": { "type": { "code": "$reindex" }, "url": "Patient/${reindexTargetPatientId}/$reindex", "responseId": "reindex-single-response", "description": "POST Patient/{id}/$reindex" } },
+        { "assert": { "description": "Per-resource reindex should return 200 OK (warningOnly)", "response": "okay" } },
+        { "assert": { "description": "Response body should be a Parameters resource (warningOnly)", "resource": "Parameters" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${reindexTargetPatientId}", "description": "Teardown: delete the Patient created for the per-resource $reindex test" } }
+    ]
+  }
+}

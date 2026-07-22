@@ -1,0 +1,138 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/expand-operation",
+  "description": "ValueSet $expand conformance tests: type-level and instance-level expansion, the Parameters-wrapped POST variant, and missing/unknown-parameter and unknown-ValueSet error paths (from ExpandOperationTests). Fixtures reuse two real HL7 code systems under new, collision-safe canonical ValueSet urls. Gated on the target advertising ValueSet/$expand, either as a resource-scoped 'expand' operation or a system-level 'valueset-expand' operation (the Microsoft FHIR Server convention).",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='ValueSet').operation.where(name='expand').exists() or rest.operation.where(name='valueset-expand').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "vs-fhir-version",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-vs-fhirversion",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-exp" }] },
+        "url": "http://ignixa.io/testscript/valueset/expand-fhir-version",
+        "status": "active",
+        "compose": { "include": [{ "system": "http://hl7.org/fhir/FHIR-version" }] }
+      }
+    },
+    {
+      "id": "vs-account-status",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-vs-acctstatus",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-exp" }] },
+        "url": "http://ignixa.io/testscript/valueset/expand-account-status",
+        "status": "active",
+        "compose": { "include": [{ "system": "http://hl7.org/fhir/account-status" }] }
+      }
+    },
+    {
+      "id": "expand-params-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "url", "valueUri": "http://ignixa.io/testscript/valueset/expand-fhir-version" }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-vs-fhirversion", "sourceId": "vs-fhir-version", "description": "PUT ValueSet/ignixa-vs-fhirversion (url=http://ignixa.io/testscript/valueset/expand-fhir-version)" } },
+      { "operation": { "type": { "code": "update" }, "url": "ValueSet/ignixa-vs-acctstatus", "sourceId": "vs-account-status", "description": "PUT ValueSet/ignixa-vs-acctstatus (url=http://ignixa.io/testscript/valueset/expand-account-status)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$expand type-level: expands by canonical url",
+      "description": "Type-level $expand by canonical url must return an expanded ValueSet with a non-empty expansion.contains.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "method": "GET", "url": "ValueSet/$expand?url=http://ignixa.io/testscript/valueset/expand-fhir-version", "responseId": "expand-type-level", "description": "GET ValueSet/$expand?url=http://ignixa.io/testscript/valueset/expand-fhir-version" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a ValueSet", "resource": "ValueSet" } },
+        { "assert": { "description": "Expansion must contain at least one code", "expression": "ValueSet.expansion.contains.exists()" } },
+        { "assert": { "description": "Expansion should contain the well-known code 4.0.1 (warningOnly: exact code-system contents depend on the server's terminology data)", "expression": "ValueSet.expansion.contains.where(code = '4.0.1').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$expand instance-level: uses the ValueSet's own canonical url, ignoring an incoming url parameter",
+      "description": "Instance-level $expand must expand the addressed ValueSet itself, ignoring a mismatched incoming url parameter.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "method": "GET", "url": "ValueSet/ignixa-vs-acctstatus/$expand?url=http://ignixa.io/testscript/valueset/expand-fhir-version", "responseId": "expand-instance-level", "description": "GET ValueSet/ignixa-vs-acctstatus/$expand?url=<mismatched url>" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a ValueSet", "resource": "ValueSet" } },
+        { "assert": { "description": "Returned ValueSet.url must be the instance's OWN canonical url, not the mismatched incoming url parameter", "expression": "ValueSet.url", "value": "http://ignixa.io/testscript/valueset/expand-account-status", "operator": "equals" } },
+        { "assert": { "description": "Expansion must contain at least one code", "expression": "ValueSet.expansion.contains.exists()" } }
+      ]
+    },
+    {
+      "name": "$expand: Parameters-wrapped POST body variant",
+      "description": "POST with a Parameters-wrapped url parameter must expand the same ValueSet as the equivalent GET.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "resource": "ValueSet", "sourceId": "expand-params-body", "responseId": "expand-post-params", "description": "POST ValueSet/$expand with a Parameters body (url=http://ignixa.io/testscript/valueset/expand-fhir-version)" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a ValueSet", "resource": "ValueSet" } },
+        { "assert": { "description": "Expansion must contain at least one code", "expression": "ValueSet.expansion.contains.exists()" } }
+      ]
+    },
+    {
+      "name": "$expand: missing required parameter returns 400",
+      "description": "A request with no url, id, or valueSet parameter must be rejected with 400.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "method": "GET", "url": "ValueSet/$expand", "responseId": "expand-missing-required", "description": "GET ValueSet/$expand (no parameters)" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$expand: unknown parameter returns 400",
+      "description": "An unrecognized query parameter must be rejected with 400.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "method": "GET", "url": "ValueSet/$expand?url=http://ignixa.io/testscript/valueset/expand-fhir-version&bogusParam=true", "responseId": "expand-unknown-param", "description": "GET ValueSet/$expand?url=...&bogusParam=true" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$expand: unknown ValueSet id returns 404",
+      "description": "Expanding a nonexistent ValueSet id must return 404 with an OperationOutcome.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "method": "GET", "url": "ValueSet/ignixa-does-not-exist/$expand", "responseId": "expand-unknown-id", "description": "GET ValueSet/ignixa-does-not-exist/$expand" } },
+        { "assert": { "description": "Must return HTTP 404", "response": "notFound" } },
+        { "assert": { "description": "Response should be an OperationOutcome with an error/not-found issue (warningOnly: exact issue code may vary by server)", "expression": "OperationOutcome.issue.where(severity = 'error' and code = 'not-found').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$expand: unknown ValueSet url returns 404",
+      "description": "Expanding by a canonical url with no matching ValueSet must return 404 with an OperationOutcome.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "$expand" }, "method": "GET", "url": "ValueSet/$expand?url=http://ignixa.io/testscript/valueset/does-not-exist", "responseId": "expand-unknown-url", "description": "GET ValueSet/$expand?url=http://ignixa.io/testscript/valueset/does-not-exist" } },
+        { "assert": { "description": "Must return HTTP 404", "response": "notFound" } },
+        { "assert": { "description": "Response should be an OperationOutcome with an error/not-found issue (warningOnly: exact issue code may vary by server)", "expression": "OperationOutcome.issue.where(severity = 'error' and code = 'not-found').exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-vs-acctstatus", "description": "Teardown: delete vs-account-status" } },
+      { "operation": { "type": { "code": "delete" }, "url": "ValueSet/ignixa-vs-fhirversion", "description": "Teardown: delete vs-fhir-version" } }
+    ]
+  }
+}

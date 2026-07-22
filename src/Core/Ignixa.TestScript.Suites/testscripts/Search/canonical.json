@@ -1,0 +1,117 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/canonical",
+  "description": "`_profile` canonical URI search conformance tests (from CanonicalSearchTests): searches by full canonical (uri+version+fragment), bare uri, and alternate uri against Observation.meta.profile. Canonical version/fragment stripping and `_profile` support itself are implementation-defined, so all match/no-match assertions are warningOnly except the base HTTP 200/Bundle response shape.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "obs-profile-v1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/canonical", "value": "CANONICAL-V1" }],
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/canonical", "code": "ignixa-canonical-test" }] },
+        "meta": { "profile": ["http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab|1#fragment"] }
+      }
+    },
+    {
+      "id": "obs-profile-v2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/canonical", "value": "CANONICAL-V2" }],
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/canonical", "code": "ignixa-canonical-test" }] },
+        "meta": { "profile": ["http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab|2"] }
+      }
+    },
+    {
+      "id": "obs-profile-alt",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "status": "final",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/canonical", "value": "CANONICAL-ALT" }],
+        "code": { "coding": [{ "system": "http://ignixa.io/testscript/suite/canonical", "code": "ignixa-canonical-test" }] },
+        "meta": {
+          "profile": [
+            "http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab-alt",
+            "http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab|1"
+          ]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "name": "profileV1Id", "sourceId": "create-obs-profile-v1", "path": "id", "description": "Id for obs-profile-v1 (profile uri|1#fragment)" },
+    { "name": "profileV2Id", "sourceId": "create-obs-profile-v2", "path": "id", "description": "Id for obs-profile-v2 (profile uri|2)" },
+    { "name": "profileAltId", "sourceId": "create-obs-profile-alt", "path": "id", "description": "Id for obs-profile-alt (profiles: alternate uri, and uri|1 with no fragment)" }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-profile-v1", "responseId": "create-obs-profile-v1", "description": "Create obs-profile-v1" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-profile-v2", "responseId": "create-obs-profile-v2", "description": "Create obs-profile-v2" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Observation", "sourceId": "obs-profile-alt", "responseId": "create-obs-profile-alt", "description": "Create obs-profile-alt" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "_profile: full canonical (uri+version+fragment) search",
+      "description": "An exact full-canonical search (uri+version+fragment) against obs-profile-v1 typically finds nothing, since version/fragment are usually stripped before indexing (warningOnly).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_profile=http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab|1%23fragment&_count=50", "responseId": "canonical-full-response", "description": "GET /Observation?_profile=<uri>|1%23fragment" } },
+        { "assert": { "description": "Search must return HTTP 200 (or 400 if _profile is not a supported search parameter on this server)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response should be a Bundle", "resource": "Bundle", "warningOnly": true } },
+        { "assert": { "description": "Should find no matches, since canonical version+fragment components are typically stripped before indexing (warningOnly: canonical-stripping behavior is implementation-defined, and STU3 servers may retain an exact match instead)", "expression": "entry.exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_profile: bare canonical uri search matches all resources referencing that uri at any version/fragment",
+      "description": "A bare canonical uri search (no version/fragment) should match all three fixtures that reference that uri at any version (warningOnly, since canonical-stripping behavior is implementation-defined).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_profile=http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab&_count=50", "responseId": "canonical-bare-response", "description": "GET /Observation?_profile=<uri>" } },
+        { "assert": { "description": "Search must return HTTP 200 (or 400 if _profile is not a supported search parameter on this server)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response should be a Bundle", "resource": "Bundle", "warningOnly": true } },
+        { "assert": { "description": "Should include obs-profile-v1 (warningOnly: canonical-stripping behavior is implementation-defined)", "expression": "entry.where(resource.id = '${profileV1Id}').exists()", "warningOnly": true } },
+        { "assert": { "description": "Should include obs-profile-v2 (warningOnly: canonical-stripping behavior is implementation-defined)", "expression": "entry.where(resource.id = '${profileV2Id}').exists()", "warningOnly": true } },
+        { "assert": { "description": "Should include obs-profile-alt (warningOnly: canonical-stripping behavior is implementation-defined)", "expression": "entry.where(resource.id = '${profileAltId}').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_profile: canonical uri+version (no fragment) search",
+      "description": "A canonical uri+version (no fragment) search against obs-profile-v2 typically finds nothing, since the version component is usually stripped before indexing (warningOnly).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_profile=http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab|2&_count=50", "responseId": "canonical-version-response", "description": "GET /Observation?_profile=<uri>|2" } },
+        { "assert": { "description": "Search must return HTTP 200 (or 400 if _profile is not a supported search parameter on this server)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response should be a Bundle", "resource": "Bundle", "warningOnly": true } },
+        { "assert": { "description": "Should find no matches, since the canonical version component is typically stripped before indexing (warningOnly: canonical-stripping behavior is implementation-defined, and STU3 servers may retain an exact match instead)", "expression": "entry.exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_profile: alternate canonical uri matches the observation referencing it",
+      "description": "Searching with the bare alternate uri should match only obs-profile-alt, the sole fixture whose meta.profile includes that alternate uri.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_profile=http://ignixa.io/tests/StructureDefinition/ignixa-canonical-lab-alt&_count=50", "responseId": "canonical-alt-response", "description": "GET /Observation?_profile=<alternate uri>" } },
+        { "assert": { "description": "Search must return HTTP 200 (or 400 if _profile is not a supported search parameter on this server)", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response should be a Bundle", "resource": "Bundle", "warningOnly": true } },
+        { "assert": { "description": "Should include obs-profile-alt (warningOnly: _profile search support is optional)", "expression": "entry.where(resource.id = '${profileAltId}').exists()", "warningOnly": true } },
+        { "assert": { "description": "Should NOT include obs-profile-v1 or obs-profile-v2, which do not reference the alternate uri (warningOnly: _profile search support is optional)", "expression": "entry.where(resource.id = '${profileV1Id}' or resource.id = '${profileV2Id}').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${profileV1Id}", "description": "Teardown: delete obs-profile-v1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${profileV2Id}", "description": "Teardown: delete obs-profile-v2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/${profileAltId}", "description": "Teardown: delete obs-profile-alt" } }
+    ]
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-hard-delete-purge-history",
+  "description": "Hard delete and $purge-history conformance tests (from DeleteTests, split out of CRUD/delete.json): both are extended capabilities not mandated by base FHIR R4, so all assertions are warningOnly. DELETE ?hardDelete=true permanently erases a resource and all version history; $purge-history removes prior versions while keeping the current version accessible.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "patient-delete-hard",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DELETE-HARD-1" }],
+        "name": [{ "family": "DeleteHard", "given": ["Case"] }]
+      }
+    },
+    {
+      "id": "patient-delete-purge",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "DELETE-PURGE-1" }],
+        "name": [{ "family": "DeletePurge", "given": ["Case"] }]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "hardDeleteId", "sourceId": "hard-create-response", "path": "id", "description": "server-assigned id of the Patient used for the hard-delete test" },
+    { "name": "hardDeleteVersion", "sourceId": "hard-create-response", "path": "meta.versionId", "description": "initial versionId of the hard-delete Patient, used to confirm it is no longer vread-able after a hard delete" },
+    { "name": "purgeId", "sourceId": "purge-create-response", "path": "id", "description": "server-assigned id of the Patient used for the $purge-history test" },
+    { "name": "purgeVersion1", "sourceId": "purge-create-response", "path": "meta.versionId", "description": "first versionId of the purge-history Patient, expected to be purged" },
+    { "name": "purgeVersion2", "sourceId": "purge-update-response", "path": "meta.versionId", "description": "second (current) versionId of the purge-history Patient, expected to remain accessible after $purge-history" }
+  ],
+  "test": [
+    {
+      "name": "hard delete permanently removes the resource and all version history",
+      "description": "Extended capability (not mandated by base FHIR R4): DELETE Patient/{id}?hardDelete=true after a normal (soft) delete must permanently erase the resource so that a plain read, a vread of its original version, and its instance history all return 404 Not Found. All assertions are warningOnly since hard delete is a server extension not every conformant server implements.",
+      "action": [
+        { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-delete-hard", "responseId": "hard-create-response", "description": "Create the Patient that will be soft- then hard-deleted" } },
+        { "assert": { "description": "Create must return HTTP 201", "response": "created" } },
+        { "operation": { "type": { "code": "delete" }, "url": "Patient/${hardDeleteId}", "responseId": "hard-presoft-delete-response", "description": "Soft-delete the Patient first" } },
+        { "assert": { "description": "Soft delete must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "delete" }, "url": "Patient/${hardDeleteId}?hardDelete=true", "responseId": "hard-delete-response", "description": "Hard-delete the Patient (server extension parameter)" } },
+        { "assert": { "description": "Server extension: expect a 2xx success status when hard delete is supported", "response": "okay", "warningOnly": true } },
+        { "operation": { "type": { "code": "read" }, "url": "Patient/${hardDeleteId}", "responseId": "hard-after-read-response", "description": "Attempt to read the hard-deleted Patient" } },
+        { "assert": { "description": "Server extension: expect 404 Not Found for a hard-deleted resource", "response": "notFound", "warningOnly": true } },
+        { "operation": { "type": { "code": "vread" }, "url": "Patient/${hardDeleteId}/_history/${hardDeleteVersion}", "responseId": "hard-after-vread-response", "description": "Attempt to vread the hard-deleted Patient's original version" } },
+        { "assert": { "description": "Server extension: expect 404 Not Found for a purged version", "response": "notFound", "warningOnly": true } },
+        { "operation": { "type": { "code": "history" }, "url": "Patient/${hardDeleteId}/_history", "responseId": "hard-after-history-response", "description": "Attempt to fetch instance history for the hard-deleted Patient" } },
+        { "assert": { "description": "Server extension: expect 404 Not Found for the history of a hard-deleted resource", "response": "notFound", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$purge-history removes prior versions while keeping the current version accessible",
+      "description": "Extended capability (not mandated by base FHIR R4): after updating a resource so it has two versions, POST/DELETE Patient/{id}/$purge-history must remove the prior version(s) while the current version stays fully readable. All assertions are warningOnly since $purge-history is a server extension not every conformant server implements. Gated on the target advertising Patient/$purge-history, either as a resource-scoped or a system-level operation.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').operation.where(name='purge-history').exists() or rest.operation.where(name='purge-history').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-delete-purge", "responseId": "purge-create-response", "description": "Create the Patient that will accumulate history and then be purged" } },
+        { "assert": { "description": "Create must return HTTP 201", "response": "created" } },
+        { "operation": { "type": { "code": "read" }, "url": "Patient/${purgeId}", "responseId": "purge-preupdate-read", "description": "Read back the Patient to use as the round-tripped update body" } },
+        { "operation": { "type": { "code": "update" }, "url": "Patient/${purgeId}", "sourceId": "purge-preupdate-read", "responseId": "purge-update-response", "description": "Round-trip update the Patient to produce a second version" } },
+        { "assert": { "description": "Update must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "delete" }, "url": "Patient/${purgeId}/$purge-history", "responseId": "purge-response", "description": "Purge prior version history for the Patient (server extension operation)" } },
+        { "assert": { "description": "Server extension: expect a 2xx success status when $purge-history is supported", "response": "okay", "warningOnly": true } },
+        { "operation": { "type": { "code": "read" }, "url": "Patient/${purgeId}", "responseId": "purge-after-read", "description": "Read the current version after purging prior history" } },
+        { "assert": { "description": "Server extension: current version must still be readable after purge", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Server extension: current version must remain the latest versionId", "expression": "Patient.meta.versionId", "value": "${purgeVersion2}", "operator": "equals", "warningOnly": true } },
+        { "operation": { "type": { "code": "vread" }, "url": "Patient/${purgeId}/_history/${purgeVersion1}", "responseId": "purge-after-vread-old", "description": "Attempt to vread the purged prior version" } },
+        { "assert": { "description": "Server extension: primary expectation is 404 Not Found for a purged version", "response": "notFound", "warningOnly": true } },
+        { "assert": { "description": "Server extension: alternative expectation is 410 Gone for a purged version", "response": "gone", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${hardDeleteId}", "description": "Teardown: delete the hard-delete Patient (already hard-deleted by the test if supported, best effort)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${purgeId}", "description": "Teardown: delete the $purge-history Patient" } }
+    ]
+  }
+}

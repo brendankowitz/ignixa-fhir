@@ -1,0 +1,257 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/custom-search-param",
+  "description": "Informational SearchParameter persistence checks: semantic rejection at write time is server validation policy, not universally required base-FHIR persistence behavior. The MS FHIR Server-specific 128-character SearchParameter.url length cap is covered separately in Microsoft/ms-search-parameter-url-length.json.",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='SearchParameter').interaction.where(code='update').exists() and rest.resource.where(type='SearchParameter').updateCreate = true" }
+  ],
+  "fixture": [
+    {
+      "id": "sp-bad-syntax",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-badsyntax",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/badsyntax",
+        "name": "Fhir262BadSyntax",
+        "status": "draft",
+        "description": "Invalid: expression is not valid FHIRPath syntax.",
+        "code": "ignixa-badsyntax",
+        "base": ["Encounter"],
+        "type": "reference",
+        "expression": "bad syntax"
+      }
+    },
+    {
+      "id": "sp-wrong-property",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-wrongproperty",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/wrongproperty",
+        "name": "Fhir262WrongProperty",
+        "status": "draft",
+        "description": "Invalid: expression references a property ('foo') that does not exist on Encounter.diagnosis.",
+        "code": "ignixa-wrongproperty",
+        "base": ["Encounter"],
+        "type": "reference",
+        "expression": "Encounter.diagnosis.foo"
+      }
+    },
+    {
+      "id": "sp-invalid-base",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-invalidbase",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/invalidbase",
+        "name": "Fhir262InvalidBase",
+        "status": "draft",
+        "description": "Invalid: base contains 'foo', which is not a valid resource type.",
+        "code": "ignixa-invalidbase",
+        "base": ["foo"],
+        "type": "reference",
+        "expression": "Encounter.diagnosis.condition"
+      }
+    },
+    {
+      "id": "sp-invalid-type",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-invalidtype",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/invalidtype",
+        "name": "Fhir262InvalidType",
+        "status": "draft",
+        "description": "Invalid: type is 'foo', which is not a valid SearchParamType.",
+        "code": "ignixa-invalidtype",
+        "base": ["Encounter"],
+        "type": "foo",
+        "expression": "Encounter.diagnosis.condition"
+      }
+    },
+    {
+      "id": "sp-missing-base",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-missingbase",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/missingbase",
+        "name": "Fhir262MissingBase",
+        "status": "draft",
+        "description": "Invalid: base is empty, but base has cardinality 1..*.",
+        "code": "ignixa-missingbase",
+        "base": [],
+        "type": "reference",
+        "expression": "Encounter.diagnosis.condition"
+      }
+    },
+    {
+      "id": "sp-missing-expression",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-missingexpression",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/missingexpression",
+        "name": "Fhir262MissingExpression",
+        "status": "draft",
+        "description": "Invalid: expression is an empty string.",
+        "code": "ignixa-missingexpression",
+        "base": ["Encounter"],
+        "type": "reference",
+        "expression": ""
+      }
+    },
+    {
+      "id": "sp-missing-type",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-missingtype",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/missingtype",
+        "name": "Fhir262MissingType",
+        "status": "draft",
+        "description": "Invalid: type is an empty string, but type has cardinality 1..1.",
+        "code": "ignixa-missingtype",
+        "base": ["Encounter"],
+        "type": "",
+        "expression": "Encounter.diagnosis.condition"
+      }
+    },
+    {
+      "id": "sp-unsupported-type",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "SearchParameter",
+        "id": "ignixa-sp-unsupportedtype",
+        "url": "http://ignixa.io/testscript/suite/custom-search-param/SearchParameter/unsupportedtype",
+        "name": "Fhir262UnsupportedType",
+        "status": "draft",
+        "description": "Invalid: type is 'quantity', but the expression (Encounter.diagnosis.condition) resolves to a reference, not a quantity.",
+        "code": "ignixa-unsupportedtype",
+        "base": ["Encounter"],
+        "type": "quantity",
+        "expression": "Encounter.diagnosis.condition"
+      }
+    }
+  ],
+  "test": [
+    {
+      "name": "invalid SearchParameter: bad FHIRPath expression syntax is rejected",
+      "description": "Informational persistence-policy check for a SearchParameter whose expression is not valid FHIRPath ('bad syntax').",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-badsyntax", "sourceId": "sp-bad-syntax", "description": "PUT SearchParameter/ignixa-sp-badsyntax (bad FHIRPath syntax)" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention the invalid search parameter definition", "expression": "OperationOutcome.issue.where(diagnostics.contains('invalid')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: expression references a non-existent property",
+      "description": "Informational persistence-policy check for a SearchParameter whose expression references the non-existent Encounter.diagnosis.foo property.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-wrongproperty", "sourceId": "sp-wrong-property", "description": "PUT SearchParameter/ignixa-sp-wrongproperty (Encounter.diagnosis.foo)" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention Encounter.diagnosis.foo", "expression": "OperationOutcome.issue.where(diagnostics.contains('Encounter.diagnosis.foo')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: invalid base resource type",
+      "description": "Informational persistence-policy check for a SearchParameter whose base contains the invalid resource type 'foo'.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-invalidbase", "sourceId": "sp-invalid-base", "description": "PUT SearchParameter/ignixa-sp-invalidbase (base=['foo'])" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention the invalid resource type", "expression": "OperationOutcome.issue.where(diagnostics.contains('foo')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: invalid search parameter type",
+      "description": "Informational persistence-policy check for a SearchParameter whose type is the invalid code 'foo'.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-invalidtype", "sourceId": "sp-invalid-type", "description": "PUT SearchParameter/ignixa-sp-invalidtype (type='foo')" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention the invalid SearchParamType", "expression": "OperationOutcome.issue.where(diagnostics.contains('foo')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: missing base (empty array)",
+      "description": "Informational persistence-policy check for a SearchParameter whose base is empty.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-missingbase", "sourceId": "sp-missing-base", "description": "PUT SearchParameter/ignixa-sp-missingbase (base=[])" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention cardinality", "expression": "OperationOutcome.issue.where(diagnostics.contains('cardinality')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: missing expression (empty string)",
+      "description": "Informational persistence-policy check for a SearchParameter whose expression is empty.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-missingexpression", "sourceId": "sp-missing-expression", "description": "PUT SearchParameter/ignixa-sp-missingexpression (expression='')" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention unsupported expression handling", "expression": "OperationOutcome.issue.where(diagnostics.contains('not supported')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: missing type (empty string)",
+      "description": "Informational persistence-policy check for a SearchParameter whose type is empty.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-missingtype", "sourceId": "sp-missing-type", "description": "PUT SearchParameter/ignixa-sp-missingtype (type='')" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention cardinality", "expression": "OperationOutcome.issue.where(diagnostics.contains('cardinality')).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "invalid SearchParameter: type incompatible with the expression's target (unsupported type)",
+      "description": "Informational persistence-policy check for a SearchParameter whose quantity type is incompatible with a reference-valued expression.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "SearchParameter/ignixa-sp-unsupportedtype", "sourceId": "sp-unsupported-type", "description": "PUT SearchParameter/ignixa-sp-unsupportedtype (type='quantity' on a reference expression)" } },
+        { "assert": { "description": "Informational persistence-policy check: server should return HTTP 400 Bad Request", "response": "bad", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: response should be an OperationOutcome", "resource": "OperationOutcome", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: OperationOutcome should contain an error or fatal issue", "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').exists()", "warningOnly": true } },
+        { "assert": { "description": "Informational persistence-policy check: diagnostics should mention unsupported type handling", "expression": "OperationOutcome.issue.where(diagnostics.contains('not supported')).exists()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-badsyntax", "description": "Teardown: delete ignixa-sp-badsyntax (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-wrongproperty", "description": "Teardown: delete ignixa-sp-wrongproperty (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-invalidbase", "description": "Teardown: delete ignixa-sp-invalidbase (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-invalidtype", "description": "Teardown: delete ignixa-sp-invalidtype (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-missingbase", "description": "Teardown: delete ignixa-sp-missingbase (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-missingexpression", "description": "Teardown: delete ignixa-sp-missingexpression (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-missingtype", "description": "Teardown: delete ignixa-sp-missingtype (expected to be a no-op; the create should have been rejected)" } },
+      { "operation": { "type": { "code": "delete" }, "url": "SearchParameter/ignixa-sp-unsupportedtype", "description": "Teardown: delete ignixa-sp-unsupportedtype (expected to be a no-op; the create should have been rejected)" } }
+    ]
+  }
+}

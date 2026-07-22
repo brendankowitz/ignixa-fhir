@@ -1,0 +1,109 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/conditional-delete",
+  "description": "Conditional delete (DELETE /Patient?search-params) conformance tests: rejection with no criteria, idempotent no-op on no match, single-match delete, and 412 on multiple matches (with an optional bulk-delete extension).",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').where(conditionalDelete.exists() and conditionalDelete != 'not-supported').exists()" }
+  ],
+  "fixture": [
+    {
+      "id": "patient-onematch-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-delete", "value": "CD-ONEMATCH" }],
+        "name": [{ "family": "CondDelete", "given": ["OneMatch"] }]
+      }
+    },
+    {
+      "id": "patient-multi-a-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-delete", "value": "CD-MULTI" }],
+        "name": [{ "family": "CondDelete", "given": ["MultiA"] }]
+      }
+    },
+    {
+      "id": "patient-multi-b-body",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/cond-delete", "value": "CD-MULTI" }],
+        "name": [{ "family": "CondDelete", "given": ["MultiB"] }]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "oneMatchId",
+      "sourceId": "onematch-response",
+      "path": "id",
+      "description": "Server-assigned id of the Patient unconditionally created in setup that carries identifier CD-ONEMATCH"
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-onematch-body", "responseId": "onematch-response", "description": "Unconditionally create the Patient that the single-match delete test will remove (CD-ONEMATCH)" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-multi-a-body", "responseId": "multi-a-response", "description": "Unconditionally create the first of two Patients sharing identifier CD-MULTI" } },
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-multi-b-body", "responseId": "multi-b-response", "description": "Unconditionally create the second of two Patients sharing identifier CD-MULTI" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "Conditional delete with no search criteria is rejected",
+      "description": "DELETE /Patient with no search criteria must be rejected with either 400 Bad Request or 412 Precondition Failed.",
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "resource": "Patient", "responseId": "cd-nocriteria-response", "description": "Conditional DELETE /Patient with no query string" } },
+        { "assert": { "sourceId": "cd-nocriteria-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "cd-nocriteria-status" }], "description": "Primary: expect 412 Precondition Failed (warningOnly: some servers return 400 instead)", "response": "preconditionFailed", "warningOnly": true } },
+        { "assert": { "sourceId": "cd-nocriteria-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "cd-nocriteria-status" }], "description": "Alternative: 400 Bad Request is also accepted", "response": "bad", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Conditional delete with no matching resources succeeds",
+      "description": "DELETE /Patient?identifier=... matching no existing resource; the delete is a no-op and the server must still return a 2xx success status (idempotent delete).",
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-NOMATCH", "responseId": "cd-nomatch-response", "description": "Conditional DELETE /Patient?identifier=...CD-NOMATCH, matches nothing" } },
+        { "assert": { "description": "Must return a 2xx success status (204 No Content is typical)", "response": "okay" } }
+      ]
+    },
+    {
+      "name": "Conditional delete with exactly one matching resource removes it",
+      "description": "DELETE /Patient?identifier=... matching exactly one existing Patient; the server must delete it (2xx), and a subsequent read must return either 404 Not Found or 410 Gone.",
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-ONEMATCH", "responseId": "cd-onematch-response", "description": "Conditional DELETE /Patient?identifier=...CD-ONEMATCH, matches the single seeded Patient" } },
+        { "assert": { "description": "Must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "read" }, "url": "Patient/${oneMatchId}", "responseId": "cd-onematch-read-after", "description": "Attempt to read the deleted Patient" } },
+        { "assert": { "sourceId": "cd-onematch-read-after", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "cd-onematch-readback" }], "description": "Primary: expect 410 Gone", "response": "gone", "warningOnly": true } },
+        { "assert": { "sourceId": "cd-onematch-read-after", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "cd-onematch-readback" }], "description": "Alternative: 404 Not Found is also accepted", "response": "notFound", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "Conditional delete with multiple matching resources fails",
+      "description": "DELETE /Patient?identifier=... matching two existing Patients with no multi-delete opt-in; the server must return 412 Precondition Failed.",
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-MULTI", "responseId": "cd-multi-response", "description": "Conditional DELETE /Patient?identifier=...CD-MULTI, matches both seeded Patients, no multi-delete opt-in" } },
+        { "assert": { "description": "Must return HTTP 412 Precondition Failed", "response": "preconditionFailed" } }
+      ]
+    },
+    {
+      "name": "Conditional delete can remove multiple matches when the server opts in via _count",
+      "description": "DELETE /Patient?identifier=...&_count=100 opting into bulk delete of two matching Patients; expected to succeed (2xx) on servers supporting this non-standard extension (warningOnly, since it isn't mandated by the base FHIR spec).",
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-MULTI&_count=100", "responseId": "cd-multi-bulk-response", "description": "Conditional DELETE /Patient?identifier=...CD-MULTI&_count=100, opting into bulk delete of both matches" } },
+        { "assert": { "description": "Server-extension: expect a 2xx success status when bulk conditional delete is supported", "response": "okay", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-NOMATCH", "description": "Teardown: conditional delete the CD-NOMATCH Patient (should already be absent)" } },
+      { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-ONEMATCH", "description": "Teardown: conditional delete the CD-ONEMATCH Patient (should already be deleted by the tests)" } },
+      { "operation": { "type": { "code": "delete" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/cond-delete|CD-MULTI", "description": "Teardown: conditional delete any remaining CD-MULTI Patients (best effort, in case the server does not support bulk conditional delete)" } }
+    ]
+  }
+}

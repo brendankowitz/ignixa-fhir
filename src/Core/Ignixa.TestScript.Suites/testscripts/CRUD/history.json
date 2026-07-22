@@ -1,0 +1,237 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/history",
+  "description": "History (GET /_history, /{type}/_history, /{type}/{id}/_history) conformance tests: non-empty system/type/instance Bundles, correct default and explicit sort order, well-formed entry.response.status, and _summary=count/_since/_before/_sort parameter handling (from HistoryTests). The second version needed by the multi-entry/sort-order tests is produced via a FHIRPath Patch rather than a PUT, to guarantee an actual content change and avoid requiring the body id to match the URL.",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.interaction.where(code='history-system').exists() or rest.resource.where(type='Patient').interaction.where(code='history-type' or code='history-instance').exists()" }
+  ],
+  "fixture": [
+    {
+      "id": "patient-hist-a",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "HISTORY-A-1" }],
+        "name": [{ "family": "HistoryA", "given": ["Case"] }]
+      }
+    },
+    {
+      "id": "patient-hist-status",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/test", "value": "HISTORY-STATUS-1" }],
+        "name": [{ "family": "HistoryStatus", "given": ["Case"] }]
+      }
+    },
+    {
+      "id": "patch-add-active",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              { "name": "type", "valueString": "add" },
+              { "name": "path", "valueString": "Patient" },
+              { "name": "name", "valueString": "active" },
+              { "name": "value", "valueBoolean": true }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "histAId", "sourceId": "hista-create-response", "path": "id", "description": "server-assigned id of the Patient used for the instance-history/sort-order tests" },
+    { "name": "histStatusId", "sourceId": "histstatus-create-response", "path": "id", "description": "server-assigned id of the dedicated Patient used for the response.status test" }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-hist-a", "responseId": "hista-create-response", "description": "Create the Patient used for the instance-history and sort-order tests" } },
+      { "assert": { "description": "Create must return HTTP 201", "response": "created" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "system-level history returns a non-empty bundle",
+      "description": "GET /_history must return HTTP 200 and a Bundle with at least one entry, since resources exist on the server.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "_history", "responseId": "sys-history-response", "description": "GET system-level history" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must contain at least one entry", "expression": "entry.exists()" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.interaction.where(code='history-system').exists()"
+        }
+      ]
+    },
+    {
+      "name": "type-level history returns a non-empty bundle",
+      "description": "GET /Patient/_history must return HTTP 200 and a Bundle with at least one entry, since the Patient created in setup exists.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "Patient/_history", "responseId": "type-history-response", "description": "GET type-level history for Patient" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must contain at least one entry", "expression": "entry.exists()" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists()"
+        }
+      ]
+    },
+    {
+      "name": "instance history reflects create then update, newest first by default",
+      "description": "After updating the Patient created in setup, GET /Patient/{id}/_history must return at least two entries with the newest version first (default order).",
+      "action": [
+        { "operation": { "type": { "code": "patch" }, "url": "Patient/${histAId}", "contentType": "application/fhir+json", "sourceId": "patch-add-active", "responseId": "hista-update-response", "description": "FHIRPath Patch the Patient (add Patient.active=true) to produce a second version." } },
+        { "assert": { "description": "Patch must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history", "responseId": "hista-history-response", "description": "GET instance-level history for the Patient" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must contain at least two entries (the create and the update)", "expression": "entry.count()", "value": "1", "operator": "greaterThan" } },
+        { "assert": { "description": "Default order must be newest first (entry[0] lastUpdated >= entry[1] lastUpdated)", "expression": "entry[0].resource.meta.lastUpdated >= entry[1].resource.meta.lastUpdated" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists()"
+        }
+      ]
+    },
+    {
+      "name": "instance history with explicit ascending sort returns oldest first",
+      "description": "GET /Patient/{id}/_history?_sort=_lastUpdated on the (now two-version) Patient must return entries oldest first.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history", "params": "?_sort=_lastUpdated", "responseId": "hista-asc-response", "description": "GET instance history sorted ascending by _lastUpdated" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Ascending order must hold (entry[0] lastUpdated <= entry[1] lastUpdated)", "expression": "entry[0].resource.meta.lastUpdated <= entry[1].resource.meta.lastUpdated" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+        }
+      ]
+    },
+    {
+      "name": "instance history with explicit descending sort matches default order",
+      "description": "GET /Patient/{id}/_history?_sort=-_lastUpdated on the (now two-version) Patient must return entries newest first, matching the default order.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history", "params": "?_sort=-_lastUpdated", "responseId": "hista-desc-response", "description": "GET instance history sorted descending by _lastUpdated" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Descending order must hold (entry[0] lastUpdated >= entry[1] lastUpdated)", "expression": "entry[0].resource.meta.lastUpdated >= entry[1].resource.meta.lastUpdated" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+        }
+      ]
+    },
+    {
+      "name": "history entries report a well-formed response.status for every version",
+      "description": "A dedicated Patient is created, updated, and deleted so its instance history contains three distinct operations. Every Bundle.entry.response.status must be present and well-formed (a leading 3-digit HTTP status code).",
+      "action": [
+        { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-hist-status", "responseId": "histstatus-create-response", "description": "Create the dedicated Patient for the response.status test" } },
+        { "assert": { "description": "Create must return HTTP 201", "response": "created" } },
+        { "operation": { "type": { "code": "patch" }, "url": "Patient/${histStatusId}", "contentType": "application/fhir+json", "sourceId": "patch-add-active", "responseId": "histstatus-update-response", "description": "FHIRPath Patch the Patient (add Patient.active=true) to produce a second version." } },
+        { "assert": { "description": "Patch must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "delete" }, "url": "Patient/${histStatusId}", "responseId": "histstatus-delete-response", "description": "Delete the Patient to produce a third history entry" } },
+        { "assert": { "description": "Delete must return a 2xx success status", "response": "okay" } },
+        { "operation": { "type": { "code": "history" }, "url": "Patient/${histStatusId}/_history", "responseId": "histstatus-history-response", "description": "GET instance-level history for the dedicated Patient" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must contain at least three entries (create, update, delete)", "expression": "entry.count()", "value": "2", "operator": "greaterThan" } },
+        { "assert": { "description": "Every entry must report a response.status", "expression": "entry.all(response.status.exists())" } },
+        { "assert": { "description": "Every entry's response.status must start with a 3-digit HTTP status code", "expression": "entry.all(response.status.matches('^[0-9]{3}.*'))" } },
+        { "assert": { "description": "Server extension detail: the most recent entry's response.status should reflect the delete (typically 204)", "expression": "entry[0].response.status.matches('^204.*')", "warningOnly": true } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists() and rest.resource.where(type='Patient').interaction.where(code='delete').exists()"
+        }
+      ]
+    },
+    {
+      "name": "_summary=count on history returns totals without entries",
+      "description": "GET /Patient/_history?_summary=count must return HTTP 200 and a Bundle whose total is populated but which contains no entries.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "Patient/_history", "params": "?_summary=count", "responseId": "summary-count-response", "description": "GET type-level history with _summary=count" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle.total must be populated", "expression": "total.exists()" } },
+        { "assert": { "description": "Bundle must not contain entries when _summary=count is used", "expression": "entry.empty()" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_summary').exists() or rest.searchParam.where(name='_summary').exists())"
+        }
+      ]
+    },
+    {
+      "name": "a far-past _since does not wrongly exclude existing history",
+      "description": "GET /_history?_since=2000-01-01T00:00:00Z, a date far before any resource on the server was created, must still return the existing history (non-empty Bundle).",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "_history", "params": "?_since=2000-01-01T00:00:00Z", "responseId": "since-past-response", "description": "GET system-level history with a far-past _since" } },
+        { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must contain at least one entry", "expression": "entry.exists()" } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.interaction.where(code='history-system').exists()"
+        }
+      ]
+    },
+    {
+      "name": "a far-future _before returns 400 Bad Request",
+      "description": "GET /_history?_before=2999-01-01T00:00:00Z, a date far in the future, must be rejected with 400 Bad Request since history cannot be requested before a time that hasn't happened yet. This is a server-side validation choice rather than a base FHIR R4 mandate, so it is warningOnly.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "_history", "params": "?_before=2999-01-01T00:00:00Z", "responseId": "before-future-response", "description": "GET system-level history with a far-future _before" } },
+        { "assert": { "description": "Server validation: expect 400 Bad Request for a future _before value", "response": "bad", "warningOnly": true } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.interaction.where(code='history-system').exists()"
+        }
+      ]
+    },
+    {
+      "name": "_sort=_id on history is unsupported and returns 400 Bad Request",
+      "description": "GET /Patient/_history?_sort=_id must be rejected with 400 Bad Request since history only supports sorting by _lastUpdated. This is a server-side validation choice rather than a base FHIR R4 mandate, so it is warningOnly.",
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "Patient/_history", "params": "?_sort=_id", "responseId": "badsort-response", "description": "GET type-level history with an unsupported _sort value" } },
+        { "assert": { "description": "Server validation: expect 400 Bad Request for an unsupported _sort value", "response": "bad", "warningOnly": true } }
+      ],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${histAId}", "description": "Teardown: delete the instance-history/sort-order Patient" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${histStatusId}", "description": "Teardown: delete the response.status test Patient (already deleted by the test, best effort)" } }
+    ]
+  }
+}

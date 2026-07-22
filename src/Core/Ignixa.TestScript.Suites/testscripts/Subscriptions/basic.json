@@ -1,0 +1,139 @@
+{
+  "resourceType": "TestScript",
+  "name": "Subscriptions/basic",
+  "description": "Basic Subscription conformance tests for R4/R4B classic only: update-create, read, search by _id, update, and delete a criteria-based websocket Subscription. The standard CapabilityStatement websocket extension gates this suite, and the fixture omits endpoint and payload so the server cannot disclose FHIR data to a third-party callback. Topic/backport subscriptions require separate coverage and no R5 topic requirements apply here. This deliberately exercises persistence and round-trip fields, not notification delivery or websocket binding. Full async delivery, handshake, and heartbeat scenarios are out of scope; see the Subscriptions ADR referenced from backend/README.md.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.resource.where(type='Subscription').interaction.where(code='read').exists() and rest.resource.where(type='Subscription').interaction.where(code='update').exists() and rest.resource.where(type='Subscription').interaction.where(code='delete').exists() and rest.resource.where(type='Subscription').interaction.where(code='search-type').exists() and rest.resource.where(type='Subscription').updateCreate = true and rest.extension.where(url='http://hl7.org/fhir/StructureDefinition/capabilitystatement-websocket').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "subscription-initial",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Subscription",
+        "id": "ignixa-sub-basic-${runId}",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-subscriptions" }] },
+        "status": "requested",
+        "reason": "ignixa-lab TestScript conformance check (no websocket client is bound)",
+        "criteria": "Patient?name=ignixa-subscriptions-basic-marker-${runId}",
+        "channel": {
+          "type": "websocket"
+        }
+      }
+    },
+    {
+      "id": "subscription-updated",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Subscription",
+        "id": "ignixa-sub-basic-${runId}",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-subscriptions" }] },
+        "status": "off",
+        "reason": "ignixa-lab TestScript conformance check (no websocket client is bound)",
+        "criteria": "Patient?name=ignixa-subscriptions-basic-marker-updated-${runId}",
+        "channel": {
+          "type": "websocket"
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "runId",
+      "defaultValue": "unscoped",
+      "description": "Runner-generated per-suite value used to isolate the fixed-id Subscription lifecycle"
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Subscription/ignixa-sub-basic-${runId}", "sourceId": "subscription-initial", "responseId": "setup-update-response", "description": "PUT the fresh run-scoped Subscription with a criteria-based websocket channel" } },
+      { "assert": { "description": "Setup PUT of the fresh run-scoped id must return 201 Created", "response": "created" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "read returns the created Subscription with criteria and channel intact",
+      "description": "GET Subscription/{id} must return the Subscription with the run-scoped criteria and endpoint-free websocket channel that were set at update-create.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "Subscription/ignixa-sub-basic-${runId}", "responseId": "read-initial", "description": "GET the run-scoped Subscription" } },
+        { "assert": { "description": "Initial read must return 200 OK", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Subscription", "resource": "Subscription" } },
+        { "assert": { "description": "criteria must round-trip unchanged", "expression": "Subscription.criteria", "value": "Patient?name=ignixa-subscriptions-basic-marker-${runId}", "operator": "equals" } },
+        { "assert": { "description": "channel.type must be websocket", "expression": "Subscription.channel.type", "value": "websocket", "operator": "equals" } },
+        { "assert": { "description": "websocket channel must remain endpoint-free", "expression": "Subscription.channel.endpoint.empty()" } },
+        { "assert": { "description": "status must be a non-empty code (warningOnly: some servers immediately attempt a handshake and flip status away from 'requested')", "expression": "Subscription.status.exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "search by _id locates the created Subscription",
+      "description": "GET Subscription?_id={id} must return a Bundle containing the created Subscription.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Subscription", "params": "?_id=ignixa-sub-basic-${runId}", "responseId": "search-by-id", "description": "Search for the run-scoped Subscription by _id" } },
+        { "assert": { "description": "Search must return 200 OK", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must include the created Subscription", "expression": "entry.where(resource.id = 'ignixa-sub-basic-${runId}').exists()" } }
+      ]
+    },
+    {
+      "name": "update replaces criteria and status while retaining websocket channel",
+      "description": "PUT Subscription/{id} with a fully-specified replacement body must be accepted and change the stored criteria/status while retaining the endpoint-free websocket channel.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
+      "action": [
+        { "operation": { "type": { "code": "update" }, "url": "Subscription/ignixa-sub-basic-${runId}", "sourceId": "subscription-updated", "responseId": "update-response", "description": "PUT the updated run-scoped Subscription (criteria updated, websocket channel, status off)" } },
+        { "assert": { "description": "Existing-resource update must return 200 OK", "responseCode": "200" } }
+      ]
+    },
+    {
+      "name": "read after update reflects the change",
+      "description": "GET after the PUT must return the updated run-scoped criteria and endpoint-free websocket channel. status=off is warningOnly since some servers manage subscription status server-side and may not honor a client-supplied status value.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }],
+      "action": [
+        { "operation": { "type": { "code": "read" }, "url": "Subscription/ignixa-sub-basic-${runId}", "responseId": "read-after-update", "description": "GET the run-scoped Subscription after update" } },
+        { "assert": { "description": "Read after update must return 200 OK", "responseCode": "200" } },
+        { "assert": { "description": "criteria must reflect the update", "expression": "Subscription.criteria", "value": "Patient?name=ignixa-subscriptions-basic-marker-updated-${runId}", "operator": "equals" } },
+        { "assert": { "description": "websocket channel must remain endpoint-free after update", "expression": "Subscription.channel.endpoint.empty()" } },
+        { "assert": { "description": "status should reflect the update to 'off' (warningOnly: status may be server-managed)", "expression": "Subscription.status", "value": "off", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "delete accepts valid outcomes and checks immediate readback",
+      "description": "DELETE Subscription/{id} must return exactly 200, 202, or 204. The immediate readback must return 404 or 410 after completed deletion, while 200 is accepted only when the correlated DELETE returned 202 for asynchronous processing.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "delete" }, "url": "Subscription/ignixa-sub-basic-${runId}", "responseId": "delete-response", "description": "DELETE the run-scoped Subscription" } },
+        { "assert": { "sourceId": "delete-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "delete-status" }], "description": "Accepted DELETE response: 200 OK for completed deletion", "responseCode": "200", "warningOnly": true } },
+        { "assert": { "sourceId": "delete-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "delete-status" }], "description": "Accepted DELETE response: 202 Accepted for asynchronous deletion", "responseCode": "202", "warningOnly": true } },
+        { "assert": { "sourceId": "delete-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "delete-status" }], "description": "Accepted DELETE response: 204 No Content for completed deletion", "responseCode": "204", "warningOnly": true } },
+        { "operation": { "type": { "code": "read" }, "url": "Subscription/ignixa-sub-basic-${runId}", "responseId": "after-delete-read", "description": "Immediately read the run-scoped Subscription after the accepted delete" } },
+        { "assert": {
+            "sourceId": "after-delete-read",
+            "extension": [
+              { "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "readback" },
+              { "url": "http://ignixa.io/testscript/assertionWhenResponseStatus", "extension": [
+                { "url": "sourceId", "valueString": "delete-response" },
+                { "url": "status", "valueInteger": 202 }
+              ] }
+            ],
+            "description": "Accepted alternative: 200 OK while an asynchronous delete is still pending",
+            "responseCode": "200", "warningOnly": true } },
+        { "assert": { "sourceId": "after-delete-read", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "readback" }], "description": "Accepted alternative: 410 Gone when the server tracks the deleted resource", "response": "gone", "warningOnly": true } },
+        { "assert": { "sourceId": "after-delete-read", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "readback" }], "description": "Accepted alternative: 404 Not Found when deleted resources are not tracked", "response": "notFound", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Subscription/ignixa-sub-basic-${runId}", "description": "Teardown: attempt to clean up the run-scoped Subscription (it may already be deleted)" } }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-import-history-soft-delete",
+  "description": "$import version/history conflict-resolution conformance tests (from ImportHistorySoftDeleteTests.cs): client-assigned meta.versionId/meta.lastUpdated and soft-delete interleaving during ndjson ingestion, exclusive to the $import pipeline and only observable after a completed real import. All 5 source tests are skipped for that reason; this suite only checks that the mode/allowNegativeVersions request shape itself is accepted (best-effort).",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.operation.where(name='import').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "import-params-incremental-with-negative-versions",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          { "name": "inputFormat", "valueString": "application/fhir+ndjson" },
+          { "name": "storageDetail", "part": [ { "name": "type", "valueString": "azure-blob" } ] },
+          { "name": "input", "part": [
+              { "name": "type", "valueString": "Patient" },
+              { "name": "url", "valueUri": "https://ignixa-lab-testscript-placeholder.blob.core.windows.net/container/patient.ndjson" }
+            ]
+          },
+          { "name": "mode", "valueString": "IncrementalLoad" },
+          { "name": "allowNegativeVersions", "valueBoolean": true }
+        ]
+      }
+    }
+  ],
+  "test": [
+    {
+      "name": "$import kickoff shape accepts mode=IncrementalLoad and allowNegativeVersions (best-effort, environment-dependent)",
+      "description": "A $import kickoff with mode=IncrementalLoad and allowNegativeVersions=true should return 202 Accepted with a Content-Location header; both assertions are warningOnly since reaching 202 depends on the target's real storage account, which this suite can't know.",
+      "action": [
+        { "operation": { "type": { "code": "$import" }, "method": "POST", "url": "$import", "accept": "application/fhir+json", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "sourceId": "import-params-incremental-with-negative-versions", "responseId": "incremental-negative-versions-response", "description": "POST $import with mode=IncrementalLoad and allowNegativeVersions=true" } },
+        { "assert": { "description": "202 Accepted if the input URL happens to match the server's configured storage account (rarely true for a portable suite).", "sourceId": "incremental-negative-versions-response", "responseCode": "202", "warningOnly": true } },
+        { "assert": { "description": "400 Bad Request otherwise (not a rejection of mode/allowNegativeVersions themselves), which is the far more likely outcome.", "sourceId": "incremental-negative-versions-response", "response": "bad", "warningOnly": true } }
+      ]
+    }
+  ]
+}

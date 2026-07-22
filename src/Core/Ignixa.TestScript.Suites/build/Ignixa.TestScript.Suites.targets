@@ -1,0 +1,43 @@
+<Project>
+
+  <!--
+    Copies the canonical TestScript suites into the consumer's output under testscripts/,
+    preserving the category subfolders that consumers enumerate.
+
+    Two delivery paths, one glob: in the NuGet package this file sits at build/ with the
+    suites at testscripts/ under the package root; in this repo it sits at build/ with the
+    suites at testscripts/ under the project root. The relative path is identical either
+    way, so `../testscripts` is correct for both.
+
+    NuGet auto-imports this for PackageReference consumers. In-repo test projects must
+    <Import> it explicitly — build/*.targets auto-import does NOT apply to
+    ProjectReference. Converting those imports to a ProjectReference silently stops the
+    copy and leaves the suites missing at runtime.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../testscripts/**/*.json">
+      <Link>testscripts/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>false</Pack>
+      <Visible>false</Visible>
+    </None>
+    <!--
+      Commit the packed testscripts came from (WriteSourceRevisionFile in
+      Ignixa.TestScript.Suites.csproj); not a *.json fixture so the glob above doesn't
+      cover it. Guarded by Exists() — unlike that glob, a literal Include with
+      CopyToOutputDirectory set hard-fails the consumer's build (MSB3030) if the file is
+      absent, e.g. a stale cached local-feed package predating this file's introduction,
+      or any in-repo build (where it only exists after pack). Missing here just means
+      consumers get no revision stamp, same as an unreadable file at runtime.
+    -->
+    <None Include="$(MSBuildThisFileDirectory)../testscripts/source-revision.txt" Condition="Exists('$(MSBuildThisFileDirectory)../testscripts/source-revision.txt')">
+      <Link>testscripts/source-revision.txt</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>false</Pack>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+</Project>

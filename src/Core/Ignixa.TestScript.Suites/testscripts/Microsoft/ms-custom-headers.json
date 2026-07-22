@@ -1,0 +1,151 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-custom-headers",
+  "description": "Custom response header conformance tests (from CustomHeadersTests): the X-Request-Id to X-Correlation-Id correlation contract, and the CosmosDB-specific continuation-token-size request header. The CosmosDB-specific assertions are warningOnly since non-CosmosDB datastores are expected to ignore that header.",
+  "status": "active",
+  "test": [
+    {
+      "name": "X-Request-Id sent by the client is echoed back as X-Correlation-Id, not as X-Request-Id",
+      "description": "Sending a client-supplied X-Request-Id must result in the server returning that same value in X-Correlation-Id, while the server's own X-Request-Id response header must remain distinct from the client-supplied value.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "method": "GET",
+            "url": "Patient",
+            "requestHeader": [
+              { "field": "X-Request-Id", "value": "11111111-1111-1111-1111-111111111111" }
+            ],
+            "responseId": "req-id-response",
+            "description": "Search Patient with a client-supplied X-Request-Id header"
+          }
+        },
+        {
+          "assert": {
+            "description": "Request must succeed with HTTP 200",
+            "sourceId": "req-id-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "X-Correlation-Id response header must equal the client-supplied X-Request-Id value",
+            "sourceId": "req-id-response",
+            "headerField": "X-Correlation-Id",
+            "operator": "equals",
+            "value": "11111111-1111-1111-1111-111111111111"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server's own X-Request-Id response header must not contain the client-supplied value",
+            "sourceId": "req-id-response",
+            "headerField": "X-Request-Id",
+            "operator": "notContains",
+            "value": "11111111-1111-1111-1111-111111111111"
+          }
+        }
+      ]
+    },
+    {
+      "name": "requests without a client X-Request-Id still receive a server-generated X-Request-Id",
+      "description": "Without a client-supplied X-Request-Id, the server must still return HTTP 200 with a non-empty, server-generated X-Request-Id header. The absent-X-Correlation-Id check from the source test is skipped since that outcome depends on whether a reverse proxy is present.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "method": "GET",
+            "url": "Patient",
+            "responseId": "no-req-id-response",
+            "description": "Search Patient without any client-supplied request id header"
+          }
+        },
+        {
+          "assert": {
+            "description": "Request must succeed with HTTP 200",
+            "sourceId": "no-req-id-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "X-Request-Id response header must be present and non-empty",
+            "sourceId": "no-req-id-response",
+            "headerField": "X-Request-Id"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a valid CosmosDB continuation token size limit header does not break the request",
+      "description": "A valid, in-range CosmosDB continuation-token-size header (1-3 Kb) must not cause a failure on any backend.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "method": "GET",
+            "url": "Patient",
+            "requestHeader": [
+              { "field": "x-ms-documentdb-responsecontinuationtokenlimitinkb", "value": "2" }
+            ],
+            "responseId": "cosmos-valid-response",
+            "description": "Search Patient with a valid CosmosDB continuation token size limit header"
+          }
+        },
+        {
+          "assert": {
+            "description": "Request must succeed with HTTP 200 regardless of backing datastore",
+            "sourceId": "cosmos-valid-response",
+            "response": "okay"
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invalid CosmosDB continuation token size limit header is rejected by CosmosDB-backed servers",
+      "description": "CosmosDB-backed servers must return HTTP 400 for a malformed ('invalid') or out-of-range ('5') continuation-token-size value; warningOnly since other datastores are expected to ignore the header.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "method": "GET",
+            "url": "Patient",
+            "requestHeader": [
+              { "field": "x-ms-documentdb-responsecontinuationtokenlimitinkb", "value": "invalid" }
+            ],
+            "responseId": "cosmos-invalid-format-response",
+            "description": "Search Patient with a malformed (non-numeric) continuation token size limit header"
+          }
+        },
+        {
+          "assert": {
+            "description": "CosmosDB-backed servers must return HTTP 400 for a malformed token size (warningOnly: other datastores ignore this header)",
+            "sourceId": "cosmos-invalid-format-response",
+            "response": "bad",
+            "warningOnly": true
+          }
+        },
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "method": "GET",
+            "url": "Patient",
+            "requestHeader": [
+              { "field": "x-ms-documentdb-responsecontinuationtokenlimitinkb", "value": "5" }
+            ],
+            "responseId": "cosmos-invalid-range-response",
+            "description": "Search Patient with an out-of-range (too large) continuation token size limit header"
+          }
+        },
+        {
+          "assert": {
+            "description": "CosmosDB-backed servers must return HTTP 400 for an out-of-range token size (warningOnly: other datastores ignore this header)",
+            "sourceId": "cosmos-invalid-range-response",
+            "response": "bad",
+            "warningOnly": true
+          }
+        }
+      ]
+    }
+  ]
+}

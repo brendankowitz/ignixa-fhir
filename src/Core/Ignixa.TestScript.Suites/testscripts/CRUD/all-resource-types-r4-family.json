@@ -1,0 +1,352 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/all-resource-types-r4-family",
+  "description": "Creates and reads every concrete FHIR resource type present in R4 and R4B but absent from STU3 and R5, gated on the target declaring fhirVersion 4.0.x or 4.3.x.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "catalogEntry-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "CatalogEntry"
+          }
+        ]
+      }
+    },
+    {
+      "id": "researchDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ResearchDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "researchElementDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ResearchElementDefinition"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "catalogEntryId",
+      "sourceId": "catalogEntry-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created CatalogEntry"
+    },
+    {
+      "name": "researchDefinitionId",
+      "sourceId": "researchDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ResearchDefinition"
+    },
+    {
+      "name": "researchElementDefinitionId",
+      "sourceId": "researchElementDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ResearchElementDefinition"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "Can create and read CatalogEntry",
+      "description": "When the target server declares CatalogEntry create and read interactions, POST /CatalogEntry must create a synthetic CatalogEntry and GET /CatalogEntry/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='CatalogEntry').interaction.where(code='create').exists() and rest.resource.where(type='CatalogEntry').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "CatalogEntry",
+            "sourceId": "catalogEntry-fixture",
+            "responseId": "catalogEntry-create-response",
+            "description": "POST a synthetic CatalogEntry"
+          }
+        },
+        {
+          "assert": {
+            "description": "CatalogEntry create must return HTTP 201 Created",
+            "sourceId": "catalogEntry-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a CatalogEntry",
+            "sourceId": "catalogEntry-create-response",
+            "resource": "CatalogEntry"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "catalogEntry-create-response",
+            "expression": "CatalogEntry.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "CatalogEntry/${catalogEntryId}",
+            "responseId": "catalogEntry-read-response",
+            "description": "GET the created CatalogEntry by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "CatalogEntry read must return HTTP 200 OK",
+            "sourceId": "catalogEntry-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a CatalogEntry",
+            "sourceId": "catalogEntry-read-response",
+            "resource": "CatalogEntry"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "catalogEntry-read-response",
+            "expression": "CatalogEntry.id",
+            "value": "${catalogEntryId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ResearchDefinition",
+      "description": "When the target server declares ResearchDefinition create and read interactions, POST /ResearchDefinition must create a synthetic ResearchDefinition and GET /ResearchDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ResearchDefinition').interaction.where(code='create').exists() and rest.resource.where(type='ResearchDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ResearchDefinition",
+            "sourceId": "researchDefinition-fixture",
+            "responseId": "researchDefinition-create-response",
+            "description": "POST a synthetic ResearchDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "ResearchDefinition create must return HTTP 201 Created",
+            "sourceId": "researchDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ResearchDefinition",
+            "sourceId": "researchDefinition-create-response",
+            "resource": "ResearchDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "researchDefinition-create-response",
+            "expression": "ResearchDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ResearchDefinition/${researchDefinitionId}",
+            "responseId": "researchDefinition-read-response",
+            "description": "GET the created ResearchDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ResearchDefinition read must return HTTP 200 OK",
+            "sourceId": "researchDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ResearchDefinition",
+            "sourceId": "researchDefinition-read-response",
+            "resource": "ResearchDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "researchDefinition-read-response",
+            "expression": "ResearchDefinition.id",
+            "value": "${researchDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ResearchElementDefinition",
+      "description": "When the target server declares ResearchElementDefinition create and read interactions, POST /ResearchElementDefinition must create a synthetic ResearchElementDefinition and GET /ResearchElementDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ResearchElementDefinition').interaction.where(code='create').exists() and rest.resource.where(type='ResearchElementDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ResearchElementDefinition",
+            "sourceId": "researchElementDefinition-fixture",
+            "responseId": "researchElementDefinition-create-response",
+            "description": "POST a synthetic ResearchElementDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "ResearchElementDefinition create must return HTTP 201 Created",
+            "sourceId": "researchElementDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ResearchElementDefinition",
+            "sourceId": "researchElementDefinition-create-response",
+            "resource": "ResearchElementDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "researchElementDefinition-create-response",
+            "expression": "ResearchElementDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ResearchElementDefinition/${researchElementDefinitionId}",
+            "responseId": "researchElementDefinition-read-response",
+            "description": "GET the created ResearchElementDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ResearchElementDefinition read must return HTTP 200 OK",
+            "sourceId": "researchElementDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ResearchElementDefinition",
+            "sourceId": "researchElementDefinition-read-response",
+            "resource": "ResearchElementDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "researchElementDefinition-read-response",
+            "expression": "ResearchElementDefinition.id",
+            "value": "${researchElementDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CatalogEntry/${catalogEntryId}",
+            "description": "Teardown: delete the created CatalogEntry (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ResearchDefinition/${researchDefinitionId}",
+            "description": "Teardown: delete the created ResearchDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ResearchElementDefinition/${researchElementDefinitionId}",
+            "description": "Teardown: delete the created ResearchElementDefinition (no-op if it was never created)"
+          }
+        }
+      ]
+    },
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "fhirVersion.startsWith('4.0') or fhirVersion.startsWith('4.3')"
+    }
+  ]
+}

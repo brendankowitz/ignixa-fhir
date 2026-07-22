@@ -1,0 +1,2217 @@
+{
+  "resourceType": "TestScript",
+  "name": "CRUD/all-resource-types-post-stu3",
+  "description": "Creates and reads every concrete FHIR resource type present in R4, R4B, and R5 but removed after STU3, gated on the target declaring fhirVersion 4.0.x, 4.3.x, or 5.0.x.",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "biologicallyDerivedProduct-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "BiologicallyDerivedProduct"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bodyStructure-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "BodyStructure"
+          }
+        ]
+      }
+    },
+    {
+      "id": "chargeItemDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ChargeItemDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "coverageEligibilityRequest-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "CoverageEligibilityRequest"
+          }
+        ]
+      }
+    },
+    {
+      "id": "coverageEligibilityResponse-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "CoverageEligibilityResponse"
+          }
+        ]
+      }
+    },
+    {
+      "id": "deviceDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "DeviceDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "eventDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "EventDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evidence-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "Evidence"
+          }
+        ]
+      }
+    },
+    {
+      "id": "evidenceVariable-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "EvidenceVariable"
+          }
+        ]
+      }
+    },
+    {
+      "id": "exampleScenario-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ExampleScenario"
+          }
+        ]
+      }
+    },
+    {
+      "id": "immunizationEvaluation-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ImmunizationEvaluation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "insurancePlan-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "InsurancePlan"
+          }
+        ]
+      }
+    },
+    {
+      "id": "invoice-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "Invoice"
+          }
+        ]
+      }
+    },
+    {
+      "id": "medicationKnowledge-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MedicationKnowledge"
+          }
+        ]
+      }
+    },
+    {
+      "id": "molecularSequence-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "MolecularSequence"
+          }
+        ]
+      }
+    },
+    {
+      "id": "observationDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ObservationDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "organizationAffiliation-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "OrganizationAffiliation"
+          }
+        ]
+      }
+    },
+    {
+      "id": "serviceRequest-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "ServiceRequest"
+          }
+        ]
+      }
+    },
+    {
+      "id": "specimenDefinition-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "SpecimenDefinition"
+          }
+        ]
+      }
+    },
+    {
+      "id": "verificationResult-fixture",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "extension": [
+          {
+            "url": "http://ignixa.io/testscript/fhirfakes",
+            "valueCode": "VerificationResult"
+          }
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "biologicallyDerivedProductId",
+      "sourceId": "biologicallyDerivedProduct-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created BiologicallyDerivedProduct"
+    },
+    {
+      "name": "bodyStructureId",
+      "sourceId": "bodyStructure-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created BodyStructure"
+    },
+    {
+      "name": "chargeItemDefinitionId",
+      "sourceId": "chargeItemDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ChargeItemDefinition"
+    },
+    {
+      "name": "coverageEligibilityRequestId",
+      "sourceId": "coverageEligibilityRequest-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created CoverageEligibilityRequest"
+    },
+    {
+      "name": "coverageEligibilityResponseId",
+      "sourceId": "coverageEligibilityResponse-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created CoverageEligibilityResponse"
+    },
+    {
+      "name": "deviceDefinitionId",
+      "sourceId": "deviceDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created DeviceDefinition"
+    },
+    {
+      "name": "eventDefinitionId",
+      "sourceId": "eventDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created EventDefinition"
+    },
+    {
+      "name": "evidenceId",
+      "sourceId": "evidence-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created Evidence"
+    },
+    {
+      "name": "evidenceVariableId",
+      "sourceId": "evidenceVariable-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created EvidenceVariable"
+    },
+    {
+      "name": "exampleScenarioId",
+      "sourceId": "exampleScenario-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ExampleScenario"
+    },
+    {
+      "name": "immunizationEvaluationId",
+      "sourceId": "immunizationEvaluation-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ImmunizationEvaluation"
+    },
+    {
+      "name": "insurancePlanId",
+      "sourceId": "insurancePlan-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created InsurancePlan"
+    },
+    {
+      "name": "invoiceId",
+      "sourceId": "invoice-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created Invoice"
+    },
+    {
+      "name": "medicationKnowledgeId",
+      "sourceId": "medicationKnowledge-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MedicationKnowledge"
+    },
+    {
+      "name": "molecularSequenceId",
+      "sourceId": "molecularSequence-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created MolecularSequence"
+    },
+    {
+      "name": "observationDefinitionId",
+      "sourceId": "observationDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ObservationDefinition"
+    },
+    {
+      "name": "organizationAffiliationId",
+      "sourceId": "organizationAffiliation-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created OrganizationAffiliation"
+    },
+    {
+      "name": "serviceRequestId",
+      "sourceId": "serviceRequest-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created ServiceRequest"
+    },
+    {
+      "name": "specimenDefinitionId",
+      "sourceId": "specimenDefinition-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created SpecimenDefinition"
+    },
+    {
+      "name": "verificationResultId",
+      "sourceId": "verificationResult-create-response",
+      "path": "id",
+      "description": "The server-assigned id for the created VerificationResult"
+    }
+  ],
+  "setup": {
+    "action": []
+  },
+  "test": [
+    {
+      "name": "Can create and read BiologicallyDerivedProduct",
+      "description": "When the target server declares BiologicallyDerivedProduct create and read interactions, POST /BiologicallyDerivedProduct must create a synthetic BiologicallyDerivedProduct and GET /BiologicallyDerivedProduct/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='BiologicallyDerivedProduct').interaction.where(code='create').exists() and rest.resource.where(type='BiologicallyDerivedProduct').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "BiologicallyDerivedProduct",
+            "sourceId": "biologicallyDerivedProduct-fixture",
+            "responseId": "biologicallyDerivedProduct-create-response",
+            "description": "POST a synthetic BiologicallyDerivedProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "BiologicallyDerivedProduct create must return HTTP 201 Created",
+            "sourceId": "biologicallyDerivedProduct-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a BiologicallyDerivedProduct",
+            "sourceId": "biologicallyDerivedProduct-create-response",
+            "resource": "BiologicallyDerivedProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "biologicallyDerivedProduct-create-response",
+            "expression": "BiologicallyDerivedProduct.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "BiologicallyDerivedProduct/${biologicallyDerivedProductId}",
+            "responseId": "biologicallyDerivedProduct-read-response",
+            "description": "GET the created BiologicallyDerivedProduct by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "BiologicallyDerivedProduct read must return HTTP 200 OK",
+            "sourceId": "biologicallyDerivedProduct-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a BiologicallyDerivedProduct",
+            "sourceId": "biologicallyDerivedProduct-read-response",
+            "resource": "BiologicallyDerivedProduct"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "biologicallyDerivedProduct-read-response",
+            "expression": "BiologicallyDerivedProduct.id",
+            "value": "${biologicallyDerivedProductId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read BodyStructure",
+      "description": "When the target server declares BodyStructure create and read interactions, POST /BodyStructure must create a synthetic BodyStructure and GET /BodyStructure/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='BodyStructure').interaction.where(code='create').exists() and rest.resource.where(type='BodyStructure').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "BodyStructure",
+            "sourceId": "bodyStructure-fixture",
+            "responseId": "bodyStructure-create-response",
+            "description": "POST a synthetic BodyStructure"
+          }
+        },
+        {
+          "assert": {
+            "description": "BodyStructure create must return HTTP 201 Created",
+            "sourceId": "bodyStructure-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a BodyStructure",
+            "sourceId": "bodyStructure-create-response",
+            "resource": "BodyStructure"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "bodyStructure-create-response",
+            "expression": "BodyStructure.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "BodyStructure/${bodyStructureId}",
+            "responseId": "bodyStructure-read-response",
+            "description": "GET the created BodyStructure by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "BodyStructure read must return HTTP 200 OK",
+            "sourceId": "bodyStructure-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a BodyStructure",
+            "sourceId": "bodyStructure-read-response",
+            "resource": "BodyStructure"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "bodyStructure-read-response",
+            "expression": "BodyStructure.id",
+            "value": "${bodyStructureId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ChargeItemDefinition",
+      "description": "When the target server declares ChargeItemDefinition create and read interactions, POST /ChargeItemDefinition must create a synthetic ChargeItemDefinition and GET /ChargeItemDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ChargeItemDefinition').interaction.where(code='create').exists() and rest.resource.where(type='ChargeItemDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ChargeItemDefinition",
+            "sourceId": "chargeItemDefinition-fixture",
+            "responseId": "chargeItemDefinition-create-response",
+            "description": "POST a synthetic ChargeItemDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "ChargeItemDefinition create must return HTTP 201 Created",
+            "sourceId": "chargeItemDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ChargeItemDefinition",
+            "sourceId": "chargeItemDefinition-create-response",
+            "resource": "ChargeItemDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "chargeItemDefinition-create-response",
+            "expression": "ChargeItemDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ChargeItemDefinition/${chargeItemDefinitionId}",
+            "responseId": "chargeItemDefinition-read-response",
+            "description": "GET the created ChargeItemDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ChargeItemDefinition read must return HTTP 200 OK",
+            "sourceId": "chargeItemDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ChargeItemDefinition",
+            "sourceId": "chargeItemDefinition-read-response",
+            "resource": "ChargeItemDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "chargeItemDefinition-read-response",
+            "expression": "ChargeItemDefinition.id",
+            "value": "${chargeItemDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read CoverageEligibilityRequest",
+      "description": "When the target server declares CoverageEligibilityRequest create and read interactions, POST /CoverageEligibilityRequest must create a synthetic CoverageEligibilityRequest and GET /CoverageEligibilityRequest/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='CoverageEligibilityRequest').interaction.where(code='create').exists() and rest.resource.where(type='CoverageEligibilityRequest').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "CoverageEligibilityRequest",
+            "sourceId": "coverageEligibilityRequest-fixture",
+            "responseId": "coverageEligibilityRequest-create-response",
+            "description": "POST a synthetic CoverageEligibilityRequest"
+          }
+        },
+        {
+          "assert": {
+            "description": "CoverageEligibilityRequest create must return HTTP 201 Created",
+            "sourceId": "coverageEligibilityRequest-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a CoverageEligibilityRequest",
+            "sourceId": "coverageEligibilityRequest-create-response",
+            "resource": "CoverageEligibilityRequest"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "coverageEligibilityRequest-create-response",
+            "expression": "CoverageEligibilityRequest.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "CoverageEligibilityRequest/${coverageEligibilityRequestId}",
+            "responseId": "coverageEligibilityRequest-read-response",
+            "description": "GET the created CoverageEligibilityRequest by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "CoverageEligibilityRequest read must return HTTP 200 OK",
+            "sourceId": "coverageEligibilityRequest-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a CoverageEligibilityRequest",
+            "sourceId": "coverageEligibilityRequest-read-response",
+            "resource": "CoverageEligibilityRequest"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "coverageEligibilityRequest-read-response",
+            "expression": "CoverageEligibilityRequest.id",
+            "value": "${coverageEligibilityRequestId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read CoverageEligibilityResponse",
+      "description": "When the target server declares CoverageEligibilityResponse create and read interactions, POST /CoverageEligibilityResponse must create a synthetic CoverageEligibilityResponse and GET /CoverageEligibilityResponse/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='CoverageEligibilityResponse').interaction.where(code='create').exists() and rest.resource.where(type='CoverageEligibilityResponse').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "CoverageEligibilityResponse",
+            "sourceId": "coverageEligibilityResponse-fixture",
+            "responseId": "coverageEligibilityResponse-create-response",
+            "description": "POST a synthetic CoverageEligibilityResponse"
+          }
+        },
+        {
+          "assert": {
+            "description": "CoverageEligibilityResponse create must return HTTP 201 Created",
+            "sourceId": "coverageEligibilityResponse-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a CoverageEligibilityResponse",
+            "sourceId": "coverageEligibilityResponse-create-response",
+            "resource": "CoverageEligibilityResponse"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "coverageEligibilityResponse-create-response",
+            "expression": "CoverageEligibilityResponse.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "CoverageEligibilityResponse/${coverageEligibilityResponseId}",
+            "responseId": "coverageEligibilityResponse-read-response",
+            "description": "GET the created CoverageEligibilityResponse by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "CoverageEligibilityResponse read must return HTTP 200 OK",
+            "sourceId": "coverageEligibilityResponse-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a CoverageEligibilityResponse",
+            "sourceId": "coverageEligibilityResponse-read-response",
+            "resource": "CoverageEligibilityResponse"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "coverageEligibilityResponse-read-response",
+            "expression": "CoverageEligibilityResponse.id",
+            "value": "${coverageEligibilityResponseId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read DeviceDefinition",
+      "description": "When the target server declares DeviceDefinition create and read interactions, POST /DeviceDefinition must create a synthetic DeviceDefinition and GET /DeviceDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='DeviceDefinition').interaction.where(code='create').exists() and rest.resource.where(type='DeviceDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "DeviceDefinition",
+            "sourceId": "deviceDefinition-fixture",
+            "responseId": "deviceDefinition-create-response",
+            "description": "POST a synthetic DeviceDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "DeviceDefinition create must return HTTP 201 Created",
+            "sourceId": "deviceDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a DeviceDefinition",
+            "sourceId": "deviceDefinition-create-response",
+            "resource": "DeviceDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "deviceDefinition-create-response",
+            "expression": "DeviceDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "DeviceDefinition/${deviceDefinitionId}",
+            "responseId": "deviceDefinition-read-response",
+            "description": "GET the created DeviceDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "DeviceDefinition read must return HTTP 200 OK",
+            "sourceId": "deviceDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a DeviceDefinition",
+            "sourceId": "deviceDefinition-read-response",
+            "resource": "DeviceDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "deviceDefinition-read-response",
+            "expression": "DeviceDefinition.id",
+            "value": "${deviceDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read EventDefinition",
+      "description": "When the target server declares EventDefinition create and read interactions, POST /EventDefinition must create a synthetic EventDefinition and GET /EventDefinition/{id} must read it back. warningOnly: known ignixa-fhir FhirFakes generator bug producing spec-invalid content for this type (ignixa-fhir#119).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='EventDefinition').interaction.where(code='create').exists() and rest.resource.where(type='EventDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "EventDefinition",
+            "sourceId": "eventDefinition-fixture",
+            "responseId": "eventDefinition-create-response",
+            "description": "POST a synthetic EventDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "EventDefinition create must return HTTP 201 Created",
+            "sourceId": "eventDefinition-create-response",
+            "response": "created",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a EventDefinition",
+            "sourceId": "eventDefinition-create-response",
+            "resource": "EventDefinition",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "eventDefinition-create-response",
+            "expression": "EventDefinition.id.exists()",
+            "warningOnly": true
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "EventDefinition/${eventDefinitionId}",
+            "responseId": "eventDefinition-read-response",
+            "description": "GET the created EventDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "EventDefinition read must return HTTP 200 OK",
+            "sourceId": "eventDefinition-read-response",
+            "response": "okay",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a EventDefinition",
+            "sourceId": "eventDefinition-read-response",
+            "resource": "EventDefinition",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "eventDefinition-read-response",
+            "expression": "EventDefinition.id",
+            "value": "${eventDefinitionId}",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read Evidence",
+      "description": "When the target server declares Evidence create and read interactions, POST /Evidence must create a synthetic Evidence and GET /Evidence/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Evidence').interaction.where(code='create').exists() and rest.resource.where(type='Evidence').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Evidence",
+            "sourceId": "evidence-fixture",
+            "responseId": "evidence-create-response",
+            "description": "POST a synthetic Evidence"
+          }
+        },
+        {
+          "assert": {
+            "description": "Evidence create must return HTTP 201 Created",
+            "sourceId": "evidence-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a Evidence",
+            "sourceId": "evidence-create-response",
+            "resource": "Evidence"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "evidence-create-response",
+            "expression": "Evidence.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "Evidence/${evidenceId}",
+            "responseId": "evidence-read-response",
+            "description": "GET the created Evidence by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Evidence read must return HTTP 200 OK",
+            "sourceId": "evidence-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a Evidence",
+            "sourceId": "evidence-read-response",
+            "resource": "Evidence"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "evidence-read-response",
+            "expression": "Evidence.id",
+            "value": "${evidenceId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read EvidenceVariable",
+      "description": "When the target server declares EvidenceVariable create and read interactions, POST /EvidenceVariable must create a synthetic EvidenceVariable and GET /EvidenceVariable/{id} must read it back. warningOnly: known ignixa-fhir FhirFakes generator bug producing spec-invalid content for this type (ignixa-fhir#119).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='EvidenceVariable').interaction.where(code='create').exists() and rest.resource.where(type='EvidenceVariable').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "EvidenceVariable",
+            "sourceId": "evidenceVariable-fixture",
+            "responseId": "evidenceVariable-create-response",
+            "description": "POST a synthetic EvidenceVariable"
+          }
+        },
+        {
+          "assert": {
+            "description": "EvidenceVariable create must return HTTP 201 Created",
+            "sourceId": "evidenceVariable-create-response",
+            "response": "created",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a EvidenceVariable",
+            "sourceId": "evidenceVariable-create-response",
+            "resource": "EvidenceVariable",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "evidenceVariable-create-response",
+            "expression": "EvidenceVariable.id.exists()",
+            "warningOnly": true
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "EvidenceVariable/${evidenceVariableId}",
+            "responseId": "evidenceVariable-read-response",
+            "description": "GET the created EvidenceVariable by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "EvidenceVariable read must return HTTP 200 OK",
+            "sourceId": "evidenceVariable-read-response",
+            "response": "okay",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a EvidenceVariable",
+            "sourceId": "evidenceVariable-read-response",
+            "resource": "EvidenceVariable",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "evidenceVariable-read-response",
+            "expression": "EvidenceVariable.id",
+            "value": "${evidenceVariableId}",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ExampleScenario",
+      "description": "When the target server declares ExampleScenario create and read interactions, POST /ExampleScenario must create a synthetic ExampleScenario and GET /ExampleScenario/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ExampleScenario').interaction.where(code='create').exists() and rest.resource.where(type='ExampleScenario').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ExampleScenario",
+            "sourceId": "exampleScenario-fixture",
+            "responseId": "exampleScenario-create-response",
+            "description": "POST a synthetic ExampleScenario"
+          }
+        },
+        {
+          "assert": {
+            "description": "ExampleScenario create must return HTTP 201 Created",
+            "sourceId": "exampleScenario-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ExampleScenario",
+            "sourceId": "exampleScenario-create-response",
+            "resource": "ExampleScenario"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "exampleScenario-create-response",
+            "expression": "ExampleScenario.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ExampleScenario/${exampleScenarioId}",
+            "responseId": "exampleScenario-read-response",
+            "description": "GET the created ExampleScenario by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ExampleScenario read must return HTTP 200 OK",
+            "sourceId": "exampleScenario-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ExampleScenario",
+            "sourceId": "exampleScenario-read-response",
+            "resource": "ExampleScenario"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "exampleScenario-read-response",
+            "expression": "ExampleScenario.id",
+            "value": "${exampleScenarioId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ImmunizationEvaluation",
+      "description": "When the target server declares ImmunizationEvaluation create and read interactions, POST /ImmunizationEvaluation must create a synthetic ImmunizationEvaluation and GET /ImmunizationEvaluation/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ImmunizationEvaluation').interaction.where(code='create').exists() and rest.resource.where(type='ImmunizationEvaluation').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ImmunizationEvaluation",
+            "sourceId": "immunizationEvaluation-fixture",
+            "responseId": "immunizationEvaluation-create-response",
+            "description": "POST a synthetic ImmunizationEvaluation"
+          }
+        },
+        {
+          "assert": {
+            "description": "ImmunizationEvaluation create must return HTTP 201 Created",
+            "sourceId": "immunizationEvaluation-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ImmunizationEvaluation",
+            "sourceId": "immunizationEvaluation-create-response",
+            "resource": "ImmunizationEvaluation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "immunizationEvaluation-create-response",
+            "expression": "ImmunizationEvaluation.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ImmunizationEvaluation/${immunizationEvaluationId}",
+            "responseId": "immunizationEvaluation-read-response",
+            "description": "GET the created ImmunizationEvaluation by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ImmunizationEvaluation read must return HTTP 200 OK",
+            "sourceId": "immunizationEvaluation-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ImmunizationEvaluation",
+            "sourceId": "immunizationEvaluation-read-response",
+            "resource": "ImmunizationEvaluation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "immunizationEvaluation-read-response",
+            "expression": "ImmunizationEvaluation.id",
+            "value": "${immunizationEvaluationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read InsurancePlan",
+      "description": "When the target server declares InsurancePlan create and read interactions, POST /InsurancePlan must create a synthetic InsurancePlan and GET /InsurancePlan/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='InsurancePlan').interaction.where(code='create').exists() and rest.resource.where(type='InsurancePlan').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "InsurancePlan",
+            "sourceId": "insurancePlan-fixture",
+            "responseId": "insurancePlan-create-response",
+            "description": "POST a synthetic InsurancePlan"
+          }
+        },
+        {
+          "assert": {
+            "description": "InsurancePlan create must return HTTP 201 Created",
+            "sourceId": "insurancePlan-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a InsurancePlan",
+            "sourceId": "insurancePlan-create-response",
+            "resource": "InsurancePlan"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "insurancePlan-create-response",
+            "expression": "InsurancePlan.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "InsurancePlan/${insurancePlanId}",
+            "responseId": "insurancePlan-read-response",
+            "description": "GET the created InsurancePlan by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "InsurancePlan read must return HTTP 200 OK",
+            "sourceId": "insurancePlan-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a InsurancePlan",
+            "sourceId": "insurancePlan-read-response",
+            "resource": "InsurancePlan"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "insurancePlan-read-response",
+            "expression": "InsurancePlan.id",
+            "value": "${insurancePlanId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read Invoice",
+      "description": "When the target server declares Invoice create and read interactions, POST /Invoice must create a synthetic Invoice and GET /Invoice/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Invoice').interaction.where(code='create').exists() and rest.resource.where(type='Invoice').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "Invoice",
+            "sourceId": "invoice-fixture",
+            "responseId": "invoice-create-response",
+            "description": "POST a synthetic Invoice"
+          }
+        },
+        {
+          "assert": {
+            "description": "Invoice create must return HTTP 201 Created",
+            "sourceId": "invoice-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a Invoice",
+            "sourceId": "invoice-create-response",
+            "resource": "Invoice"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "invoice-create-response",
+            "expression": "Invoice.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "Invoice/${invoiceId}",
+            "responseId": "invoice-read-response",
+            "description": "GET the created Invoice by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "Invoice read must return HTTP 200 OK",
+            "sourceId": "invoice-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a Invoice",
+            "sourceId": "invoice-read-response",
+            "resource": "Invoice"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "invoice-read-response",
+            "expression": "Invoice.id",
+            "value": "${invoiceId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MedicationKnowledge",
+      "description": "When the target server declares MedicationKnowledge create and read interactions, POST /MedicationKnowledge must create a synthetic MedicationKnowledge and GET /MedicationKnowledge/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MedicationKnowledge').interaction.where(code='create').exists() and rest.resource.where(type='MedicationKnowledge').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MedicationKnowledge",
+            "sourceId": "medicationKnowledge-fixture",
+            "responseId": "medicationKnowledge-create-response",
+            "description": "POST a synthetic MedicationKnowledge"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicationKnowledge create must return HTTP 201 Created",
+            "sourceId": "medicationKnowledge-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MedicationKnowledge",
+            "sourceId": "medicationKnowledge-create-response",
+            "resource": "MedicationKnowledge"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "medicationKnowledge-create-response",
+            "expression": "MedicationKnowledge.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MedicationKnowledge/${medicationKnowledgeId}",
+            "responseId": "medicationKnowledge-read-response",
+            "description": "GET the created MedicationKnowledge by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MedicationKnowledge read must return HTTP 200 OK",
+            "sourceId": "medicationKnowledge-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MedicationKnowledge",
+            "sourceId": "medicationKnowledge-read-response",
+            "resource": "MedicationKnowledge"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "medicationKnowledge-read-response",
+            "expression": "MedicationKnowledge.id",
+            "value": "${medicationKnowledgeId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read MolecularSequence",
+      "description": "When the target server declares MolecularSequence create and read interactions, POST /MolecularSequence must create a synthetic MolecularSequence and GET /MolecularSequence/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='MolecularSequence').interaction.where(code='create').exists() and rest.resource.where(type='MolecularSequence').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "MolecularSequence",
+            "sourceId": "molecularSequence-fixture",
+            "responseId": "molecularSequence-create-response",
+            "description": "POST a synthetic MolecularSequence"
+          }
+        },
+        {
+          "assert": {
+            "description": "MolecularSequence create must return HTTP 201 Created",
+            "sourceId": "molecularSequence-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a MolecularSequence",
+            "sourceId": "molecularSequence-create-response",
+            "resource": "MolecularSequence"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "molecularSequence-create-response",
+            "expression": "MolecularSequence.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "MolecularSequence/${molecularSequenceId}",
+            "responseId": "molecularSequence-read-response",
+            "description": "GET the created MolecularSequence by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "MolecularSequence read must return HTTP 200 OK",
+            "sourceId": "molecularSequence-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a MolecularSequence",
+            "sourceId": "molecularSequence-read-response",
+            "resource": "MolecularSequence"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "molecularSequence-read-response",
+            "expression": "MolecularSequence.id",
+            "value": "${molecularSequenceId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ObservationDefinition",
+      "description": "When the target server declares ObservationDefinition create and read interactions, POST /ObservationDefinition must create a synthetic ObservationDefinition and GET /ObservationDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ObservationDefinition').interaction.where(code='create').exists() and rest.resource.where(type='ObservationDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ObservationDefinition",
+            "sourceId": "observationDefinition-fixture",
+            "responseId": "observationDefinition-create-response",
+            "description": "POST a synthetic ObservationDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "ObservationDefinition create must return HTTP 201 Created",
+            "sourceId": "observationDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ObservationDefinition",
+            "sourceId": "observationDefinition-create-response",
+            "resource": "ObservationDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "observationDefinition-create-response",
+            "expression": "ObservationDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ObservationDefinition/${observationDefinitionId}",
+            "responseId": "observationDefinition-read-response",
+            "description": "GET the created ObservationDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ObservationDefinition read must return HTTP 200 OK",
+            "sourceId": "observationDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ObservationDefinition",
+            "sourceId": "observationDefinition-read-response",
+            "resource": "ObservationDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "observationDefinition-read-response",
+            "expression": "ObservationDefinition.id",
+            "value": "${observationDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read OrganizationAffiliation",
+      "description": "When the target server declares OrganizationAffiliation create and read interactions, POST /OrganizationAffiliation must create a synthetic OrganizationAffiliation and GET /OrganizationAffiliation/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='OrganizationAffiliation').interaction.where(code='create').exists() and rest.resource.where(type='OrganizationAffiliation').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "OrganizationAffiliation",
+            "sourceId": "organizationAffiliation-fixture",
+            "responseId": "organizationAffiliation-create-response",
+            "description": "POST a synthetic OrganizationAffiliation"
+          }
+        },
+        {
+          "assert": {
+            "description": "OrganizationAffiliation create must return HTTP 201 Created",
+            "sourceId": "organizationAffiliation-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a OrganizationAffiliation",
+            "sourceId": "organizationAffiliation-create-response",
+            "resource": "OrganizationAffiliation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "organizationAffiliation-create-response",
+            "expression": "OrganizationAffiliation.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "OrganizationAffiliation/${organizationAffiliationId}",
+            "responseId": "organizationAffiliation-read-response",
+            "description": "GET the created OrganizationAffiliation by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "OrganizationAffiliation read must return HTTP 200 OK",
+            "sourceId": "organizationAffiliation-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a OrganizationAffiliation",
+            "sourceId": "organizationAffiliation-read-response",
+            "resource": "OrganizationAffiliation"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "organizationAffiliation-read-response",
+            "expression": "OrganizationAffiliation.id",
+            "value": "${organizationAffiliationId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read ServiceRequest",
+      "description": "When the target server declares ServiceRequest create and read interactions, POST /ServiceRequest must create a synthetic ServiceRequest and GET /ServiceRequest/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='ServiceRequest').interaction.where(code='create').exists() and rest.resource.where(type='ServiceRequest').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "ServiceRequest",
+            "sourceId": "serviceRequest-fixture",
+            "responseId": "serviceRequest-create-response",
+            "description": "POST a synthetic ServiceRequest"
+          }
+        },
+        {
+          "assert": {
+            "description": "ServiceRequest create must return HTTP 201 Created",
+            "sourceId": "serviceRequest-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a ServiceRequest",
+            "sourceId": "serviceRequest-create-response",
+            "resource": "ServiceRequest"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "serviceRequest-create-response",
+            "expression": "ServiceRequest.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "ServiceRequest/${serviceRequestId}",
+            "responseId": "serviceRequest-read-response",
+            "description": "GET the created ServiceRequest by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "ServiceRequest read must return HTTP 200 OK",
+            "sourceId": "serviceRequest-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a ServiceRequest",
+            "sourceId": "serviceRequest-read-response",
+            "resource": "ServiceRequest"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "serviceRequest-read-response",
+            "expression": "ServiceRequest.id",
+            "value": "${serviceRequestId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read SpecimenDefinition",
+      "description": "When the target server declares SpecimenDefinition create and read interactions, POST /SpecimenDefinition must create a synthetic SpecimenDefinition and GET /SpecimenDefinition/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='SpecimenDefinition').interaction.where(code='create').exists() and rest.resource.where(type='SpecimenDefinition').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "SpecimenDefinition",
+            "sourceId": "specimenDefinition-fixture",
+            "responseId": "specimenDefinition-create-response",
+            "description": "POST a synthetic SpecimenDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "SpecimenDefinition create must return HTTP 201 Created",
+            "sourceId": "specimenDefinition-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a SpecimenDefinition",
+            "sourceId": "specimenDefinition-create-response",
+            "resource": "SpecimenDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "specimenDefinition-create-response",
+            "expression": "SpecimenDefinition.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "SpecimenDefinition/${specimenDefinitionId}",
+            "responseId": "specimenDefinition-read-response",
+            "description": "GET the created SpecimenDefinition by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "SpecimenDefinition read must return HTTP 200 OK",
+            "sourceId": "specimenDefinition-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a SpecimenDefinition",
+            "sourceId": "specimenDefinition-read-response",
+            "resource": "SpecimenDefinition"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "specimenDefinition-read-response",
+            "expression": "SpecimenDefinition.id",
+            "value": "${specimenDefinitionId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Can create and read VerificationResult",
+      "description": "When the target server declares VerificationResult create and read interactions, POST /VerificationResult must create a synthetic VerificationResult and GET /VerificationResult/{id} must read it back.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='VerificationResult').interaction.where(code='create').exists() and rest.resource.where(type='VerificationResult').interaction.where(code='read').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "create"
+            },
+            "resource": "VerificationResult",
+            "sourceId": "verificationResult-fixture",
+            "responseId": "verificationResult-create-response",
+            "description": "POST a synthetic VerificationResult"
+          }
+        },
+        {
+          "assert": {
+            "description": "VerificationResult create must return HTTP 201 Created",
+            "sourceId": "verificationResult-create-response",
+            "response": "created"
+          }
+        },
+        {
+          "assert": {
+            "description": "Create response body must be a VerificationResult",
+            "sourceId": "verificationResult-create-response",
+            "resource": "VerificationResult"
+          }
+        },
+        {
+          "assert": {
+            "description": "Server must assign an id",
+            "sourceId": "verificationResult-create-response",
+            "expression": "VerificationResult.id.exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "read"
+            },
+            "url": "VerificationResult/${verificationResultId}",
+            "responseId": "verificationResult-read-response",
+            "description": "GET the created VerificationResult by server-assigned id"
+          }
+        },
+        {
+          "assert": {
+            "description": "VerificationResult read must return HTTP 200 OK",
+            "sourceId": "verificationResult-read-response",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read response body must be a VerificationResult",
+            "sourceId": "verificationResult-read-response",
+            "resource": "VerificationResult"
+          }
+        },
+        {
+          "assert": {
+            "description": "Read id must match the created id",
+            "sourceId": "verificationResult-read-response",
+            "expression": "VerificationResult.id",
+            "value": "${verificationResultId}",
+            "operator": "equals"
+          }
+        }
+      ]
+    }
+  ],
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "BiologicallyDerivedProduct/${biologicallyDerivedProductId}",
+            "description": "Teardown: delete the created BiologicallyDerivedProduct (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "BodyStructure/${bodyStructureId}",
+            "description": "Teardown: delete the created BodyStructure (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ChargeItemDefinition/${chargeItemDefinitionId}",
+            "description": "Teardown: delete the created ChargeItemDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CoverageEligibilityRequest/${coverageEligibilityRequestId}",
+            "description": "Teardown: delete the created CoverageEligibilityRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CoverageEligibilityResponse/${coverageEligibilityResponseId}",
+            "description": "Teardown: delete the created CoverageEligibilityResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceDefinition/${deviceDefinitionId}",
+            "description": "Teardown: delete the created DeviceDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EventDefinition/${eventDefinitionId}",
+            "description": "Teardown: delete the created EventDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Evidence/${evidenceId}",
+            "description": "Teardown: delete the created Evidence (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EvidenceVariable/${evidenceVariableId}",
+            "description": "Teardown: delete the created EvidenceVariable (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ExampleScenario/${exampleScenarioId}",
+            "description": "Teardown: delete the created ExampleScenario (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ImmunizationEvaluation/${immunizationEvaluationId}",
+            "description": "Teardown: delete the created ImmunizationEvaluation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "InsurancePlan/${insurancePlanId}",
+            "description": "Teardown: delete the created InsurancePlan (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Invoice/${invoiceId}",
+            "description": "Teardown: delete the created Invoice (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicationKnowledge/${medicationKnowledgeId}",
+            "description": "Teardown: delete the created MedicationKnowledge (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MolecularSequence/${molecularSequenceId}",
+            "description": "Teardown: delete the created MolecularSequence (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ObservationDefinition/${observationDefinitionId}",
+            "description": "Teardown: delete the created ObservationDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "OrganizationAffiliation/${organizationAffiliationId}",
+            "description": "Teardown: delete the created OrganizationAffiliation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ServiceRequest/${serviceRequestId}",
+            "description": "Teardown: delete the created ServiceRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SpecimenDefinition/${specimenDefinitionId}",
+            "description": "Teardown: delete the created SpecimenDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "VerificationResult/${verificationResultId}",
+            "description": "Teardown: delete the created VerificationResult (no-op if it was never created)"
+          }
+        }
+      ]
+    },
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "fhirVersion.startsWith('4.0') or fhirVersion.startsWith('4.3') or fhirVersion.startsWith('5.0')"
+    }
+  ]
+}

@@ -1,0 +1,2281 @@
+{
+  "resourceType": "TestScript",
+  "name": "Operations/import-search-2",
+  "description": "Search-parameter indexing conformance tests for reference, string, token, and uri searches, created via standard REST create/update as an $import-independent equivalent of the ImportXSearchTests suites (Part 2 of 2; see import-search.json for composite/date/number/quantity). Not requiresCapability-gated: this exercises standard resource search, which every FHIR server must support, not a conditionally-supported $-operation.",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Observation').searchParam.where(name='_tag').exists() and rest.resource.where(type='Patient').searchParam.where(name='_tag').exists() and rest.resource.where(type='Organization').updateCreate = true and rest.resource.where(type='Practitioner').updateCreate = true and rest.resource.where(type='Patient').updateCreate = true and rest.resource.where(type='Observation').updateCreate = true and rest.resource.where(type='ValueSet').updateCreate = true" }
+  ],
+  "fixture": [
+    {
+      "id": "ignixa-impsrch-ref-org",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-impsrch-ref-org",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "name": "Impsrch Test Org"
+      }
+    },
+    {
+      "id": "ignixa-impsrch-ref-pract",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-impsrch-ref-pract",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "name": [
+          {
+            "family": "ImpsrchPract"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-ref-pat-0",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-ref-pat-0",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "managingOrganization": {
+          "reference": "Organization/ignixa-impsrch-ref-org"
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-ref-pat-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-ref-pat-1",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "managingOrganization": {
+          "reference": "ignixa-impsrch-ref-org-untyped"
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-ref-pat-2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-ref-pat-2",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "generalPractitioner": [
+          {
+            "reference": "Practitioner/ignixa-impsrch-ref-pract"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-ref-pat-3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-ref-pat-3",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "generalPractitioner": [
+          {
+            "reference": "ignixa-impsrch-ref-pract-untyped"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-str-0",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-str-0",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "address": [
+          {
+            "city": "Seattle"
+          }
+        ],
+        "name": [
+          {
+            "family": "Smith",
+            "given": [
+              "Bea"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-str-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-str-1",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "address": [
+          {
+            "city": "Portland"
+          }
+        ],
+        "name": [
+          {
+            "family": "Williams"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-str-2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-str-2",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "address": [
+          {
+            "city": "Vancouver"
+          }
+        ],
+        "name": [
+          {
+            "family": "Anderson"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-str-3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-str-3",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "address": [
+          {
+            "city": "Lorem ipsum dolor sit amet consectetur adipiscing elit. Vestibulum quis molestie dui."
+          }
+        ],
+        "name": [
+          {
+            "family": "Murphy"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-str-4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-impsrch-str-4",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "address": [
+          {
+            "city": "Moscow"
+          }
+        ],
+        "name": [
+          {
+            "family": "Richard,Muller"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-0",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-0",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "system1",
+              "code": "code1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-1",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "system2",
+              "code": "code2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-2",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "text": "text"
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-3",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "system1",
+              "code": "code2",
+              "display": "text2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-4",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-4",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "system3",
+              "code": "code3",
+              "display": "text"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-5",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-5",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "text": "text",
+          "coding": [
+            {
+              "system": "system1",
+              "code": "code1"
+            },
+            {
+              "system": "system3",
+              "code": "code2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-6",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-6",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "system": "system2",
+              "code": "code1"
+            },
+            {
+              "system": "system3",
+              "code": "code3",
+              "display": "text2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-7",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-7",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "valueCodeableConcept": {
+          "coding": [
+            {
+              "code": "code3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ignixa-impsrch-tok-8",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-impsrch-tok-8",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "0000-1",
+              "display": "Test token"
+            }
+          ]
+        },
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "system",
+                "code": "test"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ignixa-impsrch-uri-0",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-impsrch-uri-0",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "active",
+        "url": "http://somewhere.com/test/system"
+      }
+    },
+    {
+      "id": "ignixa-impsrch-uri-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-impsrch-uri-1",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "active",
+        "url": "urn://localhost/test"
+      }
+    },
+    {
+      "id": "ignixa-impsrch-uri-2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-impsrch-uri-2",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "active",
+        "url": "http://example.org/rdf#54135-9"
+      }
+    },
+    {
+      "id": "ignixa-impsrch-uri-3",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "ValueSet",
+        "id": "ignixa-impsrch-uri-3",
+        "meta": {
+          "tag": [
+            {
+              "system": "http://ignixa.io/testscript/suite/test",
+              "code": "ignixa-impsrch-suite"
+            }
+          ]
+        },
+        "status": "active",
+        "url": "http://example.org/rdf#54135-9-9"
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Organization/ignixa-impsrch-ref-org",
+          "sourceId": "ignixa-impsrch-ref-org",
+          "description": "PUT Organization ref-org (referenced by managingOrganization)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Practitioner/ignixa-impsrch-ref-pract",
+          "sourceId": "ignixa-impsrch-ref-pract",
+          "description": "PUT Practitioner ref-pract (referenced by generalPractitioner)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-0",
+          "sourceId": "ignixa-impsrch-ref-pat-0",
+          "description": "PUT Patient ref-pat-0 (managingOrganization=Organization/ref-org, typed reference)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-1",
+          "sourceId": "ignixa-impsrch-ref-pat-1",
+          "description": "PUT Patient ref-pat-1 (managingOrganization=bare id, no type prefix; param type is constrained to Organization)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-2",
+          "sourceId": "ignixa-impsrch-ref-pat-2",
+          "description": "PUT Patient ref-pat-2 (generalPractitioner=Practitioner/ref-pract, typed reference)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-3",
+          "sourceId": "ignixa-impsrch-ref-pat-3",
+          "description": "PUT Patient ref-pat-3 (generalPractitioner=bare id, ambiguous type: Practitioner|Organization|PractitionerRole)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-str-0",
+          "sourceId": "ignixa-impsrch-str-0",
+          "description": "PUT Patient str-0 (Seattle, Smith/Bea)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-str-1",
+          "sourceId": "ignixa-impsrch-str-1",
+          "description": "PUT Patient str-1 (Portland, Williams)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-str-2",
+          "sourceId": "ignixa-impsrch-str-2",
+          "description": "PUT Patient str-2 (Vancouver, Anderson)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-str-3",
+          "sourceId": "ignixa-impsrch-str-3",
+          "description": "PUT Patient str-3 (long Lorem-ipsum city value containing 'Vestibulum', Murphy)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Patient/ignixa-impsrch-str-4",
+          "sourceId": "ignixa-impsrch-str-4",
+          "description": "PUT Patient str-4 (Moscow, family contains a literal comma: 'Richard,Muller')"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-0",
+          "sourceId": "ignixa-impsrch-tok-0",
+          "description": "PUT Observation tok-0 (valueCodeableConcept coding system1|code1)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-1",
+          "sourceId": "ignixa-impsrch-tok-1",
+          "description": "PUT Observation tok-1 (valueCodeableConcept coding system2|code2)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-2",
+          "sourceId": "ignixa-impsrch-tok-2",
+          "description": "PUT Observation tok-2 (valueCodeableConcept.text=text, no coding)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-3",
+          "sourceId": "ignixa-impsrch-tok-3",
+          "description": "PUT Observation tok-3 (valueCodeableConcept coding system1|code2, display=text2)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-4",
+          "sourceId": "ignixa-impsrch-tok-4",
+          "description": "PUT Observation tok-4 (valueCodeableConcept coding system3|code3, display=text)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-5",
+          "sourceId": "ignixa-impsrch-tok-5",
+          "description": "PUT Observation tok-5 (text=text plus codings system1|code1 and system3|code2)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-6",
+          "sourceId": "ignixa-impsrch-tok-6",
+          "description": "PUT Observation tok-6 (codings system2|code1 and system3|code3 display=text2)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-7",
+          "sourceId": "ignixa-impsrch-tok-7",
+          "description": "PUT Observation tok-7 (valueCodeableConcept coding with no system, code3)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "Observation/ignixa-impsrch-tok-8",
+          "sourceId": "ignixa-impsrch-tok-8",
+          "description": "PUT Observation tok-8 (category=system|test, no valueCodeableConcept)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-0",
+          "sourceId": "ignixa-impsrch-uri-0",
+          "description": "PUT ValueSet uri-0 (url=http://somewhere.com/test/system)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-1",
+          "sourceId": "ignixa-impsrch-uri-1",
+          "description": "PUT ValueSet uri-1 (url=urn://localhost/test)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-2",
+          "sourceId": "ignixa-impsrch-uri-2",
+          "description": "PUT ValueSet uri-2 (url=http://example.org/rdf#54135-9)"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "update"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-3",
+          "sourceId": "ignixa-impsrch-uri-3",
+          "description": "PUT ValueSet uri-3 (url=http://example.org/rdf#54135-9-9)"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "Reference: typed reference search (organization=Organization/{id})",
+      "description": "Patient?organization=Organization/{id} matches on a typed managingOrganization reference. ref-pat-0 (managingOrganization=Organization/ref-org) must match; ref-pat-1 (untyped reference to a different id) must not.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?organization=Organization/ignixa-impsrch-ref-org&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "ref-org-typed",
+            "description": "GET Patient?organization=Organization/ref-org"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include ref-pat-0 (managingOrganization=Organization/ref-org)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include ref-pat-1 (different, untyped reference)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-1').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reference: untyped resource reference is indexed under the parameter's constrained type",
+      "description": "Patient?organization={id} matches ref-pat-1, whose managingOrganization reference omits the type prefix; the organization parameter is constrained to Organization so the engine must still index it.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?organization=ignixa-impsrch-ref-org-untyped&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "ref-org-untyped",
+            "description": "GET Patient?organization={untyped-id}"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include ref-pat-1 (untyped managingOrganization reference)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-1').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include ref-pat-0 (different id)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-0').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reference: general-practitioner typed reference and type-modifier bare id both resolve",
+      "description": "Patient?general-practitioner=Practitioner/{id} and ?general-practitioner:Practitioner={id} are equivalent ways to match a typed reference. Both must match ref-pat-2.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?general-practitioner=Practitioner/ignixa-impsrch-ref-pract&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "ref-gp-typed",
+            "description": "GET Patient?general-practitioner=Practitioner/ref-pract"
+          }
+        },
+        {
+          "assert": {
+            "description": "Typed reference: HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Typed reference: returns a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Typed reference: must include ref-pat-2",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-2').exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?general-practitioner:Practitioner=ignixa-impsrch-ref-pract&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "ref-gp-modifier",
+            "description": "GET Patient?general-practitioner:Practitioner=ref-pract"
+          }
+        },
+        {
+          "assert": {
+            "description": "Type-modifier + bare id: HTTP 200",
+            "response": "okay",
+            "sourceId": "ref-gp-modifier"
+          }
+        },
+        {
+          "assert": {
+            "description": "Type-modifier + bare id: must include ref-pat-2",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-2').exists()",
+            "sourceId": "ref-gp-modifier"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reference: untyped resource reference matches an untyped bare-id query",
+      "description": "Patient?general-practitioner={id} matches ref-pat-3, whose generalPractitioner reference is untyped (ambiguous: Practitioner|Organization|PractitionerRole), when the query is also untyped.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?general-practitioner=ignixa-impsrch-ref-pract-untyped&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "ref-gp-untyped",
+            "description": "GET Patient?general-practitioner={untyped-id}"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include ref-pat-3 (untyped generalPractitioner reference)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-3').exists()"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reference: type-modifier query against an untyped resource reference is a known ambiguous edge case",
+      "description": "Patient?general-practitioner:Practitioner={id} against ref-pat-3 (whose reference has no type, and the param can resolve to Practitioner|Organization|PractitionerRole) is not guaranteed to match since the type is never resolved. Servers may vary here, hence warningOnly.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?general-practitioner:Practitioner=ignixa-impsrch-ref-pract-untyped&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "ref-gp-untyped-modifier",
+            "description": "GET Patient?general-practitioner:Practitioner={untyped-id}"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Ambiguous typed match against an untyped reference is not expected to succeed",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-ref-pat-3').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: default modifier is a case-insensitive starts-with match",
+      "description": "Patient?address-city=sea matches str-0 (Seattle) case-insensitively via starts-with; str-1 (Portland) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?address-city=sea&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-default",
+            "description": "GET Patient?address-city=sea"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-0 (Seattle starts with sea, case-insensitive)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include str-1 (Portland)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-1').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: :exact modifier requires a case-sensitive full match",
+      "description": "Patient?address-city:exact=Seattle matches str-0; the same query with lowercase 'seattle' must not match since :exact is case-sensitive.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?address-city:exact=Seattle&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-exact-match",
+            "description": "GET Patient?address-city:exact=Seattle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Exact match: HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Exact match: returns a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Exact match: must include str-0",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?address-city:exact=seattle&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-exact-miss",
+            "description": "GET Patient?address-city:exact=seattle (wrong case)"
+          }
+        },
+        {
+          "assert": {
+            "description": "Case-mismatch query: HTTP 200",
+            "response": "okay",
+            "sourceId": "str-exact-miss"
+          }
+        },
+        {
+          "assert": {
+            "description": "Case-mismatch query: must NOT include str-0 (exact is case-sensitive)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true,
+            "sourceId": "str-exact-miss"
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: :contains modifier matches a substring anywhere in the value",
+      "description": "Patient?address-city:contains=att matches str-0 (Seattle contains 'att'); str-1 (Portland) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?address-city:contains=att&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-contains",
+            "description": "GET Patient?address-city:contains=att"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-0 (Seattle contains att)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include str-1 (Portland)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-1').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: :contains matches a substring within a long descriptive value",
+      "description": "Patient?address-city:contains=Vestibulum matches str-3, whose city is a long Lorem-ipsum value containing 'Vestibulum'; str-0 (Seattle) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?address-city:contains=Vestibulum&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-contains-long",
+            "description": "GET Patient?address-city:contains=Vestibulum"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-3 (long value contains Vestibulum)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-3').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include str-0 (Seattle)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: comma-separated values are ORed",
+      "description": "Patient?family=Smith,Anderson matches str-0 (Smith) and str-2 (Anderson); str-1 (Williams) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?family=Smith,Anderson&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-or-comma",
+            "description": "GET Patient?family=Smith,Anderson"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-0 (Smith)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-2 (Anderson)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-2').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include str-1 (Williams)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-1').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: repeating the name parameter ANDs across given and family",
+      "description": "Patient?name=Bea&name=Smith requires one name token to match Bea and another to match Smith; only str-0 (given=Bea, family=Smith) satisfies both. str-2 (Anderson) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?name=Bea&name=Smith&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-and-name",
+            "description": "GET Patient?name=Bea&name=Smith"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-0 (Bea Smith)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include str-2 (Anderson)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-2').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "String: an escaped comma is treated as a literal character, not a value separator",
+      "description": "Patient?name=Richard\\,Muller (backslash-escaped comma) searches for the literal string 'Richard,Muller' as a single value, matching str-4's family name. str-0 (Smith) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Patient",
+            "params": "?name=Richard\\,Muller&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "str-escaped-comma",
+            "description": "GET Patient?name=Richard\\,Muller"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include str-4 (family='Richard,Muller')",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-4').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include str-0 (Smith)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-str-0').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token: bare code matches the code in any system",
+      "description": "Observation?value-concept=code1 (no system) matches any resource with a code1 coding regardless of system: tok-0, tok-5, tok-6. tok-1 (code2) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Observation",
+            "params": "?value-concept=code1&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "tok-bare",
+            "description": "GET Observation?value-concept=code1"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-0 (system1|code1)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-5 (system1|code1)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-5').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-6 (system2|code1)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-6').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-1 (code2)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-1').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token: system|code requires an exact system+code match",
+      "description": "Observation?value-concept=system2|code2 matches only tok-1; tok-3 (system1|code2, same code but different system) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Observation",
+            "params": "?value-concept=system2|code2&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "tok-syscode",
+            "description": "GET Observation?value-concept=system2|code2"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-1 (system2|code2)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-1').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-3 (system1|code2)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-3').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token: |code (explicit empty system) matches only codings without a system",
+      "description": "Observation?value-concept=|code3 matches tok-7 (coding has no system); tok-4 (system3|code3, has a system) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Observation",
+            "params": "?value-concept=|code3&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "tok-nosys",
+            "description": "GET Observation?value-concept=|code3"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-7 (coding with no system, code3)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-7').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-4 (system3|code3, has a system)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-4').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token: :text modifier matches CodeableConcept.text or a coding's display",
+      "description": "Observation?value-concept:text=text2 matches tok-3 (coding display=text2) and tok-6 (coding display=text2); tok-2 (text=text, not text2) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Observation",
+            "params": "?value-concept:text=text2&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "tok-text",
+            "description": "GET Observation?value-concept:text=text2"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-3 (display=text2)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-3').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-6 (display=text2)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-6').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-2 (text=text)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-2').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token: :not modifier excludes resources with a matching value",
+      "description": "Observation?value-concept:not=code1 must NOT include tok-0, tok-5, or tok-6 (all have a code1 coding); it must include tok-1 (no code1 coding).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Observation",
+            "params": "?value-concept:not=code1&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "tok-not",
+            "description": "GET Observation?value-concept:not=code1"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-1 (no code1 coding)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-1').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-0 (has code1)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-0').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-5 (has code1)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-5').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-6 (has code1 in system2)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-6').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token: :not modifier includes resources missing the searched value entirely",
+      "description": "Observation?category:not=test must include tok-0 (no category element at all — a resource missing the parameter still satisfies :not); it must NOT include tok-8 (category=system|test).",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "Observation",
+            "params": "?category:not=test&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "tok-not-missing",
+            "description": "GET Observation?category:not=test"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include tok-0 (no category at all)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include tok-8 (category=test)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-tok-8').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Uri: exact match is case-sensitive",
+      "description": "ValueSet?url=http://somewhere.com/test/system matches uri-0 exactly; the same url with a different case (somewhere.COM) must not match since uri values are case-sensitive.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "ValueSet",
+            "params": "?url=http://somewhere.com/test/system&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "uri-exact-match",
+            "description": "GET ValueSet?url=http://somewhere.com/test/system"
+          }
+        },
+        {
+          "assert": {
+            "description": "Exact match: HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Exact match: returns a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Exact match: must include uri-0",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-0').exists()"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "ValueSet",
+            "params": "?url=http://somewhere.COM/test/system&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "uri-exact-miss",
+            "description": "GET ValueSet?url=http://somewhere.COM/test/system (different case)"
+          }
+        },
+        {
+          "assert": {
+            "description": "Case-mismatch query: HTTP 200",
+            "response": "okay",
+            "sourceId": "uri-exact-miss"
+          }
+        },
+        {
+          "assert": {
+            "description": "Case-mismatch query: must NOT include uri-0 (uri match is case-sensitive)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-0').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true,
+            "sourceId": "uri-exact-miss"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Uri: :above matches stored urls that are prefixes (ancestors) of the search value",
+      "description": "ValueSet?url:above=http://somewhere.com/test/system/123 matches uri-0, whose url is a prefix of the (more specific) search value; uri-2 (unrelated url) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "ValueSet",
+            "params": "?url:above=http://somewhere.com/test/system/123&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "uri-above",
+            "description": "GET ValueSet?url:above=http://somewhere.com/test/system/123"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include uri-0 (its url is a prefix of the search value)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include uri-2 (unrelated url)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-2').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "Uri: :below matches stored urls that start with the (shorter) search value",
+      "description": "ValueSet?url:below=http matches uri-0, uri-2, and uri-3 (all start with 'http'); uri-1 (urn scheme) must not match.",
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "search"
+            },
+            "resource": "ValueSet",
+            "params": "?url:below=http&_tag=http://ignixa.io/testscript/suite/test|ignixa-impsrch-suite&_count=100",
+            "responseId": "uri-below",
+            "description": "GET ValueSet?url:below=http"
+          }
+        },
+        {
+          "assert": {
+            "description": "Search must return HTTP 200",
+            "response": "okay"
+          }
+        },
+        {
+          "assert": {
+            "description": "Response must be a Bundle",
+            "resource": "Bundle"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include uri-0",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-0').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include uri-2",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-2').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must include uri-3",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-3').exists()"
+          }
+        },
+        {
+          "assert": {
+            "description": "Must NOT include uri-1 (urn scheme)",
+            "expression": "entry.where(resource.id = 'ignixa-impsrch-uri-1').exists()",
+            "value": "false",
+            "operator": "equals",
+            "warningOnly": true
+          }
+        }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-3",
+          "description": "Teardown: delete ref-pat-3"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-2",
+          "description": "Teardown: delete ref-pat-2"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-1",
+          "description": "Teardown: delete ref-pat-1"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-ref-pat-0",
+          "description": "Teardown: delete ref-pat-0"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Practitioner/ignixa-impsrch-ref-pract",
+          "description": "Teardown: delete ref-pract"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Organization/ignixa-impsrch-ref-org",
+          "description": "Teardown: delete ref-org"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-str-4",
+          "description": "Teardown: delete str-4"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-str-3",
+          "description": "Teardown: delete str-3"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-str-2",
+          "description": "Teardown: delete str-2"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-str-1",
+          "description": "Teardown: delete str-1"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Patient/ignixa-impsrch-str-0",
+          "description": "Teardown: delete str-0"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-8",
+          "description": "Teardown: delete tok-8"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-7",
+          "description": "Teardown: delete tok-7"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-6",
+          "description": "Teardown: delete tok-6"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-5",
+          "description": "Teardown: delete tok-5"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-4",
+          "description": "Teardown: delete tok-4"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-3",
+          "description": "Teardown: delete tok-3"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-2",
+          "description": "Teardown: delete tok-2"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-1",
+          "description": "Teardown: delete tok-1"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "Observation/ignixa-impsrch-tok-0",
+          "description": "Teardown: delete tok-0"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-3",
+          "description": "Teardown: delete uri-3"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-2",
+          "description": "Teardown: delete uri-2"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-1",
+          "description": "Teardown: delete uri-1"
+        }
+      },
+      {
+        "operation": {
+          "type": {
+            "code": "delete"
+          },
+          "url": "ValueSet/ignixa-impsrch-uri-0",
+          "description": "Teardown: delete uri-0"
+        }
+      }
+    ]
+  }
+}

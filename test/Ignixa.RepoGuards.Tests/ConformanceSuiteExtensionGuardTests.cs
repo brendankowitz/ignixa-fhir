@@ -1,0 +1,128 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License. See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Text.Json;
+using Shouldly;
+using Xunit;
+
+namespace Ignixa.RepoGuards.Tests;
+
+/// <summary>
+/// Guards the conformance corpus against extension drift (ADR 2607). Unknown non-modifier
+/// extensions are silently ignored per the FHIR spec, so a suite authored against an engine
+/// capability that does not ship would pass parsing and simply not do what its author
+/// intended. This asserts every Ignixa-canonical extension URL used by a suite is one the
+/// engine actually implements.
+/// </summary>
+public class ConformanceSuiteExtensionGuardTests
+{
+    private const string IgnixaExtensionPrefix = "http://ignixa.io/testscript/";
+
+    // ADR 2607 documents the first four. The last three landed after it was written
+    // (assertionAnyOfGroup and assertionWhenResponseStatus in PR #330, waitFor separately)
+    // and are implemented in Ignixa.TestScript, so suites may legitimately use them.
+    // Adding a URL here without a corresponding engine implementation defeats this guard.
+    private static readonly HashSet<string> KnownExtensionUrls = new(StringComparer.Ordinal)
+    {
+        "http://ignixa.io/testscript/parametrize",
+        "http://ignixa.io/testscript/fhirVersions",
+        "http://ignixa.io/testscript/requiresCapability",
+        "http://ignixa.io/testscript/fhirfakes",
+        "http://ignixa.io/testscript/assertionAnyOfGroup",
+        "http://ignixa.io/testscript/assertionWhenResponseStatus",
+        "http://ignixa.io/testscript/waitFor",
+    };
+
+    [Fact]
+    public void GivenConformanceSuites_WhenReadingExtensionUrls_ThenAllAreImplementedByTheEngine()
+    {
+        var suiteFiles = EnumerateSuiteFiles().ToList();
+        suiteFiles.ShouldNotBeEmpty("Expected to find conformance suites; scan path may be wrong.");
+
+        var unknown = suiteFiles
+            .SelectMany(file => CollectIgnixaExtensionUrls(file).Select(url => (file, url)))
+            .Where(pair => !KnownExtensionUrls.Contains(pair.url))
+            .Select(pair => $"{Path.GetFileName(pair.file)}: {pair.url}")
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        unknown.ShouldBeEmpty(
+            "A suite uses an Ignixa TestScript extension the engine does not implement (ADR 2607). " +
+            $"Known URLs: {string.Join(", ", KnownExtensionUrls)}. " +
+            "Unknown non-modifier extensions are silently ignored, so this would not fail at runtime — " +
+            "either implement the extension in Ignixa.TestScript and add it here, or fix the suite.");
+    }
+
+    private static IEnumerable<string> EnumerateSuiteFiles()
+    {
+        var suitesRoot = Path.Combine(
+            RepoRoot.Find(), "src", "Core", "Ignixa.TestScript.Suites", "testscripts");
+
+        Directory.Exists(suitesRoot).ShouldBeTrue($"Expected conformance suites at {suitesRoot}.");
+        return Directory.EnumerateFiles(suitesRoot, "*.json", SearchOption.AllDirectories);
+    }
+
+    private static IEnumerable<string> CollectIgnixaExtensionUrls(string filePath)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(filePath));
+        return CollectFromElement(document.RootElement).ToList();
+    }
+
+    // Recurses the whole document but only harvests url from members of an "extension" or
+    // "modifierExtension" array. Two reasons it is not simply "every url property":
+    //   - Resources carry their own canonical url (SearchParameter.url, ValueSet.url), and
+    //     several fixtures mint those under this same host. Those are resource identities,
+    //     not extensions, and flagging them is a false positive.
+    //   - The search must still be depth-first over arbitrary nesting, because fhirfakes is
+    //     declared on the inline resource body carried by fixture[].resource rather than at
+    //     the top level, so a walk limited to TestScript.extension[]/test[].extension[]
+    //     would miss it.
+    private static IEnumerable<string> CollectFromElement(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (IsExtensionArray(property))
+                    {
+                        foreach (var url in ReadExtensionUrls(property.Value))
+                            yield return url;
+                    }
+
+                    foreach (var nested in CollectFromElement(property.Value))
+                        yield return nested;
+                }
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    foreach (var nested in CollectFromElement(item))
+                        yield return nested;
+                }
+                break;
+        }
+    }
+
+    private static bool IsExtensionArray(JsonProperty property) =>
+        property.Value.ValueKind == JsonValueKind.Array &&
+        property.Name is "extension" or "modifierExtension";
+
+    private static IEnumerable<string> ReadExtensionUrls(JsonElement extensionArray)
+    {
+        foreach (var extension in extensionArray.EnumerateArray())
+        {
+            if (extension.ValueKind == JsonValueKind.Object &&
+                extension.TryGetProperty("url", out var urlElement) &&
+                urlElement.ValueKind == JsonValueKind.String &&
+                urlElement.GetString() is { } url &&
+                url.StartsWith(IgnixaExtensionPrefix, StringComparison.Ordinal))
+            {
+                yield return url;
+            }
+        }
+    }
+}

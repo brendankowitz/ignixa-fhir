@@ -1,0 +1,258 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-bulk-delete",
+  "description": "$bulk-delete conformance tests: async job kick-off (202 + Content-Location) at system and type scope, kick-off validation for hardDelete/purgeHistory/excludedResourceTypes/_include/_revinclude/_remove-references, and invalid-search-parameter rejection (from BulkDeleteTests). Job completion is not verified, only kick-off acceptance and a single best-effort status poll (warningOnly).",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.operation.where(name='bulk-delete').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "basic-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-basic-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-basic" }] },
+        "name": [{ "family": "BulkDeleteBasic", "given": ["One"] }]
+      }
+    },
+    {
+      "id": "basic-pat2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-basic-pat2",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-basic" }] },
+        "name": [{ "family": "BulkDeleteBasic", "given": ["Two"] }]
+      }
+    },
+    {
+      "id": "basic-org1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-bd-basic-org1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-basic" }] },
+        "name": "BulkDeleteBasic Org"
+      }
+    },
+    {
+      "id": "typeorg-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-bd-typeorg-1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-typeorg" }] },
+        "name": "BulkDeleteTypeScoped Org 1"
+      }
+    },
+    {
+      "id": "typeorg-2",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Organization",
+        "id": "ignixa-bd-typeorg-2",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-typeorg" }] },
+        "name": "BulkDeleteTypeScoped Org 2"
+      }
+    },
+    {
+      "id": "hard-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-hard-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-hard" }] },
+        "name": [{ "family": "BulkHardDelete", "given": ["Pat"] }]
+      }
+    },
+    {
+      "id": "purge-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-purge-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-purge" }] },
+        "name": [{ "family": "BulkPurgeHistory", "given": ["Pat"] }]
+      }
+    },
+    {
+      "id": "excl-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-excl-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-excl" }] },
+        "name": [{ "family": "BulkExcluded", "given": ["Pat"] }]
+      }
+    },
+    {
+      "id": "excl-obs1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-bd-excl-obs1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-excl" }] },
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
+        "subject": { "reference": "Patient/ignixa-bd-excl-pat1" }
+      }
+    },
+    {
+      "id": "incl-obs1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Observation",
+        "id": "ignixa-bd-incl-obs1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-incl" }] },
+        "status": "final",
+        "code": { "coding": [{ "system": "http://loinc.org", "code": "8867-4", "display": "Heart rate" }] },
+        "subject": { "reference": "Patient/ignixa-bd-incl-pat1" }
+      }
+    },
+    {
+      "id": "incl-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-incl-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-incl" }] },
+        "name": [{ "family": "BulkIncludeReferenced", "given": ["Pat"] }]
+      }
+    },
+    {
+      "id": "revincl-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-revincl-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-revincl" }] },
+        "name": [{ "family": "BulkRevInclude", "given": ["Pat"] }]
+      }
+    },
+    {
+      "id": "remref-pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-bd-remref-pat1",
+        "meta": { "tag": [{ "system": "http://ignixa.io/testscript/suite/test", "code": "ignixa-bd-remref" }] },
+        "name": [{ "family": "BulkRemoveReferences", "given": ["Pat"] }]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "name": "bulkDeleteBasicLocation",
+      "sourceId": "bulk-delete-basic-kickoff",
+      "headerField": "Content-Location",
+      "defaultValue": "$bulk-delete",
+      "description": "Job-status URL from the kickoff response's Content-Location header (falls back to $bulk-delete if absent)."
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-basic-pat1", "sourceId": "basic-pat1", "description": "PUT Patient/ignixa-bd-basic-pat1 (tag=ignixa-bd-basic)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-basic-pat2", "sourceId": "basic-pat2", "description": "PUT Patient/ignixa-bd-basic-pat2 (tag=ignixa-bd-basic)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-bd-basic-org1", "sourceId": "basic-org1", "description": "PUT Organization/ignixa-bd-basic-org1 (tag=ignixa-bd-basic)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-bd-typeorg-1", "sourceId": "typeorg-1", "description": "PUT Organization/ignixa-bd-typeorg-1 (tag=ignixa-bd-typeorg)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Organization/ignixa-bd-typeorg-2", "sourceId": "typeorg-2", "description": "PUT Organization/ignixa-bd-typeorg-2 (tag=ignixa-bd-typeorg)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-hard-pat1", "sourceId": "hard-pat1", "description": "PUT Patient/ignixa-bd-hard-pat1 (tag=ignixa-bd-hard)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-purge-pat1", "sourceId": "purge-pat1", "description": "PUT Patient/ignixa-bd-purge-pat1 (tag=ignixa-bd-purge)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-excl-pat1", "sourceId": "excl-pat1", "description": "PUT Patient/ignixa-bd-excl-pat1 (tag=ignixa-bd-excl)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-bd-excl-obs1", "sourceId": "excl-obs1", "description": "PUT Observation/ignixa-bd-excl-obs1 (tag=ignixa-bd-excl, subject=excl-pat1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-incl-pat1", "sourceId": "incl-pat1", "description": "PUT Patient/ignixa-bd-incl-pat1 (tag=ignixa-bd-incl)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Observation/ignixa-bd-incl-obs1", "sourceId": "incl-obs1", "description": "PUT Observation/ignixa-bd-incl-obs1 (tag=ignixa-bd-incl, subject=incl-pat1)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-revincl-pat1", "sourceId": "revincl-pat1", "description": "PUT Patient/ignixa-bd-revincl-pat1 (tag=ignixa-bd-revincl)" } },
+      { "operation": { "type": { "code": "update" }, "url": "Patient/ignixa-bd-remref-pat1", "sourceId": "remref-pat1", "description": "PUT Patient/ignixa-bd-remref-pat1 (tag=ignixa-bd-remref)" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "$bulk-delete kick-off: system-level, multiple resource types",
+      "description": "System-level $bulk-delete kick-off across multiple resource types must return 202 Accepted with a non-empty Content-Location header.",
+      "action": [
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-basic", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-basic-kickoff", "description": "DELETE $bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-basic" } },
+        { "assert": { "description": "Kick-off must return 202 Accepted", "responseCode": "202" } },
+        { "assert": { "description": "Content-Location header must be present and non-empty", "headerField": "Content-Location" } }
+      ]
+    },
+    {
+      "name": "$bulk-delete: single best-effort status poll",
+      "description": "A single status check on the kicked-off job's Content-Location; warningOnly since the job may finish before or after this check.",
+      "action": [
+        { "operation": { "type": { "code": "read" }, "method": "GET", "url": "${bulkDeleteBasicLocation}", "responseId": "bulk-delete-basic-poll", "description": "GET the bulk-delete job status URL" } },
+        { "assert": { "description": "Status poll should return a 2xx status, either 202 (still running) or 200 (complete) (warningOnly: timing-dependent)", "response": "okay", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "$bulk-delete: invalid search parameter is rejected with 400",
+      "description": "An invalid search parameter must be rejected synchronously with 400 before any job is created.",
+      "action": [
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-badreq&invalidParam=badRequest", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-bad-request", "description": "DELETE $bulk-delete?_tag=...&invalidParam=badRequest" } },
+        { "assert": { "description": "Must return HTTP 400", "response": "bad" } }
+      ]
+    },
+    {
+      "name": "$bulk-delete kick-off: type-scoped (Organization/$bulk-delete)",
+      "description": "Type-scoped $bulk-delete (Organization) kick-off must return 202 Accepted with a Content-Location header.",
+      "action": [
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "Organization/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-typeorg", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-type-scoped-kickoff", "description": "DELETE Organization/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-typeorg" } },
+        { "assert": { "description": "Type-scoped kick-off must return 202 Accepted", "response": "okay" } },
+        { "assert": { "description": "Content-Location header must be present and non-empty", "headerField": "Content-Location" } }
+      ]
+    },
+    {
+      "name": "$bulk-delete kick-off accepts hardDelete / purgeHistory / excludedResourceTypes / _include / _revinclude / _remove-references options",
+      "description": "Kick-off must accept each optional query parameter (_hardDelete, _purgeHistory, excludedResourceTypes, _include, _revinclude, and _hardDelete+_remove-references together) and return 202 Accepted; resulting deletion counts are not verified.",
+      "action": [
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "Patient/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-hard&_hardDelete=true", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-hard-kickoff", "description": "DELETE Patient/$bulk-delete?_tag=...&_hardDelete=true" } },
+        { "assert": { "description": "_hardDelete=true kick-off must return 202 Accepted", "sourceId": "bulk-delete-hard-kickoff", "response": "okay" } },
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "Patient/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-purge&_purgeHistory=true", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-purge-kickoff", "description": "DELETE Patient/$bulk-delete?_tag=...&_purgeHistory=true" } },
+        { "assert": { "description": "_purgeHistory=true kick-off must return 202 Accepted", "sourceId": "bulk-delete-purge-kickoff", "response": "okay" } },
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-excl&excludedResourceTypes=Observation", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-excluded-kickoff", "description": "DELETE $bulk-delete?_tag=...&excludedResourceTypes=Observation" } },
+        { "assert": { "description": "excludedResourceTypes kick-off must return 202 Accepted", "sourceId": "bulk-delete-excluded-kickoff", "response": "okay" } },
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "Observation/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-incl&_include=Observation:*", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-include-kickoff", "description": "DELETE Observation/$bulk-delete?_tag=...&_include=Observation:*" } },
+        { "assert": { "description": "_include kick-off must return 202 Accepted", "sourceId": "bulk-delete-include-kickoff", "response": "okay" } },
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "Patient/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-revincl&_revinclude=*:*", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-revinclude-kickoff", "description": "DELETE Patient/$bulk-delete?_tag=...&_revinclude=*:*" } },
+        { "assert": { "description": "_revinclude kick-off must return 202 Accepted", "sourceId": "bulk-delete-revinclude-kickoff", "response": "okay" } },
+        { "operation": { "type": { "code": "$bulk-delete" }, "method": "DELETE", "url": "Patient/$bulk-delete?_tag=http://ignixa.io/testscript/suite/test|ignixa-bd-remref&_hardDelete=true&_remove-references=true", "requestHeader": [ { "field": "Prefer", "value": "respond-async" } ], "responseId": "bulk-delete-remove-references-kickoff", "description": "DELETE Patient/$bulk-delete?_tag=...&_hardDelete=true&_remove-references=true" } },
+        { "assert": { "description": "_remove-references kick-off must return 202 Accepted", "sourceId": "bulk-delete-remove-references-kickoff", "response": "okay" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-basic-pat1", "description": "Teardown (defensive, in case the async job had not yet deleted it): delete basic-pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-basic-pat2", "description": "Teardown (defensive): delete basic-pat2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-bd-basic-org1", "description": "Teardown (defensive): delete basic-org1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-bd-typeorg-1", "description": "Teardown (defensive): delete typeorg-1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Organization/ignixa-bd-typeorg-2", "description": "Teardown (defensive): delete typeorg-2" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-hard-pat1", "description": "Teardown (defensive): delete hard-pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-purge-pat1", "description": "Teardown (defensive): delete purge-pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-bd-excl-obs1", "description": "Teardown (defensive): delete excl-obs1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-excl-pat1", "description": "Teardown (defensive): delete excl-pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Observation/ignixa-bd-incl-obs1", "description": "Teardown (defensive): delete incl-obs1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-incl-pat1", "description": "Teardown (defensive): delete incl-pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-revincl-pat1", "description": "Teardown (defensive): delete revincl-pat1" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-bd-remref-pat1", "description": "Teardown (defensive): delete remref-pat1" } }
+    ]
+  }
+}

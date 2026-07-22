@@ -1,0 +1,84 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-operation-versions",
+  "description": "Content-negotiation conformance for the Microsoft-proprietary '$versions' operation (from OperationVersionsTests.cs): valid Accept headers return 200 with a matching Content-Type, a missing Accept defaults to JSON, and an invalid Accept returns 406. All assertions are warningOnly since '$versions' isn't part of core FHIR and may 404 if unimplemented.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "rest.operation.where(name='versions').exists()"
+    }
+  ],
+  "test": [
+    {
+      "name": "$versions honors a valid JSON Accept header",
+      "description": "GET $versions with Accept: application/fhir+json should return 200 with a matching Content-Type (also covers the 'application/json' alias); warningOnly since $versions is proprietary.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$versions" },
+            "url": "$versions",
+            "method": "GET",
+            "accept": "application/fhir+json",
+            "responseId": "versions-json-response",
+            "description": "GET /$versions with Accept: application/fhir+json"
+          }
+        },
+        { "assert": { "description": "Server should return HTTP 200 (warningOnly: operation may be unimplemented)", "response": "okay" } },
+        { "assert": { "description": "Response Content-Type should echo 'application/fhir+json' exactly (warningOnly, see above)", "contentType": "application/fhir+json" } }
+      ]
+    },
+    {
+      "name": "$versions honors a valid XML Accept header",
+      "description": "GET $versions with Accept: application/fhir+xml should return 200 with a matching Content-Type (also covers the 'application/xml' alias); warningOnly since $versions is proprietary and XML support is optional.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$versions" },
+            "url": "$versions",
+            "method": "GET",
+            "accept": "application/fhir+xml",
+            "responseId": "versions-xml-response",
+            "description": "GET /$versions with Accept: application/fhir+xml"
+          }
+        },
+        { "assert": { "description": "Server should return HTTP 200 (warningOnly: operation and/or XML format may be unimplemented)", "response": "okay" } },
+        { "assert": { "description": "Response Content-Type should echo 'application/fhir+xml' exactly (warningOnly, see above)", "contentType": "application/fhir+xml" } }
+      ]
+    },
+    {
+      "name": "$versions with no Accept header defaults to application/fhir+json",
+      "description": "GET $versions with no Accept header should default to Content-Type application/fhir+json; warningOnly since $versions is proprietary.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$versions" },
+            "url": "$versions",
+            "method": "GET",
+            "responseId": "versions-no-accept-response",
+            "description": "GET /$versions with no Accept header"
+          }
+        },
+        { "assert": { "description": "Server should return HTTP 200 (warningOnly: operation may be unimplemented)", "response": "okay" } },
+        { "assert": { "description": "Response Content-Type should default to application/fhir+json (warningOnly, see above)", "contentType": "application/fhir+json" } }
+      ]
+    },
+    {
+      "name": "$versions rejects an invalid Accept header with 406",
+      "description": "GET $versions with a malformed Accept header (e.g. 'application/json1') should return 406 Not Acceptable (also covers the typo'd 'applicaiton/xml' value); warningOnly since $versions is proprietary and may 404 instead if unimplemented.",
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "$versions" },
+            "url": "$versions",
+            "method": "GET",
+            "accept": "application/json1",
+            "responseId": "versions-invalid-accept-response",
+            "description": "GET /$versions with an invalid Accept header value"
+          }
+        },
+        { "assert": { "description": "Server should return HTTP 406 Not Acceptable (warningOnly: operation may be unimplemented, or may 404 instead)", "responseCode": "406" } }
+      ]
+    }
+  ]
+}

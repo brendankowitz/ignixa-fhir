@@ -82,7 +82,7 @@ public class PackageStabilityGuardTests
 
     private static Dictionary<string, PackableProject> LoadPackableProjects()
     {
-        var repoRoot = FindRepoRoot();
+        var repoRoot = RepoRoot.Find();
         string[] scanDirs = ["src", "tools"];
 
         var projects = scanDirs
@@ -139,18 +139,6 @@ public class PackageStabilityGuardTests
         var privateAssets = reference.Element("PrivateAssets")?.Value
             ?? reference.Attribute("PrivateAssets")?.Value;
         return !string.Equals(privateAssets?.Trim(), "all", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
-        {
-            dir = dir.Parent;
-        }
-
-        dir.ShouldNotBeNull($"Could not find repo root from {AppContext.BaseDirectory}");
-        return dir!.FullName;
     }
 
     private sealed record PackableProject(

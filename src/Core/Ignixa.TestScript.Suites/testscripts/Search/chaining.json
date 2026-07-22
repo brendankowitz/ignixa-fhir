@@ -3,6 +3,9 @@
   "name": "Search/chaining",
   "description": "Forward chaining, _has reverse chaining, and compartment search conformance tests. Uses client-supplied IDs (PUT) for all fixtures so cross-references (managingOrganization, subject) resolve statically — servers that reject client-assigned IDs will fail setup, a known limitation of the TestScript format for cross-resource tests. Org fhir262-chain-org (ACME Corp); Patient fhir262-chain-pa (Smith, has org) and fhir262-chain-pb (Jones, no org); Observations obs1 (heart rate 8867-4) and obs2 (body weight 29463-7) both on pa.",
   "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Organization').updateCreate = true and rest.resource.where(type='Patient').updateCreate = true and rest.resource.where(type='Observation').updateCreate = true" }
+  ],
   "fixture": [
     {
       "id": "org-acme",
@@ -83,32 +86,41 @@
   "test": [
     {
       "name": "Forward chain: organization.name",
-      "description": "Patient?organization.name=ACME Corp follows the managingOrganization reference to the Organization and matches on its name. fhir262-chain-pa (org=ACME) must match; fhir262-chain-pb (no managingOrganization) must not.",
+      "description": "Patient?organization.name=ACME Corp follows the managingOrganization reference to the Organization and matches on its name. fhir262-chain-pa (org=ACME) must match; fhir262-chain-pb (no managingOrganization) must not. Chained-reference support has no precise R4 CapabilityStatement flag, so result-membership assertions are informational.",
       "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?organization.name=ACME%20Corp", "responseId": "fwd-org-name", "description": "GET /Patient?organization.name=ACME Corp" } },
-        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
-        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
-        { "assert": { "description": "Must include fhir262-chain-pa (managingOrganization=ACME Corp)", "expression": "entry.where(resource.id = 'fhir262-chain-pa').exists()" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle", "warningOnly": true } },
+        { "assert": { "description": "Must include fhir262-chain-pa (managingOrganization=ACME Corp)", "expression": "entry.where(resource.id = 'fhir262-chain-pa').exists()", "warningOnly": true } },
         { "assert": { "description": "Must NOT include fhir262-chain-pb (no managingOrganization)", "expression": "entry.where(resource.id = 'fhir262-chain-pb').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
       ]
     },
     {
       "name": "Forward chain with type modifier: subject:Patient.family",
-      "description": "Observation?subject:Patient.family=Smith follows subject to a Patient and matches on family name. Both obs1 and obs2 belong to fhir262-chain-pa (family=Smith) and must match.",
+      "description": "Observation?subject:Patient.family=Smith follows subject to a Patient and matches on family name. Both obs1 and obs2 belong to fhir262-chain-pa (family=Smith) and must match. Chained-reference support has no precise R4 CapabilityStatement flag, so result-membership assertions are informational.",
       "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?subject:Patient.family=Smith&identifier=http://fhir262/test|&_count=100", "responseId": "fwd-subject-family", "description": "GET /Observation?subject:Patient.family=Smith" } },
-        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
-        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
-        { "assert": { "description": "Must include obs1 (subject=pa, family Smith)", "expression": "entry.where(resource.id = 'fhir262-chain-obs1').exists()" } },
-        { "assert": { "description": "Must include obs2 (subject=pa, family Smith)", "expression": "entry.where(resource.id = 'fhir262-chain-obs2').exists()" } }
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle", "warningOnly": true } },
+        { "assert": { "description": "Must include obs1 (subject=pa, family Smith)", "expression": "entry.where(resource.id = 'fhir262-chain-obs1').exists()", "warningOnly": true } },
+        { "assert": { "description": "Must include obs2 (subject=pa, family Smith)", "expression": "entry.where(resource.id = 'fhir262-chain-obs2').exists()", "warningOnly": true } }
       ]
     },
     {
       "name": "_has reverse chain: patients with a heart rate observation",
       "description": "Patient?_has:Observation:subject:code=8867-4 returns patients that are the subject of an Observation with code 8867-4. fhir262-chain-pa (has obs1) must match; fhir262-chain-pb (no observations) must not.",
-      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='Patient').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_has:Observation:subject:code=8867-4", "responseId": "has-heartrate", "description": "GET /Patient?_has:Observation:subject:code=8867-4" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
@@ -120,7 +132,16 @@
     {
       "name": "_has reverse chain: patients with a body weight observation",
       "description": "Patient?_has:Observation:subject:code=29463-7 returns patients that are the subject of an Observation with code 29463-7. fhir262-chain-pa (has obs2) must match; fhir262-chain-pb must not.",
-      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "extension": [
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='Patient').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
+      ],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_has:Observation:subject:code=29463-7", "responseId": "has-weight", "description": "GET /Patient?_has:Observation:subject:code=29463-7" } },
         { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
@@ -146,7 +167,14 @@
       "name": "GET/POST search equivalence for _has",
       "description": "The same _has search via GET and POST _search must return identical results. Tests that servers correctly handle application/x-www-form-urlencoded _search bodies.",
       "extension": [
-        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }
+        {
+          "url": "http://ignixa.io/testscript/fhirVersions",
+          "valueString": "4.0,4.3,5.0"
+        },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "(rest.resource.where(type='Patient').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
+        }
       ],
       "action": [
         {

@@ -1,0 +1,176 @@
+{
+  "resourceType": "TestScript",
+  "name": "Microsoft/ms-not-expression",
+  "description": ":not modifier conformance on boolean and reference-scoped fields: verifies :not correctly negates a boolean value in both directions and composes with :missing and an _id OR-list (from NotExpressionTests).",
+  "status": "active",
+  "fixture": [
+    {
+      "id": "practitioner-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-not-prac1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-expr", "value": "ms-not-expr-practitioner" }]
+      }
+    },
+    {
+      "id": "location-1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Location",
+        "id": "ignixa-not-loc1",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-expr", "value": "ms-not-expr-location" }],
+        "name": "Not-Expression Test Location"
+      }
+    },
+    {
+      "id": "pr-active",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-not-pr-active",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-expr", "value": "ms-not-expr-pr-active" }],
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-not-prac1" },
+        "location": [{ "reference": "Location/ignixa-not-loc1" }]
+      }
+    },
+    {
+      "id": "pr-inactive",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-not-pr-inactive",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-expr", "value": "ms-not-expr-pr-inactive" }],
+        "active": false,
+        "practitioner": { "reference": "Practitioner/ignixa-not-prac1" },
+        "location": [{ "reference": "Location/ignixa-not-loc1" }]
+      }
+    },
+    {
+      "id": "pr-noloc",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "PractitionerRole",
+        "id": "ignixa-not-pr-noloc",
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/ms-not-expr", "value": "ms-not-expr-pr-noloc" }],
+        "active": true,
+        "practitioner": { "reference": "Practitioner/ignixa-not-prac1" }
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-not-prac1", "sourceId": "practitioner-1", "description": "PUT Practitioner referenced by all PractitionerRole fixtures" } },
+      { "operation": { "type": { "code": "update" }, "url": "Location/ignixa-not-loc1", "sourceId": "location-1", "description": "PUT Location referenced by pr-active and pr-inactive" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-not-pr-active", "sourceId": "pr-active", "description": "PUT PractitionerRole: active=true, has a location" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-not-pr-inactive", "sourceId": "pr-inactive", "description": "PUT PractitionerRole: active=false, has a location" } },
+      { "operation": { "type": { "code": "update" }, "url": "PractitionerRole/ignixa-not-pr-noloc", "sourceId": "pr-noloc", "description": "PUT PractitionerRole: active=true, NO location" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "active:not=false matches a resource whose active value is true",
+      "description": "active:not=false must match a PractitionerRole whose active value is true, since :not only excludes resources whose value literally equals false.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-active&active:not=false", "responseId": "not-false-active-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-active&active:not=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pr-active", "expression": "entry.where(resource.id = 'ignixa-not-pr-active').exists()" } }
+      ]
+    },
+    {
+      "name": "active:not=false combined with location:missing=false still matches",
+      "description": "Adding location:missing=false must not change the match when the resource has a location present.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-active&active:not=false&location:missing=false", "responseId": "not-false-loc-present-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-active&active:not=false&location:missing=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pr-active", "expression": "entry.where(resource.id = 'ignixa-not-pr-active').exists()" } }
+      ]
+    },
+    {
+      "name": "active:not=true excludes a resource whose active value is true",
+      "description": "active:not=true must exclude a PractitionerRole whose active value is true.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-active&active:not=true", "responseId": "not-true-active-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-active&active:not=true" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include pr-active (its active value is true)", "expression": "entry.where(resource.id = 'ignixa-not-pr-active').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "active:not=true matches a resource whose active value is false (inverse direction)",
+      "description": "active:not=true must match a PractitionerRole whose active value is false (inverse direction).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-inactive&active:not=true", "responseId": "not-true-inactive-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-inactive&active:not=true" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pr-inactive", "expression": "entry.where(resource.id = 'ignixa-not-pr-inactive').exists()" } }
+      ]
+    },
+    {
+      "name": "active:not=false excludes a resource whose active value is false (inverse direction)",
+      "description": "active:not=false must exclude a PractitionerRole whose active value is false (inverse direction).",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-inactive&active:not=false", "responseId": "not-false-inactive-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-inactive&active:not=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include pr-inactive (its active value is false)", "expression": "entry.where(resource.id = 'ignixa-not-pr-inactive').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "location:missing=true matches a resource with no location",
+      "description": "location:missing=true must match a PractitionerRole with no location element.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-noloc&location:missing=true", "responseId": "missing-true-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-noloc&location:missing=true" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pr-noloc", "expression": "entry.where(resource.id = 'ignixa-not-pr-noloc').exists()" } }
+      ]
+    },
+    {
+      "name": "location:missing=false excludes a resource with no location",
+      "description": "location:missing=false must exclude a PractitionerRole with no location element.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-noloc&location:missing=false", "responseId": "missing-false-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-noloc&location:missing=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must NOT include pr-noloc", "expression": "entry.where(resource.id = 'ignixa-not-pr-noloc').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": ":not combined with an _id OR-list",
+      "description": ":not applied across an _id OR-list must still filter correctly: only the active role survives active:not=false, even though both roles match the _id list.",
+      "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "PractitionerRole", "params": "?_id=ignixa-not-pr-active,ignixa-not-pr-inactive&active:not=false", "responseId": "not-with-id-list-response", "description": "GET /PractitionerRole?_id=ignixa-not-pr-active,ignixa-not-pr-inactive&active:not=false" } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Must include pr-active", "expression": "entry.where(resource.id = 'ignixa-not-pr-active').exists()" } },
+        { "assert": { "description": "Must NOT include pr-inactive (filtered out by :not=false)", "expression": "entry.where(resource.id = 'ignixa-not-pr-inactive').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-not-pr-active", "description": "Teardown: delete pr-active" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-not-pr-inactive", "description": "Teardown: delete pr-inactive" } },
+      { "operation": { "type": { "code": "delete" }, "url": "PractitionerRole/ignixa-not-pr-noloc", "description": "Teardown: delete pr-noloc" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Location/ignixa-not-loc1", "description": "Teardown: delete Location" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-not-prac1", "description": "Teardown: delete Practitioner" } }
+    ]
+  }
+}

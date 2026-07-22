@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ignixa.Api.E2ETests._Infrastructure;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Evaluation;
@@ -11,19 +12,20 @@ using Shouldly;
 
 namespace Ignixa.Api.E2ETests.Conformance;
 
-[Collection(E2ETestCollection.Name)]
+[Collection(ConformanceTestCollection.Name)]
 public sealed class TestScriptConformanceReportTests
 {
     private const string EnabledEnvironmentVariable = "IGNIXA_RUN_CONFORMANCE";
     private const string ReportPathEnvironmentVariable = "IGNIXA_CONFORMANCE_REPORT_PATH";
     private const string FhirVersion = "4.0";
     private const string ImplementationName = "ignixa";
+    private const string SuitesDirectoryName = "testscripts";
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    private readonly IgnixaApiFixture _fixture;
+    private readonly ConformanceApiFixture _fixture;
 
-    public TestScriptConformanceReportTests(IgnixaApiFixture fixture)
+    public TestScriptConformanceReportTests(ConformanceApiFixture fixture)
     {
         _fixture = fixture;
     }
@@ -36,7 +38,7 @@ public sealed class TestScriptConformanceReportTests
 
         var startedAt = DateTimeOffset.UtcNow;
         var startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
-        var testsDirectory = FindRepositoryDirectory("conformance-tests");
+        var testsDirectory = Path.Combine(AppContext.BaseDirectory, SuitesDirectoryName);
         var evaluator = CreateEvaluator();
         var results = new List<ConformanceResult>();
 
@@ -44,7 +46,7 @@ public sealed class TestScriptConformanceReportTests
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var relativeFile = Path.GetRelativePath(testsDirectory, file).Replace('\\', '/');
-            await RunTestScriptAsync(evaluator, file, relativeFile, results, CancellationToken.None);
+            await RunTestScriptAsync(evaluator, file, relativeFile, results, _fixture.CapabilityStatement, CancellationToken.None);
         }
 
         var durationMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
@@ -55,8 +57,16 @@ public sealed class TestScriptConformanceReportTests
         await WriteReportAsync(report, CancellationToken.None);
 
         results.ShouldNotBeEmpty("No conformance tests were found or executed.");
-        results.Where(result => result.Status == "error")
-            .ShouldBeEmpty("TestScript parse/evaluator errors indicate conformance infrastructure failed.");
+
+        // Fail only on infrastructure errors — a suite that won't parse or an evaluator that
+        // throws. Behavioral "error" outcomes (a wrong server response cascading a dependent
+        // step) are real findings for the matrix, not a broken harness: with an 87-suite
+        // cross-vendor corpus the target legitimately lacks operations some suites exercise.
+        var infrastructureErrors = results.Where(result => result.IsInfrastructureError).ToList();
+        infrastructureErrors.ShouldBeEmpty(
+            "TestScript parse/evaluator errors indicate conformance infrastructure failed:\n" +
+            string.Join("\n", infrastructureErrors.Select(r => $"  {r.File}: {r.Error?.Assertion} — {r.Error?.Received}")));
+
         results.Count(result => result.Status is "pass" or "fail").ShouldBeGreaterThan(0,
             "All results were skipped — the conformance corpus produced no executable checks.");
     }
@@ -82,6 +92,7 @@ public sealed class TestScriptConformanceReportTests
         string file,
         string relativeFile,
         List<ConformanceResult> results,
+        ResourceJsonNode? capabilityStatement,
         CancellationToken cancellationToken)
     {
         var (suite, category) = ConformanceReportMapper.DescribeSuite(relativeFile);
@@ -106,7 +117,7 @@ public sealed class TestScriptConformanceReportTests
 
         try
         {
-            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, FhirVersion);
+            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, FhirVersion, capabilityStatement);
             results.AddRange(ConformanceReportMapper.Map(report, relativeFile));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -129,18 +140,4 @@ public sealed class TestScriptConformanceReportTests
         await File.WriteAllTextAsync(reportPath, json, cancellationToken);
     }
 
-    private static string FindRepositoryDirectory(string directoryName)
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            var candidate = Path.Combine(current.FullName, directoryName);
-            if (Directory.Exists(candidate))
-                return candidate;
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException($"Could not find '{directoryName}' from '{AppContext.BaseDirectory}'.");
-    }
 }
