@@ -327,6 +327,26 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Get tenant-specific cache instance (reused across all requests for this tenant)
         var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
 
+        // Seed the search-parameter catalog for this tenant's FHIR version before either
+        // reference-data cache is trusted for reads. SyncSearchParametersToDatabase is idempotent
+        // per-URL (checks for an existing row before inserting) and updates searchIndexCache's own
+        // in-memory dictionary as it goes, so this both seeds the database AND leaves the read-side
+        // cache correctly warm -- one call covers both. Cheap on a restart of an already-seeded
+        // tenant (one SELECT, no writes). Without this, a freshly-deployed database's caches (this
+        // one and the SqlServer write-side cache constructed below) would warm to empty and never
+        // recover -- see docs/superpowers/specs/2026-07-21-search-param-seed-on-tenant-init-design.md.
+        var searchParamUrls = parameterManager.AllSearchParameters
+            .Where(sp => sp.Url is not null)
+            .Select(sp => sp.Url!.ToString())
+            .Distinct()
+            .ToList();
+        var syncedSearchParamCount = searchIndexCache.SyncSearchParametersToDatabase(searchParamUrls, parameterManager).GetAwaiter().GetResult();
+        logger.LogInformation(
+            "Search parameter catalog synced for tenant {TenantId}: {SyncedCount} of {TotalCount} URLs",
+            tenantId,
+            syncedSearchParamCount,
+            searchParamUrls.Count);
+
         // Tenant-scoped raw-ADO.NET reference data cache backing the SqlServer write path
         // (SqlServerFhirRepository). Distinct from the EF-based searchIndexCache above, which
         // remains dedicated to the (still EF-based) read/search path. Preloaded once here, up front,
