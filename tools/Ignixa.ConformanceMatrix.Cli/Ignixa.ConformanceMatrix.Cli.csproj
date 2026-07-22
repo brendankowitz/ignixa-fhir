@@ -26,6 +26,13 @@
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
+  <!-- Kestrel + minimal APIs for the `serve` load-test runner mode; the legacy Microsoft.AspNetCore.Http
+       2.x package is pinned in Directory.Packages.props for another project and must not be referenced
+       here instead. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.TestScript\Ignixa.TestScript.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.TestScript.FhirFakes\Ignixa.TestScript.FhirFakes.csproj" />
