@@ -243,9 +243,22 @@ single `TextOverflow LIKE` is sufficient.
 
 ### Default prefix matching (no modifier)
 
-Unmodified string queries use `Text LIKE @p0 ESCAPE '\'` with `LikeMatch.StartsWith` and the CI_AI
-collation. Overflow handling for the default (starts-with) case is not yet implemented; values exceeding
-the inline width fall back to a `TextOverflow LIKE` prefix search.
+Unmodified string queries use `LikeMatch.StartsWith` with the CI_AI collation and an `ESCAPE '\'`
+clause. Lowering selects the column based on the search value's length:
+
+| Search value length | Predicate shape |
+|---------------------|-----------------|
+| ≤ 256 characters    | `Text COLLATE … CI_AI LIKE @p0 ESCAPE '\'` |
+| > 256 characters    | `TextOverflow COLLATE … CI_AI LIKE @p0 ESCAPE '\'` |
+
+For a prefix of 256 characters or fewer, `Text` is the correct target: `Text` holds the first 256
+characters of every stored value, so any stored value whose complete value starts with a prefix of
+that length will have that prefix captured verbatim in `Text`. No `TextOverflow IS NULL` guard is
+needed — a row that did overflow still has the correct prefix in `Text`, so `Text LIKE` already
+returns the right set. For a prefix exceeding 256 characters, only an overflowed row can contain
+it, so `TextOverflow LIKE` is the correct target. In both cases the complete logical value is
+searched correctly. The search value is escaped and bound as `@p0`; user-supplied LIKE metacharacters
+(`%`, `_`, `[`, `\`) are treated as literals.
 
 ## What's not implemented yet
 
