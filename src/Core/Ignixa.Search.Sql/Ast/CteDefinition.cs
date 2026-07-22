@@ -87,4 +87,18 @@ public abstract record CteDefinition
     /// LastModified derivation uses for a different purpose.
     /// </summary>
     public sealed record VisibleSinceFilter(SqlParameterRef Since) : CteDefinition;
+
+    /// <summary>
+    /// $everything's referenced-type expansion -- resources referenced <em>from</em> an upstream seed set
+    /// (the filtered patient-compartment set), restricted to a fixed set of referenced resource types
+    /// (Practitioner/Organization/Location/Medication). Follows every outbound internal reference the seed
+    /// rows carry (no <c>SearchParamId</c> filter -- all reference parameters), joined through
+    /// dbo.ReferenceSearchParam and dbo.Resource, and returns the referenced resource's own (type, surrogate
+    /// id). Structurally this is the reference-follow topology <see cref="ChainJoin"/> uses in reverse, but
+    /// with a wildcard reference parameter and a wildcard source type -- neither of which ChainJoin can
+    /// express -- which is why it is its own node kind rather than a ChainJoin. Seeds from <see cref="Seed"/>
+    /// specifically so the expansion follows the <em>filtered</em> compartment set (after date/_since
+    /// filtering), matching the legacy PatientEverythingQueryGenerator's own sequencing.
+    /// </summary>
+    public sealed record ReferencedTypeExpansion(CteRef Seed, IReadOnlyList<short> OutputResourceTypeIds) : CteDefinition;
 }

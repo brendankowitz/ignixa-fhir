@@ -32,6 +32,12 @@ public static class PlanRowKind
 
     public const string NotReferencedSource = "notReferencedSource";
 
+    public const string TableExistsPredicate = "tableExistsPredicate";
+
+    public const string VisibleSinceFilter = "visibleSinceFilter";
+
+    public const string ReferencedTypeExpansion = "referencedTypeExpansion";
+
     public const string IncludeStage = "includeStage";
 
     public const string SortSpec = "sortSpec";

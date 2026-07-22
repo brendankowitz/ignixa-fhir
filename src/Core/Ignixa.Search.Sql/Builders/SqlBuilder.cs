@@ -268,6 +268,7 @@ public static class SqlBuilder
         CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters),
         CteDefinition.TableExistsPredicate tep => EmitTableExistsPredicate(tep, parameters),
         CteDefinition.VisibleSinceFilter vsf => EmitVisibleSinceFilter(vsf, parameters),
+        CteDefinition.ReferencedTypeExpansion re => EmitReferencedTypeExpansion(re),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -617,6 +618,19 @@ public static class SqlBuilder
            "    FROM dbo.Resource r\n" +
            "    INNER JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue\n" +
            $"    WHERE t.VisibleDate >= {EmitParam(vsf.Since, parameters)}";
+
+    /// <summary>Renders a ReferencedTypeExpansion: the referenced resources reachable via any outbound internal reference from the seed set, restricted to the output resource types. Mirrors ChainJoin's reverse topology but with no SearchParamId/source-type filter (all reference parameters, any source type).</summary>
+    private static string EmitReferencedTypeExpansion(CteDefinition.ReferencedTypeExpansion re)
+        => $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+           $"    FROM dbo.ReferenceSearchParam rsp\n" +
+           $"    INNER JOIN {CteLabel(re.Seed.Index)} m\n" +
+           $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+           $"    INNER JOIN dbo.Resource r\n" +
+           $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+           $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+           $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+           $"    WHERE {EmitTypeInFilter("rsp.ReferenceResourceTypeId", re.OutputResourceTypeIds)}\n" +
+           $"      AND rsp.BaseUri IS NULL";
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)

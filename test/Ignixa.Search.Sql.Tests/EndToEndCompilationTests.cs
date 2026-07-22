@@ -2751,6 +2751,188 @@ public class EndToEndCompilationTests
             .Message.ShouldContain("wildcard compartment search");
     }
 
+    [Fact]
+    public async Task GivenAPatientEverythingRequestWithNoOptionalFilters_WhenCompiled_ThenUnionsPatientItselfAndCompartment()
+    {
+        // Arrange -- the minimal case: no date range, no _since, no referenced-type expansion.
+        // GET /Patient/123/$everything. Patient compartment covers Observation via "subject".
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var everything = new PatientEverythingExpression("123", includeReferencedResources: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(
+            everything, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None,
+            compartmentManager, searchParamManager)).Symbols;
+        var plan = Lower.Run(everything, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- exactly two top-level union members: the Patient-itself ResourceSource and the
+        // compartment Union. No VisibleSinceFilter/TableExistsPredicate/Except present.
+        plan.Explain().ShouldBe(
+            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
+            "cte1 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
+            "cte2 = Union(cte1)\n" +
+            "root = Union(cte0, cte2)");
+
+        plan.Ctes.OfType<CteDefinition.VisibleSinceFilter>().ShouldBeEmpty();
+        plan.Ctes.OfType<CteDefinition.TableExistsPredicate>().ShouldBeEmpty();
+        plan.Ctes.OfType<CteDefinition.Except>().ShouldBeEmpty();
+
+        // Emit sanity -- byte-producing, no user value inlined.
+        var emitted = SqlBuilder.Run(plan);
+        emitted.Sql.ShouldNotContain("123");
+        emitted.Parameters.Select(p => p.Value).ShouldContain("123");
+    }
+
+    [Fact]
+    public async Task GivenAPatientEverythingRequestWithADateRangeAndSince_WhenCompiled_ThenComposesTheConditionalDatePredicateAndScopesSinceToTheCompartmentBranchOnly()
+    {
+        // Arrange -- exercises items 3+4 together: the Union(matching-date, no-date-at-all) via Except,
+        // and _since applied via Intersect ONLY to the compartment branch, never the Patient-itself branch.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var everything = new PatientEverythingExpression(
+            "123",
+            startDate: new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            endDate: new DateTimeOffset(2023, 12, 31, 0, 0, 0, TimeSpan.Zero),
+            sinceDate: new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            includeReferencedResources: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(
+            everything, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None,
+            compartmentManager, searchParamManager)).Symbols;
+        var plan = Lower.Run(everything, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- Explain()-pinned. The compartment branch (cte9) carries the conditional-date Union
+        // (cte7) and the _since Intersect (cte9); the Patient-itself branch (cte0) carries neither.
+        plan.Explain().ShouldBe(
+            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
+            "cte1 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
+            "cte2 = Union(cte1)\n" +
+            "cte3 = TableExistsPredicate[DateTimeSearchParam]  EndDateTime >= @p4 AND StartDateTime <= @p5\n" +
+            "cte4 = TableExistsPredicate[DateTimeSearchParam]\n" +
+            "cte5 = Intersect(cte2, cte3)\n" +
+            "cte6 = Except(cte2, cte4)\n" +
+            "cte7 = Union(cte5, cte6)\n" +
+            "cte8 = VisibleSinceFilter(@p6)\n" +
+            "cte9 = Intersect(cte7, cte8)\n" +
+            "root = Union(cte0, cte9)");
+
+        // Critically: the Patient-itself branch's CTE subtree contains NO VisibleSinceFilter/Intersect at
+        // all (proving _since correctly does NOT apply there), while the compartment branch's does.
+        var root = (CteDefinition.Union)plan.Ctes[plan.Match.Index];
+        var patientBranch = CollectReachable(root.Parts[0].Index, plan);
+        var compartmentBranch = CollectReachable(root.Parts[1].Index, plan);
+
+        patientBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.VisibleSinceFilter>().ShouldBeEmpty();
+        patientBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.Intersect>().ShouldBeEmpty();
+        compartmentBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.VisibleSinceFilter>().ShouldNotBeEmpty();
+        compartmentBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.Intersect>().ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAPatientEverythingRequestWithReferencedResourceExpansion_WhenCompiled_ThenSeedsFromTheFilteredCompartmentSet()
+    {
+        // Arrange -- exercises item 5, seeded from the AFTER-since-filtering compartment set per legacy's
+        // own sequencing (PatientEverythingQueryGenerator.cs Step 5 runs after Steps 3-4).
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var everything = new PatientEverythingExpression(
+            "123",
+            sinceDate: new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            includeReferencedResources: true);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.ResourceTypeIds["Practitioner"] = 201;
+        resolver.ResourceTypeIds["Organization"] = 202;
+        resolver.ResourceTypeIds["Location"] = 203;
+        resolver.ResourceTypeIds["Medication"] = 204;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(
+            everything, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None,
+            compartmentManager, searchParamManager)).Symbols;
+        var plan = Lower.Run(everything, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- Explain()-pinned. The referenced-type-expansion CTE (cte5) seeds from cte4 (the
+        // _since-FILTERED compartment Intersect), not cte2 (the raw pre-filter compartment Union).
+        plan.Explain().ShouldBe(
+            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
+            "cte1 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
+            "cte2 = Union(cte1)\n" +
+            "cte3 = VisibleSinceFilter(@p4)\n" +
+            "cte4 = Intersect(cte2, cte3)\n" +
+            "cte5 = ReferencedTypeExpansion(cte4, output=[201,202,203,204])\n" +
+            "root = Union(cte0, cte4, cte5)");
+
+        var expansion = plan.Ctes[5].ShouldBeOfType<CteDefinition.ReferencedTypeExpansion>();
+        expansion.Seed.ShouldBe(new CteRef(4)); // the filtered compartment, not the raw cte2
+    }
+
+    /// <summary>Collects the transitive set of CTE indices reachable from a root index, walking the public
+    /// CteDefinition graph (used to prove branch-scoped composition without touching internal helpers).</summary>
+    private static HashSet<int> CollectReachable(int rootIndex, QueryPlan plan)
+    {
+        var seen = new HashSet<int>();
+        Visit(rootIndex);
+        return seen;
+
+        void Visit(int index)
+        {
+            if (!seen.Add(index))
+            {
+                return;
+            }
+
+            foreach (var child in ChildrenOf(plan.Ctes[index]))
+            {
+                Visit(child);
+            }
+        }
+    }
+
+    private static IEnumerable<int> ChildrenOf(CteDefinition cte) => cte switch
+    {
+        CteDefinition.Intersect x => [x.Left.Index, x.Right.Index],
+        CteDefinition.Union u => u.Parts.Select(r => r.Index),
+        CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
+        CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
+        CteDefinition.ReferencedTypeExpansion re => [re.Seed.Index],
+        _ => [],
+    };
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];

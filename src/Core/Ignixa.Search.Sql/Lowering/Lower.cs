@@ -56,6 +56,7 @@ public static class Lower
             {
                 null => context.LowerResourceSource(RequireResourceType(targetResourceType, systemLevelSearch)),
                 CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
+                PatientEverythingExpression everything => context.LowerPatientEverything(everything),
                 _ when targetResourceType is null && !systemLevelSearch => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
                     "combine with a CompartmentSearchExpression and resource-column predicates -- an ordinary " +

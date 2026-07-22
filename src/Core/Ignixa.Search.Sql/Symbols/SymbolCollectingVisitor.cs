@@ -125,6 +125,29 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
+    /// Records the symbols a Patient/Group $everything references so Resolve can resolve them: the Patient
+    /// resource type (for the Patient-itself branch), the Patient compartment (expanded into membership the
+    /// same way <see cref="VisitCompartment"/>'s entries are), and -- when referenced-resource expansion is
+    /// requested -- the referenced resource types. Does no I/O; Resolve runs the definition-manager
+    /// expansion, keeping this class's no-I/O contract intact.
+    /// </summary>
+    public override Expression VisitPatientEverything(PatientEverythingExpression expression, object? context)
+    {
+        AddResourceType("Patient");
+        Compartments.Add(("Patient", expression.FilteredResourceTypes));
+
+        if (expression.IncludeReferencedResources)
+        {
+            foreach (var referencedType in Lowering.StructuralContext.PatientEverythingReferencedResourceTypes)
+            {
+                AddResourceType(referencedType);
+            }
+        }
+
+        return expression;
+    }
+
+    /// <summary>
     /// The (source resource type, reference path) pairs of every <c>_not-referenced=Type:path</c> in the
     /// tree, for Resolve to resolve to a reference search parameter. The wildcard forms (<c>*:*</c>,
     /// <c>Type:*</c>) contribute no pair — they need no parameter lookup — but a named source type is

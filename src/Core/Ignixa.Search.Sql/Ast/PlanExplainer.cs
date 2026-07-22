@@ -105,6 +105,9 @@ public static class PlanExplainer
         CteDefinition.ChainJoin => PlanRowKind.ChainJoin,
         CteDefinition.CompartmentSource => PlanRowKind.CompartmentSource,
         CteDefinition.NotReferencedSource => PlanRowKind.NotReferencedSource,
+        CteDefinition.TableExistsPredicate => PlanRowKind.TableExistsPredicate,
+        CteDefinition.VisibleSinceFilter => PlanRowKind.VisibleSinceFilter,
+        CteDefinition.ReferencedTypeExpansion => PlanRowKind.ReferencedTypeExpansion,
         _ => throw new NotSupportedException($"No Explain() kind for {cte.GetType().Name}."),
     };
 
@@ -125,7 +128,9 @@ public static class PlanExplainer
         CteDefinition.Union u => [.. u.Parts.Select(r => r.Index)],
         CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
         CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
-        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource => [],
+        CteDefinition.ReferencedTypeExpansion re => [re.Seed.Index],
+        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource
+            or CteDefinition.TableExistsPredicate or CteDefinition.VisibleSinceFilter => [],
         _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
     };
 
@@ -175,6 +180,12 @@ public static class PlanExplainer
         CteDefinition.CompartmentSource cs =>
             $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
         CteDefinition.NotReferencedSource nr => PrintNotReferencedSource(nr, top, ref parameterOrdinal),
+        CteDefinition.TableExistsPredicate tep =>
+            $"TableExistsPredicate[{tep.Table.TableName}]{(tep.Predicate is null ? string.Empty : $"  {PrintPredicate(tep.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
+        CteDefinition.VisibleSinceFilter =>
+            $"VisibleSinceFilter(@p{parameterOrdinal++}){PrintTop(top)}",
+        CteDefinition.ReferencedTypeExpansion re =>
+            $"ReferencedTypeExpansion({CteLabel(re.Seed.Index)}, output=[{string.Join(",", re.OutputResourceTypeIds)}]){PrintTop(top)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
 
