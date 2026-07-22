@@ -21,7 +21,12 @@ internal sealed record ConformanceResult(
     /// e.g. a 404 export kick-off breaking its waitFor poll) is not infrastructure: it is a real
     /// finding published to the matrix, so it stays false.
     /// </summary>
-    [JsonIgnore]
+    /// <remarks>
+    /// Serialized so downstream gates that only see the report JSON (the docs deploy's
+    /// "Verify FHIR conformance report" step, the matrix renderer) can make the same
+    /// infrastructure-vs-behavioral distinction the in-process test assertion makes.
+    /// </remarks>
+    [JsonPropertyName("infrastructure_error")]
     public bool IsInfrastructureError { get; init; }
 
     public static ConformanceResult CreateError(
