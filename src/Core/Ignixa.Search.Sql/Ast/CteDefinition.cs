@@ -19,19 +19,21 @@ namespace Ignixa.Search.Sql.Ast;
 /// </list>
 /// ParamSource carries ResourceTypeId because a SearchParamId is assigned per parameter-definition URL,
 /// not per resource type, so a shared definition (e.g. one spanning Patient and Practitioner) would
-/// otherwise return rows of the wrong type. ResourceSource's Predicate is used only in a nested scope
+/// otherwise return rows of the wrong type. A null ResourceTypeId (on ParamSource or ResourceSource) means
+/// system-level (cross-type) search: no ResourceTypeId filter is emitted, so rows of every type match.
+/// ResourceSource's Predicate is used only in a nested scope
 /// (e.g. a chain's target), which has no outer WHERE to attach to; at the top level QueryPlan.OuterPredicate
 /// carries resource-column filters instead.
 /// </summary>
 public abstract record CteDefinition
 {
-    public sealed record ParamSource(TableDescriptor Table, short ResourceTypeId, short SearchParamId, Predicate? Predicate = null) : CteDefinition;
+    public sealed record ParamSource(TableDescriptor Table, short? ResourceTypeId, short SearchParamId, Predicate? Predicate = null) : CteDefinition;
 
     public sealed record Intersect(CteRef Left, CteRef Right) : CteDefinition;
 
     public sealed record Union(IReadOnlyList<CteRef> Parts) : CteDefinition;
 
-    public sealed record ResourceSource(short ResourceTypeId, Predicate? Predicate = null) : CteDefinition;
+    public sealed record ResourceSource(short? ResourceTypeId, Predicate? Predicate = null) : CteDefinition;
 
     public sealed record Except(CteRef Left, CteRef Right) : CteDefinition;
 

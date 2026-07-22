@@ -11,7 +11,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// </summary>
 public static class NumberLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, NumberSearchValue value, LeafContext context, short resourceTypeId)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, NumberSearchValue value, LeafContext context, short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("NumberSearchParam");
         var lowColumn = new SqlColumnRef(table.TableName, "LowValue");

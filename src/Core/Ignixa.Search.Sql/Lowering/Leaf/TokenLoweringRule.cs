@@ -20,7 +20,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// </remarks>
 public static class TokenLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, TokenSearchValue value, LeafContext context, short resourceTypeId)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, TokenSearchValue value, LeafContext context, short? resourceTypeId)
     {
         if (predicate.Modifier?.SearchModifierCode is { } modifier)
         {

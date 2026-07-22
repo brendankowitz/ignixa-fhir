@@ -18,7 +18,7 @@ public static class TokenDateTimeLoweringRule
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenDateTimeCompositeSearchParam");
 

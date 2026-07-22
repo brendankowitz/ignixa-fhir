@@ -279,10 +279,11 @@ public static class SqlBuilder
         // query against it has to exclude them itself. Driven off the catalog rather than the table name:
         // the filter is required by any table that has the column, and the catalog is generated from DDL.
         var historyClause = p.Table.Columns.Any(c => c.Name == "IsHistory") ? " AND IsHistory = 0" : string.Empty;
+        var typeFilter = p.ResourceTypeId is { } typeId ? $"ResourceTypeId = {typeId} AND " : string.Empty;
 
         return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
+               $"    WHERE {typeFilter}SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
     }
 
     /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>
@@ -601,9 +602,10 @@ public static class SqlBuilder
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
     {
         var predicateClause = rs.Predicate is null ? string.Empty : $" AND {EmitPredicate(rs.Predicate, parameters)}";
+        var typeFilter = rs.ResourceTypeId is { } typeId ? $"ResourceTypeId = {EmitParam(new SqlParameterRef(typeId), parameters)} AND " : string.Empty;
         return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM dbo.Resource\n" +
-               $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0{predicateClause}";
+               $"    WHERE {typeFilter}IsHistory = 0 AND IsDeleted = 0{predicateClause}";
     }
 
     /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>

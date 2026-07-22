@@ -34,16 +34,16 @@ public sealed class StructuralContext
 
     public LeafContext LeafContext => _leafContext;
 
-    public CteRef Lower(SearchParameterPredicateExpression predicate, string resourceType)
+    public CteRef Lower(SearchParameterPredicateExpression predicate, string? resourceType)
         => Lower(predicate, resourceType, provenanceNode: predicate);
 
     /// <summary>Lowers a leaf predicate, recording provenance against <paramref name="provenanceNode"/> rather
     /// than <paramref name="predicate"/> itself — needed at the :not clone site, where the predicate actually
     /// lowered is a synthesized positive-match clone with no place in any parameter's IR subtree.</summary>
-    public CteRef Lower(SearchParameterPredicateExpression predicate, string resourceType, Expression provenanceNode)
+    public CteRef Lower(SearchParameterPredicateExpression predicate, string? resourceType, Expression provenanceNode)
     {
         RejectResourceColumnCode(predicate.Parameter.Code);
-        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        short? resourceTypeId = resourceType is null ? null : _leafContext.ResourceTypeId(resourceType);
         var cte = LeafLoweringDispatcher.Lower(predicate, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         var index = _ctes.Count - 1;
@@ -57,8 +57,16 @@ public sealed class StructuralContext
     /// path that did not resolve to a reference parameter falls back to a source-type-only (path-agnostic)
     /// filter, matching the shipping engine.
     /// </summary>
-    public CteRef LowerNotReferenced(NotReferencedExpression expression, string resourceType)
+    public CteRef LowerNotReferenced(NotReferencedExpression expression, string? resourceType)
     {
+        if (resourceType is null)
+        {
+            throw new NotSupportedException(
+                "_not-referenced is not supported in system-level search in this phase -- it anchors on a " +
+                "single target-type ResourceSource the same way :not does. Guarding at LowerNotReferenced, its " +
+                "own choke point, rather than at each caller.");
+        }
+
         var targetTypeId = _leafContext.ResourceTypeId(resourceType);
 
         // A source type the resolver could not find yields UnmatchableResourceTypeId (-1), which Emit
@@ -86,8 +94,16 @@ public sealed class StructuralContext
     }
 
     /// <summary>Lowers a <c>:text</c> search, which reads dbo.TokenText rather than a search-param table.</summary>
-    public CteRef LowerTokenText(SearchParameterInfo parameter, StringExpression expression, string resourceType, Expression provenanceNode)
+    public CteRef LowerTokenText(SearchParameterInfo parameter, StringExpression expression, string? resourceType, Expression provenanceNode)
     {
+        if (resourceType is null)
+        {
+            throw new NotSupportedException(
+                ":text is not supported in system-level search in this phase -- TokenTextLoweringRule scopes " +
+                "its match to a single ResourceTypeId. Guarding at LowerTokenText, its own choke point, rather " +
+                "than at each caller.");
+        }
+
         var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
         _ctes.Add(TokenTextLoweringRule.Lower(parameter, expression, _leafContext, resourceTypeId));
         var index = _ctes.Count - 1;
@@ -95,14 +111,14 @@ public sealed class StructuralContext
         return new CteRef(index);
     }
 
-    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string resourceType, Expression provenanceNode)
+    public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string? resourceType, Expression provenanceNode)
     {
         foreach (var component in components)
         {
             RejectResourceColumnCode(component.ComponentSearchParameter.Code);
         }
 
-        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        short? resourceTypeId = resourceType is null ? null : _leafContext.ResourceTypeId(resourceType);
         var cte = CompositeLoweringDispatcher.Lower(compositeParameter, components, _leafContext, resourceTypeId);
         _ctes.Add(cte);
         var index = _ctes.Count - 1;
@@ -110,12 +126,12 @@ public sealed class StructuralContext
         return new CteRef(index);
     }
 
-    public CteRef LowerParameterPresence(SearchParameterInfo parameter, string resourceType)
+    public CteRef LowerParameterPresence(SearchParameterInfo parameter, string? resourceType)
     {
         RejectResourceColumnCode(parameter.Code);
 
         var table = ResolveMissingTable(parameter);
-        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        short? resourceTypeId = resourceType is null ? null : _leafContext.ResourceTypeId(resourceType);
         var searchParamId = _leafContext.SearchParamId(parameter);
 
         var cte = new CteDefinition.ParamSource(table, resourceTypeId, searchParamId);
@@ -192,17 +208,28 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
-    public CteRef LowerResourceSource(string resourceType) => LowerResourceSourceWithPredicate(resourceType, predicate: null);
+    public CteRef LowerResourceSource(string? resourceType) => LowerResourceSourceWithPredicate(resourceType, predicate: null);
 
-    public CteRef LowerResourceSourceWithPredicate(string resourceType, Predicate? predicate)
+    public CteRef LowerResourceSourceWithPredicate(string? resourceType, Predicate? predicate)
     {
-        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        short? resourceTypeId = resourceType is null ? null : _leafContext.ResourceTypeId(resourceType);
         _ctes.Add(new CteDefinition.ResourceSource(resourceTypeId, predicate));
         return new CteRef(_ctes.Count - 1);
     }
 
-    public CteRef LowerNot(CteRef innerMatch, string resourceType)
-        => Except(LowerResourceSource(resourceType), innerMatch);
+    public CteRef LowerNot(CteRef innerMatch, string? resourceType)
+    {
+        if (resourceType is null)
+        {
+            throw new NotSupportedException(
+                ":not (and :missing=true, which negates a presence set) is not supported in system-level " +
+                "search in this phase -- the Except needs a single-type ResourceSource base set to subtract " +
+                "from. Guarding at LowerNot, the single choke point both the :not and :missing=true paths " +
+                "reach, rather than at each caller.");
+        }
+
+        return Except(LowerResourceSource(resourceType), innerMatch);
+    }
 
     /// <summary>
     /// Subtracts one match set from another. Callers that already hold a narrower left-hand set should

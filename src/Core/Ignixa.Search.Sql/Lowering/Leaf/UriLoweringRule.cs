@@ -35,7 +35,7 @@ public static class UriLoweringRule
         SearchParameterPredicateExpression predicate,
         UriSearchValue value,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("UriSearchParam");
         var column = new SqlColumnRef(table.TableName, "Uri");

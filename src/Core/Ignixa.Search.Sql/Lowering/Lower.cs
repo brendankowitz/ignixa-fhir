@@ -18,8 +18,12 @@ public static class Lower
     /// <summary>
     /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source when there is none) into the CTE graph,
-    /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed only
-    /// for a wildcard compartment search; combining it with typed leaves, includes, or sort throws.
+    /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed for a
+    /// wildcard compartment search, or -- when <paramref name="systemLevelSearch"/> is true -- for a
+    /// system-level (cross-type) search of ordinary leaf/composite/And/Or predicates and the bare
+    /// resource-column base case. Even under system-level search, chain, :not/:missing=true, _include, and
+    /// _revinclude still require a single target type and throw; wildcard compartment search
+    /// (<paramref name="systemLevelSearch"/> false) keeps throwing for every combination it never supported.
     /// </summary>
     public static LoweredPlan Run(
         Expression? expression,
@@ -33,6 +37,7 @@ public static class Lower
         PageSpec? page,
         bool countOnly = false,
         int? top = null,
+        bool systemLevelSearch = false,
         DateTimeOffset? approximationReferenceTime = null)
     {
         var context = new StructuralContext(symbols, approximationReferenceTime);
@@ -41,7 +46,7 @@ public static class Lower
 
         if (expression is null)
         {
-            match = context.LowerResourceSource(RequireResourceType(targetResourceType));
+            match = context.LowerResourceSource(RequireResourceType(targetResourceType, systemLevelSearch));
         }
         else
         {
@@ -49,18 +54,18 @@ public static class Lower
             outerPredicate = extractedPredicate;
             match = remaining switch
             {
-                null => context.LowerResourceSource(RequireResourceType(targetResourceType)),
+                null => context.LowerResourceSource(RequireResourceType(targetResourceType, systemLevelSearch)),
                 CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
-                _ when targetResourceType is null => throw new NotSupportedException(
+                _ when targetResourceType is null && !systemLevelSearch => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
                     "combine with a CompartmentSearchExpression and resource-column predicates -- an ordinary " +
                     "typed search parameter alongside it has no single resource type to scope it against, " +
                     "which this phase does not support."),
-                _ => LowerNode(remaining, context, targetResourceType!), // non-null: the prior arm already threw otherwise.
+                _ => LowerNode(remaining, context, targetResourceType), // null only under system-level search; LowerNode's chain guard still fires.
             };
         }
 
-        if (targetResourceType is null && sort.Count > 0)
+        if (targetResourceType is null && !systemLevelSearch && sort.Count > 0)
         {
             throw new NotSupportedException(
                 "_sort combined with a wildcard compartment search (no single target resource type) is not " +
@@ -93,13 +98,20 @@ public static class Lower
             new PlanProvenance(context.Origins));
     }
 
-    /// <summary>Returns the target resource type, or throws if it is null where one is required.</summary>
-    private static string RequireResourceType(string? targetResourceType)
-        => targetResourceType ?? throw new NotSupportedException(
-            "targetResourceType is required unless the top-level expression is a compartment search with no single target resource type.");
+    /// <summary>Returns the target resource type, or throws if it is null where one is required. A null type is
+    /// allowed only under system-level search (the bare/resource-column-only base case); a wildcard compartment
+    /// search never reaches here because its remaining expression is a CompartmentSearchExpression, not null.</summary>
+    private static string? RequireResourceType(string? targetResourceType, bool systemLevelSearch)
+        => targetResourceType is not null || systemLevelSearch
+            ? targetResourceType
+            : throw new NotSupportedException(
+                "targetResourceType is required unless the top-level expression is a compartment search with no single target resource type.");
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).</summary>
-    private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
+    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).
+    /// A null <paramref name="resourceType"/> reaches here only under system-level search; chain has its own explicit
+    /// guard below because a ChainedExpression never consumes the ambient type (it carries its own), so the
+    /// null-type guards in <see cref="Run"/> would otherwise let a type-less chain fall through and "work".</summary>
+    private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
             "A :not-modified predicate reached leaf dispatch directly, outside a SearchParameterExpression wrapper -- " +
@@ -112,6 +124,11 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
+        ChainedExpression when resourceType is null => throw new NotSupportedException(
+            "Chain is not supported in system-level search in this phase -- a chain resolves and joins against a " +
+            "concrete referencing/target type, which a cross-type search has no single value for. Guarding at the " +
+            "chain dispatch choke point covers a top-level chain and a chain nested in an And equally; a chain " +
+            "reached inside another chain's scope always has a concrete type and never trips this."),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
@@ -124,7 +141,7 @@ public static class Lower
     /// a :not-modified predicate becomes a negation, a single composite or an OR of composite alternatives
     /// becomes composite lowering, and anything else falls through to <see cref="LowerNode"/>.
     /// </summary>
-    private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string resourceType)
+    private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string? resourceType)
     {
         if (sp.Expression is NotExpression not)
         {
@@ -168,7 +185,7 @@ public static class Lower
     }
 
     /// <summary>Lowers a :missing search to the parameter's presence set, negated when :missing=true.</summary>
-    private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string resourceType)
+    private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string? resourceType)
     {
         var presence = context.LowerParameterPresence(missing.Parameter, resourceType);
         return missing.IsMissing ? context.LowerNot(presence, resourceType) : presence;
@@ -196,7 +213,7 @@ public static class Lower
     /// siblings are already a smaller anchor, and `A AND NOT B` is `A EXCEPT B`. With no positive sibling
     /// there is nothing smaller to subtract from, so the ResourceSource anchor is still the only option.
     /// </summary>
-    private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string resourceType)
+    private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string? resourceType)
     {
         var positives = new List<Expression>();
         var negated = new List<Expression>();
@@ -224,7 +241,7 @@ public static class Lower
         return result;
     }
 
-    private static CteRef Intersect(IReadOnlyList<Expression> expressions, StructuralContext context, string resourceType)
+    private static CteRef Intersect(IReadOnlyList<Expression> expressions, StructuralContext context, string? resourceType)
     {
         var refs = expressions.Select(e => LowerNode(e, context, resourceType)).ToList();
         var result = refs[0];

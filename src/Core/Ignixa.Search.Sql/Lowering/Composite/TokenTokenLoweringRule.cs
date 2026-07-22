@@ -16,7 +16,7 @@ public static class TokenTokenLoweringRule
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenTokenCompositeSearchParam");
         var predicate = new Predicate.And(

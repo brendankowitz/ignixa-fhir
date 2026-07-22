@@ -18,7 +18,7 @@ public static class ReferenceTokenLoweringRule
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var referenceComponent = components.FirstOrDefault(c => c.Value is ReferenceSearchValue)
             ?? throw new NotSupportedException($"ReferenceToken composite '{compositeParameter.Code}' has no Reference-typed component.");
