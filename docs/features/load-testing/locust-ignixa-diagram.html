@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Locust ↔ Ignixa engine — communication</title>
+<style>
+  :root {
+    --paper: #eef2f7;
+    --card: #ffffff;
+    --ink: #0f1722;
+    --muted: #55647a;
+    --hair: #d3dbe6;
+    --accent: #1f6feb;
+    --blueprint: #0d1b2a;
+    --ch-local: #10b981;
+    --ch-fhir: #38bdf8;
+    --ch-auth: #f5a623;
+    --ch-metric: #a78bfa;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0a0e14;
+      --card: #111823;
+      --ink: #e7eef7;
+      --muted: #8b9bb2;
+      --hair: #22303f;
+      --accent: #4d9bff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 4vw, 2rem) 4rem; }
+  header { border-bottom: 1px solid var(--hair); padding-bottom: 1.6rem; margin-bottom: 2rem; }
+  .eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); margin: 0 0 0.8rem; }
+  h1 { font-family: var(--mono); font-weight: 600; font-size: clamp(1.5rem, 4vw, 2.15rem); line-height: 1.15; letter-spacing: -0.01em; text-wrap: balance; margin: 0 0 0.6rem; }
+  .lede { color: var(--muted); font-size: 1.02rem; max-width: 60ch; margin: 0; }
+  h2 { font-family: var(--mono); font-size: 0.9rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); margin: 2.6rem 0 0.4rem; display: flex; align-items: baseline; gap: 0.6rem; }
+  h2 .num { color: var(--accent); font-size: 0.8rem; }
+  .sub { color: var(--muted); font-size: 0.92rem; margin: 0 0 1.1rem; }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; padding: 1rem 1.15rem; background: var(--card); border: 1px solid var(--hair); border-radius: 10px; margin-top: 1.4rem; }
+  .chan { display: flex; align-items: center; gap: 0.55rem; font-size: 0.86rem; }
+  .chan b { font-weight: 600; }
+  .chan span { color: var(--muted); }
+  .swatch { width: 26px; height: 3px; border-radius: 2px; flex: none; }
+  .swatch.dash { background-image: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); height: 3px; }
+  .c-local { color: var(--ch-local); background: var(--ch-local); }
+  .c-fhir { color: var(--ch-fhir); background: var(--ch-fhir); }
+  .c-auth { color: var(--ch-auth); background: var(--ch-auth); }
+  .c-metric { color: var(--ch-metric); background: transparent; }
+  .canvas {
+    background: var(--blueprint);
+    background-image:
+      linear-gradient(rgba(91,143,199,0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(91,143,199,0.09) 1px, transparent 1px);
+    background-size: 22px 22px;
+    border: 1px solid #24384f;
+    border-radius: 12px;
+    padding: 1.4rem 1rem;
+    overflow-x: auto;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+  }
+  .canvas pre.mermaid { margin: 0; background: transparent; text-align: center; min-width: 640px; }
+  .notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-top: 1.4rem; }
+  .note { background: var(--card); border: 1px solid var(--hair); border-left: 3px solid var(--accent); border-radius: 8px; padding: 0.9rem 1rem; }
+  .note h3 { font-family: var(--mono); font-size: 0.82rem; margin: 0 0 0.35rem; letter-spacing: 0.02em; }
+  .note p { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  .note code { font-family: var(--mono); font-size: 0.84em; color: var(--ink); background: rgba(31,111,235,0.12); padding: 0.05em 0.35em; border-radius: 4px; }
+  code { font-family: var(--mono); }
+  footer { margin-top: 3rem; padding-top: 1.3rem; border-top: 1px solid var(--hair); font-family: var(--mono); font-size: 0.8rem; color: var(--muted); line-height: 1.8; }
+  footer .k { color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Ignixa · Load Testing</p>
+    <h1>How Locust talks to the Ignixa engine</h1>
+    <p class="lede">On each Azure Load Testing engine, the locustfile spawns <code>ignixa-matrix serve</code> as a co-located sidecar and drives it over localhost. The runner &mdash; not Locust &mdash; carries the FHIR traffic, holds the tokens, and hands back per-operation timings.</p>
+    <div class="legend" aria-label="communication channels">
+      <div class="chan"><span class="swatch c-local"></span><b>Localhost</b>&nbsp;<span>Locust &#8646; runner, ~zero cost</span></div>
+      <div class="chan"><span class="swatch c-fhir"></span><b>FHIR traffic</b>&nbsp;<span>HTTPS + Bearer, the measured work</span></div>
+      <div class="chan"><span class="swatch c-auth dash"></span><b>Auth &amp; secret</b>&nbsp;<span>client-credentials, cached</span></div>
+      <div class="chan"><span class="swatch c-metric dash"></span><b>Metrics</b>&nbsp;<span>per-op events &rarr; ALT dashboard</span></div>
+    </div>
+  </header>
+
+  <h2><span class="num">A</span> Topology &mdash; one sidecar per engine</h2>
+  <p class="sub">Locust and the runner share the engine instance; the runner embeds the parse-once TestScript engine and owns every hop out to the FHIR server.</p>
+  <div class="canvas">
+<pre class="mermaid">
+%%{init: {'theme':'dark','themeVariables':{'fontFamily':'ui-monospace, Menlo, monospace','fontSize':'13px','primaryColor':'#12283f','primaryBorderColor':'#3b6ea5','primaryTextColor':'#e8f1fb','lineColor':'#5b8fc7','clusterBkg':'#0f2135','clusterBorder':'#2c4a68','tertiaryColor':'#0f2135'}}}%%
+flowchart TB
+  subgraph host["ALT Locust engine instance  (x N)"]
+    direction TB
+    L["locustfile.py<br/>FhirTestScriptUser"]
+    subgraph box["ignixa-matrix serve - 127.0.0.1:5599"]
+      direction TB
+      R["Kestrel host<br/>/healthz - /testscripts - /run"]
+      E["Ignixa.TestScript engine<br/>parse-once - evaluate-many"]
+      R --- E
+    end
+    L -->|"spawn @ test_start"| R
+    L -->|"POST /run"| R
+    R -.->|"RunResponse: per-op timings"| L
+  end
+  KV[("Key Vault<br/>fhir-client-secret")]
+  TOK["Token endpoint<br/>/connect/token"]
+  FHIR["FHIR server<br/>under test"]
+  ALT["ALT sampler<br/>dashboard"]
+
+  KV -.->|"secret &rarr; env var<br/>(ALT identity)"| box
+  E ==>|"HTTPS + Bearer"| FHIR
+  E -.->|"token (cached)"| TOK
+  L -.->|"events.request.fire()"| ALT
+
+  linkStyle 0 stroke:#10b981,stroke-width:2px
+  linkStyle 1 stroke:#10b981,stroke-width:2.5px
+  linkStyle 2 stroke:#a78bfa,stroke-width:2px,stroke-dasharray:5 4
+  linkStyle 3 stroke:#f5a623,stroke-width:2px,stroke-dasharray:5 4
+  linkStyle 4 stroke:#38bdf8,stroke-width:3px
+  linkStyle 5 stroke:#f5a623,stroke-width:2px,stroke-dasharray:5 4
+  linkStyle 6 stroke:#a78bfa,stroke-width:2px,stroke-dasharray:5 4
+
+  classDef ext fill:#132b1f,stroke:#2f6b46,color:#dff5e8;
+  classDef store fill:#2b2414,stroke:#7a5a1e,color:#f6e9cf;
+  classDef sink fill:#221a33,stroke:#5b4a86,color:#e8ddfb;
+  class FHIR,TOK ext;
+  class KV store;
+  class ALT sink;
+</pre>
+  </div>
+
+  <h2><span class="num">B</span> Protocol &mdash; start to finish</h2>
+  <p class="sub">The runner is parsed once at startup, then evaluated many times. Locust only ever speaks localhost to it; the FHIR round-trips and token handling live entirely inside the runner.</p>
+  <div class="canvas">
+<pre class="mermaid">
+%%{init: {'theme':'dark','themeVariables':{'fontFamily':'ui-monospace, Menlo, monospace','fontSize':'13px','actorBkg':'#12283f','actorBorder':'#4276ac','actorTextColor':'#e8f1fb','lineColor':'#5b8fc7','signalColor':'#9db8d6','signalTextColor':'#cfe0f2','activationBkgColor':'#1b3a5b','activationBorderColor':'#4276ac','sequenceNumberColor':'#0d1b2a'}}}%%
+sequenceDiagram
+  autonumber
+  participant L as locustfile.py
+  participant R as runner :5599
+  participant E as Ignixa engine
+  participant T as Token endpoint
+  participant F as FHIR server
+
+  rect rgb(16,38,60)
+  note over L,R: test_start - once per engine
+  L->>R: spawn ignixa-matrix serve --tests ... --port 5599
+  R->>R: parse every TestScript once (registry cache)
+  L->>R: GET /healthz  (poll until ready)
+  R-->>L: 200 {scripts, invalidScripts}
+  end
+
+  rect rgb(48,37,18)
+  note over L,F: preflight auth - direct probe, bypasses the runner
+  L->>T: POST client_credentials  (Key Vault secret)
+  T-->>L: access_token
+  L->>F: GET /Patient  (Bearer)
+  F-->>L: 200  ->  "preflight auth OK"
+  end
+
+  rect rgb(17,45,32)
+  note over L,F: each task iteration - per virtual user
+  L->>R: POST /run {testScriptId, fhirBaseUrl, mode, options}
+  R->>E: ExecuteAsync(parsed definition)
+  loop each FHIR operation in the script
+    opt token missing or near expiry
+      E->>T: client_credentials  (token handler)
+      T-->>E: access_token - cached, 60s buffer
+    end
+    E->>F: HTTPS request + Bearer
+    F-->>E: response - status, body, bytes
+  end
+  E-->>R: TestScriptReport - per-op duration + exchange
+  R-->>L: RunResponse {passed, operations[], durationMs}
+  L->>L: events.request.fire() per op + e2e event -> ALT
+  end
+
+  rect rgb(48,22,30)
+  note over L,R: test_stop
+  L->>R: terminate subprocess
+  end
+</pre>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>Two hops, very different cost</h3>
+      <p>Locust &rarr; runner is a <code>127.0.0.1</code> POST &mdash; effectively free. The measured latency is the runner &rarr; FHIR HTTPS hop, timed at the runner's own HttpClient.</p>
+    </div>
+    <div class="note">
+      <h3>Parse once, run many</h3>
+      <p>Every TestScript is parsed at <code>serve</code> startup into a registry cache; <code>/run</code> evaluates an already-parsed definition, so parsing never taxes the hot path.</p>
+    </div>
+    <div class="note">
+      <h3>Locust never holds a FHIR token</h3>
+      <p>The runner's <code>ClientCredentialsTokenHandler</code> acquires and caches the token (60s expiry buffer, single-flight refresh). Locust only touches auth in the preflight probe.</p>
+    </div>
+    <div class="note">
+      <h3>Per-operation metrics</h3>
+      <p>The engine reports each operation's duration and exchange; the locustfile fires one <code>events.request.fire()</code> per op plus an e2e event, so ALT charts FHIR-operation latency directly.</p>
+    </div>
+  </div>
+
+  <footer>
+    <div><span class="k">source</span> &nbsp;tools/Ignixa.ConformanceMatrix.Cli/loadtest/locustfile.py - Serving/RunnerHost.cs - Serving/ClientCredentialsTokenHandler.cs</div>
+    <div><span class="k">validated</span> &nbsp;authenticated ALT run, 0 failures across ~2,000 samples &mdash; token acquired on the engine from a Key Vault secret</div>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  // Per-diagram %%{init}%% blocks carry the blueprint (dark) theme; this only bootstraps rendering.
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
+</script>
+</body>
+</html>

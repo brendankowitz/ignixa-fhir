@@ -113,3 +113,6 @@ Source: `tools/Ignixa.ConformanceMatrix.Cli/loadtest/locustfile.py`,
 `tools/Ignixa.ConformanceMatrix.Cli/Serving/RunnerHost.cs`,
 `Serving/ClientCredentialsTokenHandler.cs`. See the [runbook](azure-e2e-runbook.md) for the live
 end-to-end setup.
+
+A standalone, styled version of these diagrams (blueprint canvas, colour-coded channels) is in
+[`locust-ignixa-diagram.html`](locust-ignixa-diagram.html) — open it in a browser.
