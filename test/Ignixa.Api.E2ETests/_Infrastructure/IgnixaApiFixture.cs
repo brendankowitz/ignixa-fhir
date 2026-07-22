@@ -12,6 +12,7 @@ using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Search;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Generated;
 using Microsoft.AspNetCore.Hosting;
@@ -84,6 +85,12 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     /// FHIR version detected from server's capability statement.
     /// </summary>
     public FhirVersion FhirVersion { get; private set; }
+
+    /// <summary>
+    /// The server's CapabilityStatement (parsed from /metadata), for passing to the
+    /// TestScript evaluator so requiresCapability gating can evaluate instead of failing open.
+    /// </summary>
+    public ResourceJsonNode? CapabilityStatement { get; private set; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -208,6 +215,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
         var metadataJson = await metadataResponse.Content.ReadAsStringAsync();
         var capability = JsonSourceNodeFactory.Parse<CapabilityStatementJsonNode>(metadataJson);
+        CapabilityStatement = capability;
 
         // Parse FHIR version from capability statement
         FhirVersion = ParseFhirVersion(capability);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ignixa.Api.E2ETests._Infrastructure;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.TestScript.Client;
 using Ignixa.TestScript.Evaluation;
@@ -45,7 +46,7 @@ public sealed class TestScriptConformanceReportTests
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var relativeFile = Path.GetRelativePath(testsDirectory, file).Replace('\\', '/');
-            await RunTestScriptAsync(evaluator, file, relativeFile, results, CancellationToken.None);
+            await RunTestScriptAsync(evaluator, file, relativeFile, results, _fixture.CapabilityStatement, CancellationToken.None);
         }
 
         var durationMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
@@ -83,6 +84,7 @@ public sealed class TestScriptConformanceReportTests
         string file,
         string relativeFile,
         List<ConformanceResult> results,
+        ResourceJsonNode? capabilityStatement,
         CancellationToken cancellationToken)
     {
         var (suite, category) = ConformanceReportMapper.DescribeSuite(relativeFile);
@@ -107,7 +109,7 @@ public sealed class TestScriptConformanceReportTests
 
         try
         {
-            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, FhirVersion);
+            var report = await evaluator.ExecuteAsync(parseResult.Value!, cancellationToken, FhirVersion, capabilityStatement);
             results.AddRange(ConformanceReportMapper.Map(report, relativeFile));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
