@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Xunit;
@@ -238,9 +239,14 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         // Act
         await Cache.GetSystemIdAsync("http://unknown.example");
 
-        // Assert: no row was created
+        // Assert: no row was persisted to the database
         Context.Systems.Any(s => s.Value == "http://unknown.example").ShouldBeFalse(
             "read-only lookup must never insert a row");
+
+        // Assert: no entity was staged in EF Added state (catches context.Add() without SaveChanges())
+        Context.ChangeTracker.Entries<SystemEntity>()
+            .Any(e => e.State == EntityState.Added && e.Entity.Value == "http://unknown.example")
+            .ShouldBeFalse("read-only lookup must not stage a new entity in Added state");
     }
 
     // -----------------------------------------------------------------------
@@ -281,8 +287,13 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         // Act
         await Cache.GetQuantityCodeIdAsync("unknown");
 
-        // Assert: no row was created
+        // Assert: no row was persisted to the database
         Context.QuantityCodes.Any(qc => qc.Value == "unknown").ShouldBeFalse(
             "read-only lookup must never insert a row");
+
+        // Assert: no entity was staged in EF Added state (catches context.Add() without SaveChanges())
+        Context.ChangeTracker.Entries<QuantityCodeEntity>()
+            .Any(e => e.State == EntityState.Added && e.Entity.Value == "unknown")
+            .ShouldBeFalse("read-only lookup must not stage a new entity in Added state");
     }
 }
