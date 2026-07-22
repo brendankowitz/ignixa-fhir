@@ -16,12 +16,15 @@ public class TokenDateTimeLoweringRuleTests
     private static LeafContext ContextResolving(
         SearchParameterInfo compositeParameter,
         short searchParamId,
-        IReadOnlyDictionary<string, int?>? systemIds = null)
-        => new(new SymbolTable(
-            new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
-            new Dictionary<string, short>(),
-            compartmentMembership: null,
-            systemIds: systemIds));
+        IReadOnlyDictionary<string, int?>? systemIds = null,
+        DateTimeOffset? approximationReferenceTime = null)
+        => new(
+            new SymbolTable(
+                new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
+                new Dictionary<string, short>(),
+                compartmentMembership: null,
+                systemIds: systemIds),
+            approximationReferenceTime);
 
     private static SearchParameterInfo CompositeParameter()
         => new("code-value-date", "code-value-date", SearchParamType.Composite,
@@ -86,5 +89,44 @@ public class TokenDateTimeLoweringRuleTests
         var codeEqual = tokenAnd.Right.ShouldBeOfType<Predicate.Equal>();
         codeEqual.Column.Column.ShouldBe("Code1");
         codeEqual.Value.Value.ShouldBe("8480-6");
+    }
+
+    // :ap composite proof — date slot dispatches through DateTimeRangeComparison.Build with an explicit
+    // fixed ApproximationReferenceTime, identical widening formula as the leaf DateTimeLoweringRuleTests
+    // "past instant" case, while the unqualified token slot (Code1) is retained ahead of it.
+    // value is exactly one day before the reference instant -- 1-day gap / 10 = 2h24m tolerance.
+    [Fact]
+    public void GivenApComparatorOnDateSlotWithFixedReferenceTime_WhenLowered_ThenWidensStartEndDateTime2AndRetainsToken()
+    {
+        // Arrange
+        var composite = CompositeParameter();
+        var tokenParam = ComponentParameter("code");
+        var dateParam = ComponentParameter("value-date");
+        var dateValue = new DateTimeSearchValue(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var referenceTime = new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero);
+        var widenedStart = new DateTimeOffset(2019, 12, 31, 21, 36, 0, TimeSpan.Zero);
+        var widenedEnd = new DateTimeOffset(2020, 1, 1, 2, 24, 0, TimeSpan.Zero);
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(tokenParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null)),
+            new(dateParam, SearchComparator.Ap, modifier: null, dateValue),
+        };
+
+        // Act
+        var cte = TokenDateTimeLoweringRule.Lower(
+            composite, components, ContextResolving(composite, 403, approximationReferenceTime: referenceTime), 104);
+
+        // Assert — And(tokenPredicate, And(Le(StartDateTime2,widenedEnd), Ge(EndDateTime2,widenedStart)))
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var tokenPredicate = and.Left.ShouldBeOfType<Predicate.Equal>();
+        tokenPredicate.Column.Column.ShouldBe("Code1");
+        tokenPredicate.Value.Value.ShouldBe("8480-6");
+        var dateRange = and.Right.ShouldBeOfType<Predicate.And>();
+        var startLe = dateRange.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        startLe.Column.Column.ShouldBe("StartDateTime2");
+        startLe.Value.Value.ShouldBe(widenedEnd);
+        var endGe = dateRange.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        endGe.Column.Column.ShouldBe("EndDateTime2");
+        endGe.Value.Value.ShouldBe(widenedStart);
     }
 }

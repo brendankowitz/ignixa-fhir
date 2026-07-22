@@ -87,4 +87,75 @@ public class TokenNumberNumberLoweringRuleTests
         codeEqual.Column.Column.ShouldBe("Code1");
         codeEqual.Value.Value.ShouldBe("8480-6");
     }
+
+    // :ap composite proof — first numeric slot (LowValue2/HighValue2) independently widened via
+    // NumericRangeComparison.Build while the second slot (components[2]) remains a plain Ge; the
+    // shared comparator is unchanged, this only proves the first slot dispatches through it in situ.
+    // 5.4m: tol = max(pm=0.05, abs(5.4)*0.10=0.54) = 0.54 → [4.86, 5.94] (same as leaf NumberLoweringRuleTests).
+    [Fact]
+    public void GivenApComparatorOnFirstNumberSlotAndNonApSecondSlot_WhenLowered_ThenWidensOnlyLowHighValue2()
+    {
+        // Arrange
+        var composite = CompositeParameter();
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(ComponentParameter("code"), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null)),
+            new(ComponentParameter("low"), SearchComparator.Ap, modifier: null, new NumberSearchValue(5.4m)),
+            new(ComponentParameter("high"), SearchComparator.Ge, modifier: null, new NumberSearchValue(10m)),
+        };
+
+        // Act
+        var cte = TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302), 104);
+
+        // Assert — And(And(tokenPredicate, And(Ge(LowValue2,4.86), Le(HighValue2,5.94))), Ge(LowValue3,10))
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var inner = outer.Left.ShouldBeOfType<Predicate.And>();
+        var tokenPredicate = inner.Left.ShouldBeOfType<Predicate.Equal>();
+        tokenPredicate.Column.Column.ShouldBe("Code1");
+        var number1Range = inner.Right.ShouldBeOfType<Predicate.And>();
+        var number1Ge = number1Range.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        number1Ge.Column.Column.ShouldBe("LowValue2");
+        number1Ge.Value.Value.ShouldBe(4.86m);
+        var number1Le = number1Range.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        number1Le.Column.Column.ShouldBe("HighValue2");
+        number1Le.Value.Value.ShouldBe(5.94m);
+        var number2Predicate = outer.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        number2Predicate.Column.Column.ShouldBe("LowValue3");
+        number2Predicate.Value.Value.ShouldBe(10m);
+    }
+
+    // :ap composite proof — second numeric slot (LowValue3/HighValue3) independently widened while the
+    // first slot (components[1]) remains a plain Ge, mirroring the previous test with slots swapped so
+    // both composite numeric positions are proven to reach NumericRangeComparison.Build independently.
+    [Fact]
+    public void GivenApComparatorOnSecondNumberSlotAndNonApFirstSlot_WhenLowered_ThenWidensOnlyLowHighValue3()
+    {
+        // Arrange
+        var composite = CompositeParameter();
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(ComponentParameter("code"), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null)),
+            new(ComponentParameter("low"), SearchComparator.Ge, modifier: null, new NumberSearchValue(10m)),
+            new(ComponentParameter("high"), SearchComparator.Ap, modifier: null, new NumberSearchValue(5.4m)),
+        };
+
+        // Act
+        var cte = TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302), 104);
+
+        // Assert — And(And(tokenPredicate, Ge(LowValue2,10)), And(Ge(LowValue3,4.86), Le(HighValue3,5.94)))
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var inner = outer.Left.ShouldBeOfType<Predicate.And>();
+        var tokenPredicate = inner.Left.ShouldBeOfType<Predicate.Equal>();
+        tokenPredicate.Column.Column.ShouldBe("Code1");
+        var number1Predicate = inner.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        number1Predicate.Column.Column.ShouldBe("LowValue2");
+        number1Predicate.Value.Value.ShouldBe(10m);
+        var number2Range = outer.Right.ShouldBeOfType<Predicate.And>();
+        var number2Ge = number2Range.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        number2Ge.Column.Column.ShouldBe("LowValue3");
+        number2Ge.Value.Value.ShouldBe(4.86m);
+        var number2Le = number2Range.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        number2Le.Column.Column.ShouldBe("HighValue3");
+        number2Le.Value.Value.ShouldBe(5.94m);
+    }
 }

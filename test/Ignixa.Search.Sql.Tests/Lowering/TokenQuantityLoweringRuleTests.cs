@@ -169,4 +169,57 @@ public class TokenQuantityLoweringRuleTests
         topAnd.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("Code1");
         topAnd.Right.ShouldBeOfType<Predicate.False>();
     }
+
+    // :ap composite proof — quantity slot dispatches through NumericRangeComparison.Build (via
+    // QuantityColumnPredicate.Build) with the same tolerance formula as the leaf, while a qualified
+    // token (slot 1) and fully qualified quantity system/code (slot 2, Phase 1) are retained around it.
+    // 5.4m: tol = max(pm=0.05, abs(5.4)*0.10=0.54) = 0.54 → [4.86, 5.94] (same as leaf QuantityLoweringRuleTests).
+    [Fact]
+    public void GivenApComparatorOnQualifiedQuantityWithQualifiedToken_WhenLowered_ThenWidensRangeAndRetainsSystemAndCodeIdentity()
+    {
+        // Arrange
+        var composite = CompositeParameter();
+        var tokenParam = ComponentParameter("component-code");
+        var quantityParam = ComponentParameter("component-value-quantity");
+        var systemIds = new Dictionary<string, int?>
+        {
+            ["http://loinc.org"] = 42,
+            ["http://unitsofmeasure.org"] = 43,
+        };
+        var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(tokenParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://loinc.org", code: "8480-6", text: null)),
+            new(quantityParam, SearchComparator.Ap, modifier: null, new QuantitySearchValue("http://unitsofmeasure.org", "mg", 5.4m)),
+        };
+
+        // Act
+        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402, systemIds, quantityCodeIds), 104);
+
+        // Assert — And(And(Equal(SystemId1),Equal(Code1)), And(And(And(Ge,Le), Equal(SystemId2)), Equal(QuantityCodeId2)))
+        var topAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var tokenAnd = topAnd.Left.ShouldBeOfType<Predicate.And>();
+        var systemEqual = tokenAnd.Left.ShouldBeOfType<Predicate.Equal>();
+        systemEqual.Column.Column.ShouldBe("SystemId1");
+        systemEqual.Value.Value.ShouldBe(42);
+        var codeEqual = tokenAnd.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code1");
+        codeEqual.Value.Value.ShouldBe("8480-6");
+
+        var quantityOuter = topAnd.Right.ShouldBeOfType<Predicate.And>();
+        var quantityMiddle = quantityOuter.Left.ShouldBeOfType<Predicate.And>();
+        var quantityRange = quantityMiddle.Left.ShouldBeOfType<Predicate.And>();
+        var quantityGe = quantityRange.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        quantityGe.Column.Column.ShouldBe("LowValue2");
+        quantityGe.Value.Value.ShouldBe(4.86m);
+        var quantityLe = quantityRange.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        quantityLe.Column.Column.ShouldBe("HighValue2");
+        quantityLe.Value.Value.ShouldBe(5.94m);
+        var quantitySystemEqual = quantityMiddle.Right.ShouldBeOfType<Predicate.Equal>();
+        quantitySystemEqual.Column.Column.ShouldBe("SystemId2");
+        quantitySystemEqual.Value.Value.ShouldBe(43);
+        var quantityCodeEqual = quantityOuter.Right.ShouldBeOfType<Predicate.Equal>();
+        quantityCodeEqual.Column.Column.ShouldBe("QuantityCodeId2");
+        quantityCodeEqual.Value.Value.ShouldBe(77);
+    }
 }
