@@ -584,6 +584,8 @@ public static class SqlBuilder
         Predicate.GreaterThan gt => $"{gt.Column.Column} > {EmitParam(gt.Value, parameters)}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= {EmitParam(ge.Value, parameters)}",
         Predicate.Or or => $"({EmitPredicate(or.Left, parameters)} OR {EmitPredicate(or.Right, parameters)})",
+        Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
+        Predicate.False => "1 = 0",
         _ => throw new NotSupportedException($"No Emit for {predicate.GetType().Name}."),
     };
 

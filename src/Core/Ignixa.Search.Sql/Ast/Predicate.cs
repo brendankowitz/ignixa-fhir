@@ -23,4 +23,8 @@ public abstract record Predicate
     public sealed record GreaterThanOrEqual(SqlColumnRef Column, SqlParameterRef Value) : Predicate;
 
     public sealed record Or(Predicate Left, Predicate Right) : Predicate;
+
+    public sealed record IsNull(SqlColumnRef Column) : Predicate;
+
+    public sealed record False : Predicate;
 }

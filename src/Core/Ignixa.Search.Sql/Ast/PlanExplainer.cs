@@ -201,6 +201,8 @@ public static class PlanExplainer
         Predicate.GreaterThan gt => $"{gt.Column.Column} > @p{parameterOrdinal++}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= @p{parameterOrdinal++}",
         Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
+        Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
+        Predicate.False => "false",
         _ => throw new NotSupportedException($"No Explain() rendering for {predicate.GetType().Name}."),
     };
 

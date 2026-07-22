@@ -1051,4 +1051,50 @@ public class EmitTests
             ")\n" +
             "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
     }
+
+    [Fact]
+    public void GivenAnIsNullPredicate_WhenEmitted_ThenProducesIsNullWithNoParameters()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.IsNull(new SqlColumnRef(table.TableName, "SystemId"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND SystemId IS NULL\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenAFalsePredicate_WhenEmitted_ThenProduces1Equals0WithNoParameters()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.False();
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND 1 = 0\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(0);
+    }
 }
