@@ -109,7 +109,15 @@ public class LowerSortKeyTests
 }
 ```
 
-Note: `Lower.BuildSortKey` is `private static` today. Add a small `internal` test-seam overload (matching this codebase's established pattern of narrow `internal` seams for otherwise-private logic, e.g. `SqlServerSearchIndexReferenceDataCache`'s `TestSearchParamRowInsertedHookAsync`) — add `[InternalsVisibleTo("Ignixa.Search.Sql.Tests")]` if not already present (check `Ignixa.Search.Sql.csproj`/`AssemblyInfo.cs` first; it likely already exists given other `internal`-seam tests in this project) and change `BuildSortKey`'s access modifier from `private` to `internal`, renaming nothing else. Do NOT add a new `BuildSortKeyForTest` wrapper method — just make the real method `internal` and call it directly as `Lower.BuildSortKey(...)` from the test (the snippet above uses a placeholder name; correct it to the real method name once you confirm the internal-visibility change compiles).
+Note: `Lower.BuildSortKey` is `private static` today. Add a small `internal` test-seam (matching this codebase's established pattern of narrow `internal` seams for otherwise-private logic, e.g. `SqlServerSearchIndexReferenceDataCache`'s `TestSearchParamRowInsertedHookAsync`): change `BuildSortKey`'s access modifier from `private` to `internal`, renaming nothing else. **Confirmed: no `InternalsVisibleTo` grant to `Ignixa.Search.Sql.Tests` exists anywhere in this project today** (checked `Ignixa.Search.Sql.csproj` and the whole project tree for `AssemblyInfo.cs` — neither has one), so this task must add one, not assume it already exists. Add it as an `<ItemGroup>` in `src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj`:
+
+```xml
+<ItemGroup>
+  <InternalsVisibleTo Include="Ignixa.Search.Sql.Tests" />
+</ItemGroup>
+```
+
+Do NOT add a new `BuildSortKeyForTest` wrapper method — just make the real method `internal` and call it directly as `Lower.BuildSortKey(...)` from the test (the snippet above uses a placeholder name; correct it to the real method name once you confirm the internal-visibility change compiles).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -264,7 +272,15 @@ public class EmitSortAggregatedTests
         // Act
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert
+        // Assert -- key 0 in Valued phase is an INNER join (gates on the key being present, matching
+        // String/Date's own Valued-phase gating -- an aggregated key is no different: SortSpec's own
+        // contract is "Valued makes Keys[0]'s join INNER," not "String/Date's join is INNER." A LEFT
+        // join here would let missing-key rows leak into both phases (duplicates across the keyset
+        // page boundary) and let a NULL AggValue flow unwrapped into the seek predicate, silently
+        // dropping later-page rows -- this is why key 0 is INNER, not just "guaranteed non-null so we
+        // skip the ISNULL wrapper." The derived table can be INNER-joined directly (no separate
+        // existence check needed) since MIN/MAX over zero grouped rows simply produces zero output rows
+        // for that key, which is exactly INNER JOIN's semantics.
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
@@ -272,25 +288,35 @@ public class EmitSortAggregatedTests
             "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Code = @p0\n" +
             ")\n" +
             "SELECT TOP (10) m.T1, m.Sid1, sk0.AggValue AS SortValue0 FROM cte0 m\n" +
-            "LEFT JOIN (\n" +
+            "INNER JOIN (\n" +
             "    SELECT ResourceTypeId, ResourceSurrogateId, MIN(Code) AS AggValue\n" +
             "    FROM dbo.TokenSearchParam\n" +
             "    WHERE SearchParamId = 77\n" +
             "    GROUP BY ResourceTypeId, ResourceSurrogateId\n" +
             ") sk0 ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
-            "ORDER BY ISNULL(sk0.AggValue, N''), m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.AggValue ASC, m.T1 ASC, m.Sid1 ASC");
+        // The exact trailing "ASC"/"DESC" per key and the "m.T1 ASC, m.Sid1 ASC" tiebreak suffix must
+        // match whatever the REAL current EmitOrderBy produces -- re-read it before finalizing this
+        // string (this plan's earlier research quoted it as appending direction suffixes per key plus
+        // an unconditional "m.T1 ASC, m.Sid1 ASC" tail; confirm that's still accurate).
     }
 
     [Fact]
-    public void GivenADescendingNumberSortKey_WhenEmitted_ThenTheDerivedTableAggregatesWithMax()
+    public void GivenADescendingNumberSortKeyAsASecondaryKey_WhenEmitted_ThenTheDerivedTableIsLeftJoinedAndAggregatesWithMax()
     {
-        // Arrange
+        // Arrange -- a secondary (index 1) sort key is always a LEFT-JOIN tie-breaker regardless of
+        // kind (matches String/Date's own existing i==0 ? INNER : LEFT rule) -- unlike index 0, a
+        // missing secondary key must NOT exclude the row, so this case legitimately stays LEFT.
         var predicateTable = SqlCatalog.Default.Table("NumberSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(predicateTable.TableName, "LowValue"), new SqlParameterRef(5m));
-        var sortTable = SqlCatalog.Default.Table("NumberSearchParam");
-        var sortColumn = sortTable.Column("LowValue");
+        var primaryTable = SqlCatalog.Default.Table("StringSearchParam");
+        var secondaryTable = SqlCatalog.Default.Table("NumberSearchParam");
+        var secondaryColumn = secondaryTable.Column("LowValue");
         var sort = new SortSpec(
-            [new SortKey(88, SortKeyKind.Aggregated, SortOrder.Descending, sortTable, sortColumn)],
+            [
+                new SortKey(50, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(88, SortKeyKind.Aggregated, SortOrder.Descending, secondaryTable, secondaryColumn),
+            ],
             SortPhase.Valued);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)],
@@ -303,12 +329,43 @@ public class EmitSortAggregatedTests
 
         // Assert
         emitted.Sql.ShouldContain("MAX(LowValue) AS AggValue");
-        emitted.Sql.ShouldContain("ORDER BY ISNULL(sk0.AggValue, '0'), m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("LEFT JOIN (\n    SELECT ResourceTypeId, ResourceSurrogateId, MAX(LowValue) AS AggValue");
+        emitted.Sql.ShouldContain("ISNULL(sk1.AggValue,"); // secondary key is never guaranteed non-null -- confirm exact sentinel once Step 3's SentinelFor is written
+    }
+
+    [Fact]
+    public void GivenTheMissingPrimaryPhaseWithAnAggregatedPrimaryKey_WhenEmitted_ThenNoJoinIsEmittedAndNotExistsGuardsInstead()
+    {
+        // Arrange -- proves the phase-transition contract holds for Aggregated exactly like String/Date:
+        // MissingPrimary excludes key 0 from EmitSortJoins entirely (the existing "if (i == 0 &&
+        // sort.Phase == SortPhase.MissingPrimary) continue;" guard, unchanged) and instead requires
+        // absence via NOT EXISTS. This is the test the review flagged as missing -- without it, a bug
+        // that makes key 0 LEFT-joined in Valued would silently duplicate rows across the two phases
+        // and nothing in this test file would catch it.
+        var predicateTable = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(predicateTable.TableName, "Code"), new SqlParameterRef("final"));
+        var sortTable = SqlCatalog.Default.Table("TokenSearchParam");
+        var sortColumn = sortTable.Column("Code");
+        var sort = new SortSpec(
+            [new SortKey(77, SortKeyKind.Aggregated, SortOrder.Ascending, sortTable, sortColumn)],
+            SortPhase.MissingPrimary);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldNotContain("sk0");
+        emitted.Sql.ShouldContain("NOT EXISTS (SELECT 1 FROM dbo.TokenSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 77)");
     }
 }
 ```
 
-Note: the exact sentinel value for a numeric `ISNULL` (used above as `'0'`) and for `Aggregated`'s string-vs-numeric-vs-date sentinel choice generally is a real open detail — resolve it by reading `SortValueExpr`'s existing sentinel logic (String→`N''`, Date→`'0001-01-01T00:00:00.0000000'`) and extending the same switch using `SortKey.Column.SqlType` to pick a per-SQL-type sentinel (`nvarchar`/`varchar`→`N''`, numeric types→`'0'` or `0` unquoted per what `ISNULL` needs for that column's real type, `uniqueidentifier`/reference id columns→whatever `ReferenceResourceId`'s actual SQL type turns out to be — check `ColumnDescriptor.SqlType` for `ReferenceSearchParam.ReferenceResourceId` and `UriSearchParam.Uri` specifically before finalizing all 5 sentinels, since Reference's column may not be a simple string). Write the actual sentinel-selection code in Step 3 based on what you find, and update this test's exact expected string to match — do not guess this detail without reading the DDL first (`src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TokenSearchParam.sql`, `NumberSearchParam.sql`, `QuantitySearchParam.sql`, `ReferenceSearchParam.sql`, `UriSearchParam.sql`).
+Note: the exact sentinel value for a numeric `ISNULL` and for `Aggregated`'s string-vs-numeric-vs-date sentinel choice generally is a real open detail — resolve it by reading `SortValueExpr`'s existing sentinel logic (String→`N''`, Date→`'0001-01-01T00:00:00.0000000'`) and extending the same switch using `SortKey.Column.SqlType` to pick a per-SQL-type sentinel (`nvarchar`/`varchar`→`N''`, numeric types→`0` unquoted per what `ISNULL` needs for that column's real type, `uniqueidentifier`/reference id columns→whatever `ReferenceResourceId`'s actual SQL type turns out to be — check `ColumnDescriptor.SqlType` for `ReferenceSearchParam.ReferenceResourceId` and `UriSearchParam.Uri` specifically before finalizing all 5 sentinels, since Reference's column may not be a simple string). Write the actual sentinel-selection code in Step 3 based on what you find, and update the secondary-key test's exact expected sentinel to match — do not guess this detail without reading the DDL first (`src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TokenSearchParam.sql`, `NumberSearchParam.sql`, `QuantitySearchParam.sql`, `ReferenceSearchParam.sql`, `UriSearchParam.sql`).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -334,9 +391,19 @@ Modify `src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs`. Re-read the current 
 
             if (key.Kind == SortKeyKind.Aggregated)
             {
+                // Key 0 in the Valued phase must gate on the key being present, exactly like
+                // String/Date's own i==0-is-INNER rule below -- an unconditional LEFT here would let
+                // missing-key rows leak into both the Valued and MissingPrimary phases (duplicates
+                // across the keyset page boundary) and let a NULL AggValue reach the seek predicate
+                // unwrapped (SortValueExpr's isGuaranteedNonNull fast path assumes key 0/Valued is
+                // truly non-null -- LEFT would break that guarantee). INNER against the derived table
+                // is safe: MIN/MAX over zero grouped rows for a given (type, surrogate id) simply
+                // produces no output row for that key, which is exactly INNER JOIN's semantics -- no
+                // separate existence check is needed.
+                var joinType = i == 0 ? "INNER" : "LEFT";
                 var aggFunc = key.Direction == SortOrder.Ascending ? "MIN" : "MAX";
                 joins.Add(
-                    $"\nLEFT JOIN (\n" +
+                    $"\n{joinType} JOIN (\n" +
                     $"    SELECT ResourceTypeId, ResourceSurrogateId, {aggFunc}({key.Column!.Name}) AS AggValue\n" +
                     $"    FROM {key.Table!.SchemaName}.{key.Table.TableName}\n" +
                     $"    WHERE SearchParamId = {key.SearchParamId}\n" +
@@ -347,9 +414,9 @@ Modify `src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs`. Re-read the current 
 
             var table = key.Kind == SortKeyKind.String ? "StringSearchParam" : "DateTimeSearchParam";
             var flag = key.Direction == SortOrder.Ascending ? "IsMin" : "IsMax";
-            var joinType = i == 0 ? "INNER" : "LEFT";
+            var joinType2 = i == 0 ? "INNER" : "LEFT";
             joins.Add(
-                $"\n{joinType} JOIN dbo.{table} sk{i}\n" +
+                $"\n{joinType2} JOIN dbo.{table} sk{i}\n" +
                 $"    ON sk{i}.ResourceTypeId = m.T1 AND sk{i}.ResourceSurrogateId = m.Sid1\n" +
                 $"   AND sk{i}.SearchParamId = {key.SearchParamId} AND sk{i}.{flag} = 1");
         }
@@ -603,8 +670,11 @@ git commit -m "feat(search-sql): add KeysetContinuationToken for PageSpec's keys
 
 **Files:**
 - Modify: `src/Core/Ignixa.Search.Sql/Ast/CteDefinition.cs` (`ParamSource`, `ResourceSource`)
-- Modify: `src/Core/Ignixa.Search.Sql/Lowering/Lower.cs` (`RequireResourceType`, `LowerNode`, `LowerAnd`, the null-`targetResourceType` guards at ~53-57/62-68, `Run`'s top-level signature)
+- Modify: `src/Core/Ignixa.Search.Sql/Lowering/Lower.cs` (`RequireResourceType`, `LowerNode`, `LowerAnd`, the null-`targetResourceType` guards at ~53-57/62-68/70-87, `Run`'s top-level signature)
 - Modify: `src/Core/Ignixa.Search.Sql/Lowering/StructuralContext.cs` (`Lower`, `LowerComposite`, `LowerResourceSource`, `LowerNot`'s internal call — every `_leafContext.ResourceTypeId(resourceType)` call site)
+- Modify: `src/Core/Ignixa.Search.Sql/Lowering/LeafLoweringDispatcher.cs` (`Lower(..., short resourceTypeId)` → `short? resourceTypeId`)
+- Modify: `src/Core/Ignixa.Search.Sql/Lowering/CompositeLoweringDispatcher.cs` (same signature change)
+- Modify: every file under `src/Core/Ignixa.Search.Sql/Lowering/Leaf/` and `src/Core/Ignixa.Search.Sql/Lowering/Composite/` (~14 files — each leaf/composite lowering rule takes `short resourceTypeId` today; widen to `short?`. Purely mechanical once the dispatchers are widened — the compiler will name every remaining call site that still requires the old signature.)
 - Modify: `src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs` (`EmitParamSource`, `EmitResourceSource`)
 - Test: `test/Ignixa.Search.Sql.Tests/Lowering/SystemLevelSearchTests.cs` (new file)
 
@@ -614,7 +684,7 @@ git commit -m "feat(search-sql): add KeysetContinuationToken for PageSpec's keys
 
 - [ ] **Step 1: Re-read the current code before editing**
 
-Before writing any test or code, re-read in full: `CteDefinition.cs`'s `ParamSource`/`ResourceSource` records, `Lower.cs`'s `RequireResourceType`, `LowerNode`, `LowerAnd`, the null-type guards near lines 53-57 and 62-68, and `Run`'s signature; `StructuralContext.cs`'s `Lower`, `LowerComposite`, `LowerResourceSource`, `LowerNot`, `LowerParameterPresence`; `SqlBuilder.cs`'s `EmitParamSource` and `EmitResourceSource`. Confirm every call site of `_leafContext.ResourceTypeId(resourceType)` (grep for it) so Step 3 covers all of them, not just the ones cited in the design doc.
+Before writing any test or code, re-read in full: `CteDefinition.cs`'s `ParamSource`/`ResourceSource` records, `Lower.cs`'s `RequireResourceType`, `LowerNode`, `LowerAnd`, the null-type guards near lines 53-57, 62-68, and 70-87, and `Run`'s real signature (its resource-type parameter is named `targetResourceType`, not `resourceType` — use the real name throughout this task, the sketches below use the wrong name as a placeholder); `StructuralContext.cs`'s `Lower`, `LowerComposite`, `LowerResourceSource`, `LowerNot`, `LowerParameterPresence`; `LeafLoweringDispatcher.cs`'s `Lower(..., short resourceTypeId)` signature and `CompositeLoweringDispatcher.cs`'s equivalent; `SqlBuilder.cs`'s `EmitParamSource` and `EmitResourceSource`. Confirm every call site of `_leafContext.ResourceTypeId(resourceType)` (grep for it) so Step 3 covers all of them, not just the ones cited in the design doc — this genuinely reaches the leaf/composite rule files under `Lowering/Leaf/` and `Lowering/Composite/` (~14 files) via the two dispatchers, not just `StructuralContext.cs` itself; confirm the real file count via grep for `short resourceTypeId` across `src/Core/Ignixa.Search.Sql/Lowering/`.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -641,8 +711,11 @@ public class SystemLevelSearchTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short>());
         var resolved = new ResolvedSymbols(symbols, []);
 
-        // Act
-        var lowered = Lower.Run(predicate, resolved.Symbols, resourceType: null, [], [], includeLimit: 0, sort: null, SortPhase.Valued, page: null);
+        // Act -- targetResourceType is Lower.Run's REAL parameter name (confirm at Step 1); the new
+        // system-level-search discriminator parameter's exact name/type is decided in Step 3 -- update
+        // this call once that's settled, this sketch shows the SortOrder.Ascending-adjacent enum-vs-bool
+        // choice is still open.
+        var lowered = Lower.Run(predicate, resolved.Symbols, targetResourceType: null, [], [], includeLimit: 0, sort: null, SortPhase.Valued, page: null /*, discriminator TBD by Step 3 */);
 
         // Assert
         lowered.Plan.Ctes.Count.ShouldBe(1);
@@ -660,13 +733,29 @@ public class SystemLevelSearchTests
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
         // Act
-        var lowered = Lower.Run(predicate, symbols, resourceType: null, [], [], includeLimit: 0, sort: null, SortPhase.Valued, page: null);
+        var lowered = Lower.Run(predicate, symbols, targetResourceType: null, [], [], includeLimit: 0, sort: null, SortPhase.Valued, page: null /*, discriminator TBD by Step 3 */);
 
         // Assert -- exact CTE shape (ResourceSource with a resource-column OuterPredicate, or however
         // _lastUpdated actually lowers -- confirm against the real ResourceColumnLoweringRule behavior
         // before finalizing this assertion; it may be an OuterPredicate on a bare ResourceSource rather
         // than a predicate directly on the ParamSource-shaped node).
         lowered.Plan.Ctes.ShouldContain(c => c is CteDefinition.ResourceSource rs && rs.ResourceTypeId == null);
+    }
+
+    [Fact]
+    public void GivenAnOrdinaryPredicateSortedByAStringKeyWithNoResourceType_WhenLowered_ThenSortComposesNormally()
+    {
+        // Arrange -- GET /?status=final&_sort=name -- the design doc's Section 4 explicitly requires
+        // sort to compose with system-level search ("sort composes normally"); this is the regression
+        // test for that requirement (I1 from plan review) -- without it, Task 4's guard rework could
+        // leave the existing sort guard (Lower.cs's null-type sort guard) throwing unconditionally and
+        // nobody would notice sort silently stayed broken for system-level queries.
+        // Construct per the pattern above, adding a non-null Sort: new SortSpec(...) argument.
+
+        // Act & Assert -- must NOT throw; must produce a QueryPlan with both the type-less ParamSource
+        // and a working sort join, using Ignixa.Search.Expressions.SortOrder explicitly qualified
+        // (two SortOrder enums exist in this codebase -- Ignixa.Search.Expressions and
+        // Ignixa.Search.Indexing -- existing tests fully qualify to avoid ambiguity; do the same here).
     }
 
     [Fact]
@@ -677,7 +766,7 @@ public class SystemLevelSearchTests
         // check ChainLoweringRuleTests.cs or similar for the exact construction shape before writing this.)
 
         // Act & Assert
-        // Should.Throw<NotSupportedException>(() => Lower.Run(chainExpression, symbols, resourceType: null, ...));
+        // Should.Throw<NotSupportedException>(() => Lower.Run(chainExpression, symbols, targetResourceType: null, ...));
     }
 
     [Fact]
@@ -688,18 +777,23 @@ public class SystemLevelSearchTests
     }
 
     [Fact]
-    public void GivenAWildcardCompartmentSearch_WhenLoweredWithNoOrdinaryPredicates_ThenStillWorksUnaffected()
+    public void GivenAWildcardCompartmentSearchWithATypedLeafPredicate_WhenLowered_ThenStillThrowsNotSupportedException()
     {
-        // Arrange -- regression guard: wildcard compartment search's own null-resourceType handling
-        // (a DIFFERENT null-type case from system-level search) must still behave exactly as before this
-        // task's changes. Reuse this file's or LowerTests.cs's existing wildcard-compartment test setup.
+        // Arrange -- THE critical regression guard: wildcard compartment search's null-resourceType
+        // case (a DIFFERENT null-type case from system-level search, discriminated per Step 3's
+        // mechanism) must STILL throw for combinations it never supported -- this is the exact existing
+        // test at LowerTests.cs:470-519 (asserting .Message.ShouldContain("wildcard compartment
+        // search")) re-run unmodified; if this test breaks, the discriminator isn't actually
+        // discriminating and system-level search's relaxation leaked into wildcard compartment too.
+        // Do not modify or weaken the existing LowerTests.cs assertions to make this pass -- if they
+        // fail, the Step 3 mechanism is wrong, go back and fix it there.
     }
 }
 ```
 
-The last three tests are sketched, not complete — Step 5 finalizes them once the guard-rework in Step 3 clarifies exactly how system-level search's null-type case is distinguished from wildcard-compartment's (a boolean flag threaded through `Lower.Run`? A distinct enum? Decide in Step 3, then come back and complete these tests).
+Three tests remain sketched (chain, include, and the sort-composes test's exact assertions) — Step 5 finishes them once Step 3's discriminator mechanism is concrete.
 
-- [ ] **Step 3: Make `ResourceTypeId` nullable and thread null-safety through**
+- [ ] **Step 3: Make `ResourceTypeId` nullable and thread null-safety through, with a mandatory discriminator**
 
 Modify `src/Core/Ignixa.Search.Sql/Ast/CteDefinition.cs`:
 
@@ -710,15 +804,22 @@ public sealed record ResourceSource(short? ResourceTypeId, Predicate? Predicate 
 
 (Every other `CteDefinition` variant is unchanged.)
 
-Modify `src/Core/Ignixa.Search.Sql/Lowering/Lower.cs`:
-- `RequireResourceType` no longer throws for system-level search's null case — it needs to distinguish "null because system-level search" (proceed) from "null because wildcard compartment, and this dispatch site doesn't support that combination" (throw, unchanged behavior). The simplest mechanism: `Lower.Run`'s top-level entry already receives `resourceType: string?` — thread through an explicit new parameter (e.g. `bool allowNullResourceType = false`, defaulting to preserving today's exact throw-on-null behavior everywhere it's currently called) OR distinguish by which caller path reached the guard (wildcard compartment never calls `RequireResourceType`-guarded dispatch at all today per the design doc's own finding — confirm this is still true after your Step 1 re-read; if genuinely true, then ANY caller reaching `RequireResourceType` with a null type is, by construction, system-level search, and the guard can simply stop throwing unconditionally, with wildcard compartment's own separate, already-existing guards at `Lower.cs:53-57`/`62-68` continuing to police the specific combinations (typed leaf, sort) it doesn't support). Verify this claim precisely before choosing the mechanism — it determines whether this is a one-line guard removal or a real new parameter.
-- `LowerAnd`, `LowerSearchParameter`, and every other site currently declared `resourceType: string` (non-nullable) after the top-level `RequireResourceType` call becomes `resourceType: string?` and passes it through unchanged to `StructuralContext`.
+**The discriminator is mandatory, not optional** — a prior draft of this step proposed that any caller reaching `RequireResourceType` with a null type is "by construction" system-level search, so the guard could simply stop throwing. That is factually wrong: `Lower.cs`'s own switch arm at approximately lines 53-57 (`_ when targetResourceType is null => throw ...`) is the gatekeeper for ORDINARY TYPED LEAVES under a null type — exactly the shape system-level search's own primary test case (`GivenAnOrdinaryPredicateWithNoResourceType_...`) needs to succeed through. If that arm keeps throwing unconditionally, system-level search's core case can never pass; if it's relaxed unconditionally, the existing wildcard-compartment regression test (`LowerTests.cs:470-519`, pinned by message `"wildcard compartment search"`) breaks. Both cannot be true at once without a discriminator.
+
+Add an explicit `bool systemLevelSearch = false` parameter to `Lower.Run`'s top-level signature (name it to match this codebase's existing parameter-naming style once you've re-read the real signature — `systemLevelSearch`, `allowNullResourceType`, or similar), defaulting to `false` so every EXISTING call site (compartment search, ordinary typed search, all currently-passing tests) is unaffected without any change at their call sites. Thread it through to wherever the null-type guards live:
+- The switch arm at ~53-57 (typed leaf + null type): today throws unconditionally on null type — change to throw only when `!systemLevelSearch`.
+- The switch arm at ~62-68 (sort + null type): same change — throw only when `!systemLevelSearch`, closing the design doc's "sort composes normally" requirement (I1 from plan review — this was silently dropped in an earlier draft of this task; it is now explicitly in scope).
+- The switch arm at ~70-87 (wildcard compartment + include/revinclude, and whatever else lives there): re-read this arm specifically — per the design doc, chain and `_include`/`_revinclude` do NOT combine with system-level search either, so this arm's throw-on-those-combinations behavior should very likely stay unconditional (throw regardless of `systemLevelSearch`), not gated the same way as the other two. Confirm this arm's exact current conditions before deciding; do not assume it's identical to the other two.
+
+`LowerAnd`, `LowerSearchParameter`, and every other site currently declared `resourceType: string` (non-nullable) after the top-level `RequireResourceType` call becomes `resourceType: string?`, threading the new `systemLevelSearch` flag (or however you name it) alongside it wherever the guards it feeds live.
 
 Modify `src/Core/Ignixa.Search.Sql/Lowering/StructuralContext.cs` — every call site of `_leafContext.ResourceTypeId(resourceType)` (found in Step 1's grep) becomes:
 
 ```csharp
 short? resourceTypeId = resourceType is null ? null : _leafContext.ResourceTypeId(resourceType);
 ```
+
+Modify `src/Core/Ignixa.Search.Sql/Lowering/LeafLoweringDispatcher.cs` and `CompositeLoweringDispatcher.cs`: `Lower(..., short resourceTypeId)` → `Lower(..., short? resourceTypeId)`. Modify every leaf/composite rule file under `Lowering/Leaf/` and `Lowering/Composite/` (~14 files, confirmed via Step 1's grep) that takes `short resourceTypeId` — widen each to `short?` and pass it straight through to the `ParamSource`/`ResourceSource` constructor call it already makes; none of these rules need any LOGIC change, only the type widening, since they already just forward the value into the CTE constructor.
 
 `LowerNot`'s internal `LowerResourceSource(resourceType)` call: per the design doc, `:not` needs an explicit decision (nullable treatment vs. explicit guard) — resolve this now by reading `LowerNot`'s full current body (already read in Step 1) and either (a) threading the same nullable treatment through if it composes cleanly, or (b) adding an explicit `if (resourceType is null) throw new NotSupportedException(":not is not supported in system-level search in this phase.")` guard at the top of `LowerNot` — pick whichever the real code shape makes cleaner and document the choice in the commit message.
 
@@ -754,9 +855,12 @@ Expected: PASS, full suite, both target frameworks.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/Core/Ignixa.Search.Sql/Ast/CteDefinition.cs src/Core/Ignixa.Search.Sql/Lowering/Lower.cs src/Core/Ignixa.Search.Sql/Lowering/StructuralContext.cs src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs test/Ignixa.Search.Sql.Tests/Lowering/SystemLevelSearchTests.cs
+git add src/Core/Ignixa.Search.Sql/Ast/CteDefinition.cs src/Core/Ignixa.Search.Sql/Lowering/ test/Ignixa.Search.Sql.Tests/Lowering/SystemLevelSearchTests.cs
+git add src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs
 git commit -m "feat(search-sql): support system-level search via nullable ParamSource/ResourceSource.ResourceTypeId"
 ```
+
+(`git add src/Core/Ignixa.Search.Sql/Lowering/` stages `Lower.cs`, `StructuralContext.cs`, `LeafLoweringDispatcher.cs`, `CompositeLoweringDispatcher.cs`, and every touched file under `Lowering/Leaf/`/`Lowering/Composite/` in one go — confirm `git status` shows only the files this task actually intended to touch before committing, nothing from a different task's in-progress work.)
 
 ---
 
@@ -771,9 +875,11 @@ git commit -m "feat(search-sql): support system-level search via nullable ParamS
 - Consumes: Task 4's nullable-`ResourceTypeId` infrastructure is NOT required for this task — this closes a gap in ordinary (typed and type-less) `_type` handling, independent of Task 4's mechanism, though it's most visibly useful for system-level search's `_type=Patient,Observation` case.
 - Produces: `TypeEquals`/`ExtractResourceColumnPredicates` correctly handle a comma-separated `_type` value list; Task 6's end-to-end tests exercise this.
 
+**Correction from an earlier draft of this task**: `SearchExpressionBinder.cs` has NO `_type` handling at all — `_type=A,B` is consumed at the parsing layer, `SearchOptionsBuilder.cs:82-112`, which splits it into a `resourceTypes` string list under `ParameterCategory.Type` and never emits an `Expression` tree node for it. **No production path today constructs the multi-value `TypeEquals`/`Or`-of-`Equal` shape this task adds** — `TypeEquals` (`ResourceColumnLoweringRule.cs:50-66`) is reachable only from a directly-constructed expression tree (i.e., a test, or a future caller). This task is still worth doing — it closes a real, verified gap in the COMPILER's own contract (what `Lower.Run` accepts and correctly compiles), which sub-project 3's adapter will need to construct this shape from `SearchOptions.ResourceTypes` when it exists — but write it as exactly that: a compiler-contract extension proven by direct `Lower.Run`/`TypeEquals` unit tests, not as "closing a gap in how real requests are parsed today," since no real request reaches this code path yet. Read `SearchOptionsBuilder.cs:82-112` first to confirm this framing is still accurate, then proceed.
+
 - [ ] **Step 1: Confirm the gap is real before writing a fix**
 
-Before any code, write and run one throwaway (not committed) confirmation test proving `_type=Patient,Observation` currently throws `NotSupportedException` via `RejectResourceColumnCode` (per the design doc's citation) rather than silently producing wrong results — this confirms the "loud failure, not silent wrong result" framing and that this is genuinely a gap to close, not a misunderstanding. Delete this throwaway test before Step 2's real, permanent test.
+Before any code, write and run one throwaway (not committed) confirmation test proving a directly-constructed multi-value `_type` expression tree (built by hand, the same way this task's own permanent test will build one — there is no existing binder path to drive this through) currently throws `NotSupportedException` via `RejectResourceColumnCode` (per the design doc's citation) when lowered, rather than silently producing wrong results — this confirms the "loud failure, not silent wrong result" framing and that this is genuinely a gap to close, not a misunderstanding. Delete this throwaway test before Step 2's real, permanent test.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -784,13 +890,12 @@ Before any code, write and run one throwaway (not committed) confirmation test p
 [Fact]
 public void GivenACommaSeparatedTypeList_WhenLowered_ThenComposesAsAnOrOfEqualsExtractedIntoOuterPredicate()
 {
-    // Arrange -- GET /?_type=Patient,Observation&status=final (a real multi-value _type combined with
-    // an ordinary predicate, matching the design doc's cited example query).
-    // Construct per this file's/Lower.cs's existing test conventions for _type handling -- read an
-    // existing single-value _type test first for the exact expression-tree shape to build the
-    // multi-value version of (likely a SearchParameterExpression wrapping an Or of two TypeEquals-shaped
-    // predicates, or however this codebase's binder actually represents "_type=A,B" -- check
-    // SearchExpressionBinder.cs for the real binder shape before assuming).
+    // Arrange -- a directly-constructed expression tree representing _type=Patient,Observation combined
+    // with an ordinary predicate (status=final) -- matching the design doc's cited example query. No
+    // production binder path produces this shape today (confirmed: SearchOptionsBuilder.cs consumes
+    // _type into a plain string list, never an expression), so this test constructs the tree by hand,
+    // the same way this file's existing single-value _type tests likely do (read one first for the
+    // exact SearchParameterPredicateExpression/And shape to extend).
 
     // Act
 
@@ -807,7 +912,7 @@ Expected: FAIL with `NotSupportedException` (confirms Step 1's throwaway finding
 
 - [ ] **Step 4: Extend `TypeEquals` and `ExtractResourceColumnPredicates`**
 
-Re-read `ResourceColumnLoweringRule.cs`'s `TypeEquals` method and `Lower.cs`'s `ExtractResourceColumnPredicates` (`:202-231`) in full before editing. Per the design doc: `Predicate.In` does not exist in `EmitPredicate`'s arms — the fix is an `Or` of `Predicate.Equal`s, recognized by `ExtractResourceColumnPredicates`. Extend `TypeEquals` to accept a multi-value binder input (confirm the real binder shape from `SearchExpressionBinder.cs` first) and produce `new Predicate.Or([Equal(...), Equal(...), ...])` instead of throwing on non-single-value input; extend `ExtractResourceColumnPredicates` to recognize an `Or` of same-column `Equal` predicates as a resource-column predicate eligible for extraction into `OuterPredicate`, alongside its existing top-level-`And` handling.
+Re-read `ResourceColumnLoweringRule.cs`'s `TypeEquals` method and `Lower.cs`'s `ExtractResourceColumnPredicates` (`:202-231`) in full before editing. Per the design doc: `Predicate.In` does not exist in `EmitPredicate`'s arms — the fix is an `Or` of `Predicate.Equal`s, recognized by `ExtractResourceColumnPredicates`. Extend `TypeEquals` to accept a multi-value input (there is no existing binder shape to confirm against per this task's corrected framing above — decide the input shape `TypeEquals` should accept based on how this file's existing single-value test constructs its input, extended to a list) and produce `new Predicate.Or([Equal(...), Equal(...), ...])` instead of throwing on non-single-value input; extend `ExtractResourceColumnPredicates` to recognize an `Or` of same-column `Equal` predicates as a resource-column predicate eligible for extraction into `OuterPredicate`, alongside its existing top-level-`And` handling.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -837,6 +942,7 @@ git commit -m "feat(search-sql): support comma-separated _type value lists"
 Add tests to `EndToEndCompilationTests.cs` (read a few existing tests in this file first for exact `Resolve`/symbol-table/`Explain()`-assertion boilerplate) covering, at minimum:
 - `GET /?status=final` — ordinary type-less predicate compiles and produces the expected `Explain()`-verified plan shape (one `ParamSource` with null `ResourceTypeId`).
 - `GET /?_lastUpdated=gt2020-01-01` — bare resource-column-only system search.
+- `GET /?status=final&_sort=name` — system-level search composed with sort (design doc Section 4's "sort composes normally" requirement — Task 4's own test file has a narrower version of this; this is the full `Resolve→Lower→Emit` combined proof).
 - `GET /?_type=Patient,Observation&status=final` — Task 5's multi-value `_type` composed with an ordinary predicate.
 - `GET /?status=final&_include=Observation:subject` (or similar) — confirms the chain/include composition-limit guard from Task 4 fires correctly, `Should.Throw<NotSupportedException>()`.
 - A wildcard-compartment regression test proving that flow is entirely unaffected by this task's changes.
@@ -1127,9 +1233,9 @@ git commit -m "feat(search-sql): add VisibleSinceFilter node kind for \$everythi
 - Consumes: Task 7's `TableExistsPredicate`/`Except`, Task 8's `VisibleSinceFilter`, the existing `CompartmentSource`/`LowerCompartment`/`Union`/`Intersect`/`ResourceSource` mechanisms.
 - Produces: a working `$everything` compilation entry point — sub-project 3's adapter (out of scope here) calls it.
 
-- [ ] **Step 1: Re-read the legacy oracle and existing compartment mechanism once more**
+- [ ] **Step 1: Re-read the legacy oracle and the existing `PatientEverythingExpression` AST node**
 
-Before writing any code, re-read `PatientEverythingQueryGenerator.cs` in full (already quoted extensively during this plan's research, but confirm nothing drifted) and `StructuralContext.cs`'s `LowerCompartment`/`Union`/`Intersect` methods, to finalize the exact orchestration entry-point signature (what inputs does `$everything` need: patient ID, optional date range, optional `_since`, optional `IncludeReferencedResources` flag — mirror `PatientEverythingQueryGenerator`'s own real method signature for the parameter list).
+Before writing any code, re-read `PatientEverythingQueryGenerator.cs` in full (already quoted extensively during this plan's research, but confirm nothing drifted) and `StructuralContext.cs`'s `LowerCompartment`/`Union`/`Intersect` methods. **Also read `src/Core/Ignixa.Search/Expressions/PatientEverythingExpression.cs`, found during this plan's review pass** — it already exists and carries exactly the inputs this orchestration needs (patient IDs, `Start`/`End` date range, `SinceDate`, `FilteredResourceTypes`, `IncludeReferencedResources`), and `Lower.cs`'s top-level dispatch (`LowerNode`'s default arm, or wherever `NotSupportedException` currently fires for it — find the exact throw site) is what this task's orchestration needs to replace with a real implementation, dispatching on `PatientEverythingExpression` the same tier as `SearchParameterExpression`/`ChainedExpression`/`CompartmentSearchExpression`. This collapses most of the "finalize the entry-point signature" work below — the signature is largely already decided by this existing type; confirm its exact field names/types match what's used below, adjusting the sketch's parameter list to the real ones rather than inventing new inputs.
 
 - [ ] **Step 2: Write the failing end-to-end test**
 
