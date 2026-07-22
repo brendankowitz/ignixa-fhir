@@ -1,0 +1,98 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/last-updated",
+  "description": "_lastUpdated search-parameter conformance tests against a single server-assigned-id Patient: single-bound ge/lt assertions, AND-by-repetition over a broad range, and a contradictory repeated-bound case whose result is implementation-defined.",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='create').exists() and rest.resource.where(type='Patient').interaction.where(code='delete').exists()" }
+  ],
+  "fixture": [
+    {
+      "id": "pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "active": true,
+        "name": [{ "family": "LastUpdated", "given": ["Pat1"] }],
+        "identifier": [{ "system": "http://ignixa.io/testscript/suite/last-updated", "value": "LAST-UPDATED-PAT1" }]
+      }
+    }
+  ],
+  "variable": [
+    { "name": "responseId", "sourceId": "create-pat1", "path": "id", "description": "Server-assigned id for the fixture patient" }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "pat1", "responseId": "create-pat1", "description": "POST Patient to establish the fixture with a server-assigned lastUpdated timestamp" } },
+      { "assert": { "description": "Setup create must return 201 Created", "sourceId": "create-pat1", "response": "created" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "_lastUpdated ge2000 with suite identifier returns the fixture",
+      "description": "GET /Patient?identifier=...|LAST-UPDATED-PAT1&_lastUpdated=ge2000 must return HTTP 200, a searchset Bundle, and must include the fixture by both its resource id and its suite identifier. The fixture was just created so its meta.lastUpdated is certainly on or after 2000.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='identifier').exists() or rest.searchParam.where(name='identifier').exists()) and (rest.resource.where(type='Patient').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists())" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=ge2000", "responseId": "ge2000-response", "description": "GET /Patient?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=ge2000" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Must include one entry whose resource has both the fixture id and suite identifier system and value", "expression": "entry.where(resource.id = '${responseId}' and resource.identifier.where(system = 'http://ignixa.io/testscript/suite/last-updated' and value = 'LAST-UPDATED-PAT1').exists()).exists()" } }
+      ]
+    },
+    {
+      "name": "_lastUpdated lt2000 with suite identifier returns empty bundle",
+      "description": "GET /Patient?identifier=...|LAST-UPDATED-PAT1&_lastUpdated=lt2000 must return HTTP 200 and a searchset Bundle with no match entries. The fixture was created in this century and cannot have a lastUpdated timestamp before year 2000.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='identifier').exists() or rest.searchParam.where(name='identifier').exists()) and (rest.resource.where(type='Patient').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists())" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=lt2000", "responseId": "lt2000-response", "description": "GET /Patient?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=lt2000" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Match entries must be empty: the fixture was created no earlier than the year 2000 and cannot have a lastUpdated before that", "expression": "entry.where(search.mode = 'match').empty()" } }
+      ]
+    },
+    {
+      "name": "repeated _lastUpdated ge2000 and lt2999 (broad AND range) contains the fixture",
+      "description": "GET /Patient?identifier=...|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2999 exercises the AND-by-repetition convention for a range that comfortably contains the fixture's lastUpdated. Hard HTTP 200/Bundle/searchset asserts confirm the server responded correctly; the fixture-membership assert is warningOnly because the FHIR specification does not normatively require servers to AND repeated search parameter keys — server behavior for unprofiled repeated-key semantics varies.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='identifier').exists() or rest.searchParam.where(name='identifier').exists()) and (rest.resource.where(type='Patient').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists())" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2999", "responseId": "range-response", "description": "GET /Patient?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2999" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "One entry matching both the fixture id and suite identifier should appear when the server ANDs repeated _lastUpdated values over the range ge2000 to lt2999; warningOnly because the FHIR specification does not normatively profile AND semantics for repeated search parameter keys and server behavior varies", "expression": "entry.where(resource.id = '${responseId}' and resource.identifier.where(system = 'http://ignixa.io/testscript/suite/last-updated' and value = 'LAST-UPDATED-PAT1').exists()).exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "contradictory repeated _lastUpdated ge2000 and lt2000 yields empty match",
+      "description": "GET /Patient?identifier=...|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2000 combines a lower bound and an equal upper bound that together admit no instants. Hard HTTP 200/Bundle/searchset asserts confirm the server responded correctly; the empty-match assert is warningOnly because the FHIR specification does not normatively require AND semantics for repeated search parameter keys — some servers may apply OR or last-wins semantics and return results.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='identifier').exists() or rest.searchParam.where(name='identifier').exists()) and (rest.resource.where(type='Patient').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists())" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2000", "responseId": "contradictory-response", "description": "GET /Patient?identifier=http://ignixa.io/testscript/suite/last-updated|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2000" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Match entries should be empty: a contradictory range (ge2000 AND lt2000) admits no instants when ANDed; warningOnly because the FHIR specification does not normatively require AND semantics for repeated search parameter keys and some servers may apply OR or last-wins semantics", "expression": "entry.where(search.mode = 'match').empty()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/${responseId}", "description": "Teardown: delete the fixture patient created by this run" } }
+    ]
+  }
+}

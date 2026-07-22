@@ -131,4 +131,81 @@ public class VariableExtractorTests
             a.Message != null &&
             a.Message.Contains("not valid fhirpath"));
     }
+
+    [Fact]
+    public async Task GivenExpressionExtractedAbsoluteNextUrl_WhenUsedAsOperationUrl_ThenPassesThroughUnchanged()
+    {
+        // history-page-one holds the canonical absolute next URL.
+        // history-page-two (the last response / LastResponse) holds a distinct decoy absolute URL.
+        // VariableDefinition.SourceId = "history-page-one" must be honoured:
+        //   if the extractor ignores SourceId and falls back to LastResponse, it would follow the
+        //   decoy and the final Received(1) assertion on the required URL would fail.
+        const string requiredAbsoluteUrl =
+            "https://example.test/fhir/Patient/123/_history?_count=1&ct=opaque%2Btoken";
+        const string decoyAbsoluteUrl =
+            "https://decoy.test/fhir/Observation/999/_history?_count=5&ct=other%2Btoken";
+
+        var responses = new Queue<TestResponse>(new[]
+        {
+            new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse(
+                    """{"resourceType":"Bundle","id":"history-page-one","link":[{"relation":"next","url":"https://example.test/fhir/Patient/123/_history?_count=1&ct=opaque%2Btoken"}]}""")
+            },
+            new TestResponse
+            {
+                StatusCode = 200,
+                Body = JsonSourceNodeFactory.Parse(
+                    $$"""{"resourceType":"Bundle","id":"history-page-two","link":[{"relation":"next","url":"{{decoyAbsoluteUrl}}"}]}""")
+            }
+        });
+        // The two setup calls drain the queue; the third call (the ${nextUrl} operation) receives a
+        // fresh HTTP 200 without a third queued response — keeping the queue size exactly two.
+        _mockProvider.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                if (responses.Count > 0)
+                    return responses.Dequeue();
+                return new TestResponse { StatusCode = 200 };
+            });
+
+        var definition = new TestScriptDefinition
+        {
+            Metadata = new TestScriptMetadata { Name = "AbsoluteNextUrl" },
+            Variables =
+            [
+                new VariableDefinition
+                {
+                    Name = "nextUrl",
+                    SourceId = "history-page-one",
+                    Extraction = new ExpressionExtraction("Bundle.link.where(relation = 'next').url")
+                }
+            ],
+            Setup =
+            [
+                new OperationExpression { Type = "read", Resource = "Patient", ResponseId = "history-page-one" },
+                new OperationExpression { Type = "read", Resource = "Patient", ResponseId = "history-page-two" }
+            ],
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "UseNextUrl",
+                    Actions = [new OperationExpression { Type = "read", Url = "${nextUrl}" }]
+                }
+            ]
+        };
+
+        var evaluator = new TestScriptEvaluator(_mockProvider, _fixtureProvider, _r4Schema);
+        var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
+
+        report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
+        // Exactly three provider calls: two setup + one test.
+        await _mockProvider.Received(3).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+        // Exactly one call carries the required absolute URL — not the decoy.
+        await _mockProvider.Received(1).ExecuteAsync(
+            Arg.Is<TestRequest>(r => r.Url == requiredAbsoluteUrl),
+            Arg.Any<CancellationToken>());
+    }
 }

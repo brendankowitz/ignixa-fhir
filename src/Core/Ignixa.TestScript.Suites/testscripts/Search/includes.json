@@ -301,6 +301,92 @@
       ]
     },
     {
+      "name": "two iterate branches are visible without a direct performer include",
+      "description": "The hard direct-subject contract is separated from warning-only branch visibility because base CapabilityStatement has no precise iterate declaration.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Observation').interaction.where(code='search-type').exists() and (rest.resource.where(type='Observation').searchParam.where(name='_id').exists() or rest.searchParam.where(name='_id').exists()) and rest.resource.where(type='Observation').searchInclude.where($this='Observation:subject' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Observation",
+            "params": "?_id=ignixa-inc-obs1&_include=Observation:subject&_include:iterate=Patient:organization&_include:iterate=Patient:general-practitioner&_total=accurate",
+            "responseId": "inc-iterate-branch-visibility",
+            "description": "Search with direct subject and two iterate branches, without direct performer"
+          }
+        },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must be a searchset", "expression": "type = 'searchset'" } },
+        { "assert": { "description": "Observation must appear once as the match", "expression": "entry.where(resource.id = 'ignixa-inc-obs1' and search.mode = 'match').count() = 1" } },
+        { "assert": { "description": "Patient must appear once as a direct include", "expression": "entry.where(resource.id = 'ignixa-inc-pat1' and search.mode = 'include').count() = 1" } },
+        { "assert": { "description": "Included resources must not affect total", "expression": "total = 1" } },
+        {
+          "assert": {
+            "description": "Organization should be visible through Patient:organization",
+            "expression": "entry.where(resource.id = 'ignixa-inc-org' and search.mode = 'include').exists()",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Practitioner should be visible through Patient:general-practitioner",
+            "expression": "entry.where(resource.id = 'ignixa-inc-prac1' and search.mode = 'include').exists()",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "direct and iterated include paths deduplicate logical resources",
+      "description": "Direct performer includes make Organization and Practitioner presence portable; they do not prove either iterate branch executed. Cross-path counts remain warning-only without a profile.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Observation').interaction.where(code='search-type').exists() and (rest.resource.where(type='Observation').searchParam.where(name='_id').exists() or rest.searchParam.where(name='_id').exists()) and rest.resource.where(type='Observation').searchInclude.where($this='Observation:subject' or $this='*').exists() and rest.resource.where(type='Observation').searchInclude.where($this='Observation:performer' or $this='*').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "Observation",
+            "params": "?_id=ignixa-inc-obs1&_include=Observation:subject&_include=Observation:performer&_include:iterate=Patient:organization&_include:iterate=Patient:general-practitioner&_total=accurate",
+            "responseId": "inc-direct-iterated-dedup",
+            "description": "Search with direct subject and performer plus both iterate branches"
+          }
+        },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must be a searchset", "expression": "type = 'searchset'" } },
+        { "assert": { "description": "Observation must appear once as the match", "expression": "entry.where(resource.id = 'ignixa-inc-obs1' and search.mode = 'match').count() = 1" } },
+        { "assert": { "description": "Patient direct include must appear once", "expression": "entry.where(resource.id = 'ignixa-inc-pat1' and search.mode = 'include').count() = 1" } },
+        { "assert": { "description": "Direct performer Organization must be included", "expression": "entry.where(resource.id = 'ignixa-inc-org' and search.mode = 'include').exists()" } },
+        { "assert": { "description": "Direct performer Practitioner must be included", "expression": "entry.where(resource.id = 'ignixa-inc-prac1' and search.mode = 'include').exists()" } },
+        { "assert": { "description": "Included resources must not affect total", "expression": "total = 1" } },
+        {
+          "assert": {
+            "description": "Organization should appear once across direct and potentially iterated paths",
+            "expression": "entry.where(resource.id = 'ignixa-inc-org').count() = 1",
+            "warningOnly": true
+          }
+        },
+        {
+          "assert": {
+            "description": "Practitioner should appear once across direct and potentially iterated paths",
+            "expression": "entry.where(resource.id = 'ignixa-inc-prac1').count() = 1",
+            "warningOnly": true
+          }
+        }
+      ]
+    },
+    {
       "name": "_include:iterate on a same-type chain performs a single iteration, not unbounded recursion",
       "description": "Organization?_id=org-a&_include:iterate=Organization:partof must include org-b (one iteration) but not org-c, confirming _include:iterate performs a single additional hop rather than a full transitive closure. Iteration itself has no precise R4 CapabilityStatement flag, so iterated-hop assertions are informational.",
       "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],

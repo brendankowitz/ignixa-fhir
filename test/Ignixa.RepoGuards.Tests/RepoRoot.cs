@@ -13,15 +13,19 @@ namespace Ignixa.RepoGuards.Tests;
 /// </summary>
 internal static class RepoRoot
 {
-    public static string Find()
+    public static string Find() => Find(AppContext.BaseDirectory);
+
+    public static string Find(string startDirectory)
     {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !Directory.Exists(Path.Combine(dir.FullName, ".git")))
+        var dir = new DirectoryInfo(startDirectory);
+        while (dir is not null &&
+               !Directory.Exists(Path.Combine(dir.FullName, ".git")) &&
+               !File.Exists(Path.Combine(dir.FullName, ".git")))
         {
             dir = dir.Parent;
         }
 
-        dir.ShouldNotBeNull($"Could not find repo root from {AppContext.BaseDirectory}");
+        dir.ShouldNotBeNull($"Could not find repo root from {startDirectory}");
         return dir!.FullName;
     }
 }

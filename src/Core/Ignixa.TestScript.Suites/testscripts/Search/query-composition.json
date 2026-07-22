@@ -1,0 +1,274 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/query-composition",
+  "description": "Portable DiagnosticReport query composition with status, code, typed chain, _lastUpdated, unique issued sort, _count=10 as workload composition rather than pagination coverage, and independent single-predicate decoys.",
+  "status": "active",
+  "extension": [
+    {
+      "url": "http://ignixa.io/testscript/requiresCapability",
+      "valueString": "(fhirVersion.startsWith('4.0') or fhirVersion.startsWith('4.3') or fhirVersion.startsWith('5.0')) and rest.resource.where(type='Practitioner').updateCreate = true and rest.resource.where(type='Practitioner').interaction.where(code='delete').exists() and rest.resource.where(type='DiagnosticReport').updateCreate = true and rest.resource.where(type='DiagnosticReport').interaction.where(code='delete').exists()"
+    }
+  ],
+  "fixture": [
+    {
+      "id": "composition-practitioner-target",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-query-prac-target",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-PRAC-TARGET"
+          }
+        ],
+        "name": [{ "family": "CompositionTarget" }]
+      }
+    },
+    {
+      "id": "composition-practitioner-other",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "ignixa-query-prac-other",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-PRAC-OTHER"
+          }
+        ],
+        "name": [{ "family": "CompositionOther" }]
+      }
+    },
+    {
+      "id": "composition-match-one",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "ignixa-query-match-1",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-MATCH-1"
+          }
+        ],
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "24323-8" }]
+        },
+        "issued": "2020-01-01T00:00:00Z",
+        "resultsInterpreter": [
+          { "reference": "Practitioner/ignixa-query-prac-target" }
+        ]
+      }
+    },
+    {
+      "id": "composition-match-two",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "ignixa-query-match-2",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-MATCH-2"
+          }
+        ],
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "24323-8" }]
+        },
+        "issued": "2021-01-01T00:00:00Z",
+        "resultsInterpreter": [
+          { "reference": "Practitioner/ignixa-query-prac-target" }
+        ]
+      }
+    },
+    {
+      "id": "composition-decoy-status",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "ignixa-query-decoy-status",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-DECOY-STATUS"
+          }
+        ],
+        "status": "preliminary",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "24323-8" }]
+        },
+        "issued": "2022-01-01T00:00:00Z",
+        "resultsInterpreter": [
+          { "reference": "Practitioner/ignixa-query-prac-target" }
+        ]
+      }
+    },
+    {
+      "id": "composition-decoy-code",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "ignixa-query-decoy-code",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-DECOY-CODE"
+          }
+        ],
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "99999-9" }]
+        },
+        "issued": "2023-01-01T00:00:00Z",
+        "resultsInterpreter": [
+          { "reference": "Practitioner/ignixa-query-prac-target" }
+        ]
+      }
+    },
+    {
+      "id": "composition-decoy-practitioner",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "id": "ignixa-query-decoy-practitioner",
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/query-composition",
+            "value": "QUERY-DECOY-PRACTITIONER"
+          }
+        ],
+        "status": "final",
+        "code": {
+          "coding": [{ "system": "http://loinc.org", "code": "24323-8" }]
+        },
+        "issued": "2024-01-01T00:00:00Z",
+        "resultsInterpreter": [
+          { "reference": "Practitioner/ignixa-query-prac-other" }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-query-prac-target", "sourceId": "composition-practitioner-target", "responseId": "setup-practitioner-target-response", "description": "PUT target Practitioner" } },
+      { "operation": { "type": { "code": "update" }, "url": "Practitioner/ignixa-query-prac-other", "sourceId": "composition-practitioner-other", "responseId": "setup-practitioner-other-response", "description": "PUT other Practitioner" } },
+      { "operation": { "type": { "code": "update" }, "url": "DiagnosticReport/ignixa-query-match-1", "sourceId": "composition-match-one", "responseId": "setup-match-one-response", "description": "PUT first matching report" } },
+      { "operation": { "type": { "code": "update" }, "url": "DiagnosticReport/ignixa-query-match-2", "sourceId": "composition-match-two", "responseId": "setup-match-two-response", "description": "PUT second matching report" } },
+      { "operation": { "type": { "code": "update" }, "url": "DiagnosticReport/ignixa-query-decoy-status", "sourceId": "composition-decoy-status", "responseId": "setup-decoy-status-response", "description": "PUT status decoy" } },
+      { "operation": { "type": { "code": "update" }, "url": "DiagnosticReport/ignixa-query-decoy-code", "sourceId": "composition-decoy-code", "responseId": "setup-decoy-code-response", "description": "PUT code decoy" } },
+      { "operation": { "type": { "code": "update" }, "url": "DiagnosticReport/ignixa-query-decoy-practitioner", "sourceId": "composition-decoy-practitioner", "responseId": "setup-decoy-practitioner-response", "description": "PUT practitioner-chain decoy" } }
+    ]
+  },
+  "test": [
+    {
+      "name": "fixture setup response validation",
+      "description": "Each fixture PUT must return exactly 200 OK for an update or 201 Created for a create; grouped warningOnly alternatives produce a hard failure when neither status matches.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }
+      ],
+      "action": [
+        { "assert": { "description": "Update alternative: target Practitioner PUT returns 200 OK", "sourceId": "setup-practitioner-target-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-practitioner-target-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: target Practitioner PUT returns 201 Created", "sourceId": "setup-practitioner-target-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-practitioner-target-status" }], "responseCode": "201", "warningOnly": true } },
+        { "assert": { "description": "Update alternative: other Practitioner PUT returns 200 OK", "sourceId": "setup-practitioner-other-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-practitioner-other-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: other Practitioner PUT returns 201 Created", "sourceId": "setup-practitioner-other-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-practitioner-other-status" }], "responseCode": "201", "warningOnly": true } },
+        { "assert": { "description": "Update alternative: first matching report PUT returns 200 OK", "sourceId": "setup-match-one-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-match-one-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: first matching report PUT returns 201 Created", "sourceId": "setup-match-one-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-match-one-status" }], "responseCode": "201", "warningOnly": true } },
+        { "assert": { "description": "Update alternative: second matching report PUT returns 200 OK", "sourceId": "setup-match-two-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-match-two-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: second matching report PUT returns 201 Created", "sourceId": "setup-match-two-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-match-two-status" }], "responseCode": "201", "warningOnly": true } },
+        { "assert": { "description": "Update alternative: status decoy PUT returns 200 OK", "sourceId": "setup-decoy-status-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-decoy-status-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: status decoy PUT returns 201 Created", "sourceId": "setup-decoy-status-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-decoy-status-status" }], "responseCode": "201", "warningOnly": true } },
+        { "assert": { "description": "Update alternative: code decoy PUT returns 200 OK", "sourceId": "setup-decoy-code-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-decoy-code-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: code decoy PUT returns 201 Created", "sourceId": "setup-decoy-code-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-decoy-code-status" }], "responseCode": "201", "warningOnly": true } },
+        { "assert": { "description": "Update alternative: practitioner-chain decoy PUT returns 200 OK", "sourceId": "setup-decoy-practitioner-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-decoy-practitioner-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: practitioner-chain decoy PUT returns 201 Created", "sourceId": "setup-decoy-practitioner-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-decoy-practitioner-status" }], "responseCode": "201", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "typed-chain query composes filters, unique sort, and count",
+      "description": "_count=10 keeps both matches and all decoy candidates on one page so match-scoped membership, exclusion, and unique issued ordering are provable; _count is workload composition only, not pagination coverage.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='DiagnosticReport').interaction.where(code='search-type').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='status').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='code').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='results-interpreter').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='issued').exists() and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_count').exists() or rest.searchParam.where(name='_count').exists()) and rest.resource.where(type='Practitioner').searchParam.where(name='identifier').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "DiagnosticReport",
+            "params": "?status=final&code=http://loinc.org|24323-8&results-interpreter:Practitioner.identifier=http://ignixa.io/testscript/suite/query-composition|QUERY-PRAC-TARGET&_lastUpdated=ge2000&_sort=issued&_count=10",
+            "responseId": "query-composition-single-bound",
+            "description": "Run the complete single-bound workload; _count=10 composes the workload and is not pagination coverage"
+          }
+        },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must be a searchset", "expression": "type = 'searchset'" } },
+        { "assert": { "description": "Exactly two match entries must be returned; outcome and include entries do not affect this count", "expression": "entry.where(search.mode = 'match').count() = 2" } },
+        { "assert": { "description": "First expected report must appear exactly once as a match", "expression": "entry.where(search.mode = 'match' and resource.id = 'ignixa-query-match-1').count() = 1" } },
+        { "assert": { "description": "Second expected report must appear exactly once as a match", "expression": "entry.where(search.mode = 'match' and resource.id = 'ignixa-query-match-2').count() = 1" } },
+        { "assert": { "description": "Every match entry must have final status", "expression": "entry.where(search.mode = 'match' and (resource.status.empty() or resource.status != 'final')).empty()" } },
+        { "assert": { "description": "Every match entry must contain the required LOINC coding", "expression": "entry.where(search.mode = 'match' and resource.code.coding.where(system = 'http://loinc.org' and code = '24323-8').empty()).empty()" } },
+        { "assert": { "description": "Every match entry must reference the target Practitioner", "expression": "entry.where(search.mode = 'match' and resource.resultsInterpreter.where(reference = 'Practitioner/ignixa-query-prac-target').empty()).empty()" } },
+        { "assert": { "description": "The earlier unique issued value must be the first match regardless of non-match entries", "expression": "entry.where(search.mode = 'match')[0].resource.id = 'ignixa-query-match-1'" } },
+        { "assert": { "description": "The later unique issued value must be the second match regardless of non-match entries", "expression": "entry.where(search.mode = 'match')[1].resource.id = 'ignixa-query-match-2'" } },
+        { "assert": { "description": "Status-only decoy must be excluded from match entries", "expression": "entry.where(search.mode = 'match' and resource.id = 'ignixa-query-decoy-status').empty()" } },
+        { "assert": { "description": "Code-only decoy must be excluded from match entries", "expression": "entry.where(search.mode = 'match' and resource.id = 'ignixa-query-decoy-code').empty()" } },
+        { "assert": { "description": "Practitioner-identifier-only decoy must be excluded from match entries", "expression": "entry.where(search.mode = 'match' and resource.id = 'ignixa-query-decoy-practitioner').empty()" } }
+      ]
+    },
+    {
+      "name": "typed-chain workload with repeated _lastUpdated range keys",
+      "description": "The same workload repeats _lastUpdated=ge2000 and _lastUpdated=lt2999. HTTP and Bundle shape remain hard, while match-set, membership, criteria, exclusion, and order are warningOnly because repeated-key AND semantics are not normatively profiled. _count=10 remains workload composition only, not pagination coverage.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='DiagnosticReport').interaction.where(code='search-type').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='status').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='code').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='results-interpreter').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='issued').exists() and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_count').exists() or rest.searchParam.where(name='_count').exists()) and rest.resource.where(type='Practitioner').searchParam.where(name='identifier').exists()"
+        }
+      ],
+      "action": [
+        {
+          "operation": {
+            "type": { "code": "search" },
+            "resource": "DiagnosticReport",
+            "params": "?status=final&code=http://loinc.org|24323-8&results-interpreter:Practitioner.identifier=http://ignixa.io/testscript/suite/query-composition|QUERY-PRAC-TARGET&_lastUpdated=ge2000&_lastUpdated=lt2999&_sort=issued&_count=10",
+            "responseId": "query-composition-repeated-range",
+            "description": "Run the complete repeated-range workload; _count=10 composes the workload and is not pagination coverage"
+          }
+        },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle must be a searchset", "expression": "type = 'searchset'" } },
+        { "assert": { "description": "Repeated-key behavior should retain exactly two match entries; warningOnly because repeated-key AND semantics are not normatively profiled", "expression": "entry.where(search.mode = 'match').count() = 2", "warningOnly": true } },
+        { "assert": { "description": "Repeated-key behavior should retain both expected matches exactly once; warningOnly because repeated-key AND semantics are not normatively profiled", "expression": "entry.where(search.mode = 'match' and resource.id = 'ignixa-query-match-1').count() = 1 and entry.where(search.mode = 'match' and resource.id = 'ignixa-query-match-2').count() = 1", "warningOnly": true } },
+        { "assert": { "description": "Repeated-key match entries should satisfy status, code, and results-interpreter Practitioner reference criteria; warningOnly because repeated-key AND semantics are not normatively profiled", "expression": "entry.where(search.mode = 'match' and (resource.status.empty() or resource.status != 'final')).empty() and entry.where(search.mode = 'match' and resource.code.coding.where(system = 'http://loinc.org' and code = '24323-8').empty()).empty() and entry.where(search.mode = 'match' and resource.resultsInterpreter.where(reference = 'Practitioner/ignixa-query-prac-target').empty()).empty()", "warningOnly": true } },
+        { "assert": { "description": "Repeated-key matches should remain ordered by their unique issued values; warningOnly because repeated-key AND semantics are not normatively profiled", "expression": "entry.where(search.mode = 'match')[0].resource.id = 'ignixa-query-match-1' and entry.where(search.mode = 'match')[1].resource.id = 'ignixa-query-match-2'", "warningOnly": true } },
+        { "assert": { "description": "Repeated-key behavior should exclude all three independent decoys from match entries; warningOnly because repeated-key AND semantics are not normatively profiled", "expression": "entry.where(search.mode = 'match' and (resource.id = 'ignixa-query-decoy-status' or resource.id = 'ignixa-query-decoy-code' or resource.id = 'ignixa-query-decoy-practitioner')).empty()", "warningOnly": true } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "DiagnosticReport/ignixa-query-decoy-practitioner", "description": "Teardown practitioner decoy" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DiagnosticReport/ignixa-query-decoy-code", "description": "Teardown code decoy" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DiagnosticReport/ignixa-query-decoy-status", "description": "Teardown status decoy" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DiagnosticReport/ignixa-query-match-2", "description": "Teardown second match" } },
+      { "operation": { "type": { "code": "delete" }, "url": "DiagnosticReport/ignixa-query-match-1", "description": "Teardown first match" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-query-prac-other", "description": "Teardown other Practitioner" } },
+      { "operation": { "type": { "code": "delete" }, "url": "Practitioner/ignixa-query-prac-target", "description": "Teardown target Practitioner" } }
+    ]
+  }
+}
