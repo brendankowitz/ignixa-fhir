@@ -33,6 +33,15 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 
     public HashSet<string> ResourceTypes { get; } = [];
 
+    /// <summary>Non-empty <see cref="TokenSearchValue.System"/> values found in the tree.</summary>
+    public HashSet<string> TokenSystems { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Non-empty <see cref="QuantitySearchValue.System"/> values found in the tree.</summary>
+    public HashSet<string> QuantitySystems { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Non-empty <see cref="QuantitySearchValue.Code"/> values found in the tree.</summary>
+    public HashSet<string> QuantityCodes { get; } = new(StringComparer.Ordinal);
+
     public override Expression VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, object? context)
     {
         AddParameter(expression.Parameter);
@@ -44,6 +53,24 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         if (expression.Parameter.Code == "_type" && expression.Value is TokenSearchValue { Code: { Length: > 0 } typeCode })
         {
             ResourceTypes.Add(typeCode);
+        }
+
+        if (expression.Value is TokenSearchValue { System: { Length: > 0 } tokenSystem })
+        {
+            TokenSystems.Add(tokenSystem);
+        }
+
+        if (expression.Value is QuantitySearchValue quantityValue)
+        {
+            if (quantityValue.System is { Length: > 0 } qSystem)
+            {
+                QuantitySystems.Add(qSystem);
+            }
+
+            if (quantityValue.Code is { Length: > 0 } qCode)
+            {
+                QuantityCodes.Add(qCode);
+            }
         }
 
         return expression;

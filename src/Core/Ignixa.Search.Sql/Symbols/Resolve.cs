@@ -106,7 +106,23 @@ public static class Resolve
             }
         }
 
-        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership), unresolved);
+        // Resolve every distinct system (token + quantity) exactly once, storing null for known misses.
+        var allSystems = new HashSet<string>(collector.TokenSystems, StringComparer.Ordinal);
+        allSystems.UnionWith(collector.QuantitySystems);
+        var systemIds = new Dictionary<string, int?>();
+        foreach (var system in allSystems)
+        {
+            systemIds[system] = await resolver.GetSystemIdAsync(system, cancellationToken);
+        }
+
+        // Resolve every distinct quantity code exactly once, storing null for known misses.
+        var quantityCodeIds = new Dictionary<string, int?>();
+        foreach (var code in collector.QuantityCodes)
+        {
+            quantityCodeIds[code] = await resolver.GetQuantityCodeIdAsync(code, cancellationToken);
+        }
+
+        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership, systemIds, quantityCodeIds), unresolved);
     }
 
     private static Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? ResolveCompartmentMembership(

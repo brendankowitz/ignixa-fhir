@@ -149,4 +149,84 @@ public class SymbolTableTests
         // Act & Assert
         Should.Throw<KeyNotFoundException>(() => symbolTable.CompartmentMembership("Patient"));
     }
+
+    // ── SystemId three-state contract ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenAResolvedSystemId_WhenLookedUp_ThenReturnsItsValue()
+    {
+        // Arrange
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>(),
+            systemIds: new Dictionary<string, int?> { ["http://loinc.org"] = 7 });
+
+        // Act / Assert
+        symbolTable.SystemId("http://loinc.org").ShouldBe(7);
+    }
+
+    [Fact]
+    public void GivenACollectedButMissingSystemId_WhenLookedUp_ThenReturnsNull()
+    {
+        // Arrange -- resolver returned null; entry is present in the map with a null value (known miss)
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>(),
+            systemIds: new Dictionary<string, int?> { ["http://known-but-missing.example"] = null });
+
+        // Act / Assert
+        symbolTable.SystemId("http://known-but-missing.example").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAnUncollectedSystemId_WhenLookedUp_ThenThrowsKeyNotFoundException()
+    {
+        // Arrange -- the system was never collected; an empty map is used.
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>());
+
+        // Act / Assert
+        Should.Throw<KeyNotFoundException>(() => symbolTable.SystemId("http://never-collected.example"));
+    }
+
+    // ── QuantityCodeId three-state contract ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenAResolvedQuantityCodeId_WhenLookedUp_ThenReturnsItsValue()
+    {
+        // Arrange
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>(),
+            quantityCodeIds: new Dictionary<string, int?> { ["mg"] = 42 });
+
+        // Act / Assert
+        symbolTable.QuantityCodeId("mg").ShouldBe(42);
+    }
+
+    [Fact]
+    public void GivenACollectedButMissingQuantityCodeId_WhenLookedUp_ThenReturnsNull()
+    {
+        // Arrange -- resolver returned null; entry is present in the map with a null value (known miss)
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>(),
+            quantityCodeIds: new Dictionary<string, int?> { ["unknown-code"] = null });
+
+        // Act / Assert
+        symbolTable.QuantityCodeId("unknown-code").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAnUncollectedQuantityCodeId_WhenLookedUp_ThenThrowsKeyNotFoundException()
+    {
+        // Arrange -- the code was never collected; an empty map is used.
+        var symbolTable = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short>());
+
+        // Act / Assert
+        Should.Throw<KeyNotFoundException>(() => symbolTable.QuantityCodeId("never-collected"));
+    }
 }

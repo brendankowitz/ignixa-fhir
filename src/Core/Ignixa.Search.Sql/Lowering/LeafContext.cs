@@ -24,5 +24,11 @@ public sealed class LeafContext
 
     public IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)> CompartmentMembership(string compartmentType) => _symbols.CompartmentMembership(compartmentType);
 
+    /// <inheritdoc cref="SymbolTable.SystemId"/>
+    public int? SystemId(string system) => _symbols.SystemId(system);
+
+    /// <inheritdoc cref="SymbolTable.QuantityCodeId"/>
+    public int? QuantityCodeId(string code) => _symbols.QuantityCodeId(code);
+
     public SqlParameterRef Parameter(object value) => new(value);
 }

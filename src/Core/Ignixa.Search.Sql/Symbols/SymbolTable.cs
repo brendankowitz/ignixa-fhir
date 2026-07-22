@@ -19,15 +19,21 @@ public sealed class SymbolTable
     private readonly IReadOnlyDictionary<string, short> _searchParamIds;
     private readonly IReadOnlyDictionary<string, short> _resourceTypeIds;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>> _compartmentMembership;
+    private readonly IReadOnlyDictionary<string, int?> _systemIds;
+    private readonly IReadOnlyDictionary<string, int?> _quantityCodeIds;
 
     public SymbolTable(
         IReadOnlyDictionary<string, short> searchParamIds,
         IReadOnlyDictionary<string, short> resourceTypeIds,
-        IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? compartmentMembership = null)
+        IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? compartmentMembership = null,
+        IReadOnlyDictionary<string, int?>? systemIds = null,
+        IReadOnlyDictionary<string, int?>? quantityCodeIds = null)
     {
         _searchParamIds = searchParamIds;
         _resourceTypeIds = resourceTypeIds;
         _compartmentMembership = compartmentMembership ?? new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>();
+        _systemIds = systemIds ?? new Dictionary<string, int?>();
+        _quantityCodeIds = quantityCodeIds ?? new Dictionary<string, int?>();
     }
 
     /// <summary>
@@ -63,4 +69,26 @@ public sealed class SymbolTable
         => _compartmentMembership.TryGetValue(compartmentType, out var membership)
            ? membership
            : throw new KeyNotFoundException($"SymbolTable has no compartment membership map for '{compartmentType}' -- Resolve should have resolved every compartment type Lower will need.");
+
+    /// <summary>
+    /// Looks up a token-system or quantity-system surrogate ID. Returns the stored nullable value when
+    /// the key exists — <see langword="null"/> means the system was collected but the resolver found no
+    /// matching row (a known miss). Throws <see cref="KeyNotFoundException"/> when the key was never
+    /// collected at all, which is a compiler invariant violation: every system Lower references must be
+    /// resolved before Lower runs.
+    /// </summary>
+    public int? SystemId(string system)
+        => _systemIds.TryGetValue(system, out var id)
+            ? id
+            : throw new KeyNotFoundException($"SymbolTable has no SystemId for '{system}' -- Resolve should have collected every system Lower will need.");
+
+    /// <summary>
+    /// Looks up a quantity-code surrogate ID. Returns the stored nullable value when the key exists —
+    /// <see langword="null"/> means the code was collected but the resolver found no matching row (a
+    /// known miss). Throws <see cref="KeyNotFoundException"/> when the key was never collected at all.
+    /// </summary>
+    public int? QuantityCodeId(string code)
+        => _quantityCodeIds.TryGetValue(code, out var id)
+            ? id
+            : throw new KeyNotFoundException($"SymbolTable has no QuantityCodeId for '{code}' -- Resolve should have collected every quantity code Lower will need.");
 }
