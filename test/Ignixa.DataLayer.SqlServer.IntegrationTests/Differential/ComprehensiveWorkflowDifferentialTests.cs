@@ -52,7 +52,7 @@ public class ComprehensiveWorkflowDifferentialTests : IAsyncLifetime
             await repository.BatchWriteAsync(batchTx, batchOps, CancellationToken.None);
             await repository.CommitTransactionAsync(batchTx, CancellationToken.None);
 
-            await repository.DeleteAsync(new Ignixa.Abstractions.ResourceKey("Observation", "workflow-obs-1"), new ResourceRequest("DELETE", "Observation/workflow-obs-1"), ct: CancellationToken.None);
+            await repository.DeleteAsync(new Ignixa.Abstractions.ResourceKey("Observation", "workflow-obs-1"), new ResourceRequest("DELETE", "Observation/workflow-obs-1"), cancellationToken: CancellationToken.None);
         }
 
         // Also exercises HardDeleteResourceAsync -- but on the new port ONLY, per the reasoning above.

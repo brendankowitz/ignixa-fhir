@@ -65,14 +65,14 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     }
 
     /// <inheritdoc/>
-    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default)
+    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
 
         _logger.LogDebug("Getting resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
 
         // Get ResourceTypeId
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
         // Query for the resource
         ResourceEntity? entity;
@@ -85,7 +85,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                     && r.ResourceId == key.Id
                     && r.Version == version)
                 .Include(x => x.Transaction)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefaultAsync(cancellationToken);
         }
         else
         {
@@ -96,7 +96,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                     && !r.IsHistory)
                 .Include(x => x.Transaction)
                 .OrderByDescending(r => r.Version)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefaultAsync(cancellationToken);
         }
 
         if (entity == null)
@@ -128,7 +128,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     }
 
     /// <inheritdoc/>
-    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
+    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentException.ThrowIfNullOrEmpty(resource.ResourceType);
@@ -143,16 +143,16 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
         // Phase 1 PoC: Use merge repository for single resource operations
         // This provides atomic writes and aligns single resource path with batch operations
-        var transactionId = await GetNextTransactionIdAsync(ct);
+        var transactionId = await GetNextTransactionIdAsync(cancellationToken);
 
         // Determine new version
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, cancellationToken);
         var currentEntity = await _context.Resources
             .Where(r => r.ResourceTypeId == resourceTypeId
                 && r.ResourceId == resource.ResourceId
                 && !r.IsHistory)
             .OrderByDescending(r => r.ResourceSurrogateId)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(cancellationToken);
 
         int newVersion = currentEntity?.Version + 1 ?? 1;
 
@@ -170,16 +170,16 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             singleTransaction: true,
             resourceList,
             entryIndices,
-            ct);
+            cancellationToken);
 
         // Commit the transaction
         await _sqlMergeRepository.CommitTransactionAsync(
             transactionId: transactionId.Value,
             failureReason: null,
-            cancellationToken: ct);
+            cancellationToken: cancellationToken);
 
         // Handle ResourceTtl writes (upsert or delete)
-        await UpsertResourceTtlAsync(resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, ct);
+        await UpsertResourceTtlAsync(resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, cancellationToken);
 
         _logger.LogInformation("Created/updated resource {ResourceType}/{ResourceId} version {Version} via merge", resource.ResourceType, resource.ResourceId, newVersion);
 
@@ -207,7 +207,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         ResourceKey key,
         ResourceRequest request,
         TransactionId? transactionId = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(request);
@@ -215,7 +215,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         _logger.LogDebug("Deleting resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
 
         // Get ResourceTypeId
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
         // Find current version (IsHistory = false)
         var currentEntity = await _context.Resources
@@ -224,7 +224,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                 && !r.IsHistory)
             .Include(r => r.Transaction)
             .OrderByDescending(r => r.Version)
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (currentEntity == null)
         {
@@ -281,7 +281,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             ResourceId = key.Id,
             Version = newVersion,
             IsHistory = false, // This is now the current version
-            ResourceSurrogateId = await GetNextSurrogateIdAsync(ct),
+            ResourceSurrogateId = await GetNextSurrogateIdAsync(cancellationToken),
             IsDeleted = true, // Mark as deleted
             RequestMethod = "DELETE",
             RawResource = compressedTombstone,
@@ -294,17 +294,17 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         _context.Resources.Add(deletedEntity);
 
         // Delete ResourceTtl entry when resource is deleted (TTL no longer applies to tombstone)
-        await UpsertResourceTtlAsync(resourceTypeId, key.Id, null, transactionId?.Value, ct);
+        await UpsertResourceTtlAsync(resourceTypeId, key.Id, null, transactionId?.Value, cancellationToken);
 
         // Clean up search index entries for the current version being deleted
         // This ensures _not-referenced searches return correct results
         // (deleted resources should not have any references in the index)
-        await DeleteSearchIndexEntriesAsync(currentEntity.ResourceSurrogateId, ct);
+        await DeleteSearchIndexEntriesAsync(currentEntity.ResourceSurrogateId, cancellationToken);
 
         // Save changes immediately if not part of a transaction
         if (!transactionId.HasValue)
         {
-            await _context.SaveChangesAsync(ct);
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
         _logger.LogInformation(
@@ -317,14 +317,14 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     }
 
     /// <inheritdoc/>
-    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken ct = default)
+    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default)
     {
         // Use SqlMergeRepository to properly initialize transaction via stored procedure
         // This calls MergeResourcesBeginTransaction which creates the transaction record
         // and allocates the surrogate ID range correctly
         var (transactionId, sequenceStart) = await _sqlMergeRepository.BeginTransactionAsync(
             resourceCount: 1000, // Reserve 1000 IDs (default batch size)
-            cancellationToken: ct);
+            cancellationToken: cancellationToken);
 
         _logger.LogDebug(
             "Allocated transaction ID {TransactionId} with sequence start {SequenceStart}",
@@ -338,7 +338,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense
         ArgumentNullException.ThrowIfNull(operations);
@@ -384,7 +384,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             var dbLookup = await _context.ResourceTypes
                 .AsNoTracking()
                 .Where(rt => cacheMisses.Contains(rt.Name))
-                .ToListAsync(ct);
+                .ToListAsync(cancellationToken);
 
             foreach (var entity in dbLookup)
             {
@@ -406,7 +406,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                     resourceTypeMap[resourceType] = newEntity.ResourceTypeId;
                 }
 
-                await _context.SaveChangesAsync(ct);
+                await _context.SaveChangesAsync(cancellationToken);
             }
         }
 
@@ -442,7 +442,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                     Version = r.Version,
                     ResourceSurrogateId = r.ResourceSurrogateId
                 })
-                .ToListAsync(ct);
+                .ToListAsync(cancellationToken);
             existingResources.AddRange(batchResults);
         }
 
@@ -611,7 +611,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             singleTransaction: true,
             resourceWrappers,
             entryIndices,
-            ct);
+            cancellationToken);
 
         // Build result list with new versions
         var results = new List<ResourceKey>();
@@ -632,7 +632,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     }
 
     /// <inheritdoc/>
-    public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken ct = default)
+    public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
     {
         // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense
         _logger.LogDebug("Committing transaction {TransactionId}", transactionId.Value);
@@ -643,7 +643,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         await _sqlMergeRepository.CommitTransactionAsync(
             transactionId: transactionId.Value,
             failureReason: null, // null = success
-            cancellationToken: ct);
+            cancellationToken: cancellationToken);
 
         _logger.LogInformation("Committed transaction {TransactionId}", transactionId.Value);
     }
@@ -651,7 +651,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// <inheritdoc/>
     public async ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
         TimeSpan stallThreshold,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var threshold = DateTime.UtcNow - stallThreshold;
 
@@ -663,7 +663,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         var stalledTransactions = await _context.Transactions
             .Where(t => !t.IsCompleted && t.HeartbeatDate < threshold)
             .Select(t => new TransactionId(t.SurrogateIdRangeFirstValue))
-            .ToListAsync(ct);
+            .ToListAsync(cancellationToken);
 
         if (stalledTransactions.Count > 0)
         {
@@ -687,7 +687,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
     // Helper methods
 
-    private async ValueTask<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken ct)
+    private async ValueTask<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
     {
         // Phase 1: Check cache first (preloaded during startup for common resource types)
         // This avoids database queries for typical operations (Patient, Observation, etc.)
@@ -701,7 +701,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         // Phase 2: Query database if not in cache
         var entity = await _context.ResourceTypes
             .AsNoTracking()
-            .FirstOrDefaultAsync(rt => rt.Name == resourceType, ct);
+            .FirstOrDefaultAsync(rt => rt.Name == resourceType, cancellationToken);
 
         if (entity != null)
         {
@@ -716,14 +716,14 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         };
 
         _context.ResourceTypes.Add(newEntity);
-        await _context.SaveChangesAsync(ct);
+        await _context.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation("Created new ResourceType '{ResourceType}': {ResourceTypeId}", resourceType, newEntity.ResourceTypeId);
 
         return newEntity.ResourceTypeId;
     }
 
-    private async ValueTask<long> GetNextSurrogateIdAsync(CancellationToken ct)
+    private async ValueTask<long> GetNextSurrogateIdAsync(CancellationToken cancellationToken)
     {
         // Use SQL Server SEQUENCE for thread-safe, high-performance ID generation
         // Matches legacy stored procedure pattern from MergeResourcesBeginTransaction
@@ -733,10 +733,10 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         using var command = _context.Database.GetDbConnection().CreateCommand();
         command.CommandText = "SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence";
 
-        await _context.Database.OpenConnectionAsync(ct);
+        await _context.Database.OpenConnectionAsync(cancellationToken);
         try
         {
-            var result = await command.ExecuteScalarAsync(ct);
+            var result = await command.ExecuteScalarAsync(cancellationToken);
             var sequenceValue = Convert.ToInt32(result);
 
             // Apply composite ID formula (matches legacy pattern):
@@ -757,7 +757,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     public async IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
         ResourceKey key,
         HistoryQueryParameters parameters,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -773,7 +773,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             parameters.Offset);
 
         // Get ResourceTypeId
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
         // Query all versions of this resource (both current and historical)
         var query = _context.Resources
@@ -781,7 +781,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             .Include(r => r.Transaction);
 
         // Stream results incrementally
-        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, ct))
+        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, cancellationToken))
         {
             yield return result;
         }
@@ -791,7 +791,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         string resourceType,
         int tenantId,
         HistoryQueryParameters parameters,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -806,7 +806,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             parameters.Offset);
 
         // Get ResourceTypeId
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, cancellationToken);
 
         // Query all versions of all resources of this type
         var query = _context.Resources
@@ -814,7 +814,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             .Include(r => r.Transaction);
 
         // Stream results incrementally
-        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, ct))
+        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, cancellationToken))
         {
             yield return result;
         }
@@ -823,7 +823,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     public async IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
         int tenantId,
         HistoryQueryParameters parameters,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
@@ -841,7 +841,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             .Include(r => r.ResourceType);
 
         // Stream results incrementally
-        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, ct))
+        await foreach (var result in ExecuteHistoryQueryAsync(query, parameters, cancellationToken))
         {
             yield return result;
         }
@@ -850,7 +850,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     private async IAsyncEnumerable<SearchEntryResult> ExecuteHistoryQueryAsync(
         IQueryable<ResourceEntity> query,
         HistoryQueryParameters parameters,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Apply timestamp filtering (_since and _until)
         if (parameters.Since.HasValue)
@@ -874,7 +874,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         query = query.Skip(parameters.Offset).Take(parameters.Count+1);
 
         // Stream results incrementally using AsAsyncEnumerable
-        await foreach (var entity in query.AsAsyncEnumerable().WithCancellation(ct))
+        await foreach (var entity in query.AsAsyncEnumerable().WithCancellation(cancellationToken))
         {
             SearchEntryResult? result = null;
 
@@ -899,7 +899,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
                         var resourceType = await _context.ResourceTypes
                             .Where(rt => rt.ResourceTypeId == entity.ResourceTypeId)
-                            .FirstOrDefaultAsync(ct);
+                            .FirstOrDefaultAsync(cancellationToken);
                         resourceTypeName = resourceType?.Name ?? "Unknown";
                     }
                 }
@@ -934,7 +934,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
         int batchSize,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -958,7 +958,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                                           ttl.ExpiresAt,
                                           rt.Name))
             .Take(batchSize)
-            .ToListAsync(ct);
+            .ToListAsync(cancellationToken);
 
         _logger.LogDebug(
             "Found {Count} expired resources",
@@ -990,7 +990,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     public async Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         _logger.LogDebug(
             "Hard deleting resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
@@ -1018,7 +1018,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
 
               -- Delete TTL entry (after successfully deleting resource)
               DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = {resourceTypeId} AND ResourceId = {resourceId};",
-            ct);
+            cancellationToken);
 
         _logger.LogInformation(
             "Successfully hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
@@ -1036,7 +1036,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
         string resourceId,
         DateTimeOffset? expiresAt,
         long? transactionId,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         if (expiresAt.HasValue)
         {
@@ -1044,7 +1044,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             var existingTtl = await _context.ResourceTtls
                 .FirstOrDefaultAsync(
                     ttl => ttl.ResourceTypeId == resourceTypeId && ttl.ResourceId == resourceId,
-                    ct);
+                    cancellationToken);
 
             if (existingTtl != null)
             {
@@ -1076,7 +1076,7 @@ public class SqlEntityFrameworkRepository : IFhirRepository
                     transactionId);
             }
 
-            await _context.SaveChangesAsync(ct);
+            await _context.SaveChangesAsync(cancellationToken);
         }
         else
         {
@@ -1084,12 +1084,12 @@ public class SqlEntityFrameworkRepository : IFhirRepository
             var ttlToDelete = await _context.ResourceTtls
                 .FirstOrDefaultAsync(
                     ttl => ttl.ResourceTypeId == resourceTypeId && ttl.ResourceId == resourceId,
-                    ct);
+                    cancellationToken);
 
             if (ttlToDelete != null)
             {
                 _context.ResourceTtls.Remove(ttlToDelete);
-                await _context.SaveChangesAsync(ct);
+                await _context.SaveChangesAsync(cancellationToken);
                 _logger.LogDebug(
                     "Deleted ResourceTtl for ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
                     resourceTypeId,
@@ -1104,13 +1104,13 @@ public class SqlEntityFrameworkRepository : IFhirRepository
     /// This ensures _not-referenced and other searches return correct results after deletion.
     /// </summary>
     /// <param name="resourceSurrogateId">The surrogate ID of the resource version whose indices should be deleted.</param>
-    /// <param name="ct">Cancellation token.</param>
-    private async Task DeleteSearchIndexEntriesAsync(long resourceSurrogateId, CancellationToken ct)
+    /// <param name="cancellationToken">Cancellation token.</param>
+    private async Task DeleteSearchIndexEntriesAsync(long resourceSurrogateId, CancellationToken cancellationToken)
     {
         var deleteStatements = string.Join("\n               ", SearchIndexTables.Select(table =>
             $"DELETE FROM dbo.{table} WHERE ResourceSurrogateId = @p0;"));
 
-        await _context.Database.ExecuteSqlRawAsync(deleteStatements, [resourceSurrogateId], ct);
+        await _context.Database.ExecuteSqlRawAsync(deleteStatements, [resourceSurrogateId], cancellationToken);
 
         _logger.LogDebug(
             "Deleted search index entries for ResourceSurrogateId={ResourceSurrogateId}",

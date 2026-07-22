@@ -91,13 +91,13 @@ public class SqlServerFhirRepository(
     ];
 
     /// <inheritdoc/>
-    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken ct = default)
+    public async ValueTask<SearchEntryResult?> GetAsync(ResourceKey key, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
 
         _logger.LogDebug("Getting resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
 
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
         SqlCommand command;
         if (key.VersionId != null && int.TryParse(key.VersionId, out var version))
@@ -126,7 +126,7 @@ public class SqlServerFhirRepository(
             command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
             command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = key.Id;
 
-            var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, ReadResourceRow, ct);
+            var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, ReadResourceRow, cancellationToken);
 
             if (rows.Count == 0)
             {
@@ -156,7 +156,7 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
-    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken ct = default)
+    public async ValueTask<UpdateResult> CreateOrUpdateAsync(ResourceWrapper resource, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resource);
         ArgumentException.ThrowIfNullOrEmpty(resource.ResourceType);
@@ -169,11 +169,11 @@ public class SqlServerFhirRepository(
 
         _logger.LogDebug("Creating/updating resource {ResourceType}/{ResourceId}", resource.ResourceType, resource.ResourceId);
 
-        var transactionId = await GetNextTransactionIdAsync(ct);
+        var transactionId = await GetNextTransactionIdAsync(cancellationToken);
 
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resource.ResourceType, cancellationToken);
 
-        var currentVersion = await GetCurrentVersionOrderedBySurrogateIdAsync(resourceTypeId, resource.ResourceId, ct);
+        var currentVersion = await GetCurrentVersionOrderedBySurrogateIdAsync(resourceTypeId, resource.ResourceId, cancellationToken);
         var newVersion = currentVersion.HasValue ? currentVersion.Value + 1 : 1;
 
         // Must happen BEFORE handing resource.Resource to the merge repository -- the merge path
@@ -190,14 +190,14 @@ public class SqlServerFhirRepository(
             singleTransaction: true,
             resourceList,
             entryIndices,
-            ct);
+            cancellationToken);
 
         await _mergeRepository.CommitTransactionAsync(
             transactionId: transactionId.Value,
             failureReason: null,
-            cancellationToken: ct);
+            cancellationToken: cancellationToken);
 
-        await UpsertResourceTtlAsync(resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, ct);
+        await UpsertResourceTtlAsync(resourceTypeId, resource.ResourceId, resource.ExpiresAt, transactionId.Value, cancellationToken);
 
         _logger.LogInformation(
             "Created/updated resource {ResourceType}/{ResourceId} version {Version} via merge",
@@ -226,16 +226,16 @@ public class SqlServerFhirRepository(
         ResourceKey key,
         ResourceRequest request,
         TransactionId? transactionId = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(request);
 
         _logger.LogDebug("Deleting resource {ResourceType}/{ResourceId}", key.ResourceType, key.Id);
 
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
-        var currentEntity = await GetCurrentResourceForDeleteAsync(resourceTypeId, key.Id, ct);
+        var currentEntity = await GetCurrentResourceForDeleteAsync(resourceTypeId, key.Id, cancellationToken);
 
         if (currentEntity == null)
         {
@@ -263,7 +263,7 @@ public class SqlServerFhirRepository(
         // Deliberate, documented divergence from legacy on the transactionId != null path:
         // legacy SqlEntityFrameworkRepository.DeleteAsync (SqlEntityFrameworkRepository.cs:205-316)
         // only flushes its EF-tracked writes -- the IsHistory flip on the old row and the tombstone
-        // insert -- via `if (!transactionId.HasValue) { await _context.SaveChangesAsync(ct); }`
+        // insert -- via `if (!transactionId.HasValue) { await _context.SaveChangesAsync(cancellationToken); }`
         // (:304-307). When transactionId IS non-null (a bundle/batch context), that guard is skipped,
         // so those two EF-tracked changes are only persisted as an incidental side effect of
         // UpsertResourceTtlAsync's own SaveChangesAsync call (:1078/:1091) -- and legacy's delete path
@@ -289,7 +289,7 @@ public class SqlServerFhirRepository(
             historyCommand.Parameters.Add("@HistoryTransactionId", SqlDbType.BigInt).Value =
                 (object?)transactionId?.Value ?? DBNull.Value;
             historyCommand.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = currentEntity.Value.ResourceSurrogateId;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, historyCommand, ct);
+            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, historyCommand, cancellationToken);
         }
 
         var tombstoneJsonNode = new ResourceJsonNode
@@ -304,7 +304,7 @@ public class SqlServerFhirRepository(
         };
         var compressedTombstone = _compressor.SerializeAndCompress(tombstoneJsonNode);
 
-        var newSurrogateId = await GetNextSurrogateIdAsync(ct);
+        var newSurrogateId = await GetNextSurrogateIdAsync(cancellationToken);
 
         using (var insertCommand = new SqlCommand(
             """
@@ -321,12 +321,12 @@ public class SqlServerFhirRepository(
             insertCommand.Parameters.Add("@TombstoneBytes", SqlDbType.VarBinary).Value = compressedTombstone;
             insertCommand.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value =
                 (object?)transactionId?.Value ?? DBNull.Value;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, insertCommand, ct);
+            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, insertCommand, cancellationToken);
         }
 
-        await UpsertResourceTtlAsync(resourceTypeId, key.Id, expiresAt: null, transactionId?.Value, ct);
+        await UpsertResourceTtlAsync(resourceTypeId, key.Id, expiresAt: null, transactionId?.Value, cancellationToken);
 
-        await DeleteSearchIndexEntriesAsync(currentEntity.Value.ResourceSurrogateId, ct);
+        await DeleteSearchIndexEntriesAsync(currentEntity.Value.ResourceSurrogateId, cancellationToken);
 
         _logger.LogInformation(
             "Created tombstone for {ResourceType}/{ResourceId} version {Version}", key.ResourceType, key.Id, newVersion);
@@ -335,23 +335,23 @@ public class SqlServerFhirRepository(
     }
 
     /// <inheritdoc/>
-    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken ct = default)
+    public async ValueTask<TransactionId> GetNextTransactionIdAsync(CancellationToken cancellationToken = default)
     {
-        var (id, _) = await _mergeRepository.BeginTransactionAsync(1000, ct);
+        var (id, _) = await _mergeRepository.BeginTransactionAsync(1000, cancellationToken);
         return new TransactionId(id);
     }
 
     /// <inheritdoc/>
-    public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken ct = default)
+    public async ValueTask CommitTransactionAsync(TransactionId transactionId, CancellationToken cancellationToken = default)
     {
-        await _mergeRepository.CommitTransactionAsync(transactionId.Value, failureReason: null, ct);
+        await _mergeRepository.CommitTransactionAsync(transactionId.Value, failureReason: null, cancellationToken);
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ResourceKey>> BatchWriteAsync(
         TransactionId transactionId,
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         // Note: transactionId is a struct, ArgumentNullException.ThrowIfNull doesn't make sense.
         ArgumentNullException.ThrowIfNull(operations);
@@ -361,14 +361,14 @@ public class SqlServerFhirRepository(
             operations.Count,
             transactionId.Value);
 
-        var resourceTypeMap = await ResolveResourceTypeIdsAsync(operations, ct);
+        var resourceTypeMap = await ResolveResourceTypeIdsAsync(operations, cancellationToken);
 
         var resourceLookupKeys = operations
             .Select(op => (TypeId: resourceTypeMap[op.resourceType], op.resourceId))
             .Distinct()
             .ToList();
 
-        var currentVersions = await GetExistingResourceVersionsAsync(resourceLookupKeys, ct);
+        var currentVersions = await GetExistingResourceVersionsAsync(resourceLookupKeys, cancellationToken);
 
         _logger.LogDebug(
             "Batch query found {ExistingCount} existing resources, {NewCount} are new",
@@ -439,7 +439,7 @@ public class SqlServerFhirRepository(
             singleTransaction: true,
             resourceWrappers,
             entryIndices,
-            ct);
+            cancellationToken);
 
         var results = new List<ResourceKey>(operations.Count);
         for (var i = 0; i < operations.Count; i++)
@@ -458,7 +458,7 @@ public class SqlServerFhirRepository(
     /// <inheritdoc/>
     public async ValueTask<IReadOnlyList<TransactionId>> GetStalledTransactionsAsync(
         TimeSpan stallThreshold,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var threshold = DateTime.UtcNow - stallThreshold;
 
@@ -471,7 +471,7 @@ public class SqlServerFhirRepository(
         command.Parameters.Add("@StalledBefore", SqlDbType.DateTime).Value = threshold;
 
         var stalledTransactions = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId, command, reader => new TransactionId(reader.GetInt64(0)), ct);
+            _tenantId, command, reader => new TransactionId(reader.GetInt64(0)), cancellationToken);
 
         if (stalledTransactions.Count > 0)
         {
@@ -492,7 +492,7 @@ public class SqlServerFhirRepository(
     public async IAsyncEnumerable<SearchEntryResult> GetResourceHistoryAsync(
         ResourceKey key,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -503,7 +503,7 @@ public class SqlServerFhirRepository(
             "Getting history for resource {ResourceType}/{ResourceId} (count={Count}, offset={Offset})",
             key.ResourceType, key.Id, parameters.Count, parameters.Offset);
 
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(key.ResourceType, cancellationToken);
 
         const string selectFromWhere =
             """
@@ -521,7 +521,7 @@ public class SqlServerFhirRepository(
                 command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = key.Id;
             },
             parameters,
-            ct))
+            cancellationToken))
         {
             yield return result;
         }
@@ -532,7 +532,7 @@ public class SqlServerFhirRepository(
         string resourceType,
         int tenantId,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(resourceType);
         ArgumentNullException.ThrowIfNull(parameters);
@@ -543,7 +543,7 @@ public class SqlServerFhirRepository(
             "Getting history for resource type {ResourceType} (count={Count}, offset={Offset})",
             resourceType, parameters.Count, parameters.Offset);
 
-        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
+        var resourceTypeId = await GetOrCreateResourceTypeIdAsync(resourceType, cancellationToken);
 
         const string selectFromWhere =
             """
@@ -560,7 +560,7 @@ public class SqlServerFhirRepository(
                 command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
             },
             parameters,
-            ct))
+            cancellationToken))
         {
             yield return result;
         }
@@ -570,7 +570,7 @@ public class SqlServerFhirRepository(
     public async IAsyncEnumerable<SearchEntryResult> GetSystemHistoryAsync(
         int tenantId,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(parameters);
 
@@ -589,7 +589,7 @@ public class SqlServerFhirRepository(
             WHERE 1=1
             """;
 
-        await foreach (var result in ExecuteHistoryQueryAsync(selectFromWhere, static _ => { }, parameters, ct))
+        await foreach (var result in ExecuteHistoryQueryAsync(selectFromWhere, static _ => { }, parameters, cancellationToken))
         {
             yield return result;
         }
@@ -607,7 +607,7 @@ public class SqlServerFhirRepository(
         string selectFromWhere,
         Action<SqlCommand> configureBaseParameters,
         HistoryQueryParameters parameters,
-        [EnumeratorCancellation] CancellationToken ct)
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // CA2100 suppressed: sql is built from a fixed caller-supplied literal plus at most two fixed
         // literal filter fragments and a sort direction drawn from a 2-value enum (never free-form
@@ -620,7 +620,7 @@ public class SqlServerFhirRepository(
         configureBaseParameters(command);
         AddSharedHistoryParameters(command, parameters);
 
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, ReadHistoryRow, ct);
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, ReadHistoryRow, cancellationToken);
 
         foreach (var row in rows)
         {
@@ -718,7 +718,7 @@ public class SqlServerFhirRepository(
     // cleanup must never try to hard-delete something that isn't the live current version.
     public async Task<IReadOnlyList<ExpiredResourceInfo>> GetExpiredResourcesAsync(
         int batchSize,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
 
@@ -746,7 +746,7 @@ public class SqlServerFhirRepository(
                 reader.GetString(1),
                 reader.GetDateTimeOffset(2),
                 reader.GetString(3)),
-            ct);
+            cancellationToken);
 
         _logger.LogDebug(
             "Found {Count} expired resources",
@@ -765,7 +765,7 @@ public class SqlServerFhirRepository(
     public async Task HardDeleteResourceAsync(
         short resourceTypeId,
         string resourceId,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         _logger.LogDebug(
             "Hard deleting resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
@@ -803,7 +803,7 @@ public class SqlServerFhirRepository(
         command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
         command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
 
-        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, ct);
+        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
 
         _logger.LogInformation(
             "Successfully hard deleted resource: ResourceTypeId={ResourceTypeId}, ResourceId={ResourceId}",
@@ -817,7 +817,7 @@ public class SqlServerFhirRepository(
     // the same new type name would see the stale sentinel, conclude "still missing," and attempt to
     // insert AGAIN (a duplicate row / unique-constraint violation on the second caller).
     // CacheResourceTypeId records the freshly-inserted ID directly, bypassing the sentinel path.
-    private async Task<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken ct)
+    private async Task<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
     {
         var cached = _cache.TryGetResourceTypeIdFromCache(resourceType);
         if (cached.HasValue)
@@ -825,7 +825,7 @@ public class SqlServerFhirRepository(
             return cached.Value;
         }
 
-        var id = await _cache.GetResourceTypeIdAsync(resourceType, ct);
+        var id = await _cache.GetResourceTypeIdAsync(resourceType, cancellationToken);
         if (id.HasValue)
         {
             return id.Value;
@@ -834,7 +834,7 @@ public class SqlServerFhirRepository(
         using var command = new SqlCommand(
             "INSERT INTO dbo.ResourceType (Name) OUTPUT INSERTED.ResourceTypeId VALUES (@Name)");
         command.Parameters.AddWithValue("@Name", resourceType);
-        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt16(0), ct);
+        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt16(0), cancellationToken);
         var newId = results[0];
         _cache.CacheResourceTypeId(resourceType, newId);
         return newId;
@@ -846,7 +846,7 @@ public class SqlServerFhirRepository(
     // resource types -- very rare). Mirrors SqlEntityFrameworkRepository.cs:353-410.
     private async Task<Dictionary<string, short>> ResolveResourceTypeIdsAsync(
         IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         var uniqueResourceTypes = operations.Select(op => op.resourceType).Distinct().ToList();
 
@@ -896,7 +896,7 @@ public class SqlServerFhirRepository(
         }
 
         var dbResults = await _sqlExecutionService.ExecuteReaderAsync(
-            _tenantId, command, reader => (Id: reader.GetInt16(0), Name: reader.GetString(1)), ct);
+            _tenantId, command, reader => (Id: reader.GetInt16(0), Name: reader.GetString(1)), cancellationToken);
 
         foreach (var (id, name) in dbResults)
         {
@@ -914,7 +914,7 @@ public class SqlServerFhirRepository(
 
             foreach (var resourceType in cacheMisses)
             {
-                resourceTypeMap[resourceType] = await GetOrCreateResourceTypeIdAsync(resourceType, ct);
+                resourceTypeMap[resourceType] = await GetOrCreateResourceTypeIdAsync(resourceType, cancellationToken);
             }
         }
 
@@ -931,7 +931,7 @@ public class SqlServerFhirRepository(
     // real, separate concern.
     private async Task<Dictionary<(short TypeId, string ResourceId), (int MaxVersion, long MaxSurrogateId)>> GetExistingResourceVersionsAsync(
         IReadOnlyList<(short TypeId, string resourceId)> resourceLookupKeys,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         var currentVersions = new Dictionary<(short, string), (int MaxVersion, long MaxSurrogateId)>();
 
@@ -975,7 +975,7 @@ public class SqlServerFhirRepository(
                     ResourceId: reader.GetString(1),
                     Version: reader.GetInt32(2),
                     SurrogateId: reader.GetInt64(3)),
-                ct);
+                cancellationToken);
 
             foreach (var row in rows)
             {
@@ -994,10 +994,10 @@ public class SqlServerFhirRepository(
         return currentVersions;
     }
 
-    private async Task<long> GetNextSurrogateIdAsync(CancellationToken ct)
+    private async Task<long> GetNextSurrogateIdAsync(CancellationToken cancellationToken)
     {
         using var command = new SqlCommand("SELECT NEXT VALUE FOR dbo.ResourceSurrogateIdUniquifierSequence");
-        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt32(0), ct);
+        var results = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt32(0), cancellationToken);
         var sequenceValue = results[0];
         return (long)(DateTimeOffset.UtcNow - DateTimeOffset.MinValue).TotalMilliseconds * 80000 + sequenceValue;
     }
@@ -1007,7 +1007,7 @@ public class SqlServerFhirRepository(
         string resourceId,
         DateTimeOffset? expiresAt,
         long? transactionId,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         if (expiresAt.HasValue)
         {
@@ -1023,7 +1023,7 @@ public class SqlServerFhirRepository(
             command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
             command.Parameters.Add("@ExpiresAt", SqlDbType.DateTimeOffset).Value = expiresAt.Value;
             command.Parameters.Add("@TransactionId", SqlDbType.BigInt).Value = (object?)transactionId ?? DBNull.Value;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, ct);
+            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
         }
         else
         {
@@ -1031,11 +1031,11 @@ public class SqlServerFhirRepository(
                 "DELETE FROM dbo.ResourceTtl WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId;");
             command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
             command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
-            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, ct);
+            await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
         }
     }
 
-    private async Task DeleteSearchIndexEntriesAsync(long resourceSurrogateId, CancellationToken ct)
+    private async Task DeleteSearchIndexEntriesAsync(long resourceSurrogateId, CancellationToken cancellationToken)
     {
         var deleteStatements = string.Join(
             "\n",
@@ -1048,24 +1048,24 @@ public class SqlServerFhirRepository(
         using var command = new SqlCommand(deleteStatements);
 #pragma warning restore CA2100
         command.Parameters.Add("@ResourceSurrogateId", SqlDbType.BigInt).Value = resourceSurrogateId;
-        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, ct);
+        await _sqlExecutionService.ExecuteNonQueryAsync(_tenantId, command, cancellationToken);
 
         _logger.LogDebug("Deleted search index entries for ResourceSurrogateId={ResourceSurrogateId}", resourceSurrogateId);
     }
 
-    private async Task<int?> GetCurrentVersionOrderedBySurrogateIdAsync(short resourceTypeId, string resourceId, CancellationToken ct)
+    private async Task<int?> GetCurrentVersionOrderedBySurrogateIdAsync(short resourceTypeId, string resourceId, CancellationToken cancellationToken)
     {
         using var command = new SqlCommand(
             "SELECT TOP (1) Version FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId AND IsHistory = 0 ORDER BY ResourceSurrogateId DESC");
         command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId;
         command.Parameters.Add("@ResourceId", SqlDbType.VarChar).Value = resourceId;
 
-        var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt32(0), ct);
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt32(0), cancellationToken);
         return rows.Count == 0 ? null : rows[0];
     }
 
     private async Task<(long ResourceSurrogateId, int Version, bool IsDeleted)?> GetCurrentResourceForDeleteAsync(
-        short resourceTypeId, string resourceId, CancellationToken ct)
+        short resourceTypeId, string resourceId, CancellationToken cancellationToken)
     {
         using var command = new SqlCommand(
             "SELECT TOP (1) ResourceSurrogateId, Version, IsDeleted FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND ResourceId = @ResourceId AND IsHistory = 0 ORDER BY Version DESC");
@@ -1076,7 +1076,7 @@ public class SqlServerFhirRepository(
             _tenantId,
             command,
             reader => (ResourceSurrogateId: reader.GetInt64(0), Version: reader.GetInt32(1), IsDeleted: reader.GetBoolean(2)),
-            ct);
+            cancellationToken);
 
         return rows.Count == 0 ? null : rows[0];
     }
