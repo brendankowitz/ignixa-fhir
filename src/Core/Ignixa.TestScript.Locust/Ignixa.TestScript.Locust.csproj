@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageStability>beta</PackageStability>
+    <PackageId>Ignixa.TestScript.Locust</PackageId>
+    <Description>Compile Ignixa FHIR TestScript definitions into Locust workloads.</Description>
+    <PackageTags>fhir;testscript;locust;load-testing;azure</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.TestScript.Locust.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
+    <ProjectReference Include="..\Ignixa.TestScript\Ignixa.TestScript.csproj" />
+    <ProjectReference Include="..\Ignixa.TestScript.FhirFakes\Ignixa.TestScript.FhirFakes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Python\*" />
+  </ItemGroup>
+
+</Project>
