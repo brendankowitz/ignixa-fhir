@@ -290,8 +290,9 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, value);
 
         // Act & Assert
-        Should.Throw<ArgumentOutOfRangeException>(() =>
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
             DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203, referenceTime), 103));
+        exception.ParamName.ShouldBe("value");
     }
 
     [Fact]
@@ -307,7 +308,8 @@ public class DateTimeLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, value);
 
         // Act & Assert
-        Should.Throw<ArgumentOutOfRangeException>(() =>
+        var exception = Should.Throw<ArgumentOutOfRangeException>(() =>
             DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203, referenceTime), 103));
+        exception.ParamName.ShouldBe("value");
     }
 }

@@ -43,7 +43,7 @@ internal static class ApproximateDateRange
         if (value.UtcTicks - minTicks < toleranceTicks)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(toleranceTicks),
+                nameof(value),
                 toleranceTicks,
                 $"Widening '{value:o}' downward by {toleranceTicks} ticks for ':ap' would underflow DateTimeOffset.MinValue.");
         }
@@ -57,7 +57,7 @@ internal static class ApproximateDateRange
         if (maxTicks - value.UtcTicks < toleranceTicks)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(toleranceTicks),
+                nameof(value),
                 toleranceTicks,
                 $"Widening '{value:o}' upward by {toleranceTicks} ticks for ':ap' would overflow DateTimeOffset.MaxValue.");
         }
