@@ -16,12 +16,14 @@ public class TokenQuantityLoweringRuleTests
     private static LeafContext ContextResolving(
         SearchParameterInfo compositeParameter,
         short searchParamId,
-        IReadOnlyDictionary<string, int?>? systemIds = null)
+        IReadOnlyDictionary<string, int?>? systemIds = null,
+        IReadOnlyDictionary<string, int?>? quantityCodeIds = null)
         => new(new SymbolTable(
             new Dictionary<string, short> { [compositeParameter.Url!.ToString()] = searchParamId },
             new Dictionary<string, short>(),
             compartmentMembership: null,
-            systemIds: systemIds));
+            systemIds: systemIds,
+            quantityCodeIds: quantityCodeIds));
 
     private static SearchParameterInfo CompositeParameter()
         => new("component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
@@ -87,20 +89,84 @@ public class TokenQuantityLoweringRuleTests
     }
 
     [Fact]
-    public void GivenASystemQualifiedQuantityComponent_WhenLowered_ThenThrows()
+    public void GivenAFullyQualifiedQuantityComponent_WhenLowered_ThenConjoinsNumericAndSystemId2AndQuantityCodeId2Predicates()
     {
-        // Arrange — quantity identity is Task 5; retain throw for now
+        // Arrange — system|code on the quantity slot (slot 2)
         var composite = CompositeParameter();
         var tokenParam = ComponentParameter("component-code");
         var quantityParam = ComponentParameter("component-value-quantity");
+        var systemIds = new Dictionary<string, int?> { ["http://unitsofmeasure.org"] = 42 };
+        var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
         var components = new SearchParameterPredicateExpression[]
         {
             new(tokenParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null)),
             new(quantityParam, SearchComparator.Eq, modifier: null, new QuantitySearchValue("http://unitsofmeasure.org", "mg", 120m)),
         };
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402), 104));
+        // Act
+        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402, systemIds, quantityCodeIds), 104);
+
+        // Assert — And(token, And(And(numeric2, Equal(SystemId2)), Equal(QuantityCodeId2)))
+        var topAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        topAnd.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("Code1");
+        var quantityOuter = topAnd.Right.ShouldBeOfType<Predicate.And>();
+        var quantityMiddle = quantityOuter.Left.ShouldBeOfType<Predicate.And>();
+        var quantityNumeric = quantityMiddle.Left.ShouldBeOfType<Predicate.And>();
+        quantityNumeric.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Column.Column.ShouldBe("LowValue2");
+        quantityNumeric.Right.ShouldBeOfType<Predicate.LessThanOrEqual>().Column.Column.ShouldBe("HighValue2");
+        quantityMiddle.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("SystemId2");
+        quantityOuter.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("QuantityCodeId2");
+    }
+
+    [Fact]
+    public void GivenACodeOnlyQuantityComponent_WhenLowered_ThenConjoinsNumericAndQuantityCodeId2PredicateWithNoSystemIsNullConstraint()
+    {
+        // Arrange — value||code on the quantity slot: constrains QuantityCodeId2 only; no SystemId2 IS NULL
+        var composite = CompositeParameter();
+        var tokenParam = ComponentParameter("component-code");
+        var quantityParam = ComponentParameter("component-value-quantity");
+        var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(tokenParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null)),
+            new(quantityParam, SearchComparator.Eq, modifier: null, new QuantitySearchValue(system: null!, code: "mg", 120m)),
+        };
+
+        // Act
+        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402, quantityCodeIds: quantityCodeIds), 104);
+
+        // Assert — And(token, And(numeric2, Equal(QuantityCodeId2, 77))); Right is Equal not IsNull
+        var topAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        topAnd.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("Code1");
+        var quantityAnd = topAnd.Right.ShouldBeOfType<Predicate.And>();
+        var numericAnd = quantityAnd.Left.ShouldBeOfType<Predicate.And>();
+        numericAnd.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Column.Column.ShouldBe("LowValue2");
+        numericAnd.Right.ShouldBeOfType<Predicate.LessThanOrEqual>().Column.Column.ShouldBe("HighValue2");
+        var codeEqual = quantityAnd.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("QuantityCodeId2");
+        codeEqual.Value.Value.ShouldBe(77);
+    }
+
+    [Fact]
+    public void GivenAnUnknownSystemInQuantityComponent_WhenLowered_ThenReturnsFalsePredicateForQuantitySlot()
+    {
+        // Arrange — non-empty quantity system where resolver returned null (known miss)
+        var composite = CompositeParameter();
+        var tokenParam = ComponentParameter("component-code");
+        var quantityParam = ComponentParameter("component-value-quantity");
+        var systemIds = new Dictionary<string, int?> { ["http://unknown.org"] = null };
+        var components = new SearchParameterPredicateExpression[]
+        {
+            new(tokenParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null)),
+            new(quantityParam, SearchComparator.Eq, modifier: null, new QuantitySearchValue("http://unknown.org", code: null!, 120m)),
+        };
+
+        // Act
+        var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402, systemIds), 104);
+
+        // Assert — quantity slot is False; whole composite is And(tokenPredicate, False)
+        var topAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        topAnd.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("Code1");
+        topAnd.Right.ShouldBeOfType<Predicate.False>();
     }
 }
