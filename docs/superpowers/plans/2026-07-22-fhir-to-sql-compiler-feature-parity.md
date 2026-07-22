@@ -241,6 +241,11 @@ git commit -m "feat(search-sql): add SortKeyKind.Aggregated covering Token/Numbe
 
 ```csharp
 // test/Ignixa.Search.Sql.Tests/Ast/EmitSortAggregatedTests.cs
+// Two SortOrder enums exist in this codebase (Ignixa.Search.Expressions and Ignixa.Search.Indexing) --
+// this using brings Expressions' SortOrder into scope unambiguously; if a compile error reports
+// ambiguity anyway, fully-qualify as Ignixa.Search.Expressions.SortOrder at each use site instead of
+// adding the Indexing using alongside it, matching this project's existing test-file convention.
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
@@ -715,7 +720,7 @@ public class SystemLevelSearchTests
         // system-level-search discriminator parameter's exact name/type is decided in Step 3 -- update
         // this call once that's settled, this sketch shows the SortOrder.Ascending-adjacent enum-vs-bool
         // choice is still open.
-        var lowered = Lower.Run(predicate, resolved.Symbols, targetResourceType: null, [], [], includeLimit: 0, sort: null, SortPhase.Valued, page: null /*, discriminator TBD by Step 3 */);
+        var lowered = Lower.Run(predicate, resolved.Symbols, targetResourceType: null, [], [], includeLimit: 0, sort: [], SortPhase.Valued, page: null /*, discriminator TBD by Step 3 */);
 
         // Assert
         lowered.Plan.Ctes.Count.ShouldBe(1);
@@ -733,7 +738,7 @@ public class SystemLevelSearchTests
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
         // Act
-        var lowered = Lower.Run(predicate, symbols, targetResourceType: null, [], [], includeLimit: 0, sort: null, SortPhase.Valued, page: null /*, discriminator TBD by Step 3 */);
+        var lowered = Lower.Run(predicate, symbols, targetResourceType: null, [], [], includeLimit: 0, sort: [], SortPhase.Valued, page: null /*, discriminator TBD by Step 3 */);
 
         // Assert -- exact CTE shape (ResourceSource with a resource-column OuterPredicate, or however
         // _lastUpdated actually lowers -- confirm against the real ResourceColumnLoweringRule behavior
@@ -806,10 +811,11 @@ public sealed record ResourceSource(short? ResourceTypeId, Predicate? Predicate 
 
 **The discriminator is mandatory, not optional** — a prior draft of this step proposed that any caller reaching `RequireResourceType` with a null type is "by construction" system-level search, so the guard could simply stop throwing. That is factually wrong: `Lower.cs`'s own switch arm at approximately lines 53-57 (`_ when targetResourceType is null => throw ...`) is the gatekeeper for ORDINARY TYPED LEAVES under a null type — exactly the shape system-level search's own primary test case (`GivenAnOrdinaryPredicateWithNoResourceType_...`) needs to succeed through. If that arm keeps throwing unconditionally, system-level search's core case can never pass; if it's relaxed unconditionally, the existing wildcard-compartment regression test (`LowerTests.cs:470-519`, pinned by message `"wildcard compartment search"`) breaks. Both cannot be true at once without a discriminator.
 
-Add an explicit `bool systemLevelSearch = false` parameter to `Lower.Run`'s top-level signature (name it to match this codebase's existing parameter-naming style once you've re-read the real signature — `systemLevelSearch`, `allowNullResourceType`, or similar), defaulting to `false` so every EXISTING call site (compartment search, ordinary typed search, all currently-passing tests) is unaffected without any change at their call sites. Thread it through to wherever the null-type guards live:
+Add an explicit `bool systemLevelSearch = false` parameter to `Lower.Run`'s top-level signature (name it to match this codebase's existing parameter-naming style once you've re-read the real signature — `systemLevelSearch`, `allowNullResourceType`, or similar), defaulting to `false` so every EXISTING call site (compartment search, ordinary typed search, all currently-passing tests) is unaffected without any change at their call sites. Also thread this flag to every `RequireResourceType` call site (`Lower.cs:42` and `:51`, per Step 1's re-read) — these gate the bare/resource-column-only base case (`GET /?_lastUpdated=...`) and must stop throwing under `systemLevelSearch: true` too, not just the three switch arms below. Thread it through to wherever the null-type guards live:
 - The switch arm at ~53-57 (typed leaf + null type): today throws unconditionally on null type — change to throw only when `!systemLevelSearch`.
 - The switch arm at ~62-68 (sort + null type): same change — throw only when `!systemLevelSearch`, closing the design doc's "sort composes normally" requirement (I1 from plan review — this was silently dropped in an earlier draft of this task; it is now explicitly in scope).
-- The switch arm at ~70-87 (wildcard compartment + include/revinclude, and whatever else lives there): re-read this arm specifically — per the design doc, chain and `_include`/`_revinclude` do NOT combine with system-level search either, so this arm's throw-on-those-combinations behavior should very likely stay unconditional (throw regardless of `systemLevelSearch`), not gated the same way as the other two. Confirm this arm's exact current conditions before deciding; do not assume it's identical to the other two.
+- The switch arm at ~70-87 (wildcard compartment + include/revinclude, and whatever else lives there): re-read this arm specifically — per the design doc, `_include`/`_revinclude` do NOT combine with system-level search either, so this arm's throw-on-those-combinations behavior should very likely stay unconditional (throw regardless of `systemLevelSearch`), not gated the same way as the other two. Confirm this arm's exact current conditions before deciding; do not assume it's identical to the other two.
+- **Chain needs its OWN new guard, separate from the three above.** `LowerNode`'s chain dispatch arm (`Lower.cs:114`) never consumes `targetResourceType` at all (a chain carries its own target type internally) — nothing in the three existing null-type arms actually blocks a top-level `ChainedExpression` under a null type today, because chain simply never reaches them. If arm ~53-57 is gated on `!systemLevelSearch` as above, a top-level chain under `systemLevelSearch: true` would newly succeed instead of throwing — but chain is explicitly out of scope per the design doc's composition limits. Add a new, explicit guard ahead of chain's dispatch (e.g. `ChainedExpression when targetResourceType is null => throw new NotSupportedException("Chain is not supported in system-level search in this phase.")`), unconditional regardless of `systemLevelSearch` — this is what `GivenAChainedExpressionWithNoResourceType_...ThrowsNotSupportedException` (Step 2's sketched test) actually needs to pass; do not expect arm ~53-57 to cover it.
 
 `LowerAnd`, `LowerSearchParameter`, and every other site currently declared `resourceType: string` (non-nullable) after the top-level `RequireResourceType` call becomes `resourceType: string?`, threading the new `systemLevelSearch` flag (or however you name it) alongside it wherever the guards it feeds live.
 
