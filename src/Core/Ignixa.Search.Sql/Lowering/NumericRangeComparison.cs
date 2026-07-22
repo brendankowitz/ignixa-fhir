@@ -50,6 +50,19 @@ internal static class NumericRangeComparison
         decimal value)
     {
         var tolerance = Math.Max(value.GetPrescisionModifier(), Math.Abs(value) * 0.10m);
+        var hasLowerBound = value >= decimal.MinValue + tolerance;
+        var hasUpperBound = value <= decimal.MaxValue - tolerance;
+
+        if (!hasLowerBound)
+        {
+            return new Predicate.LessThanOrEqual(highColumn, context.Parameter(value + tolerance));
+        }
+
+        if (!hasUpperBound)
+        {
+            return new Predicate.GreaterThanOrEqual(lowColumn, context.Parameter(value - tolerance));
+        }
+
         return new Predicate.And(
             new Predicate.GreaterThanOrEqual(lowColumn, context.Parameter(value - tolerance)),
             new Predicate.LessThanOrEqual(highColumn, context.Parameter(value + tolerance)));

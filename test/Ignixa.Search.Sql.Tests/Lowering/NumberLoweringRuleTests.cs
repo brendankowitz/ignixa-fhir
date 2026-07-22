@@ -252,4 +252,36 @@ public class NumberLoweringRuleTests
         le.Column.Column.ShouldBe("HighValue");
         le.Value.Value.ShouldBe(0.0015m);
     }
+
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithDecimalMaxValue_ThenBuildsRepresentableLowerBoundOnly()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(decimal.MaxValue));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(decimal.MaxValue - (decimal.MaxValue * 0.10m));
+    }
+
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithDecimalMinValue_ThenBuildsRepresentableUpperBoundOnly()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(decimal.MinValue));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(decimal.MinValue + (decimal.MaxValue * 0.10m));
+    }
 }
