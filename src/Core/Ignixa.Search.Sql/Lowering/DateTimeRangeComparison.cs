@@ -7,8 +7,9 @@ namespace Ignixa.Search.Sql.Lowering;
 /// <summary>
 /// Builds the comparator-dependent predicate shared by base and composite DateTime lowering — both store
 /// [StartDateTime, EndDateTime] and compare, with range-overlap semantics, against the search value's own
-/// [Start, End] (which already encodes FHIR partial-date precision). :ap throws: it needs the current
-/// instant at lowering time, which this pure function does not have.
+/// [Start, End] (which already encodes FHIR partial-date precision). :ap widens [Start, End] by
+/// <see cref="ApproximateDateRange.Widen"/> using <see cref="LeafContext.ApproximationReferenceTime"/>,
+/// then reuses the same overlap shape as Eq against the widened bounds.
 /// </summary>
 internal static class DateTimeRangeComparison
 {
@@ -26,9 +27,15 @@ internal static class DateTimeRangeComparison
         SearchComparator.Ge => new Predicate.GreaterThanOrEqual(endColumn, context.Parameter(value.Start)),
         SearchComparator.Sa => new Predicate.GreaterThan(startColumn, context.Parameter(value.End)),
         SearchComparator.Eb => new Predicate.LessThan(endColumn, context.Parameter(value.Start)),
-        SearchComparator.Ap => throw new NotSupportedException(
-            "The :ap (approximately) comparator requires DateTimeOffset.UtcNow at lowering time, which " +
-            "conflicts with Lower's purity invariant -- not implemented. Would need Lower.Run to accept an explicit 'now' parameter."),
+        SearchComparator.Ap => BuildApproximate(context, startColumn, endColumn, value),
         _ => throw new NotSupportedException($"Unknown SearchComparator '{comparator}'."),
     };
+
+    private static Predicate BuildApproximate(LeafContext context, SqlColumnRef startColumn, SqlColumnRef endColumn, DateTimeSearchValue value)
+    {
+        var (widenedStart, widenedEnd) = ApproximateDateRange.Widen(value, context.ApproximationReferenceTime);
+        return new Predicate.And(
+            new Predicate.LessThanOrEqual(startColumn, context.Parameter(widenedEnd)),
+            new Predicate.GreaterThanOrEqual(endColumn, context.Parameter(widenedStart)));
+    }
 }
