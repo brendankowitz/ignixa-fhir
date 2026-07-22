@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Composite;
 using Ignixa.Search.Sql.Symbols;
@@ -24,6 +25,9 @@ public class TokenQuantityLoweringRuleTests
             compartmentMembership: null,
             systemIds: systemIds,
             quantityCodeIds: quantityCodeIds));
+
+    private static EmittedSql EmitSql(CteDefinition.ParamSource cte)
+        => SqlBuilder.Run(new QueryPlan([cte], new CteRef(0)));
 
     private static SearchParameterInfo CompositeParameter()
         => new("component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
@@ -221,5 +225,24 @@ public class TokenQuantityLoweringRuleTests
         var quantityCodeEqual = quantityOuter.Right.ShouldBeOfType<Predicate.Equal>();
         quantityCodeEqual.Column.Column.ShouldBe("QuantityCodeId2");
         quantityCodeEqual.Value.Value.ShouldBe(77);
+
+        // Assert — complete emitted SQL and ordered parameters: token system/code, numeric lower/upper,
+        // quantity system, quantity code (@p0 SystemId1, @p1 Code1, @p2/@p3 approximate range, @p4 SystemId2, @p5 QuantityCodeId2).
+        var emitted = EmitSql(cte);
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenQuantityCompositeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 402 AND ((SystemId1 = @p0 AND Code1 = @p1) AND (((LowValue2 >= @p2 AND HighValue2 <= @p3) AND SystemId2 = @p4) AND QuantityCodeId2 = @p5))\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(6);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", 42));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "8480-6"));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 4.86m));
+        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5.94m));
+        emitted.Parameters[4].ShouldBe(new EmittedSqlParameter("@p4", 43));
+        emitted.Parameters[5].ShouldBe(new EmittedSqlParameter("@p5", 77));
     }
 }

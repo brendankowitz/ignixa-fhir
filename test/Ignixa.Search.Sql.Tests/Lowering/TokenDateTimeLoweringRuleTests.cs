@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Composite;
 using Ignixa.Search.Sql.Symbols;
@@ -25,6 +26,9 @@ public class TokenDateTimeLoweringRuleTests
                 compartmentMembership: null,
                 systemIds: systemIds),
             approximationReferenceTime);
+
+    private static EmittedSql EmitSql(CteDefinition.ParamSource cte)
+        => SqlBuilder.Run(new QueryPlan([cte], new CteRef(0)));
 
     private static SearchParameterInfo CompositeParameter()
         => new("code-value-date", "code-value-date", SearchParamType.Composite,
@@ -128,5 +132,21 @@ public class TokenDateTimeLoweringRuleTests
         var endGe = dateRange.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         endGe.Column.Column.ShouldBe("EndDateTime2");
         endGe.Value.Value.ShouldBe(widenedStart);
+
+        // Assert — complete emitted SQL and ordered parameters: token before the widened end/start
+        // parameters, in the emitter's overlap order (@p0 Code1, @p1 widenedEnd, @p2 widenedStart).
+        var emitted = EmitSql(cte);
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenDateTimeCompositeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 403 AND (Code1 = @p0 AND (StartDateTime2 <= @p1 AND EndDateTime2 >= @p2))\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(3);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "8480-6"));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", widenedEnd));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", widenedStart));
     }
 }

@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Composite;
 using Ignixa.Search.Sql.Symbols;
@@ -22,6 +23,9 @@ public class TokenNumberNumberLoweringRuleTests
             new Dictionary<string, short>(),
             compartmentMembership: null,
             systemIds: systemIds));
+
+    private static EmittedSql EmitSql(CteDefinition.ParamSource cte)
+        => SqlBuilder.Run(new QueryPlan([cte], new CteRef(0)));
 
     private static SearchParameterInfo CompositeParameter()
         => new("component-code-value-number-number", "component-code-value-number-number", SearchParamType.Composite,
@@ -122,6 +126,23 @@ public class TokenNumberNumberLoweringRuleTests
         var number2Predicate = outer.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         number2Predicate.Column.Column.ShouldBe("LowValue3");
         number2Predicate.Value.Value.ShouldBe(10m);
+
+        // Assert — complete emitted SQL and ordered parameters: token, approximate lower, approximate
+        // upper, then the non-Ap second numeric slot (@p0 Code1, @p1 LowValue2 low, @p2 HighValue2 high, @p3 LowValue3).
+        var emitted = EmitSql(cte);
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenNumberNumberCompositeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 302 AND ((Code1 = @p0 AND (LowValue2 >= @p1 AND HighValue2 <= @p2)) AND LowValue3 >= @p3)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(4);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "8480-6"));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", 4.86m));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 5.94m));
+        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 10m));
     }
 
     // :ap composite proof — second numeric slot (LowValue3/HighValue3) independently widened while the
@@ -157,5 +178,22 @@ public class TokenNumberNumberLoweringRuleTests
         var number2Le = number2Range.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
         number2Le.Column.Column.ShouldBe("HighValue3");
         number2Le.Value.Value.ShouldBe(5.94m);
+
+        // Assert — complete emitted SQL and ordered parameters: token, non-Ap first numeric, then the
+        // mirrored approximate lower/upper on the second slot (@p0 Code1, @p1 LowValue2, @p2 LowValue3 low, @p3 HighValue3 high).
+        var emitted = EmitSql(cte);
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenNumberNumberCompositeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 302 AND ((Code1 = @p0 AND LowValue2 >= @p1) AND (LowValue3 >= @p2 AND HighValue3 <= @p3))\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(4);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "8480-6"));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", 10m));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 4.86m));
+        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5.94m));
     }
 }
