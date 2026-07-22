@@ -84,7 +84,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0 collate Latin1_General_100_BIN2");
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
@@ -141,7 +141,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- identical plan shape to the bare-predicate case above (same table, same SearchParamId)
-        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0 collate Latin1_General_100_BIN2");
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
