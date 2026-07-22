@@ -305,11 +305,46 @@ public static class Lower
         return single is null ? (expression, null) : (null, single);
     }
 
-    /// <summary>Returns the resource-column predicate for a single wrapped leaf, or null if it is not one.</summary>
+    /// <summary>Returns the resource-column predicate for a single wrapped leaf, or an Or of same-column
+    /// equalities for a wrapped comma-separated value list (e.g. _type=Patient,Observation), or null if
+    /// the expression is neither.</summary>
     private static Predicate? TryExtractResourceColumnPredicate(Expression expression, LeafContext leafContext)
-        => expression is SearchParameterExpression wrapped
-            ? TryLowerResourceColumn(wrapped.Expression, leafContext)
-            : null;
+    {
+        if (expression is SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate })
+        {
+            return ResourceColumnLoweringRule.TryLower(predicate, leafContext);
+        }
+
+        if (expression is SearchParameterExpression { Expression: MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or }
+            && or.Expressions.Count > 0)
+        {
+            return TryExtractOrOfResourceColumnEquals(or, leafContext);
+        }
+
+        return null;
+    }
+
+    /// <summary>Returns an Or of <see cref="Predicate.Equal"/>s when every alternative is a bare predicate
+    /// that lowers to a resource-column equality on the same column (a comma-separated resource-column
+    /// value list, e.g. _type=Patient,Observation), or null when any alternative is not that shape --
+    /// leaving the whole Or unextracted, to fall through to the ordinary dispatch path's own guard.</summary>
+    private static Predicate? TryExtractOrOfResourceColumnEquals(MultiaryExpression or, LeafContext leafContext)
+    {
+        var equalities = new List<Predicate.Equal>(or.Expressions.Count);
+        foreach (var alternative in or.Expressions)
+        {
+            if (alternative is not SearchParameterPredicateExpression predicate
+                || ResourceColumnLoweringRule.TryLower(predicate, leafContext) is not Predicate.Equal equal
+                || (equalities.Count > 0 && equal.Column != equalities[0].Column))
+            {
+                return null;
+            }
+
+            equalities.Add(equal);
+        }
+
+        return equalities.Cast<Predicate>().Aggregate((left, right) => new Predicate.Or(left, right));
+    }
 
     /// <summary>
     /// Lowers a resource-column leaf, or a comma list of them (`_id=a,b,c` binds to an Or of predicates
