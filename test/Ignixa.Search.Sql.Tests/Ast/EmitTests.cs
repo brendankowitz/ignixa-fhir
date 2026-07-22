@@ -1097,4 +1097,50 @@ public class EmitTests
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(0);
     }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicate_WhenEmitted_ThenProducesLeftLenComparison()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"),
+            "Latin1_General_100_BIN2");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.UriSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND LEFT(@p0, LEN(Uri)) COLLATE Latin1_General_100_BIN2 = Uri\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(1);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "http://example.org/fhir/Patient/123"));
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicateWithoutCollation_WhenEmitted_ThenProducesLeftLenComparisonWithoutCollate()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("LEFT(@p0, LEN(Uri)) = Uri");
+        emitted.Sql.ShouldNotContain("COLLATE");
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "http://example.org/fhir/Patient/123"));
+    }
 }

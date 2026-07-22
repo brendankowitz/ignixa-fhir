@@ -22,6 +22,7 @@ public class EmitSqlGrammarTests
         yield return ["resource-source with outer predicate", OuterPredicatePlan()];
         yield return ["count only", CountOnlyPlan()];
         yield return ["contains (LIKE)", LikePlan()];
+        yield return ["prefix of parameter", PrefixOfParameterPlan()];
     }
 
     [Theory]
@@ -116,5 +117,15 @@ public class EmitSqlGrammarTests
         var predicate = new Predicate.Like(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smi"), LikeMatch.Contains, "Latin1_General_100_CI_AI");
         return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
+    }
+
+    private static QueryPlan PrefixOfParameterPlan()
+    {
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"),
+            "Latin1_General_100_BIN2");
+        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
     }
 }

@@ -27,4 +27,6 @@ public abstract record Predicate
     public sealed record IsNull(SqlColumnRef Column) : Predicate;
 
     public sealed record False : Predicate;
+
+    public sealed record PrefixOfParameter(SqlColumnRef Column, SqlParameterRef Value, string? Collation = null) : Predicate;
 }

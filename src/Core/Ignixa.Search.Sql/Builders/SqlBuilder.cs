@@ -586,6 +586,7 @@ public static class SqlBuilder
         Predicate.Or or => $"({EmitPredicate(or.Left, parameters)} OR {EmitPredicate(or.Right, parameters)})",
         Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
         Predicate.False => "1 = 0",
+        Predicate.PrefixOfParameter pop => $"LEFT({EmitParam(pop.Value, parameters)}, LEN({pop.Column.Column})){EmitCollation(pop.Collation)} = {pop.Column.Column}",
         _ => throw new NotSupportedException($"No Emit for {predicate.GetType().Name}."),
     };
 

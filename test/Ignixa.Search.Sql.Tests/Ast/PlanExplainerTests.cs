@@ -276,4 +276,39 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe("root = TokenSearchParam[103,44]  false");
     }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicate_WhenExplained_ThenPrintsPrefixOfWithCollation()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"),
+            "Latin1_General_100_BIN2");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = UriSearchParam[103,202]  Uri PREFIX_OF @p0 collate Latin1_General_100_BIN2");
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicateWithoutCollation_WhenExplained_ThenPrintsPrefixOfWithoutCollation()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = UriSearchParam[103,202]  Uri PREFIX_OF @p0");
+    }
 }

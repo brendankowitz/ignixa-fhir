@@ -203,6 +203,7 @@ public static class PlanExplainer
         Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
         Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
         Predicate.False => "false",
+        Predicate.PrefixOfParameter pop => $"{pop.Column.Column} PREFIX_OF @p{parameterOrdinal++}{PrintCollation(pop.Collation)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {predicate.GetType().Name}."),
     };
 
