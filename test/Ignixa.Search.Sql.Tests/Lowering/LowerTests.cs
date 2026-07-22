@@ -490,20 +490,28 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenATokenSortKey_WhenLowered_ThenThrowsNotSupportedException()
+    public void GivenATokenSortKey_WhenLowered_ThenProducesAnAggregatedSortKey()
     {
-        // Arrange -- Token/Number/Quantity/Reference/Uri sort is deferred, not silently mishandled.
+        // Arrange -- Token sort is now implemented via Aggregated sort keys
         var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [statusParam.Url.ToString()] = 1 },
             new Dictionary<string, short> { ["Observation"] = 104 });
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
-                expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-                sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
-            .Message.ShouldContain("Token");
+        // Act
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Keys.Count.ShouldBe(1);
+        plan.Sort.Keys[0].Kind.ShouldBe(SortKeyKind.Aggregated);
+        plan.Sort.Keys[0].SearchParamId.ShouldBe((short)1);
+        plan.Sort.Keys[0].Table.ShouldNotBeNull();
+        plan.Sort.Keys[0].Table!.TableName.ShouldBe("TokenSearchParam");
+        plan.Sort.Keys[0].Column.ShouldNotBeNull();
+        plan.Sort.Keys[0].Column!.Name.ShouldBe("Code");
     }
 
     [Fact]

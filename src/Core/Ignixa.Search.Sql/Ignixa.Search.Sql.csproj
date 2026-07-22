@@ -26,4 +26,8 @@
     <AdditionalFiles Include="..\..\DataLayer\Ignixa.DataLayer.SqlServer.Database\Tables\*.sql" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.Search.Sql.Tests" />
+  </ItemGroup>
+
 </Project>

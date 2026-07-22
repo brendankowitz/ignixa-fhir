@@ -1,5 +1,6 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -465,26 +466,42 @@ public static class Lower
         return new SortSpec(keys, phase);
     }
 
-    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated kind and resolving its id (none for _lastUpdated).</summary>
-    private static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
+    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/Aggregated kind and resolving its id (none for _lastUpdated).</summary>
+    internal static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
         if (sortExpression.Parameter.Code == "_lastUpdated")
         {
             return new SortKey(null, SortKeyKind.LastUpdated, sortExpression.SortOrder);
         }
 
-        var kind = sortExpression.Parameter.Type switch
+        var searchParamId = symbols.SearchParamId(sortExpression.Parameter);
+
+        if (sortExpression.Parameter.Type == SearchParamType.String)
         {
-            SearchParamType.String => SortKeyKind.String,
-            SearchParamType.Date => SortKeyKind.Date,
+            return new SortKey(searchParamId, SortKeyKind.String, sortExpression.SortOrder);
+        }
+
+        if (sortExpression.Parameter.Type == SearchParamType.Date)
+        {
+            return new SortKey(searchParamId, SortKeyKind.Date, sortExpression.SortOrder);
+        }
+
+        var (tableName, columnName) = sortExpression.Parameter.Type switch
+        {
+            SearchParamType.Token => ("TokenSearchParam", "Code"),
+            SearchParamType.Number => ("NumberSearchParam", "LowValue"),
+            SearchParamType.Quantity => ("QuantitySearchParam", "LowValue"),
+            SearchParamType.Reference => ("ReferenceSearchParam", "ReferenceResourceId"),
+            SearchParamType.Uri => ("UriSearchParam", "Uri"),
             _ => throw new NotSupportedException(
                 $"Sorting by a '{sortExpression.Parameter.Type}' search parameter ('{sortExpression.Parameter.Code}') " +
-                "is not supported this phase -- only String, Date, and _lastUpdated sort keys are handled. " +
-                "Token/Number/Quantity/Reference/Uri sort is deferred."),
+                "is not supported -- String, Date, _lastUpdated, Token, Number, Quantity, Reference, and Uri " +
+                "sort keys are handled; Composite has no single scalar column to sort by."),
         };
 
-        var searchParamId = symbols.SearchParamId(sortExpression.Parameter);
-        return new SortKey(searchParamId, kind, sortExpression.SortOrder);
+        var table = SqlCatalog.Default.Table(tableName);
+        var column = table.Column(columnName);
+        return new SortKey(searchParamId, SortKeyKind.Aggregated, sortExpression.SortOrder, table, column);
     }
 
     /// <summary>Resolves an include's direction and its seed/output resource-type ids into a <see cref="ResolvedInclude"/>.</summary>
