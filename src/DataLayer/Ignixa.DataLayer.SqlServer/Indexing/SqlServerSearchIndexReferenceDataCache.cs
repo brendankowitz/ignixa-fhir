@@ -55,12 +55,16 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     public IReadOnlyDictionary<string, short> SearchParameterMappings => new SentinelFilteringDictionary(_searchParamCache);
 
-    // No sentinel concept for System/QuantityCode (only ever populated with real, on-demand-created
-    // IDs), so the backing ConcurrentDictionary can be returned directly -- a genuinely live view,
-    // not a copy, matching SqlServerMergeRepository's expectation that it stays live.
-    public IReadOnlyDictionary<string, int> SystemMappings => _systemCache;
+    // Self-healing: a miss resolves on demand via GetOrCreateSystemIdAsync/GetOrCreateQuantityCodeIdAsync
+    // and is cached back into _systemCache/_quantityCodeCache. Each property access allocates a new
+    // wrapper, but it always wraps the SAME shared, live backing ConcurrentDictionary by reference --
+    // not a snapshot -- so inserts from any wrapper instance are immediately visible everywhere,
+    // matching SqlServerMergeRepository's expectation that these mappings stay live.
+    public IReadOnlyDictionary<string, int> SystemMappings =>
+        new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, _logger);
 
-    public IReadOnlyDictionary<string, int> QuantityCodeMappings => _quantityCodeCache;
+    public IReadOnlyDictionary<string, int> QuantityCodeMappings =>
+        new OnDemandResolvingDictionary<string, int>(_quantityCodeCache, GetOrCreateQuantityCodeIdAsync, _logger);
 
     public async Task PreloadResourceTypesAsync(CancellationToken cancellationToken)
     {
@@ -482,6 +486,68 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
         public IEnumerator<KeyValuePair<string, short>> GetEnumerator()
             => inner.Where(kvp => kvp.Value != MissingSentinel).GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>
+    /// Read-only dictionary wrapper that resolves a cache miss on demand via <paramref name="resolveAsync"/>
+    /// (synchronously, via <c>GetAwaiter().GetResult()</c> -- used from within the row generators'
+    /// synchronous <c>TryGetValue</c> calls, where async/await isn't available). Ports EF's
+    /// <c>LazyLoadingDictionary</c> pattern (Ignixa.DataLayer.SqlEntityFramework.Indexing.
+    /// SearchIndexReferenceDataCache) for <see cref="SystemMappings"/>/<see cref="QuantityCodeMappings"/>
+    /// specifically -- see docs/superpowers/specs/2026-07-21-sqlserver-system-quantitycode-selfheal-design.md
+    /// for why this was missing and why it's safe (bounded blocking cost, no deadlock against
+    /// <see cref="_dbLock"/>, since row generation always runs after Ensure*PreloadedAsync has already
+    /// released it). Internal, not private, so tests can construct it directly with a fake resolver to
+    /// exercise the failure path deterministically -- <see cref="GetOrCreateSystemIdAsync"/>/
+    /// <see cref="GetOrCreateQuantityCodeIdAsync"/> essentially never throw under normal test conditions.
+    /// Note the asymmetry by design: <see cref="TryGetValue"/> and the indexer resolve on demand, but
+    /// <see cref="ContainsKey"/>/<see cref="Count"/>/enumeration reflect only what's already cached --
+    /// required, not incidental: an existing test asserts <c>ContainsKey</c> on an unresolved key stays
+    /// false without triggering a resolve (see SqlServerSearchIndexReferenceDataCacheTests.cs's
+    /// GivenASystemIdInsertedThroughOneCacheInstance_... test).
+    /// </summary>
+    internal sealed class OnDemandResolvingDictionary<TKey, TValue>(
+        ConcurrentDictionary<TKey, TValue> cache,
+        Func<TKey, CancellationToken, Task<TValue>> resolveAsync,
+        ILogger logger) : IReadOnlyDictionary<TKey, TValue>
+        where TKey : notnull
+    {
+        public TValue this[TKey key] => TryGetValue(key, out var value)
+            ? value
+            : throw new KeyNotFoundException($"The given key '{key}' was not present in the dictionary.");
+
+        public IEnumerable<TKey> Keys => cache.Keys;
+
+        public IEnumerable<TValue> Values => cache.Values;
+
+        public int Count => cache.Count;
+
+        public bool ContainsKey(TKey key) => cache.ContainsKey(key);
+
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            if (cache.TryGetValue(key, out value!))
+            {
+                return true;
+            }
+
+            try
+            {
+                value = resolveAsync(key, CancellationToken.None).GetAwaiter().GetResult();
+                cache[key] = value;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to resolve {Key} on demand -- row skipped", key);
+                value = default!;
+                return false;
+            }
+        }
+
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => cache.GetEnumerator();
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }

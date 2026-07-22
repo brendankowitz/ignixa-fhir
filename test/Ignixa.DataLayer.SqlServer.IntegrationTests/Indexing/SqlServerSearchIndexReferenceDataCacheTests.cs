@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Linq;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
@@ -212,5 +213,58 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
         await secondCallerTask;
 
         _cache.SearchParameterMappings.Count.ShouldBe(SearchParamCount);
+    }
+
+    [Fact]
+    public async Task GivenAColdSystemMappingsCache_WhenTryGetValueMissesOnAnUnknownSystemUri_ThenItResolvesInsertsAndCachesTheNewSystem()
+    {
+        var systemUri = $"http://example.org/self-heal-system-{Guid.NewGuid()}";
+
+        var found = _cache.SystemMappings.TryGetValue(systemUri, out var resolvedId);
+
+        found.ShouldBeTrue();
+        resolvedId.ShouldBeGreaterThan(0);
+
+        var rowCount = await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.System WHERE SystemId = {resolvedId}");
+        rowCount.ShouldBe(1);
+
+        // Second lookup on the SAME cache instance must hit the now-warm dictionary, not re-resolve.
+        var secondLookupFound = _cache.SystemMappings.TryGetValue(systemUri, out var secondResolvedId);
+        secondLookupFound.ShouldBeTrue();
+        secondResolvedId.ShouldBe(resolvedId);
+    }
+
+    [Fact]
+    public async Task GivenAColdQuantityCodeMappingsCache_WhenTryGetValueMissesOnAnUnknownCode_ThenItResolvesInsertsAndCachesTheNewCode()
+    {
+        var code = $"self-heal-code-{Guid.NewGuid():N}";
+
+        var found = _cache.QuantityCodeMappings.TryGetValue(code, out var resolvedId);
+
+        found.ShouldBeTrue();
+        resolvedId.ShouldBeGreaterThan(0);
+
+        var rowCount = await _database.ExecuteScalarAsync<int>(
+            $"SELECT COUNT(*) FROM dbo.QuantityCode WHERE QuantityCodeId = {resolvedId}");
+        rowCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAResolverThatThrows_WhenTryGetValueMisses_ThenAWarningIsLoggedAndFalseIsReturned()
+    {
+        var backingCache = new ConcurrentDictionary<string, int>();
+        var logger = new ListLogger<SqlServerSearchIndexReferenceDataCache>();
+        var wrapper = new SqlServerSearchIndexReferenceDataCache.OnDemandResolvingDictionary<string, int>(
+            backingCache,
+            (_, _) => Task.FromException<int>(new InvalidOperationException("simulated resolve failure")),
+            logger);
+
+        var found = wrapper.TryGetValue("any-key", out var value);
+
+        found.ShouldBeFalse();
+        value.ShouldBe(0);
+        logger.Warnings.ShouldContain(w => w.Contains("any-key"));
+        backingCache.ContainsKey("any-key").ShouldBeFalse();
     }
 }
