@@ -1678,10 +1678,14 @@ public class EndToEndCompilationTests
 
         // Assert -- system resolves to surrogate id 7; code remains a string parameter; parameter order is SystemId then Code
         plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  SystemId = @p0 AND Code = @p1");
-        emitted.Sql.ShouldNotContain("http://loinc.org");
-        emitted.Sql.ShouldNotContain("8480-6");
-        emitted.Sql.ShouldContain("SystemId = @p0");
-        emitted.Sql.ShouldContain("Code = @p1");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 88 AND (SystemId = @p0 AND Code = @p1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)7), ("@p1", (object)"8480-6")]);
     }
 
@@ -1705,8 +1709,14 @@ public class EndToEndCompilationTests
 
         // Assert -- IS NULL guard with no system-id parameter; code is the sole bound parameter
         plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  SystemId IS NULL AND Code = @p0");
-        emitted.Sql.ShouldContain("SystemId IS NULL");
-        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 88 AND (SystemId IS NULL AND Code = @p0)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6")]);
     }
 
@@ -1731,9 +1741,14 @@ public class EndToEndCompilationTests
 
         // Assert -- Ge: raw value used (no precision-widening bounds); SystemId and QuantityCodeId appended in that order
         plan.Explain().ShouldBe("root = QuantitySearchParam[104,204]  LowValue >= @p0 AND SystemId = @p1 AND QuantityCodeId = @p2");
-        emitted.Sql.ShouldNotContain("107");
-        emitted.Sql.ShouldNotContain("unitsofmeasure");
-        emitted.Sql.ShouldNotContain("mg");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.QuantitySearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND ((LowValue >= @p0 AND SystemId = @p1) AND QuantityCodeId = @p2)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)107m), ("@p1", (object)11), ("@p2", (object)22)]);
     }
 
@@ -1771,9 +1786,14 @@ public class EndToEndCompilationTests
 
         // Assert -- slot 1 carries SystemId1 (integer) then Code1; slot 2 carries Code2 only (null system → no constraint)
         plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[104,301]  SystemId1 = @p0 AND Code1 = @p1 AND Code2 = @p2");
-        emitted.Sql.ShouldNotContain("http://loinc.org");
-        emitted.Sql.ShouldNotContain("8480-6");
-        emitted.Sql.ShouldNotContain("high");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenTokenCompositeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 301 AND ((SystemId1 = @p0 AND Code1 = @p1) AND Code2 = @p2)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)7), ("@p1", (object)"8480-6"), ("@p2", (object)"high")]);
     }
 
@@ -1797,9 +1817,14 @@ public class EndToEndCompilationTests
 
         // Assert -- false predicate in plan; 1 = 0 in SQL; no user value exposed; no bound parameters
         plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  false");
-        emitted.Sql.ShouldContain("1 = 0");
-        emitted.Sql.ShouldNotContain("http://unknown.org");
-        emitted.Sql.ShouldNotContain("abc");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 88 AND 1 = 0\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.ShouldBeEmpty();
     }
 
