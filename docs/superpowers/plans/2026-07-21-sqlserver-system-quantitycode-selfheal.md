@@ -137,7 +137,7 @@ Add these three `[Fact]` methods to `test/Ignixa.DataLayer.SqlServer.Integration
     }
 ```
 
-This test file needs two new usings. `SqlServerMergeRepositoryTests.cs` (Task 4 of this morning's cache-race-fix plan) already defines `internal sealed class ListLogger<T> : ILogger<T>` in namespace `Ignixa.DataLayer.SqlServer.IntegrationTests` — reuse it directly rather than duplicating it; `internal` types are visible across files in the same assembly given a `using` for their namespace. Add `using System.Collections.Concurrent;` (for `ConcurrentDictionary` in the third test) and `using Ignixa.DataLayer.SqlServer.IntegrationTests;` (to reach the existing `ListLogger<T>`, since this file's own namespace is the `.Indexing` sub-namespace) to the top of the test file.
+`SqlServerMergeRepositoryTests.cs` (Task 4 of this morning's cache-race-fix plan) already defines `internal sealed class ListLogger<T> : ILogger<T>` in namespace `Ignixa.DataLayer.SqlServer.IntegrationTests` — reuse it directly rather than duplicating it. This test file's own namespace, `Ignixa.DataLayer.SqlServer.IntegrationTests.Indexing`, is a sub-namespace of that one, so C#'s name lookup already finds `ListLogger<T>` there with no new `using` needed. Add just `using System.Collections.Concurrent;` (for `ConcurrentDictionary` in the third test) to the top of the test file if not already present.
 
 - [ ] **Step 2: Run tests to verify they fail to compile**
 
@@ -162,6 +162,11 @@ In `src/DataLayer/Ignixa.DataLayer.SqlServer/Indexing/SqlServerSearchIndexRefere
     /// released it). Internal, not private, so tests can construct it directly with a fake resolver to
     /// exercise the failure path deterministically -- <see cref="GetOrCreateSystemIdAsync"/>/
     /// <see cref="GetOrCreateQuantityCodeIdAsync"/> essentially never throw under normal test conditions.
+    /// Note the asymmetry by design: <see cref="TryGetValue"/> and the indexer resolve on demand, but
+    /// <see cref="ContainsKey"/>/<see cref="Count"/>/enumeration reflect only what's already cached --
+    /// required, not incidental: an existing test asserts <c>ContainsKey</c> on an unresolved key stays
+    /// false without triggering a resolve (see SqlServerSearchIndexReferenceDataCacheTests.cs's
+    /// GivenASystemIdInsertedThroughOneCacheInstance_... test).
     /// </summary>
     internal sealed class OnDemandResolvingDictionary<TKey, TValue>(
         ConcurrentDictionary<TKey, TValue> cache,
@@ -210,9 +215,14 @@ In `src/DataLayer/Ignixa.DataLayer.SqlServer/Indexing/SqlServerSearchIndexRefere
 
 - [ ] **Step 4: Wire `SystemMappings`/`QuantityCodeMappings` to the new wrapper**
 
-Replace the current property implementations shown above (lines 58-63) with:
+Replace the current comment and property implementations shown above (lines 58-63) with:
 
 ```csharp
+    // Self-healing: a miss resolves on demand via GetOrCreateSystemIdAsync/GetOrCreateQuantityCodeIdAsync
+    // and is cached back into _systemCache/_quantityCodeCache. Each property access allocates a new
+    // wrapper, but it always wraps the SAME shared, live backing ConcurrentDictionary by reference --
+    // not a snapshot -- so inserts from any wrapper instance are immediately visible everywhere,
+    // matching SqlServerMergeRepository's expectation that these mappings stay live.
     public IReadOnlyDictionary<string, int> SystemMappings =>
         new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, _logger);
 
