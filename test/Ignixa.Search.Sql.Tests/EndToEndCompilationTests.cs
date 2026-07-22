@@ -397,7 +397,7 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldBe(
-            "root = ReferenceTokenCompositeSearchParam[55,404]  ReferenceResourceTypeId1 = @p0 AND ReferenceResourceId1 = @p1 AND Code2 = @p2");
+            "root = ReferenceTokenCompositeSearchParam[55,404]  BaseUri1 IS NULL AND ReferenceResourceTypeId1 = @p0 AND ReferenceResourceId1 = @p1 AND Code2 = @p2");
         emitted.Sql.ShouldNotContain("456");
         emitted.Sql.ShouldNotContain("replaces");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)(short)55), ("@p1", (object)"456"), ("@p2", (object)"replaces")]);
