@@ -57,8 +57,16 @@ public sealed class TestScriptConformanceReportTests
         await WriteReportAsync(report, CancellationToken.None);
 
         results.ShouldNotBeEmpty("No conformance tests were found or executed.");
-        results.Where(result => result.Status == "error")
-            .ShouldBeEmpty("TestScript parse/evaluator errors indicate conformance infrastructure failed.");
+
+        // Fail only on infrastructure errors — a suite that won't parse or an evaluator that
+        // throws. Behavioral "error" outcomes (a wrong server response cascading a dependent
+        // step) are real findings for the matrix, not a broken harness: with an 87-suite
+        // cross-vendor corpus the target legitimately lacks operations some suites exercise.
+        var infrastructureErrors = results.Where(result => result.IsInfrastructureError).ToList();
+        infrastructureErrors.ShouldBeEmpty(
+            "TestScript parse/evaluator errors indicate conformance infrastructure failed:\n" +
+            string.Join("\n", infrastructureErrors.Select(r => $"  {r.File}: {r.Error?.Assertion} — {r.Error?.Received}")));
+
         results.Count(result => result.Status is "pass" or "fail").ShouldBeGreaterThan(0,
             "All results were skipped — the conformance corpus produced no executable checks.");
     }
