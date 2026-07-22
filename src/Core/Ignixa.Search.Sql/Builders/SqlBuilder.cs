@@ -364,6 +364,29 @@ public static class SqlBuilder
                 continue; // resource-column key, no join needed.
             }
 
+            if (key.Kind == SortKeyKind.Aggregated)
+            {
+                // Key 0 in the Valued phase must gate on the key being present, exactly like
+                // String/Date's own i==0-is-INNER rule below -- an unconditional LEFT here would let
+                // missing-key rows leak into both the Valued and MissingPrimary phases (duplicates
+                // across the keyset page boundary) and let a NULL AggValue reach the seek predicate
+                // unwrapped (SortValueExpr's isGuaranteedNonNull fast path assumes key 0/Valued is
+                // truly non-null -- LEFT would break that guarantee). INNER against the derived table
+                // is safe: MIN/MAX over zero grouped rows for a given (type, surrogate id) simply
+                // produces no output row for that key, which is exactly INNER JOIN's semantics -- no
+                // separate existence check is needed.
+                var aggJoinType = i == 0 ? "INNER" : "LEFT";
+                var aggFunc = key.Direction == SortOrder.Ascending ? "MIN" : "MAX";
+                joins.Add(
+                    $"\n{aggJoinType} JOIN (\n" +
+                    $"    SELECT ResourceTypeId, ResourceSurrogateId, {aggFunc}({key.Column!.Name}) AS AggValue\n" +
+                    $"    FROM {key.Table!.SchemaName}.{key.Table.TableName}\n" +
+                    $"    WHERE SearchParamId = {key.SearchParamId}\n" +
+                    $"    GROUP BY ResourceTypeId, ResourceSurrogateId\n" +
+                    $") sk{i} ON sk{i}.ResourceTypeId = m.T1 AND sk{i}.ResourceSurrogateId = m.Sid1");
+                continue;
+            }
+
             var table = key.Kind == SortKeyKind.String ? "StringSearchParam" : "DateTimeSearchParam";
             var flag = key.Direction == SortOrder.Ascending ? "IsMin" : "IsMax";
             var joinType = i == 0 ? "INNER" : "LEFT";
@@ -391,6 +414,11 @@ public static class SqlBuilder
                 "through Lower.");
         }
 
+        if (key.Kind == SortKeyKind.Aggregated)
+        {
+            return $"NOT EXISTS (SELECT 1 FROM {key.Table!.SchemaName}.{key.Table.TableName} s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = {key.SearchParamId})";
+        }
+
         var table = key.Kind == SortKeyKind.String ? "StringSearchParam" : "DateTimeSearchParam";
         return $"NOT EXISTS (SELECT 1 FROM dbo.{table} s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = {key.SearchParamId})";
     }
@@ -416,10 +444,21 @@ public static class SqlBuilder
             return "m.Sid1";
         }
 
+        var isGuaranteedNonNull = index == 0 && sort.Phase == SortPhase.Valued;
+
+        if (key.Kind == SortKeyKind.Aggregated)
+        {
+            var aggRaw = $"sk{index}.AggValue";
+            if (isGuaranteedNonNull)
+            {
+                return aggRaw;
+            }
+
+            return $"ISNULL({aggRaw}, {SentinelFor(key.Column!.SqlType)})";
+        }
+
         var column = key.Kind == SortKeyKind.String ? "Text" : "StartDateTime";
         var raw = $"sk{index}.{column}";
-
-        var isGuaranteedNonNull = index == 0 && sort.Phase == SortPhase.Valued;
         if (isGuaranteedNonNull)
         {
             return raw;
@@ -428,6 +467,24 @@ public static class SqlBuilder
         var sentinel = key.Kind == SortKeyKind.String ? "N''" : "'0001-01-01T00:00:00.0000000'";
         return $"ISNULL({raw}, {sentinel})";
     }
+
+    /// <summary>
+    /// Maps a search-param table column's real DDL SQL type to the literal ISNULL needs to substitute for a
+    /// missing aggregated sort value. The five Aggregated leaf types resolve to two SQL type families today
+    /// (varchar for Token/Reference/Uri, decimal for Number/Quantity) -- see
+    /// src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/{TokenSearchParam,NumberSearchParam,
+    /// QuantitySearchParam,ReferenceSearchParam,UriSearchParam}.sql. nvarchar is included for parity with
+    /// String's own N'' sentinel even though no current Aggregated column uses it.
+    /// </summary>
+    private static string SentinelFor(string sqlType) => sqlType switch
+    {
+        "varchar" => "''",
+        "nvarchar" => "N''",
+        "decimal" or "numeric" or "int" or "bigint" or "smallint" or "float" or "money" => "0",
+        _ => throw new NotSupportedException(
+            $"No ISNULL sentinel defined for aggregated sort SqlType '{sqlType}' -- add one to SentinelFor " +
+            "after confirming the real DDL column type, matching the varchar/decimal families already handled."),
+    };
 
     /// <summary>Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then the (T1, Sid1) tiebreak.</summary>
     private static string EmitOrderBy(SortSpec? sort)

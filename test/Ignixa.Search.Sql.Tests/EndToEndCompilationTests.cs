@@ -1403,6 +1403,42 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
+    public async Task GivenAnObservationSearchSortedByStatus_WhenCompiledEndToEnd_ThenTheMatchGainsAnAggregatingDerivedTableJoin()
+    {
+        // Arrange -- Observation?status=final&_sort=status, first page. status is a Token parameter, so
+        // BuildSortKey (Lower.cs) resolves it to a SortKeyKind.Aggregated key over TokenSearchParam.Code
+        // rather than String/Date's IsMin/IsMax row -- this is the real Resolve->Lower->Emit pipeline
+        // proof that Task 1's SortKey.Table/Column plumbing and Task 2's EmitSortJoins/SortValueExpr
+        // Aggregated branch compose end to end, not just in the hand-constructed QueryPlan unit tests.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new StringSearchValue("final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 77;
+        resolver.ResourceTypeIds["Observation"] = 103;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(
+            predicate, includes: [], revIncludes: [], sort: [new SortExpression(statusParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(statusParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
+
+        // Assert
+        plan.Sort!.Keys[0].Kind.ShouldBe(SortKeyKind.Aggregated);
+        var emitted = SqlBuilder.Run(plan);
+        emitted.Sql.ShouldContain(
+            "INNER JOIN (\n" +
+            "    SELECT ResourceTypeId, ResourceSurrogateId, MIN(Code) AS AggValue\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE SearchParamId = 77\n" +
+            "    GROUP BY ResourceTypeId, ResourceSurrogateId\n" +
+            ") sk0 ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.AggValue ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
     public async Task GivenACompartmentSearchSortedByName_WhenCompiledEndToEnd_ThenTheSortDecorationComposesWithTheCompartmentUnionRoot()
     {
         // Arrange -- GET /Patient/123/Observation?_sort=name -- proves the #5672-class fhir-server bug
