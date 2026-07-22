@@ -20,9 +20,11 @@ public class StringLoweringRuleTests
             new Dictionary<string, short>()));
 
     [Fact]
-    public void GivenAnExactModifier_WhenLowered_ThenComparesTextWithCaseSensitiveCollation()
+    public void GivenAnExactModifier_WhenLowered_ThenAppliesIsNullGuardAndComparesTextWithCaseSensitiveCollation()
     {
-        // Arrange
+        // Arrange — "Smith" is well within the 256-char inline width; the IsNull(TextOverflow) guard
+        // prevents an overflowed row whose 256-char prefix happens to equal the search value from
+        // false-positive matching.
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"));
@@ -33,10 +35,86 @@ public class StringLoweringRuleTests
         // Assert
         cte.SearchParamId.ShouldBe((short)202);
         cte.ResourceTypeId.ShouldBe((short)103);
-        var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var isNull = and.Left.ShouldBeOfType<Predicate.IsNull>();
+        isNull.Column.Table.ShouldBe("StringSearchParam");
+        isNull.Column.Column.ShouldBe("TextOverflow");
+        var equal = and.Right.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Table.ShouldBe("StringSearchParam");
         equal.Column.Column.ShouldBe("Text");
         equal.Collation.ShouldBe("Latin1_General_100_CS_AS");
         equal.Value.Value.ShouldBe("Smith");
+    }
+
+    [Fact]
+    public void GivenAnExactModifierWithAValueAt255Chars_WhenLowered_ThenAppliesIsNullGuardAndComparesText()
+    {
+        // Arrange — 255 chars is strictly less than the 256-char inline width; exact must still guard
+        // against rows that overflowed and whose Text prefix happens to match.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var value255 = new string('A', 255);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(value255));
+
+        // Act
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
+
+        // Assert — And(IsNull(TextOverflow), Equal(Text, value, CS_AS))
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var isNull = and.Left.ShouldBeOfType<Predicate.IsNull>();
+        isNull.Column.Table.ShouldBe("StringSearchParam");
+        isNull.Column.Column.ShouldBe("TextOverflow");
+        var equal = and.Right.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Table.ShouldBe("StringSearchParam");
+        equal.Column.Column.ShouldBe("Text");
+        equal.Collation.ShouldBe("Latin1_General_100_CS_AS");
+        equal.Value.Value.ShouldBe(value255);
+    }
+
+    [Fact]
+    public void GivenAnExactModifierWithAValueAt256Chars_WhenLowered_ThenAppliesIsNullGuardAndComparesText()
+    {
+        // Arrange — 256 chars equals the inline width; without the IsNull guard an overflowed row's
+        // truncated 256-char Text prefix would false-positive match this search value.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var value256 = new string('A', 256);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(value256));
+
+        // Act
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
+
+        // Assert — And(IsNull(TextOverflow), Equal(Text, value, CS_AS))
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var isNull = and.Left.ShouldBeOfType<Predicate.IsNull>();
+        isNull.Column.Table.ShouldBe("StringSearchParam");
+        isNull.Column.Column.ShouldBe("TextOverflow");
+        var equal = and.Right.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Table.ShouldBe("StringSearchParam");
+        equal.Column.Column.ShouldBe("Text");
+        equal.Collation.ShouldBe("Latin1_General_100_CS_AS");
+        equal.Value.Value.ShouldBe(value256);
+    }
+
+    [Fact]
+    public void GivenAnExactModifierWithAValueAt257Chars_WhenLowered_ThenComparesTextOverflowWithCaseSensitiveCollation()
+    {
+        // Arrange — 257 chars exceeds the inline width; the value can only exist in TextOverflow,
+        // which holds the complete stored value, so a direct equality comparison is correct.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var value257 = new string('A', 257);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(value257));
+
+        // Act
+        var cte = StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
+
+        // Assert — Equal(TextOverflow, value, CS_AS) only; no IsNull guard needed
+        var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Table.ShouldBe("StringSearchParam");
+        equal.Column.Column.ShouldBe("TextOverflow");
+        equal.Collation.ShouldBe("Latin1_General_100_CS_AS");
+        equal.Value.Value.ShouldBe(value257);
     }
 
     [Fact]
@@ -113,19 +191,4 @@ public class StringLoweringRuleTests
         Should.Throw<NotSupportedException>(act);
     }
 
-    [Fact]
-    public void GivenAnExactModifierWithAValueOfExactlyTheInlineWidth_WhenLowered_ThenThrowsBecauseOverflowedRowsCouldFalsePositiveMatch()
-    {
-        // Arrange
-        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var valueAtInlineWidth = new string('A', 256);
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(valueAtInlineWidth));
-
-        // Act
-        var act = () => StringLoweringRule.Lower(predicate, (StringSearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
-
-        // Assert
-        Should.Throw<NotSupportedException>(act);
-    }
 }

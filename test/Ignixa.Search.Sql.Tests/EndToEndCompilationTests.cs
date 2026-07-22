@@ -57,7 +57,7 @@ public class EndToEndCompilationTests
 
         // Assert -- the plan-shape golden test
         plan.Explain().ShouldBe(
-            "cte0 = StringSearchParam[103,202]  Text = @p0 collate CS_AS\n" +
+            "cte0 = StringSearchParam[103,202]  TextOverflow IS NULL AND Text = @p0 collate CS_AS\n" +
             "cte1 = TokenSearchParam[103,44]  Code = @p1\n" +
             "root = Intersect(cte0, cte1) top 10");
 
