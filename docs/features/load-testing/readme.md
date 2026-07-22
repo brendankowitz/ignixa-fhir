@@ -32,15 +32,21 @@ client-credentials token auth, and the generic Azure Load Testing artifact (locu
 scripts, sample ALT config) under
 [`tools/Ignixa.ConformanceMatrix.Cli/loadtest/`](../../../tools/Ignixa.ConformanceMatrix.Cli/loadtest/README.md).
 See the [investigation](investigations/azure-load-testing-locust.md) for the full plan and phase
-breakdown — Phases 2-4 (ALT integration, performance-mode knobs, codegen fallback) haven't started.
+breakdown. For a live, end-to-end walkthrough (deploy a FHIR server, enable auth, run under ALT),
+see the [Azure E2E runbook](azure-e2e-runbook.md).
 
-Of the Phase 0 spikes, Spike B (evaluator parallel safety) is done — confirmed safe by
-`TestScriptEvaluatorConcurrencyTests` in `Ignixa.TestScript.Tests`; Spike A (binary exec on ALT
-engine instances) still needs a live Azure Load Testing run and decides the co-located vs
-Container Apps topology.
+Of the Phase 0 spikes, both are now answered against live Azure. **Spike A (binary exec on ALT
+engines) passed** — the co-located sidecar topology works: the runner binary uploaded in the
+artifact zip spawns once per Locust engine and serves `/run` over localhost, with per-FHIR-operation
+stats in the ALT dashboard and (validated with security enabled) engine-side token acquisition from
+a Key Vault secret. The Container Apps fallback is not needed. **Spike B (evaluator parallel safety)**
+is confirmed safe by `TestScriptEvaluatorConcurrencyTests` in `Ignixa.TestScript.Tests`.
+
+Phases 3-4 (performance-mode knobs, codegen fallback) remain.
 
 ## See Also
 
+- [Azure E2E runbook](azure-e2e-runbook.md) — deploy a secured FHIR server and run it under ALT
 - [TestScript Feature](../testscript/readme.md) — the execution engine
 - [Conformance Matrix Feature](../conformance-matrix/readme.md) — `ignixa-matrix` CLI this builds on
 - [FhirFaker Feature](../fhir-faker/readme.md) — synthetic data generation for fixtures

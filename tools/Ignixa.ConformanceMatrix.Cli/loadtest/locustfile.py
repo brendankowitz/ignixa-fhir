@@ -112,6 +112,75 @@ def _read_runner_log_tail(max_bytes=4096):
         return f"(log unreadable: {e})"
 
 
+@events.test_start.add_listener
+def preflight_auth(environment, **kwargs):
+    """Fail the run fast if the target's auth is misconfigured.
+
+    A misconfigured secured FHIR server (expired/rotated secret, wrong scope, or the
+    App Service http-issuer / cert-store startup faults documented in the load-testing
+    runbook) otherwise surfaces as a wall of 401s mid-run that reads as "the server fell
+    over under load" rather than "auth was never going to work". One token acquisition
+    plus one authenticated read here turns that into a 2-second, clearly-labelled abort
+    before any user spawns. Skipped entirely when no token auth is configured (the
+    anonymous-target case).
+    """
+    token_url = os.environ.get("FHIR_TOKEN_URL")
+    if not token_url:
+        return
+
+    fhir_base = os.environ["FHIR_BASE_URL"].rstrip("/")
+    form = {
+        "grant_type": "client_credentials",
+        "client_id": os.environ.get("FHIR_CLIENT_ID", ""),
+        "client_secret": os.environ.get("FHIR_CLIENT_SECRET", ""),
+    }
+    scopes = os.environ.get("FHIR_SCOPES")
+    if scopes:
+        form["scope"] = scopes
+
+    try:
+        token_resp = requests.post(token_url, data=form, timeout=15)
+    except requests.RequestException as e:
+        raise RuntimeError(f"preflight: token endpoint unreachable ({token_url}): {e}")
+    if token_resp.status_code != 200:
+        raise RuntimeError(
+            f"preflight: token endpoint {token_url} returned HTTP "
+            f"{token_resp.status_code}: {token_resp.text[:200]}"
+        )
+    token = token_resp.json().get("access_token")
+    if not token:
+        raise RuntimeError("preflight: token response carried no access_token")
+
+    probe = requests.get(
+        f"{fhir_base}/Patient?_count=1",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    if probe.status_code in (401, 403):
+        # The token issued but the server rejected it — almost always an issuer/audience
+        # mismatch. Surface iss/aud (not the token) so the cause is diagnosable from the
+        # ALT engine log without hand-decoding a JWT.
+        raise RuntimeError(
+            f"preflight: authenticated probe got HTTP {probe.status_code}; "
+            f"token {_describe_token_claims(token)} not accepted by {fhir_base} — "
+            "check Authority/Audience and (App Service) ASPNETCORE_FORWARDEDHEADERS_ENABLED"
+        )
+    logger.info("preflight auth OK: token accepted by %s (HTTP %s)", fhir_base, probe.status_code)
+
+
+def _describe_token_claims(token):
+    """Return iss/aud from a JWT for diagnostics, never the token itself."""
+    try:
+        import base64
+
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        return f"(iss={claims.get('iss')} aud={claims.get('aud')})"
+    except Exception:
+        return "(claims undecodable)"
+
+
 @events.test_stop.add_listener
 def stop_runner(environment, **kwargs):
     """Terminate the runner process when the load test stops."""
