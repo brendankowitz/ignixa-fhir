@@ -10,7 +10,6 @@ using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Harness;
 using Ignixa.Application.Features.Metadata.Models;
 using Ignixa.Application.Features.Search;
-using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
@@ -19,7 +18,6 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Ignixa.Api.E2ETests._Infrastructure;
@@ -221,16 +219,12 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             await InitializeSqlDatabaseAsync();
         }
 
-        // Create HTTP client and store for test access
+        // Create HTTP client and store for test access. In SQL Server mode, tenant 1's search
+        // parameter catalog is already seeded by the time this returns -- SqlEntityFrameworkRepositoryFactory.
+        // CreateServiceFactory does it during construction now (see
+        // docs/superpowers/specs/2026-07-21-search-param-seed-on-tenant-init-design.md), so this
+        // fixture no longer needs its own separate seeding step.
         Client = CreateClient();
-
-        // Sync base search parameters to database for SQL Server mode
-        // This ensures search parameters like _tag, address-city, etc. are present
-        // before tests run. Without this, searches will fail with "SearchParamId not found".
-        if (UseSqlServer)
-        {
-            await SyncBaseSearchParametersAsync();
-        }
 
         // Fetch /metadata once and cache it
         var metadataResponse = await Client.GetAsync("/metadata");
@@ -270,39 +264,6 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         cmd.CommandText = $"IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{dbName}') CREATE DATABASE [{dbName}]";
 #pragma warning restore CA2100
         await cmd.ExecuteNonQueryAsync();
-    }
-
-    /// <summary>
-    /// Syncs base FHIR search parameters to the database.
-    /// CRITICAL: SQL Server mode requires search parameters to be registered in the SearchParam table
-    /// before searches can work. Without this, queries fail with "SearchParamId not found for parameter..."
-    /// </summary>
-    private async Task SyncBaseSearchParametersAsync()
-    {
-        // Get the search parameter definition manager from the application services
-        // This contains all base FHIR search parameters from the pre-generated code
-        var fhirVersionContext = Services.GetRequiredService<IFhirVersionContext>();
-        var searchParamManager = fhirVersionContext.GetSearchParameterDefinitionManager(FhirVersion.R4);
-
-        // Get all search parameter URLs from base spec
-        var searchParamUrls = searchParamManager.AllSearchParameters
-            .Where(sp => sp.Url is not null)
-            .Select(sp => sp.Url!.ToString())
-            .Distinct()
-            .ToList();
-
-        // Get the repository factory to access the reference data cache
-        var repositoryFactory = Services.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
-
-        // Get the reference data cache for tenant 1 (the E2E test tenant)
-        var referenceDataCache = await repositoryFactory.GetSearchIndexReferenceCacheAsync(1, CancellationToken.None);
-
-        // Sync search parameters to database
-        var syncedCount = await referenceDataCache.SyncSearchParametersToDatabase(
-            searchParamUrls,
-            searchParamManager);
-
-        Console.WriteLine($"Synced {syncedCount} base search parameters to database ({searchParamUrls.Count} total)");
     }
 
     private static string ExtractDatabaseName(string connectionString)
