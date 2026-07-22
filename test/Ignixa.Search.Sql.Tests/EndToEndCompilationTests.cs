@@ -2507,19 +2507,13 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- a KNOWN, real divergence, confirmed by running both sides, not assumed: Explain()'s
-        // shared parameter-ordinal counter increments once for ResourceSource's own ResourceTypeId
-        // unconditionally (PlanExplainer.PrintResourceSource), matching the non-null case elsewhere in
-        // this file (e.g. GivenAPatientLastUpdatedExactInstantQuery above, where EmitResourceSource
-        // really does bind a ResourceTypeId parameter). But for a NULL ResourceTypeId,
-        // EmitResourceSource's own type filter is skipped entirely -- no EmitParam call -- so the real
-        // emitted SQL never consumes that ordinal. PlanExplainer does not special-case the null
-        // ResourceTypeId case, so Explain() prints "@p1" here while the real bound parameter is "@p0".
-        // This is a genuine (if narrow) latent bug in Explain()'s ordinal accounting for a system-level
-        // ResourceSource, first surfaced by this test -- fixing PlanExplainer is out of scope for this
-        // test-only task. Pinning BOTH the current Explain() text and the real emitted parameter name
-        // documents the divergence rather than concealing it behind a loose substring check.
-        plan.Explain().ShouldBe("root = ResourceSource[] WHERE ResourceSurrogateId > @p1");
+        // Assert -- Explain()'s shared parameter-ordinal counter only advances for ResourceSource's own
+        // ResourceTypeId when it is non-null (PlanExplainer.PrintResourceSource), matching
+        // EmitResourceSource's own `rs.ResourceTypeId is { } typeId` guard that skips binding a type
+        // filter parameter entirely for a NULL ResourceTypeId. For this typeless, system-level
+        // ResourceSource, neither side consumes an ordinal for the type filter, so Explain() and the
+        // real emitted SQL agree at "@p0" for the resource-column predicate.
+        plan.Explain().ShouldBe("root = ResourceSource[] WHERE ResourceSurrogateId > @p0");
         emitted.Sql.ShouldNotContain("WHERE ResourceTypeId =");
         emitted.Sql.ShouldContain("WHERE ResourceSurrogateId > @p0");
         emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0"]);

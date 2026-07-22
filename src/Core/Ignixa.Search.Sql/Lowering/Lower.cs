@@ -79,9 +79,10 @@ public static class Lower
         {
             if (includes.Count > 0 || revIncludes.Count > 0)
             {
+                var noTargetTypeReason = systemLevelSearch ? "a system-level search" : "a wildcard compartment search";
                 throw new NotSupportedException(
-                    "_include/_revinclude combined with a wildcard compartment search (no single target resource " +
-                    "type) is not supported -- BuildIncludeStages needs a concrete match resource type to compute " +
+                    $"_include/_revinclude combined with {noTargetTypeReason} (no single target resource type) is " +
+                    "not supported -- BuildIncludeStages needs a concrete match resource type to compute " +
                     "SeedFromMatch.");
             }
 

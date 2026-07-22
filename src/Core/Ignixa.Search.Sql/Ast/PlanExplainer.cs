@@ -214,15 +214,21 @@ public static class PlanExplainer
 
     private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)
     {
-        // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource), so this must consume
-        // an ordinal too -- otherwise Explain()'s @pN numbering silently diverges from the emitted
-        // SQL's real parameter numbering for any plan mixing a ResourceSource with another
-        // parameterized CTE or an OuterPredicate. The literal ResourceTypeId is still shown inline
-        // (not "@pN") because it reads better in a human-facing summary; only the counter is shared.
+        // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource) only when it is
+        // non-null -- EmitResourceSource's typeFilter is emitted (and binds @pN) solely inside its
+        // `rs.ResourceTypeId is { } typeId` arm, so a null ResourceTypeId (a bare/system-level
+        // ResourceSource) emits no type filter and consumes no ordinal. Mirroring that here keeps
+        // Explain()'s @pN numbering in sync with the emitted SQL's real parameter numbering for any
+        // plan mixing a ResourceSource with another parameterized CTE or an OuterPredicate. The
+        // literal ResourceTypeId is still shown inline (not "@pN") because it reads better in a
+        // human-facing summary; only the counter is shared.
         // rs.Predicate (nested-scope resource-column filter, e.g. a chain target's _id=X), when
         // present, is a real predicate rendered the same way OuterPredicate is -- it also consumes
         // whatever ordinals PrintPredicate consumes internally.
-        parameterOrdinal++;
+        if (rs.ResourceTypeId is not null)
+        {
+            parameterOrdinal++;
+        }
         var predicateSuffix = rs.Predicate is null ? string.Empty : $" WHERE {PrintPredicate(rs.Predicate, ref parameterOrdinal)}";
         return $"ResourceSource[{rs.ResourceTypeId}]{predicateSuffix}{PrintTop(top)}";
     }
