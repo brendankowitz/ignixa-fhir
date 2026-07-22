@@ -152,13 +152,4 @@ public class ReferenceLoweringRuleTests
         externalBaseUri.Collation.ShouldBe("Latin1_General_100_BIN2");
     }
 
-    [Fact]
-    public void GivenAnExternalUntypedReference_WhenLowered_ThenBaseUriEqualAndResourceIdOnly()
-    {
-        // Arrange — ReferenceSearchValue requires resourceType when BaseUri is set, but
-        // the lowering helper must still handle the pattern if an empty type slips through.
-        // We skip this due to ReferenceSearchValue constructor validation.
-        // Instead, test external typed without resource type id resolution (impossible via
-        // constructor validation), so we just verify the typed external case is comprehensive above.
-    }
 }
