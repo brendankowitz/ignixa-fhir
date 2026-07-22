@@ -297,6 +297,27 @@ aborting the run. `--fhir-version` sets the `fhirVersion` parameter on the `Acce
 version-gated suites. `merge` replaces an existing run with the same id rather than duplicating it,
 and refuses to proceed when a report file is unreadable.
 
+### `serve` — Load-Test Runner Mode
+
+`ignixa-matrix serve` hosts the same TestScript suites as a local runner instead of running them
+once and exiting — used as an Azure Load Testing / Locust sidecar:
+
+```bash
+ignixa-matrix serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --port 5599
+```
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /healthz` | Listener readiness plus loaded/invalid script counts |
+| `GET /testscripts` | Lists every loaded script (id, name, file, parse validity) |
+| `POST /run` | Executes one script by id against a request-supplied `fhirBaseUrl`, returning per-operation timings |
+
+Scripts are parsed once at startup; auth is a static `--auth-header`/`FHIR_AUTH_HEADER` or OAuth2
+client-credentials (`FHIR_TOKEN_URL`/`FHIR_CLIENT_ID`/`FHIR_CLIENT_SECRET`/`FHIR_SCOPES`, cached and
+refreshed automatically). Packaging the runner into an Azure Load Testing artifact (locustfile,
+`requirements.txt`, `locust.conf`, packaging scripts) lives in
+[`tools/Ignixa.ConformanceMatrix.Cli/loadtest/`](https://github.com/brendankowitz/ignixa-fhir/tree/main/tools/Ignixa.ConformanceMatrix.Cli/loadtest).
+
 ## Published FHIR Conformance Report
 
 Ignixa publishes the latest R4 TestScript conformance run to the documentation site:
