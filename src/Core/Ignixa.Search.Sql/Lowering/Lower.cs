@@ -31,9 +31,10 @@ public static class Lower
         SortPhase sortPhase,
         PageSpec? page,
         bool countOnly = false,
-        int? top = null)
+        int? top = null,
+        DateTimeOffset? approximationReferenceTime = null)
     {
-        var context = new StructuralContext(symbols);
+        var context = new StructuralContext(symbols, approximationReferenceTime);
         CteRef match;
         Predicate? outerPredicate = null;
 
@@ -43,8 +44,7 @@ public static class Lower
         }
         else
         {
-            var leafContext = new LeafContext(symbols);
-            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, leafContext);
+            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
             outerPredicate = extractedPredicate;
             match = remaining switch
             {

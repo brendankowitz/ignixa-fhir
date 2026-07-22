@@ -740,4 +740,41 @@ public class LowerTests
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("unresolved");
     }
+
+    [Fact]
+    public void GivenAnApproximationReferenceTime_WhenStructuralContextConstructed_ThenLeafContextCarriesTheExactInstant()
+    {
+        // Arrange
+        var fixedTime = new DateTimeOffset(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var context = new StructuralContext(symbols, fixedTime);
+
+        // Assert
+        context.LeafContext.ApproximationReferenceTime.ShouldBe(fixedTime);
+    }
+
+    [Fact]
+    public void GivenAnExplicitApproximationReferenceTime_WhenLowered_ThenThePlanProducesSuccessfully()
+    {
+        // Arrange
+        var fixedTime = new DateTimeOffset(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: fixedTime).Plan;
+
+        // Assert
+        plan.Ctes.Count.ShouldBe(1);
+    }
 }

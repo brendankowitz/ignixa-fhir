@@ -23,9 +23,9 @@ public sealed class StructuralContext
 
     private const int MaxChainDepth = 10;
 
-    public StructuralContext(SymbolTable symbols)
+    public StructuralContext(SymbolTable symbols, DateTimeOffset? approximationReferenceTime = null)
     {
-        _leafContext = new LeafContext(symbols);
+        _leafContext = new LeafContext(symbols, approximationReferenceTime);
     }
 
     public IReadOnlyList<CteDefinition> Ctes => _ctes;

@@ -18,6 +18,9 @@ namespace Ignixa.Search.Sql.Tests.Tracing;
 internal static class SearchTraceFixtures
 {
     public static Task<SearchTrace> TracePatientNameSmithAsync()
+        => TracePatientNameSmithWithTimeProviderAsync(timeProvider: null);
+
+    public static Task<SearchTrace> TracePatientNameSmithWithTimeProviderAsync(TimeProvider? timeProvider)
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
@@ -35,7 +38,8 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
 
         return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver);
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
+            timeProvider: timeProvider);
     }
 
     public static Task<SearchTrace> TraceUnregisteredParameterAsync()

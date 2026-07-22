@@ -217,4 +217,31 @@ public class SearchTraceTests
 
         leaf.ContributingOrdinals.ShouldBe([0]);
     }
+
+    [Fact]
+    public async Task GivenAFixedTimeProvider_WhenCompiled_ThenGetUtcNowIsCalledExactlyOnce()
+    {
+        // Arrange
+        var fixedTime = new DateTimeOffset(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
+        var provider = new CountingFixedTimeProvider(fixedTime);
+
+        // Act
+        var trace = await SearchTraceFixtures.TracePatientNameSmithWithTimeProviderAsync(provider);
+
+        // Assert
+        trace.Failure.ShouldBeNull();
+        trace.Plan.ShouldNotBeNull();
+        provider.CallCount.ShouldBe(1);
+    }
+
+    private sealed class CountingFixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public int CallCount { get; private set; }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            CallCount++;
+            return utcNow;
+        }
+    }
 }

@@ -36,12 +36,15 @@ public static class SearchCompiler
         ISymbolResolver resolver,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
+        TimeProvider? timeProvider = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentNullException.ThrowIfNull(resolver);
+
+        var approximationReferenceTime = (timeProvider ?? TimeProvider.System).GetUtcNow();
 
         var outcomes = new List<ParameterTrace>();
         var options = optionsBuilder.Build(resourceType, parameters, schemaProvider: null, outcomes);
@@ -90,7 +93,8 @@ public static class SearchCompiler
                     includeLimit: 0,
                     options.Sort,
                     SortPhase.Valued,
-                    page: null);
+                    page: null,
+                    approximationReferenceTime: approximationReferenceTime);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
 

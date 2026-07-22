@@ -13,10 +13,13 @@ public sealed class LeafContext
 {
     private readonly SymbolTable _symbols;
 
-    public LeafContext(SymbolTable symbols)
+    public LeafContext(SymbolTable symbols, DateTimeOffset? approximationReferenceTime = null)
     {
         _symbols = symbols;
+        ApproximationReferenceTime = approximationReferenceTime;
     }
+
+    public DateTimeOffset? ApproximationReferenceTime { get; }
 
     public short SearchParamId(SearchParameterInfo parameter) => _symbols.SearchParamId(parameter);
 
