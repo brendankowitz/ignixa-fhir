@@ -29,14 +29,25 @@ public static class SearchCompiler
     /// caught at this boundary, recorded on <see cref="SearchTrace.Failure"/>, and attributed to the
     /// parameter the failing dispatcher named.
     /// </summary>
-    public static async Task<SearchTrace> CompileAsync(
+    public static Task<SearchTrace> CompileAsync(
         string resourceType,
         IReadOnlyList<QueryParameter> parameters,
         ISearchOptionsBuilder optionsBuilder,
         ISymbolResolver resolver,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
-        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
+        => CompileAsync(resourceType, parameters, optionsBuilder, resolver, compartmentDefinitionManager, searchParameterDefinitionManager, null, cancellationToken);
+
+    /// <inheritdoc cref="CompileAsync(string, IReadOnlyList{QueryParameter}, ISearchOptionsBuilder, ISymbolResolver, ICompartmentDefinitionManager?, ISearchParameterDefinitionManager?, CancellationToken)"/>
+    public static async Task<SearchTrace> CompileAsync(
+        string resourceType,
+        IReadOnlyList<QueryParameter> parameters,
+        ISearchOptionsBuilder optionsBuilder,
+        ISymbolResolver resolver,
+        ICompartmentDefinitionManager? compartmentDefinitionManager,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager,
+        TimeProvider? timeProvider,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceType);

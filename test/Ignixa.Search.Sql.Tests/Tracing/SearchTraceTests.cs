@@ -234,6 +234,18 @@ public class SearchTraceTests
         provider.CallCount.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task GivenTheOriginalOverloadWithPositionalCancellationToken_WhenCompiled_ThenItDelegatesToTheTimeProviderOverload()
+    {
+        // Arrange — exercises the pre-existing 7-parameter overload with a positional
+        // CancellationToken at position 7, proving the old signature compiles and delegates.
+        var trace = await SearchTraceFixtures.TracePatientNameSmithWithCancellationTokenAsync(CancellationToken.None);
+
+        // Assert
+        trace.Failure.ShouldBeNull();
+        trace.Plan.ShouldNotBeNull();
+    }
+
     private sealed class CountingFixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public int CallCount { get; private set; }

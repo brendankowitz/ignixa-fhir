@@ -18,7 +18,25 @@ namespace Ignixa.Search.Sql.Tests.Tracing;
 internal static class SearchTraceFixtures
 {
     public static Task<SearchTrace> TracePatientNameSmithAsync()
-        => TracePatientNameSmithWithTimeProviderAsync(timeProvider: null);
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver);
+    }
 
     public static Task<SearchTrace> TracePatientNameSmithWithTimeProviderAsync(TimeProvider? timeProvider)
     {
@@ -39,7 +57,29 @@ internal static class SearchTraceFixtures
 
         return SearchCompiler.CompileAsync(
             "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
-            timeProvider: timeProvider);
+            null, null, timeProvider);
+    }
+
+    public static Task<SearchTrace> TracePatientNameSmithWithCancellationTokenAsync(CancellationToken cancellationToken)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
+            null, null, cancellationToken);
     }
 
     public static Task<SearchTrace> TraceUnregisteredParameterAsync()
