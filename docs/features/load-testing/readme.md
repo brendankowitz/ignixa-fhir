@@ -46,6 +46,7 @@ Phases 3-4 (performance-mode knobs, codegen fallback) remain.
 
 ## See Also
 
+- [Architecture](architecture.md) — how Locust communicates with the runner and engine (diagrams)
 - [Azure E2E runbook](azure-e2e-runbook.md) — deploy a secured FHIR server and run it under ALT
 - [TestScript Feature](../testscript/readme.md) — the execution engine
 - [Conformance Matrix Feature](../conformance-matrix/readme.md) — `ignixa-matrix` CLI this builds on
