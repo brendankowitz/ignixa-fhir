@@ -188,7 +188,7 @@ foreach (var p in emitted.Parameters)      // the values to bind
 | Area | Supported | Notes |
 |------|-----------|-------|
 | **Boolean composition** | AND, OR, `:not` | Intersect / Union / Except CTEs |
-| **Leaf types** | string, token (bare code, `system\|code`, `\|code`, `system\|`), reference, uri, number, quantity (with `system`/`code` identity), date | see gaps below |
+| **Leaf types** | string, token (bare code, `system\|code`, `\|code`, `system\|`), reference (local and external/absolute; `BaseUri` binary-collation equality; resource version not part of identity), uri (exact, `:above`, `:below` hierarchy), number, quantity (with `system`/`code` identity), date | see gaps below |
 | **Comparators** | `eq ne gt lt ge le sa eb` | on date / number / quantity |
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
@@ -203,11 +203,15 @@ foreach (var p in emitted.Parameters)      // the values to bind
 
 These intentionally **throw** rather than emit a subtly-wrong query:
 
-- URI `:above` / `:below` hierarchical matching.
 - The `:ap` (approximately) comparator — needs a tolerance / "now" input the pure stages don't carry.
-- Absolute / external references (a non-null reference `BaseUri`).
 - String `:contains` / exactly-inline-width `:exact` on values that overflow the inline column — the IR
   can't yet search both the inline and overflow columns at once.
+
+**Chain / include / revinclude traversal remains local-only.** The `ChainJoin` and `IncludeStage`
+emitters hard-code `rsp.BaseUri IS NULL`, so they follow only references whose `BaseUri` is null
+in the stored index. Phase 2 external-reference leaf matching enables searching for stored leaf
+references with a non-null `BaseUri`, but it does not enable fetching or traversing resources hosted
+on an external FHIR server.
 
 **Unknown terminology values lower to `Predicate.False`, not a resolution error.** When a
 system-qualified token or quantity carries a `system` or quantity `code` that has no database row,

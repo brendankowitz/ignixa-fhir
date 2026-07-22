@@ -1828,6 +1828,183 @@ public class EndToEndCompilationTests
         emitted.Parameters.ShouldBeEmpty();
     }
 
+    // ─── Phase 2: URI hierarchy and external reference matching ─────────────────
+
+    [Fact]
+    public async Task GivenAValueSetUriWithBelowModifierAndWildcardChar_WhenCompiled_ThenEscapesWildcardInLikePatternAndEmitsCompleteSql()
+    {
+        // Arrange -- ValueSet?url:below=http://example.org/fhir/ValueSet%2
+        // The URI contains a literal % character: proves EscapeLike escapes it to \% in the LIKE
+        // parameter so SQL treats the percent as a literal character rather than a wildcard.
+        // :below maps to StartsWith LIKE with binary collation; the ESCAPE clause is mandatory.
+        var urlParam = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
+        var predicate = new SearchParameterPredicateExpression(
+            urlParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Below),
+            new UriSearchValue("http://example.org/fhir/ValueSet%2", separateCanonicalComponents: false));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[urlParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["ValueSet"] = 105;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: LIKE StartsWith, binary collation
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri LIKE @p0 (StartsWith) collate Latin1_General_100_BIN2");
+
+        // Assert -- complete SQL golden: collation prefix on Uri column, ESCAPE clause present
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.UriSearchParam\n" +
+            "    WHERE ResourceTypeId = 105 AND SearchParamId = 88 AND Uri COLLATE Latin1_General_100_BIN2 LIKE @p0 ESCAPE '\\'\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- user value not inlined; % is escaped to \%, trailing % appended for StartsWith
+        emitted.Sql.ShouldNotContain("example.org");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)"http://example.org/fhir/ValueSet\\%2%")]);
+    }
+
+    [Fact]
+    public async Task GivenAValueSetUriWithAboveModifier_WhenCompiled_ThenProducesLeftLenEqualityAndEmitsCompleteSql()
+    {
+        // Arrange -- ValueSet?url:above=http://example.org/fhir/Patient/123
+        // :above maps to PrefixOfParameter: the stored URI must be a prefix of the search value,
+        // i.e. LEFT(@p0, LEN(Uri)) COLLATE BIN2 = Uri. The full URI is bound once, raw, no escaping.
+        var urlParam = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
+        var predicate = new SearchParameterPredicateExpression(
+            urlParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Above),
+            new UriSearchValue("http://example.org/fhir/Patient/123", separateCanonicalComponents: false));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[urlParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["ValueSet"] = 105;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: PrefixOfParameter, binary collation
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri PREFIX_OF @p0 collate Latin1_General_100_BIN2");
+
+        // Assert -- complete SQL golden: LEFT(@p, LEN(col)) COLLATE BIN2 = col; no LIKE, no ESCAPE
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.UriSearchParam\n" +
+            "    WHERE ResourceTypeId = 105 AND SearchParamId = 88 AND LEFT(@p0, LEN(Uri)) COLLATE Latin1_General_100_BIN2 = Uri\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- full URI bound once, raw (no escaping); user value not inlined in SQL text
+        emitted.Sql.ShouldNotContain("example.org");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)"http://example.org/fhir/Patient/123")]);
+    }
+
+    [Fact]
+    public async Task GivenAnObservationLocalTypedReferenceQuery_WhenCompiled_ThenBaseUriIsNullAndTypeAndIdInCorrectOrderAndCompleteSql()
+    {
+        // Arrange -- Observation?subject=Patient/123 (local internal reference)
+        // BaseUri IS NULL distinguishes a locally-stored reference from an external one.
+        // Parameter order: ReferenceResourceTypeId (@p0) before ReferenceResourceId (@p1).
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var predicate = new SearchParameterPredicateExpression(
+            subjectParam, SearchComparator.Eq, modifier: null,
+            new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Patient", resourceId: "123"));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 77;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: IS NULL for local BaseUri, TypeId before ResourceId
+        plan.Explain().ShouldBe(
+            "root = ReferenceSearchParam[104,77]  BaseUri IS NULL AND ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1");
+
+        // Assert -- complete SQL golden: fully-parenthesized And, BaseUri IS NULL, no collation on IS NULL branch
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.ReferenceSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 77 AND ((BaseUri IS NULL AND ReferenceResourceTypeId = @p0) AND ReferenceResourceId = @p1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- user values not inlined; @p0 is the resolved TypeId short, @p1 the string resource id
+        emitted.Sql.ShouldNotContain("123");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)(short)103), ("@p1", (object)"123")]);
+    }
+
+    [Fact]
+    public async Task GivenTwoExternalReferencesWithSameTypeAndIdButDifferentBase_WhenCompiled_ThenBaseUriParameterDiffersAndSqlShapeIsIdentical()
+    {
+        // Arrange -- two separate queries:
+        //   Observation?subject=http://server-a.org/fhir/Patient/456
+        //   Observation?subject=http://server-b.org/fhir/Patient/456
+        // Same resource type (Patient) and id (456), different base URI. Proves identity distinction
+        // comes entirely from the @p0 (BaseUri) parameter value, not from the SQL structure.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 77;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        var predicateA = new SearchParameterPredicateExpression(
+            subjectParam, SearchComparator.Eq, modifier: null,
+            new ReferenceSearchValue(ReferenceKind.External, new Uri("http://server-a.org/fhir/"), "Patient", "456"));
+        var predicateB = new SearchParameterPredicateExpression(
+            subjectParam, SearchComparator.Eq, modifier: null,
+            new ReferenceSearchValue(ReferenceKind.External, new Uri("http://server-b.org/fhir/"), "Patient", "456"));
+
+        // Act
+        var symbolsA = (await Resolve.RunAsync(predicateA, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var planA = Lower.Run(predicateA, symbolsA, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emittedA = SqlBuilder.Run(planA);
+
+        var symbolsB = (await Resolve.RunAsync(predicateB, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var planB = Lower.Run(predicateB, symbolsB, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emittedB = SqlBuilder.Run(planB);
+
+        // Assert -- both plans have identical explain shape; only the @p0 runtime value differs
+        planA.Explain().ShouldBe(
+            "root = ReferenceSearchParam[104,77]  BaseUri = @p0 collate Latin1_General_100_BIN2 AND ReferenceResourceTypeId = @p1 AND ReferenceResourceId = @p2");
+        planB.Explain().ShouldBe(planA.Explain());
+
+        // Assert -- complete SQL golden for server-a; the template is identical for server-b
+        var expectedSql =
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.ReferenceSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 77 AND ((BaseUri = @p0 COLLATE Latin1_General_100_BIN2 AND ReferenceResourceTypeId = @p1) AND ReferenceResourceId = @p2)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC";
+        emittedA.Sql.ShouldBe(expectedSql);
+        emittedB.Sql.ShouldBe(expectedSql);  // same SQL text — identity is in parameter values
+
+        // Assert -- @p0 differs by base URI; @p1 (type) and @p2 (id) are identical across both queries
+        emittedA.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)"http://server-a.org/fhir/"), ("@p1", (object)(short)103), ("@p2", (object)"456")]);
+        emittedB.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)"http://server-b.org/fhir/"), ("@p1", (object)(short)103), ("@p2", (object)"456")]);
+
+        // Assert -- base URIs not inlined in SQL text (same parameterized SQL for both servers)
+        emittedA.Sql.ShouldNotContain("server-a");
+        emittedB.Sql.ShouldNotContain("server-b");
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
