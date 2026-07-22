@@ -55,7 +55,7 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
+        return SearchCompiler.CompileWithTimeProviderAsync(
             "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
             null, null, timeProvider);
     }
@@ -74,6 +74,28 @@ internal static class SearchTraceFixtures
             [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
+            null, null, cancellationToken);
+    }
+
+    public static Task<SearchTrace> TracePatientNameSmithWithCancellationCheckAsync(CancellationToken cancellationToken)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new CancellationCheckingResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
@@ -560,5 +582,36 @@ internal static class SearchTraceFixtures
 
         public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
             => Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
+    }
+
+    private sealed class CancellationCheckingResolver : ISymbolResolver
+    {
+        public Dictionary<string, short> SearchParamIds { get; } = [];
+
+        public Dictionary<string, short> ResourceTypeIds { get; } = [];
+
+        public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(parameter.Url?.ToString() is { } url && SearchParamIds.TryGetValue(url, out var id) ? (short?)id : null);
+        }
+
+        public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(ResourceTypeIds.TryGetValue(resourceType, out var id) ? (short?)id : null);
+        }
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<int?>(null);
+        }
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<int?>(null);
+        }
     }
 }

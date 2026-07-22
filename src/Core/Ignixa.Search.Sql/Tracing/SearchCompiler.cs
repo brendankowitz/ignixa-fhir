@@ -37,10 +37,14 @@ public static class SearchCompiler
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
         CancellationToken cancellationToken = default)
-        => CompileAsync(resourceType, parameters, optionsBuilder, resolver, compartmentDefinitionManager, searchParameterDefinitionManager, null, cancellationToken);
+        => CompileWithTimeProviderAsync(resourceType, parameters, optionsBuilder, resolver, compartmentDefinitionManager, searchParameterDefinitionManager, null, cancellationToken);
 
-    /// <inheritdoc cref="CompileAsync(string, IReadOnlyList{QueryParameter}, ISearchOptionsBuilder, ISymbolResolver, ICompartmentDefinitionManager?, ISearchParameterDefinitionManager?, CancellationToken)"/>
-    public static async Task<SearchTrace> CompileAsync(
+    /// <summary>
+    /// Overload that accepts an explicit <see cref="TimeProvider"/> for deterministic approximation-time
+    /// capture. <see cref="TimeProvider.GetUtcNow"/> is called exactly once per compile; when
+    /// <paramref name="timeProvider"/> is null, <see cref="TimeProvider.System"/> is used.
+    /// </summary>
+    public static async Task<SearchTrace> CompileWithTimeProviderAsync(
         string resourceType,
         IReadOnlyList<QueryParameter> parameters,
         ISearchOptionsBuilder optionsBuilder,

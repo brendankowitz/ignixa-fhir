@@ -235,15 +235,28 @@ public class SearchTraceTests
     }
 
     [Fact]
-    public async Task GivenTheOriginalOverloadWithPositionalCancellationToken_WhenCompiled_ThenItDelegatesToTheTimeProviderOverload()
+    public async Task GivenTheOriginalOverloadWithPositionalDefault_WhenCompiled_ThenItCompilesAndDelegatesSuccessfully()
     {
-        // Arrange — exercises the pre-existing 7-parameter overload with a positional
-        // CancellationToken at position 7, proving the old signature compiles and delegates.
-        var trace = await SearchTraceFixtures.TracePatientNameSmithWithCancellationTokenAsync(CancellationToken.None);
+        // Arrange — exercises the original 7-parameter CompileAsync with a positional `default`
+        // as the final argument, proving the pre-existing signature compiles unambiguously.
+        var trace = await SearchTraceFixtures.TracePatientNameSmithWithCancellationTokenAsync(default);
 
         // Assert
         trace.Failure.ShouldBeNull();
         trace.Plan.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenAPreCancelledToken_WhenCompiled_ThenTheCancellationReachesTheResolver()
+    {
+        // Arrange — a pre-cancelled token must propagate through CompileAsync into Resolve and
+        // reach the resolver, proving the delegation does not substitute CancellationToken.None.
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        // Act & Assert
+        await Should.ThrowAsync<OperationCanceledException>(
+            SearchTraceFixtures.TracePatientNameSmithWithCancellationCheckAsync(cts.Token));
     }
 
     private sealed class CountingFixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
