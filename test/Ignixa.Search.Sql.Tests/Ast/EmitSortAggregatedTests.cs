@@ -95,10 +95,11 @@ public class EmitSortAggregatedTests
         // Arrange -- proves the phase-transition contract holds for Aggregated exactly like String/Date:
         // MissingPrimary excludes key 0 from EmitSortJoins entirely (the existing "if (i == 0 &&
         // sort.Phase == SortPhase.MissingPrimary) continue;" guard, unchanged) and instead requires
-        // absence via NOT EXISTS. This is a regression guard: without the join-type fix, a bug that
-        // makes key 0 unconditionally LEFT-joined would silently duplicate rows across the two phases
-        // and nothing else in this test file would catch it (proven by temporarily reverting the fix --
-        // see task-2-report.md).
+        // absence via NOT EXISTS. The regression guard that prevents an unconditional-LEFT-JOIN bug
+        // (which would duplicate rows across the two phases) is the Valued-phase test
+        // GivenASingleAscendingTokenSortKeyInTheValuedPhase_WhenEmitted_ThenInnerJoinsAnAggregatingDerivedTable,
+        // which validates that key 0 in Valued phase is INNER-joined. This test validates only that
+        // MissingPrimary correctly skips the join altogether.
         var predicateTable = SqlCatalog.Default.Table("TokenSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(predicateTable.TableName, "Code"), new SqlParameterRef("final"));
         var sortTable = SqlCatalog.Default.Table("TokenSearchParam");
