@@ -312,9 +312,37 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CatalogEntry/${catalogEntryId}",
+            "description": "Teardown: delete the created CatalogEntry (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ResearchDefinition/${researchDefinitionId}",
+            "description": "Teardown: delete the created ResearchDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ResearchElementDefinition/${researchElementDefinitionId}",
+            "description": "Teardown: delete the created ResearchElementDefinition (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

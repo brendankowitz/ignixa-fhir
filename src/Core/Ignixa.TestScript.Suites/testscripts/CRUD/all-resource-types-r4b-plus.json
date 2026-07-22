@@ -1312,9 +1312,127 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "AdministrableProductDefinition/${administrableProductDefinitionId}",
+            "description": "Teardown: delete the created AdministrableProductDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Citation/${citationId}",
+            "description": "Teardown: delete the created Citation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ClinicalUseDefinition/${clinicalUseDefinitionId}",
+            "description": "Teardown: delete the created ClinicalUseDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EvidenceReport/${evidenceReportId}",
+            "description": "Teardown: delete the created EvidenceReport (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Ingredient/${ingredientId}",
+            "description": "Teardown: delete the created Ingredient (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ManufacturedItemDefinition/${manufacturedItemDefinitionId}",
+            "description": "Teardown: delete the created ManufacturedItemDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductDefinition/${medicinalProductDefinitionId}",
+            "description": "Teardown: delete the created MedicinalProductDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "NutritionProduct/${nutritionProductId}",
+            "description": "Teardown: delete the created NutritionProduct (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "PackagedProductDefinition/${packagedProductDefinitionId}",
+            "description": "Teardown: delete the created PackagedProductDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "RegulatedAuthorization/${regulatedAuthorizationId}",
+            "description": "Teardown: delete the created RegulatedAuthorization (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubscriptionStatus/${subscriptionStatusId}",
+            "description": "Teardown: delete the created SubscriptionStatus (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubscriptionTopic/${subscriptionTopicId}",
+            "description": "Teardown: delete the created SubscriptionTopic (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstanceDefinition/${substanceDefinitionId}",
+            "description": "Teardown: delete the created SubstanceDefinition (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

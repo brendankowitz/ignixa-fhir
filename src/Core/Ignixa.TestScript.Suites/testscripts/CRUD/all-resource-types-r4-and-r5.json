@@ -512,9 +512,55 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstanceNucleicAcid/${substanceNucleicAcidId}",
+            "description": "Teardown: delete the created SubstanceNucleicAcid (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstancePolymer/${substancePolymerId}",
+            "description": "Teardown: delete the created SubstancePolymer (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstanceProtein/${substanceProteinId}",
+            "description": "Teardown: delete the created SubstanceProtein (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstanceReferenceInformation/${substanceReferenceInformationId}",
+            "description": "Teardown: delete the created SubstanceReferenceInformation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstanceSourceMaterial/${substanceSourceMaterialId}",
+            "description": "Teardown: delete the created SubstanceSourceMaterial (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

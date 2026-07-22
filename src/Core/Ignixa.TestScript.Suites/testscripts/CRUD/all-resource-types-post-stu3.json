@@ -2024,9 +2024,190 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "BiologicallyDerivedProduct/${biologicallyDerivedProductId}",
+            "description": "Teardown: delete the created BiologicallyDerivedProduct (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "BodyStructure/${bodyStructureId}",
+            "description": "Teardown: delete the created BodyStructure (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ChargeItemDefinition/${chargeItemDefinitionId}",
+            "description": "Teardown: delete the created ChargeItemDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CoverageEligibilityRequest/${coverageEligibilityRequestId}",
+            "description": "Teardown: delete the created CoverageEligibilityRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CoverageEligibilityResponse/${coverageEligibilityResponseId}",
+            "description": "Teardown: delete the created CoverageEligibilityResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceDefinition/${deviceDefinitionId}",
+            "description": "Teardown: delete the created DeviceDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EventDefinition/${eventDefinitionId}",
+            "description": "Teardown: delete the created EventDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Evidence/${evidenceId}",
+            "description": "Teardown: delete the created Evidence (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EvidenceVariable/${evidenceVariableId}",
+            "description": "Teardown: delete the created EvidenceVariable (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ExampleScenario/${exampleScenarioId}",
+            "description": "Teardown: delete the created ExampleScenario (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ImmunizationEvaluation/${immunizationEvaluationId}",
+            "description": "Teardown: delete the created ImmunizationEvaluation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "InsurancePlan/${insurancePlanId}",
+            "description": "Teardown: delete the created InsurancePlan (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Invoice/${invoiceId}",
+            "description": "Teardown: delete the created Invoice (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicationKnowledge/${medicationKnowledgeId}",
+            "description": "Teardown: delete the created MedicationKnowledge (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MolecularSequence/${molecularSequenceId}",
+            "description": "Teardown: delete the created MolecularSequence (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ObservationDefinition/${observationDefinitionId}",
+            "description": "Teardown: delete the created ObservationDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "OrganizationAffiliation/${organizationAffiliationId}",
+            "description": "Teardown: delete the created OrganizationAffiliation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ServiceRequest/${serviceRequestId}",
+            "description": "Teardown: delete the created ServiceRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SpecimenDefinition/${specimenDefinitionId}",
+            "description": "Teardown: delete the created SpecimenDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "VerificationResult/${verificationResultId}",
+            "description": "Teardown: delete the created VerificationResult (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

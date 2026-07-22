@@ -1912,9 +1912,181 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ActorDefinition/${actorDefinitionId}",
+            "description": "Teardown: delete the created ActorDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ArtifactAssessment/${artifactAssessmentId}",
+            "description": "Teardown: delete the created ArtifactAssessment (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "BiologicallyDerivedProductDispense/${biologicallyDerivedProductDispenseId}",
+            "description": "Teardown: delete the created BiologicallyDerivedProductDispense (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ConditionDefinition/${conditionDefinitionId}",
+            "description": "Teardown: delete the created ConditionDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceAssociation/${deviceAssociationId}",
+            "description": "Teardown: delete the created DeviceAssociation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceDispense/${deviceDispenseId}",
+            "description": "Teardown: delete the created DeviceDispense (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceUsage/${deviceUsageId}",
+            "description": "Teardown: delete the created DeviceUsage (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EncounterHistory/${encounterHistoryId}",
+            "description": "Teardown: delete the created EncounterHistory (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "FormularyItem/${formularyItemId}",
+            "description": "Teardown: delete the created FormularyItem (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "GenomicStudy/${genomicStudyId}",
+            "description": "Teardown: delete the created GenomicStudy (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ImagingSelection/${imagingSelectionId}",
+            "description": "Teardown: delete the created ImagingSelection (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "InventoryItem/${inventoryItemId}",
+            "description": "Teardown: delete the created InventoryItem (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "InventoryReport/${inventoryReportId}",
+            "description": "Teardown: delete the created InventoryReport (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "NutritionIntake/${nutritionIntakeId}",
+            "description": "Teardown: delete the created NutritionIntake (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Permission/${permissionId}",
+            "description": "Teardown: delete the created Permission (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "RequestOrchestration/${requestOrchestrationId}",
+            "description": "Teardown: delete the created RequestOrchestration (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Requirements/${requirementsId}",
+            "description": "Teardown: delete the created Requirements (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "TestPlan/${testPlanId}",
+            "description": "Teardown: delete the created TestPlan (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Transport/${transportId}",
+            "description": "Teardown: delete the created Transport (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

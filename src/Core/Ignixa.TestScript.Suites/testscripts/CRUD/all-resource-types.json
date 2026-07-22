@@ -8842,7 +8842,800 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  }
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Account/${accountId}",
+            "description": "Teardown: delete the created Account (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ActivityDefinition/${activityDefinitionId}",
+            "description": "Teardown: delete the created ActivityDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "AdverseEvent/${adverseEventId}",
+            "description": "Teardown: delete the created AdverseEvent (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "AllergyIntolerance/${allergyIntoleranceId}",
+            "description": "Teardown: delete the created AllergyIntolerance (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Appointment/${appointmentId}",
+            "description": "Teardown: delete the created Appointment (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "AppointmentResponse/${appointmentResponseId}",
+            "description": "Teardown: delete the created AppointmentResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "AuditEvent/${auditEventId}",
+            "description": "Teardown: delete the created AuditEvent (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Basic/${basicId}",
+            "description": "Teardown: delete the created Basic (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Binary/${binaryId}",
+            "description": "Teardown: delete the created Binary (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CarePlan/${carePlanId}",
+            "description": "Teardown: delete the created CarePlan (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CareTeam/${careTeamId}",
+            "description": "Teardown: delete the created CareTeam (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ChargeItem/${chargeItemId}",
+            "description": "Teardown: delete the created ChargeItem (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Claim/${claimId}",
+            "description": "Teardown: delete the created Claim (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ClaimResponse/${claimResponseId}",
+            "description": "Teardown: delete the created ClaimResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ClinicalImpression/${clinicalImpressionId}",
+            "description": "Teardown: delete the created ClinicalImpression (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CodeSystem/${codeSystemId}",
+            "description": "Teardown: delete the created CodeSystem (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Communication/${communicationId}",
+            "description": "Teardown: delete the created Communication (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "CommunicationRequest/${communicationRequestId}",
+            "description": "Teardown: delete the created CommunicationRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Composition/${compositionId}",
+            "description": "Teardown: delete the created Composition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ConceptMap/${conceptMapId}",
+            "description": "Teardown: delete the created ConceptMap (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Condition/${conditionId}",
+            "description": "Teardown: delete the created Condition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Consent/${consentId}",
+            "description": "Teardown: delete the created Consent (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Contract/${contractId}",
+            "description": "Teardown: delete the created Contract (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Coverage/${coverageId}",
+            "description": "Teardown: delete the created Coverage (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DetectedIssue/${detectedIssueId}",
+            "description": "Teardown: delete the created DetectedIssue (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Device/${deviceId}",
+            "description": "Teardown: delete the created Device (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceMetric/${deviceMetricId}",
+            "description": "Teardown: delete the created DeviceMetric (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceRequest/${deviceRequestId}",
+            "description": "Teardown: delete the created DeviceRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DiagnosticReport/${diagnosticReportId}",
+            "description": "Teardown: delete the created DiagnosticReport (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DocumentReference/${documentReferenceId}",
+            "description": "Teardown: delete the created DocumentReference (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Encounter/${encounterId}",
+            "description": "Teardown: delete the created Encounter (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Endpoint/${endpointId}",
+            "description": "Teardown: delete the created Endpoint (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EnrollmentRequest/${enrollmentRequestId}",
+            "description": "Teardown: delete the created EnrollmentRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EnrollmentResponse/${enrollmentResponseId}",
+            "description": "Teardown: delete the created EnrollmentResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EpisodeOfCare/${episodeOfCareId}",
+            "description": "Teardown: delete the created EpisodeOfCare (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ExplanationOfBenefit/${explanationOfBenefitId}",
+            "description": "Teardown: delete the created ExplanationOfBenefit (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "FamilyMemberHistory/${familyMemberHistoryId}",
+            "description": "Teardown: delete the created FamilyMemberHistory (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Flag/${flagId}",
+            "description": "Teardown: delete the created Flag (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Goal/${goalId}",
+            "description": "Teardown: delete the created Goal (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Group/${groupId}",
+            "description": "Teardown: delete the created Group (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "GuidanceResponse/${guidanceResponseId}",
+            "description": "Teardown: delete the created GuidanceResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "HealthcareService/${healthcareServiceId}",
+            "description": "Teardown: delete the created HealthcareService (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ImagingStudy/${imagingStudyId}",
+            "description": "Teardown: delete the created ImagingStudy (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Immunization/${immunizationId}",
+            "description": "Teardown: delete the created Immunization (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ImmunizationRecommendation/${immunizationRecommendationId}",
+            "description": "Teardown: delete the created ImmunizationRecommendation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Library/${libraryId}",
+            "description": "Teardown: delete the created Library (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Linkage/${linkageId}",
+            "description": "Teardown: delete the created Linkage (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "List/${listId}",
+            "description": "Teardown: delete the created List (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Location/${locationId}",
+            "description": "Teardown: delete the created Location (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Measure/${measureId}",
+            "description": "Teardown: delete the created Measure (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MeasureReport/${measureReportId}",
+            "description": "Teardown: delete the created MeasureReport (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Medication/${medicationId}",
+            "description": "Teardown: delete the created Medication (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicationAdministration/${medicationAdministrationId}",
+            "description": "Teardown: delete the created MedicationAdministration (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicationDispense/${medicationDispenseId}",
+            "description": "Teardown: delete the created MedicationDispense (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicationRequest/${medicationRequestId}",
+            "description": "Teardown: delete the created MedicationRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicationStatement/${medicationStatementId}",
+            "description": "Teardown: delete the created MedicationStatement (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MessageHeader/${messageHeaderId}",
+            "description": "Teardown: delete the created MessageHeader (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "NamingSystem/${namingSystemId}",
+            "description": "Teardown: delete the created NamingSystem (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "NutritionOrder/${nutritionOrderId}",
+            "description": "Teardown: delete the created NutritionOrder (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Observation/${observationId}",
+            "description": "Teardown: delete the created Observation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "OperationOutcome/${operationOutcomeId}",
+            "description": "Teardown: delete the created OperationOutcome (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Organization/${organizationId}",
+            "description": "Teardown: delete the created Organization (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Patient/${patientId}",
+            "description": "Teardown: delete the created Patient (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "PaymentNotice/${paymentNoticeId}",
+            "description": "Teardown: delete the created PaymentNotice (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "PaymentReconciliation/${paymentReconciliationId}",
+            "description": "Teardown: delete the created PaymentReconciliation (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Person/${personId}",
+            "description": "Teardown: delete the created Person (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "PlanDefinition/${planDefinitionId}",
+            "description": "Teardown: delete the created PlanDefinition (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Practitioner/${practitionerId}",
+            "description": "Teardown: delete the created Practitioner (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "PractitionerRole/${practitionerRoleId}",
+            "description": "Teardown: delete the created PractitionerRole (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Procedure/${procedureId}",
+            "description": "Teardown: delete the created Procedure (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Provenance/${provenanceId}",
+            "description": "Teardown: delete the created Provenance (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Questionnaire/${questionnaireId}",
+            "description": "Teardown: delete the created Questionnaire (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "QuestionnaireResponse/${questionnaireResponseId}",
+            "description": "Teardown: delete the created QuestionnaireResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "RelatedPerson/${relatedPersonId}",
+            "description": "Teardown: delete the created RelatedPerson (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ResearchStudy/${researchStudyId}",
+            "description": "Teardown: delete the created ResearchStudy (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ResearchSubject/${researchSubjectId}",
+            "description": "Teardown: delete the created ResearchSubject (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "RiskAssessment/${riskAssessmentId}",
+            "description": "Teardown: delete the created RiskAssessment (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Schedule/${scheduleId}",
+            "description": "Teardown: delete the created Schedule (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Slot/${slotId}",
+            "description": "Teardown: delete the created Slot (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Specimen/${specimenId}",
+            "description": "Teardown: delete the created Specimen (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "StructureMap/${structureMapId}",
+            "description": "Teardown: delete the created StructureMap (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Subscription/${subscriptionId}",
+            "description": "Teardown: delete the created Subscription (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Substance/${substanceId}",
+            "description": "Teardown: delete the created Substance (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SupplyDelivery/${supplyDeliveryId}",
+            "description": "Teardown: delete the created SupplyDelivery (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SupplyRequest/${supplyRequestId}",
+            "description": "Teardown: delete the created SupplyRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Task/${taskId}",
+            "description": "Teardown: delete the created Task (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ValueSet/${valueSetId}",
+            "description": "Teardown: delete the created ValueSet (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "VisionPrescription/${visionPrescriptionId}",
+            "description": "Teardown: delete the created VisionPrescription (no-op if it was never created)"
+          }
+        }
+      ]
+    }
 }

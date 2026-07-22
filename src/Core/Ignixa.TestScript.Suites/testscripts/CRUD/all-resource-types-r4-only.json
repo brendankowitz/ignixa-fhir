@@ -1312,9 +1312,127 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EffectEvidenceSynthesis/${effectEvidenceSynthesisId}",
+            "description": "Teardown: delete the created EffectEvidenceSynthesis (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProduct/${medicinalProductId}",
+            "description": "Teardown: delete the created MedicinalProduct (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductAuthorization/${medicinalProductAuthorizationId}",
+            "description": "Teardown: delete the created MedicinalProductAuthorization (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductContraindication/${medicinalProductContraindicationId}",
+            "description": "Teardown: delete the created MedicinalProductContraindication (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductIndication/${medicinalProductIndicationId}",
+            "description": "Teardown: delete the created MedicinalProductIndication (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductIngredient/${medicinalProductIngredientId}",
+            "description": "Teardown: delete the created MedicinalProductIngredient (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductInteraction/${medicinalProductInteractionId}",
+            "description": "Teardown: delete the created MedicinalProductInteraction (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductManufactured/${medicinalProductManufacturedId}",
+            "description": "Teardown: delete the created MedicinalProductManufactured (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductPackaged/${medicinalProductPackagedId}",
+            "description": "Teardown: delete the created MedicinalProductPackaged (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductPharmaceutical/${medicinalProductPharmaceuticalId}",
+            "description": "Teardown: delete the created MedicinalProductPharmaceutical (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "MedicinalProductUndesirableEffect/${medicinalProductUndesirableEffectId}",
+            "description": "Teardown: delete the created MedicinalProductUndesirableEffect (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "RiskEvidenceSynthesis/${riskEvidenceSynthesisId}",
+            "description": "Teardown: delete the created RiskEvidenceSynthesis (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "SubstanceSpecification/${substanceSpecificationId}",
+            "description": "Teardown: delete the created SubstanceSpecification (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

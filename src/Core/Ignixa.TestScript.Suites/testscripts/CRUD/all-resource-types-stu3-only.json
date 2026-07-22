@@ -1312,9 +1312,127 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "BodySite/${bodySiteId}",
+            "description": "Teardown: delete the created BodySite (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DataElement/${dataElementId}",
+            "description": "Teardown: delete the created DataElement (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceComponent/${deviceComponentId}",
+            "description": "Teardown: delete the created DeviceComponent (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EligibilityRequest/${eligibilityRequestId}",
+            "description": "Teardown: delete the created EligibilityRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "EligibilityResponse/${eligibilityResponseId}",
+            "description": "Teardown: delete the created EligibilityResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ExpansionProfile/${expansionProfileId}",
+            "description": "Teardown: delete the created ExpansionProfile (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ImagingManifest/${imagingManifestId}",
+            "description": "Teardown: delete the created ImagingManifest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ProcedureRequest/${procedureRequestId}",
+            "description": "Teardown: delete the created ProcedureRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ProcessRequest/${processRequestId}",
+            "description": "Teardown: delete the created ProcessRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ProcessResponse/${processResponseId}",
+            "description": "Teardown: delete the created ProcessResponse (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ReferralRequest/${referralRequestId}",
+            "description": "Teardown: delete the created ReferralRequest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Sequence/${sequenceId}",
+            "description": "Teardown: delete the created Sequence (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "ServiceDefinition/${serviceDefinitionId}",
+            "description": "Teardown: delete the created ServiceDefinition (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",

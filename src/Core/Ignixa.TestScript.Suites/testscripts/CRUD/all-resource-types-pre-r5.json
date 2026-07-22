@@ -412,9 +412,46 @@
       ]
     }
   ],
-  "teardown": {
-    "action": []
-  },
+    "teardown": {
+      "action": [
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DeviceUseStatement/${deviceUseStatementId}",
+            "description": "Teardown: delete the created DeviceUseStatement (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "DocumentManifest/${documentManifestId}",
+            "description": "Teardown: delete the created DocumentManifest (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "Media/${mediaId}",
+            "description": "Teardown: delete the created Media (no-op if it was never created)"
+          }
+        },
+        {
+          "operation": {
+            "type": {
+              "code": "delete"
+            },
+            "url": "RequestGroup/${requestGroupId}",
+            "description": "Teardown: delete the created RequestGroup (no-op if it was never created)"
+          }
+        }
+      ]
+    },
   "extension": [
     {
       "url": "http://ignixa.io/testscript/requiresCapability",
