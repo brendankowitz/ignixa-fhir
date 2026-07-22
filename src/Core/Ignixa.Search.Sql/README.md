@@ -199,13 +199,59 @@ foreach (var p in emitted.Parameters)      // the values to bind
 | **Counting** | `_summary=count` / `_total=accurate` | `COUNT_BIG(DISTINCT …)` |
 | **Missing** | `:missing` for leaf and composite parameters | |
 
+## String parameter matching across inline and overflow storage
+
+`StringSearchParam` stores values in two columns:
+
+- **`Text`** — a `nvarchar(256)` inline column that holds the value when it fits; at 256 characters or
+  fewer the full value is here and `TextOverflow` is `NULL`.
+- **`TextOverflow`** — an `nvarchar(MAX)` overflow column that holds the complete value when it exceeds
+  256 characters; `Text` then stores only the first 256 characters of the value.
+
+Lowering selects the correct predicate shape based on the search value's length versus the inline
+width (256). Both shapes are injection-safe: all user values are bound as `@pN` parameters, never
+inlined.
+
+### `:exact` — case-sensitive equality (`Latin1_General_100_CS_AS`)
+
+| Search value length | Predicate shape |
+|---------------------|-----------------|
+| ≤ 256 characters    | `TextOverflow IS NULL AND Text = @p0 COLLATE Latin1_General_100_CS_AS` |
+| > 256 characters    | `TextOverflow = @p0 COLLATE Latin1_General_100_CS_AS` |
+
+The `TextOverflow IS NULL` guard on the short-value branch prevents a false-positive match when a
+stored value overflowed and its 256-character `Text` prefix happens to equal the shorter search value.
+For a search value exceeding 256 characters, only an overflowed row can ever contain it, so a direct
+equality on `TextOverflow` suffices with no guard needed.
+
+### `:contains` — case- and accent-insensitive LIKE (`Latin1_General_100_CI_AI`)
+
+| Search value length | Predicate shape |
+|---------------------|-----------------|
+| ≤ 256 characters    | `(TextOverflow IS NULL AND Text COLLATE … CI_AI LIKE @p0 ESCAPE '\') OR TextOverflow COLLATE … CI_AI LIKE @p1 ESCAPE '\'` |
+| > 256 characters    | `TextOverflow COLLATE … CI_AI LIKE @p0 ESCAPE '\'` |
+
+For short values the dual-column shape searches both storage locations: the `Text` branch (guarded by
+`TextOverflow IS NULL`) matches non-overflowed rows; the `TextOverflow` branch matches overflowed rows
+through the complete stored value. Both branches receive the same escaped `%…%` pattern bound to two
+separate parameters (`@p0` and `@p1`) — one for each `LIKE`. LIKE metacharacters (`%`, `_`, `[`, `\`)
+in the search value are escaped and bound as parameters, never inlined, so user-supplied wildcards are
+treated as literals.
+
+For a search value exceeding 256 characters, any matching stored value must have overflowed, so a
+single `TextOverflow LIKE` is sufficient.
+
+### Default prefix matching (no modifier)
+
+Unmodified string queries use `Text LIKE @p0 ESCAPE '\'` with `LikeMatch.StartsWith` and the CI_AI
+collation. Overflow handling for the default (starts-with) case is not yet implemented; values exceeding
+the inline width fall back to a `TextOverflow LIKE` prefix search.
+
 ## What's not implemented yet
 
 These intentionally **throw** rather than emit a subtly-wrong query:
 
 - The `:ap` (approximately) comparator — needs a tolerance / "now" input the pure stages don't carry.
-- String `:contains` / exactly-inline-width `:exact` on values that overflow the inline column — the IR
-  can't yet search both the inline and overflow columns at once.
 
 **Chain / include / revinclude traversal remains local-only.** The `ChainJoin` and `IncludeStage`
 emitters hard-code `rsp.BaseUri IS NULL`, so they follow only references whose `BaseUri` is null

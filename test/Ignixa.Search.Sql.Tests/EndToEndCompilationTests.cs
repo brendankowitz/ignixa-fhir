@@ -2005,6 +2005,94 @@ public class EndToEndCompilationTests
         emittedB.Sql.ShouldNotContain("server-b");
     }
 
+    // ─── Phase 3: String overflow — complete-value matching ─────────────────────
+
+    [Fact]
+    public async Task GivenANameExactQueryAtExactly256Chars_WhenCompiled_ThenProducesIsNullGuardedEqualityAndCompleteSql()
+    {
+        // Arrange -- Patient?name:exact=<256-char value>
+        // 256 characters equals the inline width of StringSearchParam.Text. A value this long can only
+        // be stored in the non-overflow path (Text holds it completely), but an overflowed row whose
+        // 256-char TEXT prefix happens to equal this value would be a false-positive without the
+        // IsNull(TextOverflow) guard. The lowered predicate must be And(IsNull(TextOverflow), Equal(Text)).
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var value256 = new string('A', 256);
+        var predicate = new SearchParameterPredicateExpression(
+            nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue(value256));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: And(IsNull(TextOverflow), Equal(Text, @p0, CS_AS))
+        plan.Explain().ShouldBe(
+            "root = StringSearchParam[103,202]  TextOverflow IS NULL AND Text = @p0 collate CS_AS");
+
+        // Assert -- complete SQL golden: IsNull guard first, then Text equality with CS_AS collation;
+        // @p0 receives the complete 256-char value; no user value is ever inlined in the SQL text.
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND (TextOverflow IS NULL AND Text = @p0 COLLATE Latin1_General_100_CS_AS)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- exactly one parameter, bound to the 256-char value; no inline value in SQL text
+        emitted.Sql.ShouldNotContain(value256);
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)value256)]);
+    }
+
+    [Fact]
+    public async Task GivenANameContainsQueryWithALikeMetacharacter_WhenCompiled_ThenProducesGuardedOrShapeAndCompleteSql()
+    {
+        // Arrange -- Patient?name:contains=m%t (value contains a literal % character)
+        // For values within the 256-char inline width, :contains emits the dual-column shape:
+        //   Or(And(IsNull(TextOverflow), Like(Text, …, CI_AI)), Like(TextOverflow, …, CI_AI))
+        // The % must be escaped to \% in the LIKE pattern so SQL Server treats it as a literal.
+        // Both the Text branch and the TextOverflow branch receive the same escaped %…% pattern,
+        // so the same value is bound twice (two @pN parameters with equal content).
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var rawValue = "m%t";
+        var predicate = new SearchParameterPredicateExpression(
+            nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Contains), new StringSearchValue(rawValue));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: Or(And(IsNull(TextOverflow), Like(Text, @p0, Contains, CI_AI)), Like(TextOverflow, @p1, Contains, CI_AI))
+        // The overflow null guard appears ONLY on the Text branch; TextOverflow has its own LIKE without a guard.
+        plan.Explain().ShouldBe(
+            "root = StringSearchParam[103,202]  TextOverflow IS NULL AND Text LIKE @p0 (Contains) collate CI_AI OR TextOverflow LIKE @p1 (Contains) collate CI_AI");
+
+        // Assert -- complete SQL golden: fully parenthesized OR; IsNull guard on Text branch only;
+        // both LIKE expressions use CI_AI collation with ESCAPE clause; no user value inlined.
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND ((TextOverflow IS NULL AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\') OR TextOverflow COLLATE Latin1_General_100_CI_AI LIKE @p1 ESCAPE '\\')\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- the raw value must not appear in the SQL text; both @p0 and @p1 receive the same
+        // escaped Contains pattern ("%m\%t%"): the % is escaped to \%, then wrapped with % on each side.
+        emitted.Sql.ShouldNotContain(rawValue);
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)"%m\\%t%"), ("@p1", (object)"%m\\%t%")]);
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
