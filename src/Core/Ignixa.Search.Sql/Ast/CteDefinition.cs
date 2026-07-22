@@ -19,6 +19,8 @@ namespace Ignixa.Search.Sql.Ast;
 /// <item><b>TableExistsPredicate</b> — a raw table row-existence check, scoped only by
 /// ResourceSurrogateId (via the outer join, not a WHERE clause of its own) plus an optional additional
 /// Predicate. Unlike ParamSource, carries no SearchParamId or ResourceTypeId.</item>
+/// <item><b>VisibleSinceFilter</b> — $everything's _since filter: resources visible in a transaction on
+/// or after a given Since date, joined through dbo.Resource and dbo.Transactions on VisibleDate.</item>
 /// </list>
 /// ParamSource carries ResourceTypeId because a SearchParamId is assigned per parameter-definition URL,
 /// not per resource type, so a shared definition (e.g. one spanning Patient and Practitioner) would
@@ -75,4 +77,14 @@ public abstract record CteDefinition
     /// have ANY date-typed search-index row" (Predicate: null) or "...matching this date range" (Predicate: set).
     /// </summary>
     public sealed record TableExistsPredicate(TableDescriptor Table, Predicate? Predicate = null) : CteDefinition;
+
+    /// <summary>
+    /// $everything's _since filter -- resources visible in a transaction on or after Since. Scoped to
+    /// whichever branch it's Intersect-composed with (design: the compartment branch only, never the
+    /// Patient-itself or referenced-type-expansion branches -- see the $everything orchestration task).
+    /// VisibleDate (not CreateDate) is Transactions' incremental-visibility column, NULL until a
+    /// transaction becomes visible -- distinct from CreateDate, which SqlServerFhirRepository's existing
+    /// LastModified derivation uses for a different purpose.
+    /// </summary>
+    public sealed record VisibleSinceFilter(SqlParameterRef Since) : CteDefinition;
 }

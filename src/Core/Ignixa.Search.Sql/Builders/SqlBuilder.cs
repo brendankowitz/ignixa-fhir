@@ -267,6 +267,7 @@ public static class SqlBuilder
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters),
         CteDefinition.TableExistsPredicate tep => EmitTableExistsPredicate(tep, parameters),
+        CteDefinition.VisibleSinceFilter vsf => EmitVisibleSinceFilter(vsf, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -609,6 +610,13 @@ public static class SqlBuilder
             $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             $"    FROM {tep.Table.SchemaName}.{tep.Table.TableName}{whereClause}";
     }
+
+    /// <summary>Renders a VisibleSinceFilter: resources visible in a transaction on or after Since, joined through dbo.Resource and dbo.Transactions on VisibleDate.</summary>
+    private static string EmitVisibleSinceFilter(CteDefinition.VisibleSinceFilter vsf, List<EmittedSqlParameter> parameters)
+        => "    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+           "    FROM dbo.Resource r\n" +
+           "    INNER JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue\n" +
+           $"    WHERE t.VisibleDate >= {EmitParam(vsf.Since, parameters)}";
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
