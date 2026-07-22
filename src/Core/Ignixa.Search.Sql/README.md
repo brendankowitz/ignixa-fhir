@@ -189,7 +189,7 @@ foreach (var p in emitted.Parameters)      // the values to bind
 |------|-----------|-------|
 | **Boolean composition** | AND, OR, `:not` | Intersect / Union / Except CTEs |
 | **Leaf types** | string, token (bare code, `system\|code`, `\|code`, `system\|`), reference (local and external/absolute; `BaseUri` binary-collation equality; resource version not part of identity), uri (exact, `:above`, `:below` hierarchy), number, quantity (with `system`/`code` identity), date | see gaps below |
-| **Comparators** | `eq ne gt lt ge le sa eb` | on date / number / quantity |
+| **Comparators** | `eq ne gt lt ge le sa eb ap` | on date / number / quantity; `:ap` widens the search value by a fixed 10% tolerance — see [Approximate (`:ap`) matching](#approximate-ap-matching) |
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
 | **Chaining** | forward and reverse chains, any nesting depth | 10-level depth guard |
@@ -260,11 +260,58 @@ it, so `TextOverflow LIKE` is the correct target. In both cases the complete log
 searched correctly. The search value is escaped and bound as `@p0`; user-supplied LIKE metacharacters
 (`%`, `_`, `[`, `\`) are treated as literals.
 
-## What's not implemented yet
+## Approximate (`:ap`) matching
 
-These intentionally **throw** rather than emit a subtly-wrong query:
+`:ap` on `number`, `quantity`, `date`, and `_lastUpdated` widens the search value by a fixed **10%
+tolerance** before comparing, per the FHIR search specification's guidance for the "approximately"
+comparator. Lowering is a pure function everywhere else in this compiler, so `:ap`'s tolerance never
+reads an ambient clock or random source; every input it needs is threaded through explicitly.
 
-- The `:ap` (approximately) comparator — needs a tolerance / "now" input the pure stages don't carry.
+### Number and quantity — `max(implied precision, 10% of value)`
+
+The tolerance is `max(implied-precision modifier, abs(value) * 0.10)`:
+
+- **Implied-precision floor.** The implied-precision modifier is the same half-a-trailing-digit tolerance
+  FHIR's `eq`/`ne` already use for decimal implied precision (e.g. `1` → `0.5`; `100.00` → `0.005`) — it
+  stops a low-precision value's 10% tolerance from being narrower than the value's own implied precision.
+- **10% floor.** For any value large enough that 10% of it exceeds the implied-precision modifier, the
+  10% figure wins.
+
+The widened range is inclusive on both ends: `LowValue >= value - tolerance AND HighValue <= value +
+tolerance`. For `quantity`, this numeric range predicate always comes first; a qualified `system` then
+contributes a `SystemId` equality, and a qualified `code` then contributes a `QuantityCodeId` equality —
+the same system-then-code order every other quantity comparator already uses.
+
+### Date and `_lastUpdated` — 10% of the distance to a single captured reference instant
+
+A date `:ap` search has no "current time" of its own to compare against — it needs a reference instant
+supplied from outside the pure `Lower` stage. That instant is captured **exactly once per compilation**:
+
+- `SearchCompiler.CompileAsync` / `CompileWithTimeProviderAsync` call `TimeProvider.GetUtcNow()` a single
+  time up front (before `Resolve` even runs) and pass the one resulting value through to `Lower.Run`'s
+  `approximationReferenceTime` parameter. A caller invoking `Lower.Run` directly must supply that same
+  parameter explicitly; omitting it while a `:ap` date predicate is present throws
+  `InvalidOperationException` rather than silently reading the system clock.
+- Because the instant is captured once and reused for every `:ap` predicate in the same compilation, two
+  compilations against the same supplied instant (the same `TimeProvider`, or the same explicit
+  `approximationReferenceTime`) always produce byte-identical SQL and parameter values — the determinism
+  guarantee above extends to `:ap` exactly as it does to every other comparator.
+
+The tolerance itself is `abs(referenceInstant - midpoint) / 10`, where `midpoint` is the search value's own
+`[Start, End]` interval midpoint (already resolving FHIR partial-date precision). The widened interval is
+`[Start - tolerance, End + tolerance]`.
+
+- **`date`** compares the widened interval against the stored `[StartDateTime, EndDateTime]` pair with the
+  same overlap shape `eq` uses: `StartDateTime <= widenedEnd AND EndDateTime >= widenedStart`.
+- **`_lastUpdated`** has no interval column of its own — it targets the single point column
+  `ResourceSurrogateId` — so both widened endpoints are converted through the same surrogate-id encoding
+  every other `_lastUpdated` comparator uses, then compared as a lower-then-upper range:
+  `ResourceSurrogateId >= widenedLowerSurrogateId AND ResourceSurrogateId <= widenedUpperSurrogateId`.
+
+These claims describe what `Resolve` and `Lower` (and the SQL `Emit` renders from them) do; they say
+nothing about execution against a live database — see the alpha notice above.
+
+## Known limitations
 
 **Chain / include / revinclude traversal remains local-only.** The `ChainJoin` and `IncludeStage`
 emitters hard-code `rsp.BaseUri IS NULL`, so they follow only references whose `BaseUri` is null

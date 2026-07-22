@@ -235,6 +235,64 @@ public class SearchTraceTests
     }
 
     [Fact]
+    public async Task GivenADateApComparatorQueryWithAFixedTimeProvider_WhenCompiled_ThenGetUtcNowIsCalledExactlyOnceAndProducesTheWidenedSqlGolden()
+    {
+        // Arrange -- unlike GivenAFixedTimeProvider_WhenCompiled_ThenGetUtcNowIsCalledExactlyOnce above
+        // (a plain name=Smith query whose value never reads the reference time at all), this query's
+        // :ap comparator only compiles successfully if SearchCompiler's single GetUtcNow() call supplied
+        // a non-null reference instant all the way to Lower's approximationReferenceTime -- Approximate
+        // DateRange.Widen throws InvalidOperationException otherwise, so an absent Failure here is itself
+        // proof the captured value reached the widening logic, not merely that it was read once.
+        var fixedTime = new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero);
+        var provider = new CountingFixedTimeProvider(fixedTime);
+
+        // Act
+        var trace = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+
+        // Assert -- the captured reference instant reached Lower and widened the :ap range successfully
+        provider.CallCount.ShouldBe(1);
+        trace.Failure.ShouldBeNull();
+        trace.Plan.ShouldNotBeNull();
+
+        // Assert -- complete SQL golden: the same shape already pinned in EndToEndCompilationTests'
+        // Lower.Run-based date :ap case, proving the SearchCompiler orchestration boundary (Build ->
+        // Resolve -> Lower -> Emit, with the reference time captured once up front) reaches the
+        // identical emitted SQL as calling Lower.Run directly with that same widened reference.
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.DateTimeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 203 AND (StartDateTime <= @p0 AND EndDateTime >= @p1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenTheSameDateApComparatorQueryCompiledTwiceWithTheSameFixedTimeProvider_WhenCompiled_ThenTheTracedSqlIsByteIdentical()
+    {
+        // Arrange -- two independent CompileWithTimeProviderAsync calls, each capturing its own
+        // GetUtcNow() from the same FixedTimeProvider instance (proven by CallCount reaching 2, one per
+        // compile, never more), must reach byte-identical widened SQL -- proving the compiler boundary's
+        // determinism holds across separate compiles sharing one fixed clock, not just within a single one.
+        var fixedTime = new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero);
+        var provider = new CountingFixedTimeProvider(fixedTime);
+
+        // Act
+        var trace1 = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+        var trace2 = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+
+        // Assert
+        provider.CallCount.ShouldBe(2);
+        trace1.Failure.ShouldBeNull();
+        trace2.Failure.ShouldBeNull();
+        trace1.Sql.ShouldNotBeNull();
+        trace2.Sql.ShouldNotBeNull();
+        trace2.Sql!.Sql.ShouldBe(trace1.Sql!.Sql);
+    }
+
+    [Fact]
     public async Task GivenTheOriginalOverloadWithPositionalDefault_WhenCompiled_ThenItCompilesAndDelegatesSuccessfully()
     {
         // Arrange — exercises the original 7-parameter CompileAsync with a positional `default`

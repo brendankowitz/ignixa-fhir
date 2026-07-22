@@ -2093,6 +2093,198 @@ public class EndToEndCompilationTests
             [("@p0", (object)"%m\\%t%"), ("@p1", (object)"%m\\%t%")]);
     }
 
+    // ─── Phase 4: Approximate (:ap) comparator compiler boundary ────────────────
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    [Fact]
+    public async Task GivenANumberApComparatorQuery_WhenCompiled_ThenWidensByMaxOfPrecisionAndTenPercentAndEmitsCompleteSql()
+    {
+        // Arrange -- Observation?value-number=ap5.4 -- tol = max(precisionModifier=0.05, abs(5.4)*0.10=0.54)
+        // = 0.54, widened to the inclusive range [4.86, 5.94] -- the same value and tolerance already
+        // pinned against NumberLoweringRuleTests' leaf case and TokenNumberNumberLoweringRuleTests' :ap
+        // composite slot, reused here rather than re-derived, so this test proves the compiler boundary
+        // (Resolve -> Lower -> Emit), not a new tolerance computation.
+        var numberParam = new SearchParameterInfo("value-number", "value-number", SearchParamType.Number, new Uri("http://example.org/fhir/SearchParameter/Observation-value-number"));
+        var predicate = new SearchParameterPredicateExpression(numberParam, SearchComparator.Ap, modifier: null, new NumberSearchValue(5.4m));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[numberParam.Url!.ToString()] = 205;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: inclusive widened range, low bound first then high bound
+        plan.Explain().ShouldBe("root = NumberSearchParam[104,205]  LowValue >= @p0 AND HighValue <= @p1");
+
+        // Assert -- complete SQL golden
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.NumberSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 205 AND (LowValue >= @p0 AND HighValue <= @p1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- raw value never inlined; exactly the widened low then widened high bound, in order
+        emitted.Sql.ShouldNotContain("5.4");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)4.86m), ("@p1", (object)5.94m)]);
+    }
+
+    [Fact]
+    public async Task GivenAFullyQualifiedQuantityApComparatorQuery_WhenCompiled_ThenWidensNumericBoundsThenAppliesSystemThenCodeAndEmitsCompleteSql()
+    {
+        // Arrange -- Observation?value-quantity=ap5.4|http://unitsofmeasure.org|mg -- same tolerance
+        // formula and bounds as the number case above (0.54 -> [4.86, 5.94]); QuantityColumnPredicate
+        // .Build appends the resolved SystemId equality first, then the QuantityCodeId equality, after
+        // the widened numeric range -- the same order already pinned for non-:ap comparators against
+        // GivenAQuantityWithSystemAndCodeQuery_WhenCompiled above and TokenQuantityLoweringRuleTests'
+        // :ap composite slot.
+        var quantityParam = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-quantity"));
+        var predicate = new SearchParameterPredicateExpression(
+            quantityParam, SearchComparator.Ap, modifier: null,
+            new QuantitySearchValue("http://unitsofmeasure.org", "mg", 5.4m));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[quantityParam.Url!.ToString()] = 204;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.SystemIds["http://unitsofmeasure.org"] = 11;
+        resolver.QuantityCodeIds["mg"] = 22;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- plan shape: widened numeric range first, then SystemId, then QuantityCodeId
+        plan.Explain().ShouldBe(
+            "root = QuantitySearchParam[104,204]  LowValue >= @p0 AND HighValue <= @p1 AND SystemId = @p2 AND QuantityCodeId = @p3");
+
+        // Assert -- complete SQL golden: nested parens follow And(And(And(Ge,Le),SystemEq),CodeEq)
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.QuantitySearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND (((LowValue >= @p0 AND HighValue <= @p1) AND SystemId = @p2) AND QuantityCodeId = @p3)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- raw value never inlined; widened low, widened high, resolved SystemId, resolved
+        // QuantityCodeId, in that exact order -- system/code identity IDs, not the raw strings
+        emitted.Sql.ShouldNotContain("5.4");
+        emitted.Sql.ShouldNotContain("unitsofmeasure");
+        emitted.Sql.ShouldNotContain("mg");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)4.86m), ("@p1", (object)5.94m), ("@p2", (object)11), ("@p3", (object)22)]);
+    }
+
+    [Fact]
+    public async Task GivenADateApComparatorQueryWithAnExplicitFixedTimeProvider_WhenCompiledTwice_ThenProducesByteIdenticalSqlAndParameterSequences()
+    {
+        // Arrange -- Observation?date=ap2020-01-01T00:00:00Z, reference instant exactly one day later --
+        // 1-day gap / 10 = 2h24m tolerance (the same scenario already pinned against
+        // DateTimeLoweringRuleTests' "past instant" :ap case). widened = [2019-12-31T21:36:00Z,
+        // 2020-01-01T02:24:00Z]; the overlap predicate compares StartDateTime against the widened END
+        // first, then EndDateTime against the widened START -- DateTimeRangeComparison.BuildApproximate's
+        // established parameter order (distinct from _lastUpdated's lower-then-upper order below).
+        var dateParam = new SearchParameterInfo("date", "date", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Observation-date"));
+        var value = new DateTimeSearchValue(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var predicate = new SearchParameterPredicateExpression(dateParam, SearchComparator.Ap, modifier: null, value);
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[dateParam.Url!.ToString()] = 203;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero));
+        var widenedStart = new DateTimeOffset(2019, 12, 31, 21, 36, 0, TimeSpan.Zero);
+        var widenedEnd = new DateTimeOffset(2020, 1, 1, 2, 24, 0, TimeSpan.Zero);
+
+        // Act -- compile the identical search twice, each compile capturing its own reference instant
+        // from the same FixedTimeProvider (mirroring SearchCompiler.CompileWithTimeProviderAsync's single
+        // GetUtcNow() call per compile) to prove the boundary is deterministic given the same captured time.
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan1 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
+        var emitted1 = SqlBuilder.Run(plan1);
+        var plan2 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
+        var emitted2 = SqlBuilder.Run(plan2);
+
+        // Assert -- plan shape: widened end compared to StartDateTime, widened start compared to EndDateTime
+        plan1.Explain().ShouldBe("root = DateTimeSearchParam[104,203]  StartDateTime <= @p0 AND EndDateTime >= @p1");
+
+        // Assert -- complete SQL golden
+        emitted1.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.DateTimeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 203 AND (StartDateTime <= @p0 AND EndDateTime >= @p1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        // Assert -- exact parameter order/values: widened end first, then widened start
+        emitted1.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)widenedEnd), ("@p1", (object)widenedStart)]);
+
+        // Assert -- byte-identical SQL text and an identical parameter sequence across both compiles
+        // of the same query against the same captured reference instant
+        emitted2.Sql.ShouldBe(emitted1.Sql);
+        emitted2.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(emitted1.Parameters.Select(p => (p.Name, p.Value)));
+    }
+
+    [Fact]
+    public async Task GivenALastUpdatedApComparatorQueryWithAnExplicitFixedTimeProvider_WhenCompiled_ThenAppliesWidenedSurrogateIdBoundsLowerThenUpperAndEmitsCompleteSql()
+    {
+        // Arrange -- Patient?_lastUpdated=ap2023-06-15T12:30:00Z, reference instant exactly one day
+        // later -- 1-day gap / 10 = 2h24m tolerance (the same scenario already pinned against
+        // ResourceColumnLoweringRuleTests' exact-instant :ap case). widened =
+        // [2023-06-15T10:06:00Z, 2023-06-15T14:54:00Z], each converted through the same
+        // ResourceSurrogateId formula (UTC ticks << 3) as every other _lastUpdated comparator, and
+        // compared lower bound then upper bound -- the opposite parameter order from date's :ap overlap
+        // above, because _lastUpdated targets one point column rather than a [Start, End] column pair.
+        var lastUpdatedParam = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var tree = new SearchParameterExpression(
+            lastUpdatedParam,
+            new SearchParameterPredicateExpression(lastUpdatedParam, SearchComparator.Ap, modifier: null, new DateTimeSearchValue(instant)));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2023, 6, 16, 12, 30, 0, TimeSpan.Zero));
+        var widenedStart = new DateTimeOffset(2023, 6, 15, 10, 6, 0, TimeSpan.Zero);
+        var widenedEnd = new DateTimeOffset(2023, 6, 15, 14, 54, 0, TimeSpan.Zero);
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- ResourceSource's own ResourceTypeId consumes @p0, so the outer predicate's widened
+        // lower bound is @p1 and its widened upper bound is @p2
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceSurrogateId >= @p1 AND ResourceSurrogateId <= @p2");
+
+        // Assert -- complete SQL golden
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.Resource\n" +
+            "    WHERE ResourceTypeId = @p0 AND IsHistory = 0 AND IsDeleted = 0\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
+            "WHERE (ResourceSurrogateId >= @p1 AND ResourceSurrogateId <= @p2)\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+
+        var expectedLowerSurrogateId = widenedStart.UtcDateTime.Ticks << 3;
+        var expectedUpperSurrogateId = widenedEnd.UtcDateTime.Ticks << 3;
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)(short)103), ("@p1", (object)expectedLowerSurrogateId), ("@p2", (object)expectedUpperSurrogateId)]);
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];

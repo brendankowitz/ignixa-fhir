@@ -60,6 +60,38 @@ internal static class SearchTraceFixtures
             null, null, timeProvider);
     }
 
+    /// <summary>Observation?date=ap2020-01-01T00:00:00Z -- a date :ap search, whose lowering actually
+    /// depends on the captured reference instant reaching the leaf context's approximation reference time
+    /// (unlike <see cref="TracePatientNameSmithWithTimeProviderAsync"/> above, whose plain string value never
+    /// reads it at all) -- proving the SearchCompiler boundary's single captured <c>GetUtcNow()</c> value is
+    /// what a :ap comparator actually consumes, not just that the call count is right for a query that
+    /// wouldn't notice either way. widened = [2019-12-31T21:36:00Z, 2020-01-01T02:24:00Z] for a reference
+    /// instant one day after the value (the same scenario already pinned against
+    /// EndToEndCompilationTests.GivenADateApComparatorQueryWithAnExplicitFixedTimeProvider... and
+    /// DateTimeLoweringRuleTests' "past instant" :ap case).</summary>
+    public static Task<SearchTrace> TraceObservationDateApWithTimeProviderAsync(TimeProvider? timeProvider)
+    {
+        var dateParam = new SearchParameterInfo("date", "date", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Observation-date"));
+        var value = new DateTimeSearchValue(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var predicate = new SearchParameterPredicateExpression(dateParam, SearchComparator.Ap, modifier: null, value)
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 22),
+        };
+        var expression = new SearchParameterExpression(dateParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Observation", Expression = expression },
+            [new ParameterTrace(0, "date", null, "ap2020-01-01T00:00:00Z", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[dateParam.Url!.ToString()] = 203;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        return SearchCompiler.CompileWithTimeProviderAsync(
+            "Observation", [new QueryParameter("date", "ap2020-01-01T00:00:00Z")], builder, resolver,
+            null, null, timeProvider);
+    }
+
     public static Task<SearchTrace> TracePatientNameSmithWithCancellationTokenAsync(CancellationToken cancellationToken)
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
