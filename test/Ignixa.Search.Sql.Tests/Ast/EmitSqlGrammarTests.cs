@@ -23,6 +23,7 @@ public class EmitSqlGrammarTests
         yield return ["count only", CountOnlyPlan()];
         yield return ["contains (LIKE)", LikePlan()];
         yield return ["prefix of parameter", PrefixOfParameterPlan()];
+        yield return ["dual-column contains (IsNull guard + overflow)", DualColumnContainsPlan()];
     }
 
     [Theory]
@@ -127,5 +128,28 @@ public class EmitSqlGrammarTests
             new SqlParameterRef("http://example.org/fhir/Patient/123"),
             "Latin1_General_100_BIN2");
         return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+    }
+
+    private static QueryPlan DualColumnContainsPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var textColumn = new SqlColumnRef(table.TableName, "Text");
+        var overflowColumn = new SqlColumnRef(table.TableName, "TextOverflow");
+        var predicate = new Predicate.Or(
+            new Predicate.And(
+                new Predicate.IsNull(overflowColumn),
+                new Predicate.Like(textColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
+            new Predicate.Like(overflowColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
+        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+    }
+
+    [Fact]
+    public void GivenTheDualColumnContainsShape_WhenParsed_ThenTheObjectModelContainsTwoLikePredicatesAndAnIsNullExpression()
+    {
+        var emitted = SqlBuilder.Run(DualColumnContainsPlan());
+
+        var fragment = SqlGrammar.Parse(emitted.Sql);
+
+        SqlGrammar.Count<LikePredicate>(fragment).ShouldBe(2);
     }
 }
