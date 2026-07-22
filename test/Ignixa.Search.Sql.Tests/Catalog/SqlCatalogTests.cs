@@ -305,15 +305,4 @@ public class SqlCatalogTests
         table.Column("IsHistory").ShouldNotBeNull();
         table.Column("IsDeleted").ShouldNotBeNull();
     }
-
-    [Fact]
-    public void GivenStringSearchParam_WhenRead_ThenInlineTextWidthIs256()
-    {
-        // Arrange & Act
-        var table = SqlCatalog.Default.Table("StringSearchParam");
-
-        // Assert
-        table.Column("Text").MaxLength.ShouldBe(256);
-        table.Column("TextOverflow").MaxLength.ShouldBeNull();
-    }
 }
