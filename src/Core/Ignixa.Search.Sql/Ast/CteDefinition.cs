@@ -16,6 +16,9 @@ namespace Ignixa.Search.Sql.Ast;
 /// <item><b>NotReferencedSource</b> — resources of a type that no reference row points at (the
 /// <c>_not-referenced</c> search): a dbo.Resource scan anti-joined to dbo.ReferenceSearchParam by
 /// reference-target identity.</item>
+/// <item><b>TableExistsPredicate</b> — a raw table row-existence check, scoped only by
+/// ResourceSurrogateId (via the outer join, not a WHERE clause of its own) plus an optional additional
+/// Predicate. Unlike ParamSource, carries no SearchParamId or ResourceTypeId.</item>
 /// </list>
 /// ParamSource carries ResourceTypeId because a SearchParamId is assigned per parameter-definition URL,
 /// not per resource type, so a shared definition (e.g. one spanning Patient and Practitioner) would
@@ -64,4 +67,12 @@ public abstract record CteDefinition
         short TargetResourceTypeId,
         short? SourceResourceTypeId,
         short? ReferenceSearchParamId) : CteDefinition;
+
+    /// <summary>
+    /// A raw table row-existence check, scoped only by ResourceSurrogateId (via the outer join, not a WHERE
+    /// clause of its own) plus an optional additional Predicate. Unlike ParamSource, carries no SearchParamId
+    /// or ResourceTypeId -- for checks that are genuinely table-wide, e.g. $everything's "does this resource
+    /// have ANY date-typed search-index row" (Predicate: null) or "...matching this date range" (Predicate: set).
+    /// </summary>
+    public sealed record TableExistsPredicate(TableDescriptor Table, Predicate? Predicate = null) : CteDefinition;
 }

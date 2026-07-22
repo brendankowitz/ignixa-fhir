@@ -266,6 +266,7 @@ public static class SqlBuilder
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters),
+        CteDefinition.TableExistsPredicate tep => EmitTableExistsPredicate(tep, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -596,6 +597,17 @@ public static class SqlBuilder
                $"        FROM dbo.ReferenceSearchParam rsp\n" +
                $"        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
                $"          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId{innerFilters})";
+    }
+
+    /// <summary>Renders a TableExistsPredicate: distinct (type, surrogate id) rows from one raw table, with an optional additional predicate and no SearchParamId/ResourceTypeId filter.</summary>
+    private static string EmitTableExistsPredicate(CteDefinition.TableExistsPredicate tep, List<EmittedSqlParameter> parameters)
+    {
+        var whereClause = tep.Predicate is not null
+            ? $"\n    WHERE {EmitPredicate(tep.Predicate, parameters)}"
+            : string.Empty;
+        return
+            $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            $"    FROM {tep.Table.SchemaName}.{tep.Table.TableName}{whereClause}";
     }
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>

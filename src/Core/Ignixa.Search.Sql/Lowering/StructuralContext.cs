@@ -208,6 +208,12 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
+    public CteRef Except(CteRef left, CteRef right)
+    {
+        _ctes.Add(new CteDefinition.Except(left, right));
+        return new CteRef(_ctes.Count - 1);
+    }
+
     public CteRef LowerResourceSource(string? resourceType) => LowerResourceSourceWithPredicate(resourceType, predicate: null);
 
     public CteRef LowerResourceSourceWithPredicate(string? resourceType, Predicate? predicate)
