@@ -37,7 +37,13 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     private static bool UseSqlServer =>
         Environment.GetEnvironmentVariable("TEST_USE_FILESYSTEM")?.Equals("true", StringComparison.OrdinalIgnoreCase) != true;
 
-    private static string GetSqlConnectionString()
+    private static string GetSqlConnectionString(string? databaseNameOverride)
+    {
+        var connStr = ResolveBaseConnectionString();
+        return databaseNameOverride is null ? connStr : WithDatabaseName(connStr, databaseNameOverride);
+    }
+
+    private static string ResolveBaseConnectionString()
     {
         var connStr = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
         if (!string.IsNullOrEmpty(connStr))
@@ -56,14 +62,31 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         return "server=(local);Initial Catalog=FHIR_R4;Integrated Security=true;TrustServerCertificate=true";
     }
 
-    public IgnixaApiFixture()
+    // Rewrites the Database=/Initial Catalog= segment so a fixture can run against its own
+    // database, isolating a resource-heavy suite (e.g. the conformance run) from the shared
+    // E2E database that count-sensitive search tests depend on.
+    private static string WithDatabaseName(string connectionString, string databaseName) =>
+        Regex.Replace(
+            connectionString,
+            @"(Database|Initial\s+Catalog)=[^;]+",
+            $"Database={databaseName}",
+            RegexOptions.IgnoreCase);
+
+    public IgnixaApiFixture() : this(null)
+    {
+    }
+
+    // databaseNameOverride lets a derived fixture pin its own database; null keeps the
+    // shared default. Passed as a constructor argument rather than a virtual member so no
+    // virtual call happens during construction.
+    protected IgnixaApiFixture(string? databaseNameOverride)
     {
         // Create a unique test data directory for this test run
         _testDataPath = Path.Combine(Path.GetTempPath(), "ignixa-e2e-tests", Guid.NewGuid().ToString());
         Directory.CreateDirectory(_testDataPath);
 
         // Cache SQL connection string for consistent use throughout fixture lifecycle
-        _sqlConnectionString = GetSqlConnectionString();
+        _sqlConnectionString = GetSqlConnectionString(databaseNameOverride);
     }
 
     /// <summary>

@@ -12,7 +12,7 @@ using Shouldly;
 
 namespace Ignixa.Api.E2ETests.Conformance;
 
-[Collection(E2ETestCollection.Name)]
+[Collection(ConformanceTestCollection.Name)]
 public sealed class TestScriptConformanceReportTests
 {
     private const string EnabledEnvironmentVariable = "IGNIXA_RUN_CONFORMANCE";
@@ -23,9 +23,9 @@ public sealed class TestScriptConformanceReportTests
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    private readonly IgnixaApiFixture _fixture;
+    private readonly ConformanceApiFixture _fixture;
 
-    public TestScriptConformanceReportTests(IgnixaApiFixture fixture)
+    public TestScriptConformanceReportTests(ConformanceApiFixture fixture)
     {
         _fixture = fixture;
     }
