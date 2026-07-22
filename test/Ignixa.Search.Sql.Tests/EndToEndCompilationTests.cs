@@ -2465,6 +2465,292 @@ public class EndToEndCompilationTests
             [("@p0", (object)(short)103), ("@p1", (object)expectedLowerSurrogateId), ("@p2", (object)expectedUpperSurrogateId)]);
     }
 
+    [Fact]
+    public async Task GivenABareStatusPredicateWithNoResourceType_WhenCompiledEndToEnd_ThenTheParamSourceIsTypelessAndTheFullPipelineEmitsValidSql()
+    {
+        // Arrange -- GET /?status=final (system-level search: no resource type anywhere in the request).
+        // Task 4's own SystemLevelSearchTests.cs proves this shape at the Lower-only level with a
+        // hand-built SymbolTable; this is the full Resolve->Lower->Emit combined proof design doc
+        // Section 4 asks for.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- one ParamSource CTE with an empty ResourceTypeId slot (Explain()'s null-interpolation
+        // rendering), and the real emitted SQL never filters on ResourceTypeId at all for this CTE.
+        plan.Explain().ShouldBe("root = TokenSearchParam[,202]  Code = @p0");
+        emitted.Sql.ShouldNotContain("ResourceTypeId =");
+        emitted.Sql.ShouldNotContain("final");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"final")]);
+    }
+
+    [Fact]
+    public async Task GivenABareResourceColumnOnlySystemSearch_WhenCompiledEndToEnd_ThenTheOuterFilterAppliesOverATypelessResourceSource()
+    {
+        // Arrange -- GET /?_lastUpdated=gt2020-01-01 (system-level, bare resource-column-only query: no
+        // CTE-lowerable remainder, so Lower falls through to a typeless ResourceSource base case).
+        var lastUpdatedParam = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var predicate = new SearchParameterPredicateExpression(lastUpdatedParam, SearchComparator.Gt, modifier: null, new DateTimeSearchValue(DateTime.Parse("2020-01-01")));
+        var tree = new SearchParameterExpression(lastUpdatedParam, predicate);
+
+        var resolver = new FakeSymbolResolver();
+
+        // Act
+        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- a KNOWN, real divergence, confirmed by running both sides, not assumed: Explain()'s
+        // shared parameter-ordinal counter increments once for ResourceSource's own ResourceTypeId
+        // unconditionally (PlanExplainer.PrintResourceSource), matching the non-null case elsewhere in
+        // this file (e.g. GivenAPatientLastUpdatedExactInstantQuery above, where EmitResourceSource
+        // really does bind a ResourceTypeId parameter). But for a NULL ResourceTypeId,
+        // EmitResourceSource's own type filter is skipped entirely -- no EmitParam call -- so the real
+        // emitted SQL never consumes that ordinal. PlanExplainer does not special-case the null
+        // ResourceTypeId case, so Explain() prints "@p1" here while the real bound parameter is "@p0".
+        // This is a genuine (if narrow) latent bug in Explain()'s ordinal accounting for a system-level
+        // ResourceSource, first surfaced by this test -- fixing PlanExplainer is out of scope for this
+        // test-only task. Pinning BOTH the current Explain() text and the real emitted parameter name
+        // documents the divergence rather than concealing it behind a loose substring check.
+        plan.Explain().ShouldBe("root = ResourceSource[] WHERE ResourceSurrogateId > @p1");
+        emitted.Sql.ShouldNotContain("WHERE ResourceTypeId =");
+        emitted.Sql.ShouldContain("WHERE ResourceSurrogateId > @p0");
+        emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0"]);
+    }
+
+    [Fact]
+    public async Task GivenAStatusPredicateWithNoResourceTypeSortedByName_WhenCompiledEndToEnd_ThenSortComposesNormallyThroughTheFullPipeline()
+    {
+        // Arrange -- GET /?status=final&_sort=name (system-level search composed with _sort -- design
+        // doc Section 4's "sort composes normally" requirement). Task 4's own test file proves the
+        // Lower-only version of this; this is the full Resolve->Lower->Emit combined proof.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 77;
+
+        var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
+
+        // Act
+        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: sort, sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true, top: 10).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- typeless ParamSource root plus a working sort join, all the way to real SQL.
+        plan.Explain().ShouldBe(
+            "root = TokenSearchParam[,202]  Code = @p0 top 10\n" +
+            "sort = SortSpec([String:77 ASC], Valued)");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenAMultiValueTypeFilterComposedWithAnOrdinaryPredicateAndNoResourceType_WhenCompiledEndToEnd_ThenBothMechanismsComposeCleanly()
+    {
+        // Arrange -- GET /?_type=Patient,Observation&status=final -- Task 5's multi-value _type
+        // (a comma-separated Or-of-resource-column-equalities, extracted into the outer WHERE) composed
+        // with an ordinary typed predicate under system-level search (no single target resource type).
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var typeExpr = new SearchParameterExpression(
+            typeParam,
+            new MultiaryExpression(MultiaryOperator.Or,
+            [
+                new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Patient", text: null)),
+                new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Observation", text: null)),
+            ]));
+        var statusPredicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [typeExpr, statusPredicate]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- status becomes the typeless ParamSource root; _type's Or-of-equals becomes the outer
+        // WHERE. Neither ParamSource's own (absent) type filter nor _type's resolved values consume an
+        // ordinal ahead of where the real SQL binds them (unlike the ResourceSource case above, ParamSource
+        // never binds its type filter as a parameter at all -- see EmitParamSource), so Explain() and the
+        // real emitted SQL's @pN numbering agree here.
+        plan.Explain().ShouldBe("root = TokenSearchParam[,202]  Code = @p0 WHERE ResourceTypeId = @p1 OR ResourceTypeId = @p2");
+        emitted.Sql.ShouldContain("WHERE (ResourceTypeId = @p1 OR ResourceTypeId = @p2)");
+        emitted.Sql.ShouldNotContain("final");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
+            [("@p0", (object)"final"), ("@p1", (object)(short)103), ("@p2", (object)(short)104)]);
+    }
+
+    [Fact]
+    public async Task GivenARevincludeCombinedWithAnOrdinaryPredicateAndNoResourceType_WhenCompiledEndToEnd_ThenTheCompositionLimitGuardThrows()
+    {
+        // Arrange -- GET /?status=final&_revinclude=Observation:subject under system-level search (no
+        // single target resource type). _include/_revinclude never combine with a null match type --
+        // BuildIncludeStages needs a concrete resource type to compute SeedFromMatch -- confirmed against
+        // Task 4's own Lower-only regression (SystemLevelSearchTests.GivenAnIncludeWithNoResourceType...);
+        // this is the same guard proven through the full Resolve->Lower pipeline.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"), targetResourceTypes: ["Patient", "Group"]);
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
+        var revInclude = new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", null, wildCard: false, reversed: true, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 77;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+
+        // Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(predicate, symbols, targetResourceType: null, includes: [], revIncludes: [revInclude], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
+            .Message.ShouldContain("SeedFromMatch");
+    }
+
+    [Fact]
+    public async Task GivenAnOrdinaryCompositeSearchParameterWithNoResourceType_WhenCompiledEndToEnd_ThenCompositeDispatchSucceeds()
+    {
+        // Arrange -- GET /?code-value-concept=8480-6$high under system-level search. Task 4 widened BOTH
+        // the leaf AND composite dispatchers for a nullable resourceTypeId, but no end-to-end test before
+        // this one exercised the composite success path specifically under systemLevelSearch: true (a
+        // gap this task's brief calls out explicitly). Same composite shape as
+        // GivenAnObservationTokenTokenCompositeQuery_WhenCompiled above, but with no target resource type.
+        var compositeParam = new SearchParameterInfo(
+            "code-value-concept", "code-value-concept", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code-value-concept"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var valueParam = new SearchParameterInfo("value-concept", "value-concept", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
+                new CompositeComponentExpression(valueParam, 1,
+                    new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "high", text: null))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- a typeless TokenTokenCompositeSearchParam CTE, no throw, valid SQL.
+        plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[,301]  Code1 = @p0 AND Code2 = @p1");
+        emitted.Sql.ShouldNotContain("ResourceTypeId =");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Sql.ShouldNotContain("high");
+    }
+
+    [Fact]
+    public async Task GivenANotModifiedPredicateWithNoResourceType_WhenCompiledEndToEnd_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- GET /?name:not=Smith under system-level search (no single target resource type).
+        // Task 4's LowerNot has an explicit `if (resourceType is null) throw` guard at the top of the
+        // method, but no end-to-end test pinned this behavior at the combined-proof level before now --
+        // a gap this task's brief calls out explicitly. Same single-value :not shape as
+        // GivenAPatientNameNotQuery above, but with no target resource type.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var tree = new SearchParameterExpression(
+            nameParam,
+            new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new StringSearchValue("Smith")));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+
+        // Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
+            .Message.ShouldContain("not supported in system-level search");
+    }
+
+    [Fact]
+    public async Task GivenAMissingTruePredicateWithNoResourceType_WhenCompiledEndToEnd_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- GET /?name:missing=true under system-level search (no single target resource type).
+        // :missing=true reaches the exact same LowerNot guard as :not (it negates a presence set), but
+        // through LowerMissing rather than LowerSearchParameter's NotExpression/`:not`-modifier paths --
+        // a distinct entry route this task's brief calls out by name alongside :not.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(missingName, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+
+        // Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(missingName, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
+            .Message.ShouldContain("not supported in system-level search");
+    }
+
+    [Fact]
+    public async Task GivenAWildcardCompartmentSearchSortedByNameThroughTheFullPipeline_WhenCompiledEndToEnd_ThenStillThrowsNotSupportedException()
+    {
+        // Arrange -- GET /Patient/123/* ?_sort=name -- the wildcard-compartment regression this task's
+        // brief asks for: proving system-level search's relaxation of the null-resourceType guards has
+        // NOT leaked into a genuine wildcard compartment search (systemLevelSearch defaults false, a
+        // DIFFERENT null-resourceType case), at the full Resolve->Lower level rather than Task 4's own
+        // Lower-only regression (SystemLevelSearchTests.GivenAWildcardCompartmentSearchWithASortKey...,
+        // which hand-builds its SymbolTable instead of running Resolve). The successful wildcard
+        // compartment flow itself is unaffected too -- proven by GivenAWildcardPatientCompartmentSearch
+        // above, unchanged by this task and still passing.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Observation-name"));
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
+
+        // Act -- note: NO systemLevelSearch argument to Lower.Run (defaults false), so this stays a
+        // genuine wildcard compartment search, not a system-level search.
+        var symbols = (await Resolve.RunAsync(
+            compartment, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None,
+            compartmentManager, searchParamManager)).Symbols;
+
+        // Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: sort, sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("wildcard compartment search");
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
