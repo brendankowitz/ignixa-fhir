@@ -7,8 +7,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// <summary>
 /// Builds the comparator-dependent predicate shared by Number and Quantity leaf lowering — both store
 /// LowValue/HighValue with identical range semantics. Eq/Ne widen the value by the FHIR implied-decimal-
-/// precision tolerance before comparing. :ap throws: it needs an additional relative tolerance this pure
-/// function does not have.
+/// precision tolerance before comparing. :ap widens by <c>max(precision_modifier, abs(value) × 0.10)</c>.
 /// </summary>
 internal static class NumericRangeComparison
 {
@@ -20,9 +19,7 @@ internal static class NumericRangeComparison
         SearchComparator.Gt or SearchComparator.Sa => new Predicate.GreaterThan(lowColumn, context.Parameter(value)),
         SearchComparator.Le => new Predicate.LessThanOrEqual(highColumn, context.Parameter(value)),
         SearchComparator.Lt or SearchComparator.Eb => new Predicate.LessThan(highColumn, context.Parameter(value)),
-        SearchComparator.Ap => throw new NotSupportedException(
-            "The :ap (approximately) comparator requires an additional relative tolerance this pure lowering " +
-            "function doesn't have -- not implemented. Would need Lower.Run to accept an explicit widening policy."),
+        SearchComparator.Ap => BuildApproximate(context, lowColumn, highColumn, value),
         _ => throw new NotSupportedException($"Unknown SearchComparator '{comparator}'."),
     };
 
@@ -44,5 +41,17 @@ internal static class NumericRangeComparison
         return new Predicate.Or(
             new Predicate.LessThan(highColumn, lowerBound),
             new Predicate.GreaterThan(lowColumn, upperBound));
+    }
+
+    private static Predicate BuildApproximate(
+        LeafContext context,
+        SqlColumnRef lowColumn,
+        SqlColumnRef highColumn,
+        decimal value)
+    {
+        var tolerance = Math.Max(value.GetPrescisionModifier(), Math.Abs(value) * 0.10m);
+        return new Predicate.And(
+            new Predicate.GreaterThanOrEqual(lowColumn, context.Parameter(value - tolerance)),
+            new Predicate.LessThanOrEqual(highColumn, context.Parameter(value + tolerance)));
     }
 }

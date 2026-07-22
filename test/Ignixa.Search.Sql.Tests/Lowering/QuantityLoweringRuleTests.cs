@@ -149,4 +149,62 @@ public class QuantityLoweringRuleTests
         // Assert
         cte.Predicate.ShouldBeOfType<Predicate.False>();
     }
+
+    // :ap quantity — unqualified: same numeric approximation range as number :ap
+    // 5.4m: tol=0.54 → LowValue >= 4.86, HighValue <= 5.94
+    [Fact]
+    public void GivenApComparator_WhenLoweredUnqualified_ThenBuildsApproximateNumericRange()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Ap, modifier: null, new QuantitySearchValue(system: null!, code: null!, 5.4m));
+
+        // Act
+        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
+
+        // Assert
+        cte.SearchParamId.ShouldBe((short)202);
+        cte.ResourceTypeId.ShouldBe((short)103);
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(4.86m);
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(5.94m);
+    }
+
+    // :ap quantity — fully qualified: numeric approximation with system+code identity still conjoins
+    // in deterministic order: And(And(And(numeric_ap), Equal(SystemId)), Equal(QuantityCodeId))
+    [Fact]
+    public void GivenApComparator_WhenLoweredFullyQualified_ThenConjoinsApproximateRangeWithSystemAndCodeInDeterministicOrder()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var systemIds = new Dictionary<string, int?> { ["http://unitsofmeasure.org"] = 42 };
+        var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Ap, modifier: null, new QuantitySearchValue("http://unitsofmeasure.org", "mg", 5.4m));
+
+        // Act
+        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202, systemIds, quantityCodeIds), 103);
+
+        // Assert — And(And(And(LowValue >= 4.86, HighValue <= 5.94), Equal(SystemId, 42)), Equal(QuantityCodeId, 77))
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var middle = outer.Left.ShouldBeOfType<Predicate.And>();
+        var numeric = middle.Left.ShouldBeOfType<Predicate.And>();
+        var ge = numeric.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(4.86m);
+        var le = numeric.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(5.94m);
+        var sysEqual = middle.Right.ShouldBeOfType<Predicate.Equal>();
+        sysEqual.Column.Column.ShouldBe("SystemId");
+        sysEqual.Value.Value.ShouldBe(42);
+        var codeEqual = outer.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("QuantityCodeId");
+        codeEqual.Value.Value.ShouldBe(77);
+    }
 }

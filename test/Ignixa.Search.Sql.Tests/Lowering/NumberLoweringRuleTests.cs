@@ -166,15 +166,90 @@ public class NumberLoweringRuleTests
         lt.Value.Value.ShouldBe(5.4m);
     }
 
+    // :ap — numeric approximation: tolerance = max(precision_modifier, abs(value) * 0.10)
+    // 5.4m: pm=0.05, rel=0.54, tol=0.54 → [4.86, 5.94]
     [Fact]
-    public void GivenApComparator_WhenLowered_ThenThrows()
+    public void GivenApComparator_WhenLoweredWith5Point4_ThenBuildsApproximateRangeLowGe4Point86HighLe5Point94()
     {
         // Arrange
         var parameter = Parameter();
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(5.4m));
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103));
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        cte.SearchParamId.ShouldBe((short)201);
+        cte.ResourceTypeId.ShouldBe((short)103);
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(4.86m);
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(5.94m);
+    }
+
+    // -50m: pm=0.5, rel=5.0, tol=5.0 → [-55.0, -45.0]
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithNegative50_ThenBuildsApproximateRangeLowGeMinus55HighLeMinus45()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(-50m));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(-55.0m);
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(-45.0m);
+    }
+
+    // 0m: pm=0.5, rel=0.0, tol=0.5 → [-0.5, 0.5]
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithZero_ThenBuildsApproximateRangeLowGeMinus0Point5HighLe0Point5()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(0m));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(-0.5m);
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(0.5m);
+    }
+
+    // 0.001m: pm=0.0005, rel=0.0001, tol=0.0005 → [0.0005, 0.0015]
+    [Fact]
+    public void GivenApComparator_WhenLoweredWith0Point001_ThenBuildsApproximateRangeLowGe0Point0005HighLe0Point0015()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(0.001m));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(0.0005m);
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(0.0015m);
     }
 }
