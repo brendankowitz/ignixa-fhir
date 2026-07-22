@@ -13,10 +13,12 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class ResourceColumnLoweringRuleTests
 {
-    private static LeafContext ContextResolving(string resourceType, short resourceTypeId)
-        => new(new SymbolTable(
-            new Dictionary<string, short>(),
-            new Dictionary<string, short> { [resourceType] = resourceTypeId }));
+    private static LeafContext ContextResolving(string resourceType, short resourceTypeId, DateTimeOffset? approximationReferenceTime = null)
+        => new(
+            new SymbolTable(
+                new Dictionary<string, short>(),
+                new Dictionary<string, short> { [resourceType] = resourceTypeId }),
+            approximationReferenceTime);
 
     private static SearchParameterInfo IdParameter()
         => new("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
@@ -124,6 +126,85 @@ public class ResourceColumnLoweringRuleTests
         // bug class already found and fixed twice this increment for _id/_type, just for a different
         // parameter and modifier.
         var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Missing), new DateTimeSearchValue(DateTimeOffset.UtcNow));
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    // :ap — _lastUpdated is a single point column (ResourceSurrogateId), unlike date's [Start, End]
+    // column pair, so the widened [Start, End] interval from ApproximateDateRange.Widen becomes a
+    // between-style AND against that one column: ResourceSurrogateId >= lower AND <= upper, each bound
+    // converted through the same ToSurrogateId truncation as the exact-instant Eq/Ge/etc. case above.
+    [Fact]
+    public void GivenAnApComparatorExactInstantLastUpdatedParameter_WhenTried_ThenComparesWidenedRangeAgainstResourceSurrogateId()
+    {
+        // Arrange: instant is exactly 1 day before the reference instant -- 1-day gap / 10 = 2h24m
+        // tolerance, so widened = [instant - 2h24m, instant + 2h24m]. Both land on whole seconds, so
+        // ToSurrogateId's millisecond truncation is a no-op here (covered separately below).
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var referenceTime = new DateTimeOffset(2023, 6, 16, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
+        var widenedStart = new DateTimeOffset(2023, 6, 15, 10, 6, 0, TimeSpan.Zero);
+        var widenedEnd = new DateTimeOffset(2023, 6, 15, 14, 54, 0, TimeSpan.Zero);
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103, referenceTime));
+
+        var and = result.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        ge.Column.Column.ShouldBe("ResourceSurrogateId");
+        le.Column.Column.ShouldBe("ResourceSurrogateId");
+        ge.Value.Value.ShouldBe(widenedStart.UtcTicks << 3);
+        le.Value.Value.ShouldBe(widenedEnd.UtcTicks << 3);
+    }
+
+    [Fact]
+    public void GivenAnApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenComparesWidenedRangeAgainstResourceSurrogateId()
+    {
+        // Arrange: "2023-06" resolves to [Jun 1 00:00:00, Jun 30 23:59:59.9999999] -- reference is
+        // exactly 1 tick after that interval's End, so tolerance = (End - Start ~ 30 days) / 2 distance
+        // / 10 = 36h. widenedEnd's sub-millisecond remainder (.9999999s) is truncated away by
+        // ToSurrogateId, landing on .999s rather than .9999999s -- expressed directly below via the
+        // millisecond-precision DateTimeOffset constructor instead of replicating the truncation math.
+        var value = DateTimeSearchValue.Parse("2023-06");
+        var referenceTime = new DateTimeOffset(2023, 7, 1, 0, 0, 0, TimeSpan.Zero);
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
+        var widenedStart = new DateTimeOffset(2023, 5, 30, 12, 0, 0, TimeSpan.Zero);
+        var truncatedWidenedEnd = new DateTimeOffset(2023, 7, 2, 11, 59, 59, 999, TimeSpan.Zero);
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103, referenceTime));
+
+        var and = result.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        ge.Column.Column.ShouldBe("ResourceSurrogateId");
+        le.Column.Column.ShouldBe("ResourceSurrogateId");
+        ge.Value.Value.ShouldBe(widenedStart.UtcTicks << 3);
+        le.Value.Value.ShouldBe(truncatedWidenedEnd.UtcTicks << 3);
+    }
+
+    [Fact]
+    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingLowerRun()
+    {
+        // Arrange -- ApproximateDateRange.Widen (the shared helper Task 3 already covers directly)
+        // requires an explicit reference instant; this proves this rule's :ap call site surfaces that
+        // same failure rather than swallowing or rewording it.
+        var value = new DateTimeSearchValue(new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero));
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
+
+        var exception = Should.Throw<InvalidOperationException>(
+            () => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+        exception.Message.ShouldContain("Lower.Run");
+    }
+
+    [Fact]
+    public void GivenANonApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenStillThrows()
+    {
+        // Arrange -- proves the partial-precision guard remains in force for every comparator except
+        // :ap (e.g. :ge here, distinct from the :eq case already covered above), so :ap's new
+        // Widen-based handling can't have accidentally loosened it for the others.
+        var value = DateTimeSearchValue.Parse("2023");
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, modifier: null, value);
 
         Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
     }

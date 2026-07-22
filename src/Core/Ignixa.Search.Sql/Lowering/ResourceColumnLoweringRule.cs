@@ -92,6 +92,22 @@ public static class ResourceColumnLoweringRule
         }
 
         var value = (DateTimeSearchValue)predicate.Value;
+        var table = SqlCatalog.Default.Table("Resource");
+        var column = new SqlColumnRef(table.TableName, "ResourceSurrogateId");
+
+        if (predicate.Comparator == SearchComparator.Ap)
+        {
+            // :ap is the one comparator that has a defined meaning for a partial-precision value --
+            // ApproximateDateRange.Widen (the same pure helper the date leaf/composite lowering uses)
+            // widens [Start, End] by the FHIR-recommended tolerance around context's fixed reference
+            // instant, and both widened endpoints are compared against the single ResourceSurrogateId
+            // point column via the same ToSurrogateId conversion the other comparators use below.
+            var (widenedStart, widenedEnd) = ApproximateDateRange.Widen(value, context.ApproximationReferenceTime);
+            return new Predicate.And(
+                new Predicate.GreaterThanOrEqual(column, context.Parameter(ToSurrogateId(widenedStart))),
+                new Predicate.LessThanOrEqual(column, context.Parameter(ToSurrogateId(widenedEnd))));
+        }
+
         if (value.Start != value.End)
         {
             throw new NotSupportedException(
@@ -102,8 +118,6 @@ public static class ResourceColumnLoweringRule
         }
 
         var targetId = ToSurrogateId(value.Start);
-        var table = SqlCatalog.Default.Table("Resource");
-        var column = new SqlColumnRef(table.TableName, "ResourceSurrogateId");
         var targetParam = context.Parameter(targetId);
 
         return predicate.Comparator switch
@@ -114,9 +128,6 @@ public static class ResourceColumnLoweringRule
             SearchComparator.Ge => new Predicate.GreaterThanOrEqual(column, targetParam),
             SearchComparator.Lt or SearchComparator.Eb => new Predicate.LessThan(column, targetParam),
             SearchComparator.Le => new Predicate.LessThanOrEqual(column, targetParam),
-            SearchComparator.Ap => throw new NotSupportedException(
-                "_lastUpdated's :ap comparator requires DateTimeOffset.UtcNow at lowering time, which conflicts " +
-                "with Lower's purity invariant -- not implemented."),
             _ => throw new NotSupportedException($"Unknown SearchComparator '{predicate.Comparator}'."),
         };
     }
