@@ -213,8 +213,9 @@ These intentionally **throw** rather than emit a subtly-wrong query:
 system-qualified token or quantity carries a `system` or quantity `code` that has no database row,
 `Resolve` stores the known-miss, `Lower` lowers that individual predicate to `Predicate.False`, and
 `Emit` renders `1 = 0` for that branch in the WHERE clause. Normal Boolean composition still applies
-on the surrounding query — an AND with a false branch produces zero rows for that branch, but an OR,
-negation, or independent clause is unaffected. Resolver I/O failures still propagate unchanged —
+on the surrounding query: AND with the false predicate makes that conjunction empty; OR may still
+return matches from its other branches; negating the false predicate yields its complement (the full
+target-resource set for that predicate's scope). Resolver I/O failures still propagate unchanged —
 only a confirmed "not found" result produces the `1 = 0` path.
 
 ## Design principles
