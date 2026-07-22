@@ -209,12 +209,13 @@ These intentionally **throw** rather than emit a subtly-wrong query:
 - String `:contains` / exactly-inline-width `:exact` on values that overflow the inline column — the IR
   can't yet search both the inline and overflow columns at once.
 
-**Unknown terminology values compile to an empty match, not a resolution error.** When a
+**Unknown terminology values lower to `Predicate.False`, not a resolution error.** When a
 system-qualified token or quantity carries a `system` or quantity `code` that has no database row,
-`Resolve` stores the known-miss, `Lower` lowers it to an explicit false predicate, and `Emit` renders
-`1 = 0` in the WHERE clause. The resulting query returns zero rows rather than throwing an exception
-or silently widening the match. Resolver I/O failures still propagate unchanged — only a confirmed
-"not found" result produces the empty-match path.
+`Resolve` stores the known-miss, `Lower` lowers that individual predicate to `Predicate.False`, and
+`Emit` renders `1 = 0` for that branch in the WHERE clause. Normal Boolean composition still applies
+on the surrounding query — an AND with a false branch produces zero rows for that branch, but an OR,
+negation, or independent clause is unaffected. Resolver I/O failures still propagate unchanged —
+only a confirmed "not found" result produces the `1 = 0` path.
 
 ## Design principles
 
