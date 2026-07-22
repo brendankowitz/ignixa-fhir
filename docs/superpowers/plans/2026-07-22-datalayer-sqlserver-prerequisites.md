@@ -39,7 +39,7 @@
 **Files:**
 - Modify: `src/Application/Ignixa.Domain/Abstractions/IFhirRepository.cs` (all 12 members)
 - Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerFhirRepository.cs` (21 occurrences: lines 94, 159, 229, 338, 345, 354, 461, 495, 535, 573, 610, 721, 768, 820, 849, 934, 997, 1010, 1038, 1056, 1068)
-- Modify: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/SqlEntityFrameworkRepository.cs` (18 occurrences: lines 68, 131, 210, 320, 341, 635, 654, 690, 726, 760, 794, 826, 853, 937, 993, 1039, 1108 — note: 12 implement `IFhirRepository`, the remaining 6 are private helpers using the same abbreviated name, rename all for consistency)
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/SqlEntityFrameworkRepository.cs` (17 occurrences: lines 68, 131, 210, 320, 341, 635, 654, 690, 726, 760, 794, 826, 853, 937, 993, 1039, 1108 — corrected from an earlier "18" count; 12 implement `IFhirRepository`, the remaining 5 (690, 726, 853, 1039, 1108) are private helpers using the same abbreviated name, rename all for consistency)
 - Modify: `src/DataLayer/Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs` (20 occurrences: lines 64, 115, 197, 284, 313, 348, 355, 390, 397, 427, 491, 635, 692, 749, 830, 902, 979, 1095, 1130, 1139 — note the real path has a nested `FileSystem/FileSystem/` subfolder, not directly under the project root)
 - Modify: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Differential/ComprehensiveWorkflowDifferentialTests.cs:55`
 
@@ -49,16 +49,16 @@
 
 - [ ] **Step 1: Confirm the exhaustive site list before editing**
 
-Run these greps and confirm the counts match this task's file list exactly (21/18/20 occurrences respectively, 1 test call site) before making any edit — if the counts differ from what's listed above, STOP and report the discrepancy rather than proceeding on a stale list (code may have shifted since this plan was written):
+Run these greps and confirm the counts match this task's file list exactly (21/17/20 occurrences respectively, 1 test call site) before making any edit — if the counts differ from what's listed above, STOP and report the discrepancy rather than proceeding on a stale list (code may have shifted since this plan was written):
 
 ```bash
 grep -n "CancellationToken ct" src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerFhirRepository.cs
 grep -n "CancellationToken ct" src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/SqlEntityFrameworkRepository.cs
 grep -n "CancellationToken ct" src/DataLayer/Ignixa.DataLayer.FileSystem/FileSystem/FileBasedFhirRepository.cs
-grep -rn "ct: " src/
+grep -rn --include=*.cs "\bct: " src/
 ```
 
-The last command (`ct: ` production-wide grep) should return zero hits — confirmed during planning that no production (non-test) call site uses the named argument `ct:`. If it returns any hit, investigate before proceeding — it means a call site this plan didn't account for exists.
+The last command (a word-boundary-anchored `ct: ` search, restricted to `.cs` files — a plain `grep -rn "ct: " src/` is NOT safe to use here, it matches binary build output and comment text ending in "...ct: ", producing dozens of false hits) should return zero hits — confirmed during planning that no production (non-test) call site uses the named argument `ct:`. If it returns any hit, investigate before proceeding — it means a call site this plan didn't account for exists.
 
 - [ ] **Step 2: Rename `IFhirRepository`'s 12 members**
 
@@ -335,11 +335,13 @@ Add `using Ignixa.DataLayer.SqlServer;` to this file's usings if not already pre
 
 `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Fixtures/TestTenantDatabase.cs`'s `CreateSqlServerFhirRepositoryAsync` (~lines 125-142) does its own separate inline construction of the same 5 objects, and was found during planning to already call only `PreloadResourceTypesAsync` — NOT `PreloadSearchParamsAsync` — an existing, pre-existing divergence from production, unrelated to this task. **Do not modify this file in this task.** Leave it as its own independent construction: migrating it to call `SqlServerRepositoryFactory` would either (a) preserve its existing missing-preload divergence through an extra layer of indirection for no behavioral gain, or (b) silently add the missing preload as a side effect, which is a real behavior change to a widely-used test fixture that needs its own justification and review, not something to bundle into a "pure relocation" task. This is a deliberate scope boundary, not an oversight — if a future task wants to reconcile the fixture with production behavior, it should do so explicitly and separately.
 
-- [ ] **Step 5: Build and run the full integration suite**
+- [ ] **Step 5: Build, then run BOTH the integration suite AND an E2E smoke test that actually exercises `CreateServiceFactory`**
 
 Run: `dotnet build All.sln` — expect 0 warnings, 0 errors.
-Run: `dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj`
-Expected: same pass count as before this task — this is the regression proof for a pure relocation (the test suite doesn't go through `SqlEntityFrameworkRepositoryFactory` at all per Step 4's decision, so this mainly proves the new factory compiles and nothing else broke; if there's a test that DOES exercise `SqlEntityFrameworkRepositoryFactory.CreateServiceFactory` directly, find and run it specifically too).
+
+Run: `dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj` — expect the same pass count as before this task. **This alone is not sufficient regression proof**: per Step 4's decision, `Ignixa.DataLayer.SqlServer.IntegrationTests` never goes through `SqlEntityFrameworkRepositoryFactory.CreateServiceFactory` at all (`TestTenantDatabase.cs` does its own separate inline construction) — this run only proves the new `SqlServerRepositoryFactory` compiles and works in isolation, not that the relocated call site in `CreateServiceFactory` itself still works.
+
+The real regression proof is `Ignixa.Api.E2ETests`, whose fixture (`test/Ignixa.Api.E2ETests/_Infrastructure/IgnixaApiFixture.cs`) documents `CreateServiceFactory` running at host startup for every SqlServer-storage tenant. Run at minimum a small, fast subset of that suite against a real SQL Server instance to confirm host startup and a basic read/write still succeed through the relocated construction path (e.g. `dotnet test test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj --filter "FullyQualifiedName~SortTests"` — a small, fast, already-known-working test class from this session's prior work, sufficient as a startup-plus-basic-round-trip smoke test; unset `Platform`/`__DOTNET_PREFERRED_BITNESS`/`__DOTNET_ADD_32BIT` first, and set `TEST_SQL_CONNECTION_STRING`/`SqlServer__AutomaticSchemaDeploymentEnabled=true` per this repo's established E2E test environment requirements). If this smoke run fails, the relocation broke something the integration suite alone could not have caught — do not skip this step to save time.
 
 - [ ] **Step 6: Commit**
 
@@ -466,9 +468,12 @@ public class SqlServerHistoryQueryExecutorTests : IAsyncLifetime
         // creating a resource with multiple versions (read that file's Arrange section and reuse
         // its exact real helper calls/fixture methods).
 
-        // Act
-        // var results = await _executor.ExecuteHistoryQueryAsync(...); -- exact real method
-        // signature confirmed in Step 1's re-read.
+        // Act -- call one of the executor's three typed methods directly (e.g.
+        // GetResourceHistoryAsync(resourceTypeId, resourceId, parameters, cancellationToken) --
+        // exact real signature per Step 4's pinned seam below, matching whatever the
+        // corresponding repository method's real current signature is once resourceTypeId is
+        // already resolved), NOT the low-level shared ExecuteHistoryQueryAsync helper directly --
+        // that helper is an internal implementation detail the executor's public surface hides.
 
         // Assert
         // matches SqlServerFhirRepositoryHistoryTests.cs's existing assertion style for the
@@ -495,7 +500,7 @@ public class SqlServerHistoryQueryExecutor(
     ISqlExecutionService sqlExecutionService,
     int tenantId,
     GzipResourceCompressor compressor,
-    ILogger<SqlServerHistoryQueryExecutor> logger)
+    ILogger logger)
 {
     // Move ExecuteHistoryQueryAsync, BuildHistorySql, AddSharedHistoryParameters,
     // TryMapHistoryRow, ReadHistoryRow, and the HistoryRow record here verbatim from
@@ -508,9 +513,13 @@ public class SqlServerHistoryQueryExecutor(
 }
 ```
 
+**`logger` is plain, non-generic `ILogger` -- not `ILogger<SqlServerHistoryQueryExecutor>`, per the design doc's own exact constructor shape.** This is deliberate, not an oversight: the repository's own field is `ILogger<SqlServerFhirRepository> logger` (its existing primary constructor), and `ILogger<A>` is not implicitly convertible to `ILogger<B>` -- passing the repository's logger straight through (the whole point of "construct internally, no signature change") requires the executor to accept the non-generic `ILogger`. Do not "upgrade" this to a generic `ILogger<SqlServerHistoryQueryExecutor>` parameter; doing so is a guaranteed build failure at the call site in `SqlServerFhirRepository.cs` below. (The test in Step 2 constructs the executor directly with `NullLogger<SqlServerHistoryQueryExecutor>.Instance` -- that's fine, `NullLogger<T>` implements the plain `ILogger` interface too, so it satisfies this constructor without issue.)
+
+**Extraction seam, pinned explicitly (this was left ambiguous in an earlier draft of this task and needs a firm decision, not a subagent's guess):** the design doc's "thin delegators" framing means the SQL query *shapes* move into the executor as typed methods, not just the shared low-level cluster with the 3 public methods' own `selectFromWhere` string literals and `Action<SqlCommand>` configurators staying behind on the repository. Concretely: `SqlServerHistoryQueryExecutor` exposes three public methods mirroring the repository's three history operations one-to-one (e.g. `GetResourceHistoryAsync(short resourceTypeId, string resourceId, HistoryQueryParameters parameters, CancellationToken cancellationToken)`, `GetTypeHistoryAsync(short resourceTypeId, HistoryQueryParameters parameters, CancellationToken cancellationToken)`, `GetSystemHistoryAsync(HistoryQueryParameters parameters, CancellationToken cancellationToken)` — read the 3 existing public methods' real current signatures in `SqlServerFhirRepository.cs` first and match them exactly, adjusting only to drop whatever resource-type-ID *resolution* logic stays on the repository per below). Each of these three new executor methods owns its own `selectFromWhere` construction and `Action<SqlCommand>` configurator internally (moved from the repository's 3 public methods, not left behind), then calls the shared `ExecuteHistoryQueryAsync` private helper internally. The repository's 3 `IFhirRepository` methods become genuinely thin: resolve `resourceTypeId` (the one piece of logic that must stay on the repository, since it needs `GetOrCreateResourceTypeIdAsync`, which is not part of the history cluster and not moving), then call the matching executor method and return its result directly.
+
 Add whatever `using` statements the moved code needs (confirmed during planning: at minimum `System.Data`, `Microsoft.Data.SqlClient`, `Microsoft.Extensions.Logging`, `Ignixa.DataLayer.SqlServer.Compression` — verify against the actual moved code's real type references, don't guess).
 
-In `SqlServerFhirRepository.cs`: remove the moved cluster; add a private field `private readonly SqlServerHistoryQueryExecutor _historyExecutor = new(sqlExecutionService, tenantId, compressor, logger);` (constructed internally from the class's own existing primary-constructor parameters — no constructor signature change); change the 3 public history methods to thin delegators that resolve the resource-type ID (unchanged logic, stays on the repository) then call `_historyExecutor`'s equivalent method.
+In `SqlServerFhirRepository.cs`: remove the moved cluster and the 3 public methods' own query-shape logic (both now live on the executor per the seam above); add a private field `private readonly SqlServerHistoryQueryExecutor _historyExecutor = new(sqlExecutionService, tenantId, compressor, logger);` (constructed internally from the class's own existing primary-constructor parameters — no constructor signature change); change the 3 public history methods to thin delegators exactly as described above.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
