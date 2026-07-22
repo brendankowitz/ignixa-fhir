@@ -20,4 +20,18 @@ public interface ISymbolResolver
     /// Resolves a FHIR resource type name (e.g. "Patient") to its ResourceTypeId.
     /// </summary>
     Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up an existing token-system surrogate ID. Returns null when the system URI is not
+    /// present in the lookup table; callers lower a null result to a false predicate (empty match)
+    /// rather than throwing.
+    /// </summary>
+    Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Looks up an existing quantity-code surrogate ID. Returns null when the code is not present
+    /// in the lookup table; callers lower a null result to a false predicate (empty match) rather
+    /// than throwing.
+    /// </summary>
+    Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken);
 }

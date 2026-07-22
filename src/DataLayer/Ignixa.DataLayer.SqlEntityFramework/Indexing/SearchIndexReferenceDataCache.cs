@@ -289,6 +289,112 @@ public class SearchIndexReferenceDataCache : IDisposable
     }
 
     /// <summary>
+    /// Looks up an existing SystemId for the given system URI without creating a new row.
+    /// Returns null when <paramref name="systemUri"/> is null/empty or has no matching row.
+    /// Caches only positive (found) results: the shared <c>_systemCache</c> is also used by
+    /// <see cref="GetOrCreateSystemIdAsync"/>, which treats every cached integer as a real ID, so
+    /// caching a sentinel would corrupt the write path.
+    /// Thread-safe: uses <c>_dbLock</c> for database access.
+    /// </summary>
+    /// <param name="systemUri">The system URI to look up (e.g., "http://loinc.org").</param>
+    /// <returns>The SystemId if found; null otherwise.</returns>
+    public async ValueTask<int?> GetSystemIdAsync(string? systemUri)
+    {
+        if (string.IsNullOrEmpty(systemUri))
+        {
+            return null;
+        }
+
+        // Check cache first (only positive results are stored here)
+        if (_systemCache.TryGetValue(systemUri, out var cachedId))
+        {
+            return cachedId;
+        }
+
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync();
+        try
+        {
+            // Double-check cache after acquiring lock
+            if (_systemCache.TryGetValue(systemUri, out cachedId))
+            {
+                return cachedId;
+            }
+
+            // Read-only query: no tracking, no entity creation, no SaveChangesAsync
+            var entity = await _context.Systems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Value == systemUri);
+
+            if (entity == null)
+            {
+                return null;
+            }
+
+            // Cache positive result only -- misses are not cached to avoid corrupting the write path
+            _systemCache.TryAdd(systemUri, entity.SystemId);
+            return entity.SystemId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Looks up an existing QuantityCodeId for the given unit code without creating a new row.
+    /// Returns null when <paramref name="code"/> is null/empty or has no matching row.
+    /// Caches only positive (found) results: the shared <c>_quantityCodeCache</c> is also used by
+    /// <see cref="GetOrCreateQuantityCodeIdAsync"/>, which treats every cached integer as a real ID,
+    /// so caching a sentinel would corrupt the write path.
+    /// Thread-safe: uses <c>_dbLock</c> for database access.
+    /// </summary>
+    /// <param name="code">The unit code to look up (e.g., "mg").</param>
+    /// <returns>The QuantityCodeId if found; null otherwise.</returns>
+    public async ValueTask<int?> GetQuantityCodeIdAsync(string? code)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            return null;
+        }
+
+        // Check cache first (only positive results are stored here)
+        if (_quantityCodeCache.TryGetValue(code, out var cachedId))
+        {
+            return cachedId;
+        }
+
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync();
+        try
+        {
+            // Double-check cache after acquiring lock
+            if (_quantityCodeCache.TryGetValue(code, out cachedId))
+            {
+                return cachedId;
+            }
+
+            // Read-only query: no tracking, no entity creation, no SaveChangesAsync
+            var entity = await _context.QuantityCodes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(qc => qc.Value == code);
+
+            if (entity == null)
+            {
+                return null;
+            }
+
+            // Cache positive result only -- misses are not cached to avoid corrupting the write path
+            _quantityCodeCache.TryAdd(code, entity.QuantityCodeId);
+            return entity.QuantityCodeId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
     /// Gets the ResourceTypeId for a given resource type name.
     /// Returns null if the resource type is not registered.
     /// Caches both positive results (found) and negative results (not found) to avoid repeated database queries.

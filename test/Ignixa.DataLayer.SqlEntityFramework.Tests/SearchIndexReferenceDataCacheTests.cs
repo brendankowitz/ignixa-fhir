@@ -199,4 +199,90 @@ public class SearchIndexReferenceDataCacheTests : TestBase
         var dbEntries = Context.Systems.Where(s => s.Value == systemUri).ToList();
         dbEntries.Count.ShouldBe(1, "only one entry should be created despite concurrent access");
     }
+
+    // -----------------------------------------------------------------------
+    // Read-only lookup: GetSystemIdAsync
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GivenASeededSystem_WhenGetSystemIdAsync_ThenReturnsItsId()
+    {
+        // Arrange
+        var systemEntity = new SystemEntity { Value = "http://loinc.org" };
+        Context.Systems.Add(systemEntity);
+        Context.SaveChanges();
+        var expectedId = systemEntity.SystemId;
+
+        // Act
+        var result = await Cache.GetSystemIdAsync("http://loinc.org");
+
+        // Assert
+        result.ShouldBe(expectedId);
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownSystem_WhenGetSystemIdAsync_ThenReturnsNull()
+    {
+        // Arrange: no system seeded
+
+        // Act
+        var result = await Cache.GetSystemIdAsync("http://unknown.example");
+
+        // Assert
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownSystem_WhenGetSystemIdAsync_ThenDoesNotAddEntity()
+    {
+        // Act
+        await Cache.GetSystemIdAsync("http://unknown.example");
+
+        // Assert: no row was created
+        Context.Systems.Any(s => s.Value == "http://unknown.example").ShouldBeFalse(
+            "read-only lookup must never insert a row");
+    }
+
+    // -----------------------------------------------------------------------
+    // Read-only lookup: GetQuantityCodeIdAsync
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GivenASeededQuantityCode_WhenGetQuantityCodeIdAsync_ThenReturnsItsId()
+    {
+        // Arrange
+        var codeEntity = new QuantityCodeEntity { Value = "mg" };
+        Context.QuantityCodes.Add(codeEntity);
+        Context.SaveChanges();
+        var expectedId = codeEntity.QuantityCodeId;
+
+        // Act
+        var result = await Cache.GetQuantityCodeIdAsync("mg");
+
+        // Assert
+        result.ShouldBe(expectedId);
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownQuantityCode_WhenGetQuantityCodeIdAsync_ThenReturnsNull()
+    {
+        // Arrange: no code seeded
+
+        // Act
+        var result = await Cache.GetQuantityCodeIdAsync("unknown");
+
+        // Assert
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownQuantityCode_WhenGetQuantityCodeIdAsync_ThenDoesNotAddEntity()
+    {
+        // Act
+        await Cache.GetQuantityCodeIdAsync("unknown");
+
+        // Assert: no row was created
+        Context.QuantityCodes.Any(qc => qc.Value == "unknown").ShouldBeFalse(
+            "read-only lookup must never insert a row");
+    }
 }

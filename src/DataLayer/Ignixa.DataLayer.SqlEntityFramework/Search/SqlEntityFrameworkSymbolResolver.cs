@@ -44,4 +44,16 @@ public sealed class SqlEntityFrameworkSymbolResolver : ISymbolResolver
         cancellationToken.ThrowIfCancellationRequested();
         return await _cache.GetResourceTypeIdAsync(resourceType);
     }
+
+    public async Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await _cache.GetSystemIdAsync(system);
+    }
+
+    public async Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return await _cache.GetQuantityCodeIdAsync(code);
+    }
 }
