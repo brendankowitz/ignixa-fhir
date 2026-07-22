@@ -86,6 +86,8 @@ public interface ISymbolResolver
 {
     Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken);
     Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken);
+    Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken);
+    Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken);
 }
 ```
 
@@ -186,7 +188,7 @@ foreach (var p in emitted.Parameters)      // the values to bind
 | Area | Supported | Notes |
 |------|-----------|-------|
 | **Boolean composition** | AND, OR, `:not` | Intersect / Union / Except CTEs |
-| **Leaf types** | string, token (code), reference, uri, number, quantity, date | see gaps below |
+| **Leaf types** | string, token (bare code, `system\|code`, `\|code`, `system\|`), reference, uri, number, quantity (with `system`/`code` identity), date | see gaps below |
 | **Comparators** | `eq ne gt lt ge le sa eb` | on date / number / quantity |
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
@@ -201,13 +203,18 @@ foreach (var p in emitted.Parameters)      // the values to bind
 
 These intentionally **throw** rather than emit a subtly-wrong query:
 
-- System-qualified tokens (`system|code`, including `|code`) — needs a `SystemId` resolver.
-- Quantity `system` / `code` matching — needs `SystemId` / `QuantityCodeId` resolution.
 - URI `:above` / `:below` hierarchical matching.
 - The `:ap` (approximately) comparator — needs a tolerance / "now" input the pure stages don't carry.
 - Absolute / external references (a non-null reference `BaseUri`).
 - String `:contains` / exactly-inline-width `:exact` on values that overflow the inline column — the IR
   can't yet search both the inline and overflow columns at once.
+
+**Unknown terminology values compile to an empty match, not a resolution error.** When a
+system-qualified token or quantity carries a `system` or quantity `code` that has no database row,
+`Resolve` stores the known-miss, `Lower` lowers it to an explicit false predicate, and `Emit` renders
+`1 = 0` in the WHERE clause. The resulting query returns zero rows rather than throwing an exception
+or silently widening the match. Resolver I/O failures still propagate unchanged — only a confirmed
+"not found" result produces the empty-match path.
 
 ## Design principles
 

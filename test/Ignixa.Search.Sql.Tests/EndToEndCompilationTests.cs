@@ -1656,6 +1656,153 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldNotContain("ORDER BY");
     }
 
+    // ─── Phase 1: Terminology Resolution and Qualified Values ───────────────────
+
+    [Fact]
+    public async Task GivenASystemCodeQualifiedTokenQuery_WhenCompiled_ThenPinsSystemIdAndCodePredicatesAndParameters()
+    {
+        // Arrange -- Observation?code=http://loinc.org|8480-6 (system|code)
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var tree = new SearchParameterPredicateExpression(
+            codeParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue(system: "http://loinc.org", code: "8480-6", text: null));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.SystemIds["http://loinc.org"] = 7;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- system resolves to surrogate id 7; code remains a string parameter; parameter order is SystemId then Code
+        plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  SystemId = @p0 AND Code = @p1");
+        emitted.Sql.ShouldNotContain("http://loinc.org");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Sql.ShouldContain("SystemId = @p0");
+        emitted.Sql.ShouldContain("Code = @p1");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)7), ("@p1", (object)"8480-6")]);
+    }
+
+    [Fact]
+    public async Task GivenAnEmptySystemCodeTokenQuery_WhenCompiled_ThenSqlContainsSystemIdIsNullAndCodeEqualityWithNoSystemParameter()
+    {
+        // Arrange -- Observation?code=|8480-6 (|code, empty system — SystemId must be NULL in the indexed row)
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var tree = new SearchParameterPredicateExpression(
+            codeParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue(system: "", code: "8480-6", text: null));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        // No system ID configured: empty string is never looked up
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- IS NULL guard with no system-id parameter; code is the sole bound parameter
+        plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  SystemId IS NULL AND Code = @p0");
+        emitted.Sql.ShouldContain("SystemId IS NULL");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6")]);
+    }
+
+    [Fact]
+    public async Task GivenAQuantityWithSystemAndCodeQuery_WhenCompiled_ThenPinsNumericRangePlusSystemIdAndQuantityCodeIdParameters()
+    {
+        // Arrange -- Observation?value-quantity=ge107|http://unitsofmeasure.org|mg
+        var quantityParam = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-quantity"));
+        var tree = new SearchParameterPredicateExpression(
+            quantityParam, SearchComparator.Ge, modifier: null,
+            new QuantitySearchValue("http://unitsofmeasure.org", "mg", 107m));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[quantityParam.Url!.ToString()] = 204;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.SystemIds["http://unitsofmeasure.org"] = 11;
+        resolver.QuantityCodeIds["mg"] = 22;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- Ge: raw value used (no precision-widening bounds); SystemId and QuantityCodeId appended in that order
+        plan.Explain().ShouldBe("root = QuantitySearchParam[104,204]  LowValue >= @p0 AND SystemId = @p1 AND QuantityCodeId = @p2");
+        emitted.Sql.ShouldNotContain("107");
+        emitted.Sql.ShouldNotContain("unitsofmeasure");
+        emitted.Sql.ShouldNotContain("mg");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)107m), ("@p1", (object)11), ("@p2", (object)22)]);
+    }
+
+    [Fact]
+    public async Task GivenASystemQualifiedTokenTokenCompositeQuery_WhenCompiled_ThenPinsSystemIdInSlot1AndCodeForBothSlots()
+    {
+        // Arrange -- Observation?code-value-concept=http://loinc.org|8480-6$high
+        var compositeParam = new SearchParameterInfo(
+            "code-value-concept", "code-value-concept", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code-value-concept"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var valueParam = new SearchParameterInfo("value-concept", "value-concept", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"));
+
+        var tree = new SearchParameterExpression(
+            compositeParam,
+            new MultiaryExpression(MultiaryOperator.And,
+            [
+                new CompositeComponentExpression(codeParam, 0,
+                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null,
+                        new TokenSearchValue(system: "http://loinc.org", code: "8480-6", text: null))),
+                new CompositeComponentExpression(valueParam, 1,
+                    new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null,
+                        new TokenSearchValue(system: null, code: "high", text: null))),
+            ]));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.SystemIds["http://loinc.org"] = 7;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- slot 1 carries SystemId1 (integer) then Code1; slot 2 carries Code2 only (null system → no constraint)
+        plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[104,301]  SystemId1 = @p0 AND Code1 = @p1 AND Code2 = @p2");
+        emitted.Sql.ShouldNotContain("http://loinc.org");
+        emitted.Sql.ShouldNotContain("8480-6");
+        emitted.Sql.ShouldNotContain("high");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)7), ("@p1", (object)"8480-6"), ("@p2", (object)"high")]);
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownSystemTokenQuery_WhenCompiled_ThenResolveSucceedsAndEmittedSqlContains1Equals0()
+    {
+        // Arrange -- Observation?code=http://unknown.org|abc; resolver knows nothing about this system
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var tree = new SearchParameterPredicateExpression(
+            codeParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue(system: "http://unknown.org", code: "abc", text: null));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        // resolver.SystemIds intentionally has no entry for "http://unknown.org" — GetSystemIdAsync returns null
+
+        // Act -- Resolve must not throw; the known-miss is stored; Lower lowers to Predicate.False; Emit must not throw
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- false predicate in plan; 1 = 0 in SQL; no user value exposed; no bound parameters
+        plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  false");
+        emitted.Sql.ShouldContain("1 = 0");
+        emitted.Sql.ShouldNotContain("http://unknown.org");
+        emitted.Sql.ShouldNotContain("abc");
+        emitted.Parameters.ShouldBeEmpty();
+    }
+
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {
         public Dictionary<CompartmentType, HashSet<string>> ResourceTypes { get; } = [];
