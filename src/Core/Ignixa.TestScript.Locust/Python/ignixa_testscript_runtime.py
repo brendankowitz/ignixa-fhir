@@ -392,7 +392,7 @@ def _metric_name(document, action_id):
 
 _AUTH_REFRESH_WINDOW_SECONDS = 300
 _AUTHORIZATION_SCHEME = "Bearer"
-_LEGACY_AUTH_HEADER_ENV = "IGNIXA_AUTH" "_HEADER"
+_LEGACY_AUTH_HEADER_ENV = "IGNIXA_AUTH_HEADER"
 
 
 class _NoAuthProvider:
@@ -1001,6 +1001,8 @@ def _run_autocreate(document, user, context, fixture):
     headers = _new_headers(
         {"Content-Type": "application/fhir+json; charset=utf-8"}
     )
+    # Apply auth before storing history so pre-HTTP auth failures are semantic-only and
+    # recorded headers match the attempt; _perform_request reapplies per attempt for freshness.
     try:
         _apply_authentication(headers)
     except RuntimeError as exc:
@@ -1077,6 +1079,8 @@ def _run_autodelete(document, user, context, fixture):
         return True
 
     headers = _new_headers()
+    # Apply auth before storing history so pre-HTTP auth failures are semantic-only and
+    # recorded headers match the attempt; _perform_request reapplies per attempt for freshness.
     try:
         _apply_authentication(headers)
     except RuntimeError as exc:
