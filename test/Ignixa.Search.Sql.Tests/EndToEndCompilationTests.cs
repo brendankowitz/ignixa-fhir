@@ -2973,6 +2973,58 @@ public class EndToEndCompilationTests
         emitted.Parameters.ShouldContain(p => p.Value.Equals(10));
     }
 
+    [Fact]
+    public async Task GivenAnOffsetPageRequestWithIncludes_WhenCompiledEndToEnd_ThenOffsetFetchNextRendersInsideTheMatchPageCteNotAfterTheOuterUnion()
+    {
+        // Arrange -- Patient?name=Smith&_include=Patient:organization, offset-mode paging instead of
+        // the keyset PageSpec/top. The match-page CTE must own the OFFSET/FETCH NEXT clause -- paging
+        // the outer UNION ALL would page over match+include rows combined, which is wrong.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        var offsetPage = new OffsetSpec(Offset: 20, Limit: 10);
+
+        // Act
+        var symbols = (await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, offsetPage: offsetPage).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("OFFSET @p");
+        emitted.Sql.ShouldContain("FETCH NEXT @p");
+        emitted.Sql.ShouldContain("ROWS ONLY");
+
+        var matchPageCteStart = emitted.Sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        matchPageCteStart.ShouldBeGreaterThanOrEqualTo(0);
+        var matchPageCteEnd = emitted.Sql.IndexOf("\n)", matchPageCteStart, StringComparison.Ordinal);
+        matchPageCteEnd.ShouldBeGreaterThan(matchPageCteStart);
+        var unionAllIndex = emitted.Sql.IndexOf("UNION ALL", StringComparison.Ordinal);
+        unionAllIndex.ShouldBeGreaterThan(matchPageCteEnd);
+
+        var offsetIndex = emitted.Sql.IndexOf("OFFSET @p", StringComparison.Ordinal);
+
+        // The clause is textually inside the match-page CTE's own closing paren...
+        offsetIndex.ShouldBeGreaterThan(matchPageCteStart);
+        offsetIndex.ShouldBeLessThan(matchPageCteEnd);
+
+        // ...and, redundantly, strictly before the outer UNION ALL that stitches match+include rows
+        // together -- the exact scope-confusion bug class this test guards against.
+        offsetIndex.ShouldBeLessThan(unionAllIndex);
+
+        // Confirms offset is applied exactly once -- never a second time on the outer union.
+        (emitted.Sql.Split("OFFSET", StringSplitOptions.None).Length - 1).ShouldBe(1);
+    }
+
     /// <summary>Collects the transitive set of CTE indices reachable from a root index, walking the public
     /// CteDefinition graph (used to prove branch-scoped composition without touching internal helpers).</summary>
     private static HashSet<int> CollectReachable(int rootIndex, QueryPlan plan)

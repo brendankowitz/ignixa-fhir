@@ -73,4 +73,46 @@ public class OffsetPagingGuardTests
             page,
             top: 10));
     }
+
+    [Fact]
+    public void GivenCountPhaseScopedWithoutCountOnly_WhenLowering_ThenThrowsArgumentException()
+    {
+        // Arrange
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<ArgumentException>(() => Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            countOnly: false,
+            countPhaseScoped: true));
+    }
+
+    [Fact]
+    public void GivenCountPhaseScopedWithCountOnlyButEmptySort_WhenLowering_ThenThrowsArgumentException()
+    {
+        // Arrange
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<ArgumentException>(() => Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            countOnly: true,
+            countPhaseScoped: true));
+    }
 }
