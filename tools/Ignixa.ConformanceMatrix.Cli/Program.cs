@@ -15,6 +15,7 @@ internal sealed class Program
         var root = new RootCommand("ignixa-matrix - FHIR TestScript conformance matrix runner");
         root.Subcommands.Add(RunCommand.Build());
         root.Subcommands.Add(MergeCommand.Build());
+        root.Subcommands.Add(CompileLocustCommand.Build());
         return await root.Parse(args).InvokeAsync();
     }
 }
