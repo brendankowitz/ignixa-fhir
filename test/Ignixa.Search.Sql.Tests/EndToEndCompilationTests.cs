@@ -1274,6 +1274,56 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
+    public async Task GivenACompartmentSearchWithANestedResourceColumnPredicate_WhenComposedByTheHandlerAndCompiled_ThenLowersSuccessfully()
+    {
+        // Arrange -- GET /Patient/123/Observation?_id=obs-1&category=laboratory, composed the way
+        // SearchCompartmentHandler now builds it after Task 2's fix: the compartment expression is
+        // spliced as a direct sibling of _id and category in ONE flat top-level And (not nested
+        // inside a wrapping And(compartment, And(_id, category)), which is the shape that made _id
+        // invisible to the compiler's top-level resource-column extraction and threw NotSupportedException).
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
+        var categoryParam = new SearchParameterInfo("category", "category", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-category"));
+        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
+        var idExpression = new SearchParameterExpression(
+            idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "obs-1", text: null)));
+        var categoryPredicate = new SearchParameterPredicateExpression(categoryParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "laboratory", text: null));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [compartment, idExpression, categoryPredicate]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
+        resolver.SearchParamIds[categoryParam.Url!.ToString()] = 22;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        var compartmentManager = new FakeCompartmentDefinitionManager();
+        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
+        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
+
+        var searchParamManager = new FakeSearchParameterDefinitionManager();
+        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(
+            tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
+            compartmentManager, searchParamManager)).Symbols;
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- compiles successfully (no NotSupportedException). _id is extracted to the outer
+        // WHERE (OuterPredicate), the compartment membership lowers to CompartmentSource -> Union, and
+        // category lowers to its own ParamSource, Intersected with the compartment's Union CTE.
+        // Explain() is pinned exactly -- proving all three mechanisms compose, not just that
+        // compilation didn't throw (a ShouldNotThrow-only assertion would pass identically even if
+        // _id or category were silently dropped from the composed expression).
+        plan.Explain().ShouldBe(
+            "cte0 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1\n" +
+            "cte1 = Union(cte0)\n" +
+            "cte2 = TokenSearchParam[104,22]  Code = @p2\n" +
+            "root = Intersect(cte1, cte2) WHERE ResourceId = @p3");
+        plan.OuterPredicate.ShouldNotBeNull();
+    }
+
+    [Fact]
     public async Task GivenACompartmentSearchThatResolvesToZeroMembershipParameters_WhenLowered_ThenThrowsNotSupportedException()
     {
         // Arrange -- GET /Patient/123/NotInCompartment (design §2's degenerate case).
