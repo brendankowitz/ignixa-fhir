@@ -10,6 +10,7 @@ using Ignixa.Specification.Extensions;
 using Ignixa.TestScript.Locust.Artifacts;
 using Ignixa.TestScript.Locust.Compilation;
 using Ignixa.TestScript.Locust.Diagnostics;
+using Ignixa.TestScript.Locust.Ir;
 using Ignixa.TestScript.Parsing;
 
 namespace Ignixa.ConformanceMatrix.Cli.Commands;
@@ -32,21 +33,29 @@ internal static class CompileLocustCommand
     {
         var command = new Command("compile-locust", "Compile a TestScript definition into a flat Locust load-test artifact");
 
+        // Arity = ZeroOrOne on every option (rather than the default ExactlyOne) so a dangling flag
+        // (present with no following value) still lets this action run and return our controlled
+        // usage exit code, instead of a System.CommandLine parser-level arity error short-circuiting
+        // the invocation with its own default exit code.
         var testOption = new Option<string?>("--test")
         {
-            Description = "Path to the TestScript JSON definition to compile"
+            Description = "Path to the TestScript JSON definition to compile",
+            Arity = ArgumentArity.ZeroOrOne
         };
         var outOption = new Option<string?>("--out")
         {
-            Description = "Output directory for the compiled Locust artifact (created or replaced atomically)"
+            Description = "Output directory for the compiled Locust artifact (created or replaced atomically)",
+            Arity = ArgumentArity.ZeroOrOne
         };
         var fhirVersionOption = new Option<string?>("--fhir-version")
         {
-            Description = "Target FHIR version: 4.0, 4.3, or 5.0"
+            Description = "Target FHIR version: 4.0, 4.3, or 5.0",
+            Arity = ArgumentArity.ZeroOrOne
         };
         var fixtureVariantsOption = new Option<string?>("--fixture-variants")
         {
-            Description = "Number of fixture resource variants to generate (positive integer; required for fhirfakes fixtures)"
+            Description = "Number of fixture resource variants to generate (positive integer; required for fhirfakes fixtures)",
+            Arity = ArgumentArity.ZeroOrOne
         };
 
         command.Options.Add(testOption);
@@ -59,6 +68,11 @@ internal static class CompileLocustCommand
             var testPath = parseResult.GetValue(testOption);
             var outPath = parseResult.GetValue(outOption);
             var fhirVersion = parseResult.GetValue(fhirVersionOption);
+
+            // GetResult (rather than GetValue) is the only way to tell "the flag was present with no
+            // value" apart from "the flag was never supplied" -- both yield a null GetValue here, but
+            // only the former must be rejected instead of silently forwarded as the omitted default.
+            var fixtureVariantsSupplied = parseResult.GetResult(fixtureVariantsOption) is not null;
             var fixtureVariantsRaw = parseResult.GetValue(fixtureVariantsOption);
 
             // Route through the invocation's own writers (which default to Console.Out/Console.Error
@@ -66,6 +80,12 @@ internal static class CompileLocustCommand
             // than the global Console directly.
             var standardOutput = parseResult.InvocationConfiguration.Output;
             var standardError = parseResult.InvocationConfiguration.Error;
+
+            if (fixtureVariantsSupplied && string.IsNullOrWhiteSpace(fixtureVariantsRaw))
+            {
+                standardError.WriteLine("error: --fixture-variants requires a positive integer value");
+                return Task.FromResult(UsageErrorExitCode);
+            }
 
             // Parsed here as a raw string (rather than as a typed System.CommandLine Option<int>)
             // so a malformed value reliably returns our controlled usage exit code instead of the
@@ -97,7 +117,7 @@ internal static class CompileLocustCommand
     /// Runs the compile-locust command, writing diagnostics and the compiled artifact through the
     /// given writers. Used directly by tests to avoid races on the shared <see cref="Console"/>.
     /// </summary>
-    internal static async Task<int> RunAsync(
+    internal static Task<int> RunAsync(
         string? testPath,
         string? outPath,
         string? fhirVersion,
@@ -105,9 +125,26 @@ internal static class CompileLocustCommand
         TextWriter standardOutput,
         TextWriter standardError,
         CancellationToken cancellationToken)
+        => RunAsync(testPath, outPath, fhirVersion, fixtureVariants, standardOutput, standardError, WriteArtifactAsync, cancellationToken);
+
+    /// <summary>
+    /// Runs the compile-locust command with an injectable artifact-writing delegate. Production
+    /// callers always pass <see cref="WriteArtifactAsync"/>; tests use this overload directly to
+    /// deterministically simulate an artifact-writing failure without faking the parser or compiler.
+    /// </summary>
+    internal static async Task<int> RunAsync(
+        string? testPath,
+        string? outPath,
+        string? fhirVersion,
+        int? fixtureVariants,
+        TextWriter standardOutput,
+        TextWriter standardError,
+        Func<LocustIrDocument, IReadOnlyList<LocustDiagnostic>, string, CancellationToken, Task> writeArtifactAsync,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(standardOutput);
         ArgumentNullException.ThrowIfNull(standardError);
+        ArgumentNullException.ThrowIfNull(writeArtifactAsync);
 
         try
         {
@@ -171,6 +208,8 @@ internal static class CompileLocustCommand
             var version = FhirSpecificationExtensions.FromVersionString(fhirVersion);
             var schema = version.GetSchemaProvider();
 
+            cancellationToken.ThrowIfCancellationRequested();
+
             var parseResult = TestScriptParser.ParseFile(testPath);
             List<LocustDiagnostic> parserDiagnostics = [.. parseResult.Errors.Select(error => new LocustDiagnostic(
                 ParseDiagnosticCode,
@@ -206,8 +245,7 @@ internal static class CompileLocustCommand
 
             List<LocustDiagnostic> allDiagnostics = [.. parserDiagnostics, .. compilation.Diagnostics];
 
-            await new LocustArtifactWriter()
-                .WriteAsync(compilation.Document, allDiagnostics, outPath, cancellationToken)
+            await writeArtifactAsync(compilation.Document, allDiagnostics, outPath, cancellationToken)
                 .ConfigureAwait(false);
 
             standardOutput.WriteLine($"Compiled Locust artifact -> {outPath}");
@@ -242,6 +280,19 @@ internal static class CompileLocustCommand
         value = parsed;
         return true;
     }
+
+    /// <summary>
+    /// Production implementation of the injectable artifact-writer delegate used by
+    /// <see cref="RunAsync(string?, string?, string?, int?, TextWriter, TextWriter, CancellationToken)"/>.
+    /// Kept as a separate method (rather than inlined) purely so tests can substitute a deterministic
+    /// failing delegate at the internal seam without faking the parser or compiler.
+    /// </summary>
+    private static Task WriteArtifactAsync(
+        LocustIrDocument document,
+        IReadOnlyList<LocustDiagnostic> diagnostics,
+        string outputDirectory,
+        CancellationToken cancellationToken)
+        => new LocustArtifactWriter().WriteAsync(document, diagnostics, outputDirectory, cancellationToken);
 
     private static bool TryGetFullPath(string path, out string fullPath)
     {

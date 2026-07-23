@@ -7,6 +7,8 @@ using System.CommandLine;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.ConformanceMatrix.Cli.Commands;
+using Ignixa.TestScript.Locust.Diagnostics;
+using Ignixa.TestScript.Locust.Ir;
 
 namespace Ignixa.ConformanceMatrix.Cli.Tests;
 
@@ -105,6 +107,58 @@ public sealed class CompileLocustCommandTests : IDisposable
 
         exitCode.ShouldBe(2);
         error.ShouldContain("--fhir-version");
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // 1b. Actual Build() invocation: dangling flag values (present, no following value) -> 2
+    //     rather than System.CommandLine's own default arity-error exit code.
+    // ------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task GivenDanglingTestFlag_WhenInvokingActualCommand_ThenReturnsUsageErrorExitCode()
+    {
+        var outDir = NewOutDir();
+
+        var (exitCode, _, error) = await InvokeAsync("--test", "--out", outDir, "--fhir-version", "4.0");
+
+        exitCode.ShouldBe(2);
+        error.ShouldContain("--test");
+    }
+
+    [Fact]
+    public async Task GivenDanglingOutFlag_WhenInvokingActualCommand_ThenReturnsUsageErrorExitCode()
+    {
+        var testPath = await WriteTestScriptAsync(MinimalSuccessJson);
+
+        var (exitCode, _, error) = await InvokeAsync("--test", testPath, "--out", "--fhir-version", "4.0");
+
+        exitCode.ShouldBe(2);
+        error.ShouldContain("--out");
+    }
+
+    [Fact]
+    public async Task GivenDanglingFhirVersionFlag_WhenInvokingActualCommand_ThenReturnsUsageErrorExitCode()
+    {
+        var testPath = await WriteTestScriptAsync(MinimalSuccessJson);
+        var outDir = NewOutDir();
+
+        var (exitCode, _, error) = await InvokeAsync("--test", testPath, "--out", outDir, "--fhir-version");
+
+        exitCode.ShouldBe(2);
+        error.ShouldContain("--fhir-version");
+    }
+
+    [Fact]
+    public async Task GivenDanglingFixtureVariantsFlag_WhenInvokingActualCommand_ThenReturnsUsageErrorMentioningOption()
+    {
+        var testPath = await WriteTestScriptAsync(MinimalSuccessJson);
+        var outDir = NewOutDir();
+
+        var (exitCode, _, error) = await InvokeAsync(
+            "--test", testPath, "--out", outDir, "--fhir-version", "4.0", "--fixture-variants");
+
+        exitCode.ShouldBe(2);
+        error.ShouldContain("--fixture-variants requires a positive integer value");
     }
 
     // ------------------------------------------------------------------------------------------
@@ -212,6 +266,19 @@ public sealed class CompileLocustCommandTests : IDisposable
 
         exitCode.ShouldBe(2);
         stderr.ToString().ShouldContain("--fixture-variants must be a positive integer");
+    }
+
+    [Fact]
+    public async Task GivenNegativeFixtureVariants_WhenInvokingActualCommand_ThenReturnsUsageErrorExitCode()
+    {
+        var testPath = await WriteTestScriptAsync(MinimalSuccessJson);
+        var outDir = NewOutDir();
+
+        var (exitCode, _, error) = await InvokeAsync(
+            "--test", testPath, "--out", outDir, "--fhir-version", "4.0", "--fixture-variants", "-5");
+
+        exitCode.ShouldBe(2);
+        error.ShouldContain("--fixture-variants must be a positive integer");
     }
 
     [Fact]
@@ -445,26 +512,28 @@ public sealed class CompileLocustCommandTests : IDisposable
     }
 
     // ------------------------------------------------------------------------------------------
-    // 12. Unexpected internal failure -> 3 (best-effort; Windows-only reserved-drive scenario)
+    // 12. Unexpected internal failure -> 3 (deterministic via an injected artifact-writer failure)
     // ------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task GivenOutPathOnUnreachableDrive_WhenCallingRunAsyncDirectly_ThenReturnsUnexpectedErrorExitCode()
+    public async Task GivenArtifactWriterThrows_WhenCallingInjectedWriterRunAsyncDirectly_ThenReturnsUnexpectedErrorExitCodeAndLeavesOutputUnchanged()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
         var testPath = await WriteTestScriptAsync(MinimalSuccessJson);
-        const string unreachableOutPath = @"Q:\ignixa-compile-locust-tests\out";
+        var outDir = NewOutDir();
+        await SeedSentinelDirectoryAsync(outDir);
         using var stdout = new StringWriter();
         using var stderr = new StringWriter();
 
+        static Task ThrowingWriter(LocustIrDocument document, IReadOnlyList<LocustDiagnostic> diagnostics, string outputDirectory, CancellationToken cancellationToken)
+            => throw new IOException("simulated writer failure");
+
         var exitCode = await CompileLocustCommand.RunAsync(
-            testPath, unreachableOutPath, "4.0", null, stdout, stderr, CancellationToken.None);
+            testPath, outDir, "4.0", null, stdout, stderr, ThrowingWriter, CancellationToken.None);
 
         exitCode.ShouldBe(3);
-        stderr.ToString().ShouldContain("error:");
+        stderr.ToString().ShouldContain("IOException");
+        stderr.ToString().ShouldContain("simulated writer failure");
+        File.Exists(Path.Combine(outDir, "sentinel.txt")).ShouldBeTrue();
+        Directory.GetFileSystemEntries(outDir).Length.ShouldBe(1);
     }
 }
