@@ -1868,10 +1868,5 @@ class EngineClearTests(EngineLifecycleTestCase):
         self.assertEqual(0, next(self.runtime._USER_ORDINALS))
 
 
-
-
-
 if __name__ == "__main__":
-
     unittest.main()
-
