@@ -134,7 +134,8 @@ public class LocustArtifactWriterTests
             string runtime = await File.ReadAllTextAsync(runtimePath);
             runtime.ShouldContain("SUPPORTED_SCHEMA_MAJOR = 1");
             runtime.ShouldContain("def initialize_user(document, user):");
-            runtime.ShouldContain("raise RuntimeError(\"Runtime execution is not implemented\")");
+            runtime.ShouldContain("def _new_context(document, user_state):");
+            runtime.ShouldContain("def execute(document, user, state):");
         }
         finally
         {
