@@ -6,7 +6,9 @@ import json
 import logging
 import os
 import re
+import threading
 import socket
+import time
 
 
 SUPPORTED_SCHEMA_MAJOR = 1
@@ -363,6 +365,126 @@ def _metric_name(document, action_id):
     source-qualified action.
     """
     return f"{document['metadata']['source']}::{action_id}"
+
+
+class _NoAuthProvider:
+    def initialize(self):
+        return None
+
+    def authorization_value(self):
+        return None
+
+    def invalidate(self):
+        return None
+
+    def close(self):
+        return None
+
+
+_AUTH_PROVIDER = _NoAuthProvider()
+
+
+class _ManagedIdentityAuthProvider:
+    def __init__(self, scope, credential, clock=time.time):
+        self._scope = scope
+        self._credential = credential
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._cached_access_token = None
+
+    def initialize(self):
+        return None
+
+    def authorization_value(self):
+        token = self._cached_access_token
+        if token is not None and token.expires_on - self._clock() > _AUTH_REFRESH_WINDOW_SECONDS:
+            return f"{_AUTHORIZATION_SCHEME} {token.access_token}"
+
+        with self._lock:
+            token = self._cached_access_token
+            if token is not None and token.expires_on - self._clock() > _AUTH_REFRESH_WINDOW_SECONDS:
+                return f"{_AUTHORIZATION_SCHEME} {token.access_token}"
+
+            try:
+                token = self._credential.get_token(self._scope)
+            except Exception as exc:  # noqa: BLE001 - stable wrapper around credential acquisition failures.
+                raise RuntimeError(
+                    f"Failed to acquire managed identity token ({type(exc).__name__})"
+                ) from exc
+
+            self._cached_access_token = token
+            return f"{_AUTHORIZATION_SCHEME} {token.access_token}"
+
+    def invalidate(self):
+        with self._lock:
+            self._cached_access_token = None
+
+    def close(self):
+        close = getattr(self._credential, "close", None)
+        if close is None:
+            return None
+
+        with self._lock:
+            try:
+                close()
+            except Exception as exc:  # noqa: BLE001 - stable wrapper around credential disposal failures.
+                raise RuntimeError(
+                    f"Failed to close managed identity credential ({type(exc).__name__})"
+                ) from exc
+        return None
+
+
+_AUTH_REFRESH_WINDOW_SECONDS = 300
+_AUTHORIZATION_SCHEME = "Bearer"
+
+
+def _non_empty_env(name, required=False):
+    raw = os.environ.get(name, _MISSING_ENV)
+    if raw is _MISSING_ENV:
+        if required:
+            raise RuntimeError(f"Missing required environment variable {name}")
+        return None
+
+    value = raw.strip()
+    if not value:
+        raise RuntimeError(f"Environment variable {name} must be non-empty")
+    return value
+
+
+def _create_managed_identity_credential(client_id):
+    from azure.identity import ManagedIdentityCredential
+
+    if client_id is None:
+        return ManagedIdentityCredential()
+    return ManagedIdentityCredential(client_id=client_id)
+
+
+def _create_auth_provider():
+    if "IGNIXA_AUTH_HEADER" in os.environ:
+        raise RuntimeError("IGNIXA_AUTH_HEADER is no longer supported")
+
+    raw_mode = os.environ.get("IGNIXA_AUTH_MODE", _MISSING_ENV)
+    if raw_mode is _MISSING_ENV:
+        return _NoAuthProvider()
+
+    mode = _non_empty_env("IGNIXA_AUTH_MODE", required=True)
+    if mode == "none":
+        return _NoAuthProvider()
+
+    if mode != "managed-identity":
+        raise RuntimeError("IGNIXA_AUTH_MODE must be 'none' or 'managed-identity'")
+
+    scope = _non_empty_env("IGNIXA_AUTH_SCOPE", required=True)
+    client_id = _non_empty_env("IGNIXA_MANAGED_IDENTITY_CLIENT_ID")
+
+    try:
+        credential = _create_managed_identity_credential(client_id)
+    except Exception as exc:  # noqa: BLE001 - stable wrapper around credential creation failures.
+        raise RuntimeError(
+            f"Failed to create managed identity credential ({type(exc).__name__})"
+        ) from exc
+
+    return _ManagedIdentityAuthProvider(scope, credential)
 
 
 def _parse_auth_header():
