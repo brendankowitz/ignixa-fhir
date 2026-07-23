@@ -27,7 +27,10 @@ public sealed class SqlCatalogGenerator : IIncrementalGenerator
 
             var ddlText = files[0].GetText(spc.CancellationToken)?.ToString() ?? string.Empty;
             var tables = DdlTableParser.ParseTables(ddlText,
-                name => name.EndsWith("SearchParam", StringComparison.Ordinal) || name == "ResourceType" || name == "Resource");
+                name => name.EndsWith("SearchParam", StringComparison.Ordinal)
+                    || name == "ResourceType"
+                    || name == "Resource"
+                    || name == "TokenText");
 
             spc.AddSource("SqlCatalog.g.cs", Emit(tables));
         });

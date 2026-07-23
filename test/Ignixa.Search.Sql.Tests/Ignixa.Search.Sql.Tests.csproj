@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Search.Sql\Ignixa.Search.Sql.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Corpus\legacy-sql-corpus.json" CopyToOutputDirectory="PreserveNewest" Link="Corpus\legacy-sql-corpus.json" />
+  </ItemGroup>
+
 </Project>

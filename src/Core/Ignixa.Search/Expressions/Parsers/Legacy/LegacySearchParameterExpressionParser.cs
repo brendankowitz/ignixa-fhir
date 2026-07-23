@@ -119,7 +119,16 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
                         string componentValue = compositeValueParts[componentIndex];
 
                         var effectiveSearchParameter = componentSearchParameter;
-                        var inferredType = InferSearchParamTypeFromValue(componentValue);
+
+                        // A quantity, number, or date component owns '|' and '/' within its own value
+                        // grammar (a quantity value is [prefix]number|system|code), so the "any '|' is a
+                        // token, any '/' is a reference" inference below must not fire for it -- otherwise a
+                        // value-quantity carrying a full system|code is misread as a two-separator token and
+                        // the search is rejected. Kept identical to SearchExpressionBinder's guard so the
+                        // new parser and this rollback oracle stay in parity.
+                        var inferredType = componentSearchParameter.Type is SearchParamType.Quantity or SearchParamType.Number or SearchParamType.Date
+                            ? null
+                            : InferSearchParamTypeFromValue(componentValue);
                         if (inferredType.HasValue && inferredType != componentSearchParameter.Type)
                         {
                             effectiveSearchParameter = new SearchParameterInfo(

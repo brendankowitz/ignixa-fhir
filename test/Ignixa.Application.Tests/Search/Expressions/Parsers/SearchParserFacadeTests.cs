@@ -76,4 +76,46 @@ public class SearchParserFacadeTests
         result.WildCard.ShouldBeTrue();
         result.ReferencedTypes.ShouldBe(["Patient", "Encounter"], ignoreOrder: true);
     }
+
+    [Fact]
+    public void GivenBareWildcardInclude_WhenParsingPublicFacade_ThenIsAWildcardOverTheSearchedType()
+    {
+        // Arrange -- Patient?_include=* -- the bare wildcard, with no explicit source type. It means
+        // "every reference out of the searched resource type", so it is a wildcard include sourced from
+        // that type, the same as _include=Patient:*.
+        var context = new SearchParserTestContext();
+        context.Add("Patient", "organization", SearchParamType.Reference, ["Organization"]);
+        context.Add("Patient", "general-practitioner", SearchParamType.Reference, ["Practitioner", "Organization"]);
+
+        // Act
+        var result = context.Parser.ParseInclude(
+            ["Patient"],
+            "*",
+            isReversed: false,
+            iterate: false);
+
+        // Assert
+        result.WildCard.ShouldBeTrue();
+        result.ReferencedTypes.ShouldBe(["Organization", "Practitioner"], ignoreOrder: true);
+    }
+
+    [Fact]
+    public void GivenBareWildcardRevinclude_WhenParsingPublicFacade_ThenIsAReversedWildcardTargetingTheSearchedType()
+    {
+        // Arrange -- Patient?_revinclude=* -- every reference INTO the searched resource type.
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, ["Patient"]);
+
+        // Act
+        var result = context.Parser.ParseInclude(
+            ["Patient"],
+            "*",
+            isReversed: true,
+            iterate: false);
+
+        // Assert
+        result.WildCard.ShouldBeTrue();
+        result.Reversed.ShouldBeTrue();
+        result.TargetResourceType.ShouldBe("Patient");
+    }
 }

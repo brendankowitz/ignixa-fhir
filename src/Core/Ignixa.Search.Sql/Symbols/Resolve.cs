@@ -70,6 +70,7 @@ public static class Resolve
         }
 
         var compartmentMembership = ResolveCompartmentMembership(collector, compartmentDefinitionManager, searchParameterDefinitionManager);
+        var notReferencedPaths = ResolveNotReferencedPaths(collector, searchParameterDefinitionManager);
 
         var searchParamIds = new Dictionary<string, short>();
         var unresolved = new List<SearchParameterInfo>();
@@ -127,7 +128,57 @@ public static class Resolve
             quantityCodeIds[code] = await resolver.GetQuantityCodeIdAsync(code, cancellationToken);
         }
 
-        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership, systemIds, quantityCodeIds), unresolved);
+        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership, systemIds, quantityCodeIds, notReferencedPaths), unresolved);
+    }
+
+    /// <summary>
+    /// Resolves each <c>_not-referenced=Type:path</c> pair to its reference search parameter and adds that
+    /// parameter to the collector so it gets a SearchParamId like any other. A pair whose path the resolver
+    /// cannot find, that carries no Url, or that is not a reference-type parameter is dropped rather than
+    /// recorded: Lower then falls back to a path-agnostic (source-type-only) anti-join, which is the shipping
+    /// engine's lenient behaviour for an unresolvable path. A missing definition manager is a different case
+    /// -- a required dependency was not supplied -- and throws rather than silently degrading every path
+    /// filter, mirroring <see cref="ResolveCompartmentMembership"/>. Returns null when there are no pairs, so
+    /// the common case allocates nothing.
+    /// </summary>
+    private static Dictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo>? ResolveNotReferencedPaths(
+        SymbolCollectingVisitor collector,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager)
+    {
+        if (collector.NotReferencedPaths.Count == 0)
+        {
+            return null;
+        }
+
+        if (searchParameterDefinitionManager is null)
+        {
+            throw new InvalidOperationException(
+                "Resolve encountered a _not-referenced path filter (Type:path) but no " +
+                "ISearchParameterDefinitionManager was supplied -- it is required to resolve the reference " +
+                "path. Silently omitting it would widen the anti-join to a path-agnostic one, returning more " +
+                "resources than the query asked for.");
+        }
+
+        var resolved = new Dictionary<(string, string), SearchParameterInfo>();
+        foreach (var (sourceType, path) in collector.NotReferencedPaths)
+        {
+            if (resolved.ContainsKey((sourceType, path)))
+            {
+                continue;
+            }
+
+            if (!searchParameterDefinitionManager.TryGetSearchParameter(sourceType, path, out var parameter)
+                || parameter.Type != SearchParamType.Reference
+                || parameter.Url is null)
+            {
+                continue;
+            }
+
+            resolved[(sourceType, path)] = parameter;
+            collector.Parameters.Add(parameter);
+        }
+
+        return resolved.Count == 0 ? null : resolved;
     }
 
     private static Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? ResolveCompartmentMembership(

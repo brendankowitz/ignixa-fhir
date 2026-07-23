@@ -58,10 +58,12 @@ public class TokenNumberNumberLoweringRuleTests
         var tokenPredicate = inner.Left.ShouldBeOfType<Predicate.Equal>();
         tokenPredicate.Column.Column.ShouldBe("Code1");
         tokenPredicate.Value.Value.ShouldBe("8480-6");
+        // ge constrains the upper bound and le the lower one -- the spec's intersection test names the
+        // bound opposite the operator's direction (see NumericRangeComparison).
         var number1Predicate = inner.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        number1Predicate.Column.Column.ShouldBe("LowValue2");
+        number1Predicate.Column.Column.ShouldBe("HighValue2");
         var number2Predicate = outer.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        number2Predicate.Column.Column.ShouldBe("HighValue3");
+        number2Predicate.Column.Column.ShouldBe("LowValue3");
     }
 
     [Fact]
@@ -111,7 +113,7 @@ public class TokenNumberNumberLoweringRuleTests
         // Act
         var cte = TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302), 104);
 
-        // Assert — And(And(tokenPredicate, And(Le(LowValue2,5.94), Ge(HighValue2,4.86))), Ge(LowValue3,10))
+        // Assert — And(And(tokenPredicate, And(Le(LowValue2,5.94), Ge(HighValue2,4.86))), Ge(HighValue3,10))
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var inner = outer.Left.ShouldBeOfType<Predicate.And>();
         var tokenPredicate = inner.Left.ShouldBeOfType<Predicate.Equal>();
@@ -124,17 +126,17 @@ public class TokenNumberNumberLoweringRuleTests
         number1Ge.Column.Column.ShouldBe("HighValue2");
         number1Ge.Value.Value.ShouldBe(4.86m);
         var number2Predicate = outer.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        number2Predicate.Column.Column.ShouldBe("LowValue3");
+        number2Predicate.Column.Column.ShouldBe("HighValue3");
         number2Predicate.Value.Value.ShouldBe(10m);
 
         // Assert — complete emitted SQL and ordered parameters: token, widened upper, widened lower,
-        // then the non-Ap second numeric slot (@p0 Code1, @p1 LowValue2 upper, @p2 HighValue2 lower, @p3 LowValue3).
+        // then the non-Ap second numeric slot (@p0 Code1, @p1 LowValue2 upper, @p2 HighValue2 lower, @p3 HighValue3).
         var emitted = EmitSql(cte);
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.TokenNumberNumberCompositeSearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 302 AND ((Code1 = @p0 AND (LowValue2 <= @p1 AND HighValue2 >= @p2)) AND LowValue3 >= @p3)\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 302 AND ((Code1 = @p0 AND (LowValue2 <= @p1 AND HighValue2 >= @p2)) AND HighValue3 >= @p3)\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
@@ -163,13 +165,13 @@ public class TokenNumberNumberLoweringRuleTests
         // Act
         var cte = TokenNumberNumberLoweringRule.Lower(composite, components, ContextResolving(composite, 302), 104);
 
-        // Assert — And(And(tokenPredicate, Ge(LowValue2,10)), And(Le(LowValue3,5.94), Ge(HighValue3,4.86)))
+        // Assert — And(And(tokenPredicate, Ge(HighValue2,10)), And(Le(LowValue3,5.94), Ge(HighValue3,4.86)))
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var inner = outer.Left.ShouldBeOfType<Predicate.And>();
         var tokenPredicate = inner.Left.ShouldBeOfType<Predicate.Equal>();
         tokenPredicate.Column.Column.ShouldBe("Code1");
         var number1Predicate = inner.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        number1Predicate.Column.Column.ShouldBe("LowValue2");
+        number1Predicate.Column.Column.ShouldBe("HighValue2");
         number1Predicate.Value.Value.ShouldBe(10m);
         var number2Range = outer.Right.ShouldBeOfType<Predicate.And>();
         var number2Le = number2Range.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
@@ -180,13 +182,13 @@ public class TokenNumberNumberLoweringRuleTests
         number2Ge.Value.Value.ShouldBe(4.86m);
 
         // Assert — complete emitted SQL and ordered parameters: token, non-Ap first numeric, then the
-        // mirrored approximate upper/lower on the second slot (@p0 Code1, @p1 LowValue2, @p2 LowValue3 upper, @p3 HighValue3 lower).
+        // mirrored approximate upper/lower on the second slot (@p0 Code1, @p1 HighValue2, @p2 LowValue3 upper, @p3 HighValue3 lower).
         var emitted = EmitSql(cte);
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.TokenNumberNumberCompositeSearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 302 AND ((Code1 = @p0 AND LowValue2 >= @p1) AND (LowValue3 <= @p2 AND HighValue3 >= @p3))\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 302 AND ((Code1 = @p0 AND HighValue2 >= @p1) AND (LowValue3 <= @p2 AND HighValue3 >= @p3))\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");

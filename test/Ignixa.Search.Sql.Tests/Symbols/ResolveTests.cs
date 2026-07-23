@@ -428,6 +428,97 @@ public class ResolveTests
         Should.Throw<KeyNotFoundException>(() => symbolTable.SystemId("http://never-seen.example"));
     }
 
+    [Fact]
+    public async Task GivenANotReferencedPath_WhenResolved_ThenTheReferenceParameterIsResolvedAndStored()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject. Resolve must look the (Observation,
+        // subject) pair up through the definition manager, then resolve that parameter's id like any other.
+        var subjectParam = new SearchParameterInfo(
+            "subject", "subject", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var expression = new NotReferencedExpression("Observation", "subject");
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 969;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 96;
+
+        var definitions = new FakeSearchParameterDefinitionManager();
+        definitions.Parameters[("Observation", "subject")] = subjectParam;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(
+            expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None,
+            searchParameterDefinitionManager: definitions)).Symbols;
+
+        // Assert
+        var resolvedParam = symbolTable.NotReferencedPath("Observation", "subject");
+        resolvedParam.ShouldNotBeNull();
+        symbolTable.SearchParamId(resolvedParam).ShouldBe((short)969);
+        symbolTable.ResourceTypeId("Observation").ShouldBe((short)96);
+    }
+
+    [Fact]
+    public async Task GivenANotReferencedPathThatIsNotAReferenceParameter_WhenResolved_ThenItFallsBackToPathAgnostic()
+    {
+        // Arrange -- a non-reference parameter cannot anchor the anti-join, so Resolve records no path and
+        // Lower falls back to source-type-only filtering, matching the shipping engine.
+        var statusParam = new SearchParameterInfo(
+            "status", "status", SearchParamType.Token,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new NotReferencedExpression("Observation", "status");
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 96;
+
+        var definitions = new FakeSearchParameterDefinitionManager();
+        definitions.Parameters[("Observation", "status")] = statusParam;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(
+            expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None,
+            searchParameterDefinitionManager: definitions)).Symbols;
+
+        // Assert -- no reference path resolved, but the source type is still available
+        symbolTable.NotReferencedPath("Observation", "status").ShouldBeNull();
+        symbolTable.ResourceTypeId("Observation").ShouldBe((short)96);
+    }
+
+    [Fact]
+    public async Task GivenANotReferencedPathButNoDefinitionManager_WhenResolved_ThenThrowsRatherThanSilentlyWidening()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject with no ISearchParameterDefinitionManager.
+        // The path cannot be resolved, so omitting it would widen the anti-join to path-agnostic and return
+        // more resources than asked. That is a missing-dependency programmer error, not an unresolvable
+        // path, so Resolve throws -- the same contract as compartment membership.
+        var expression = new NotReferencedExpression("Observation", "subject");
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Observation"] = 96;
+
+        // Act & Assert -- no searchParameterDefinitionManager supplied
+        await Should.ThrowAsync<InvalidOperationException>(() => Resolve.RunAsync(
+            expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenAFullWildcardNotReferencedAndNoDefinitionManager_WhenResolved_ThenDoesNotThrow()
+    {
+        // Arrange -- Patient?_not-referenced=*:* needs no path resolution (no Type:path pair is collected),
+        // so a missing definition manager is harmless here and must not trip the guard.
+        var expression = new NotReferencedExpression(sourceResourceType: null, referencePath: null);
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(
+            expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+
+        // Assert
+        symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
+    }
+
     /// <summary>
     /// An in-memory, dictionary-backed ICompartmentDefinitionManager test double -- not a mock,
     /// matching this file's existing FakeSymbolResolver philosophy.

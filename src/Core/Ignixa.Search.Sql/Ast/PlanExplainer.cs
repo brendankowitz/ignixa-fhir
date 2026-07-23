@@ -104,6 +104,7 @@ public static class PlanExplainer
         CteDefinition.Except => PlanRowKind.Except,
         CteDefinition.ChainJoin => PlanRowKind.ChainJoin,
         CteDefinition.CompartmentSource => PlanRowKind.CompartmentSource,
+        CteDefinition.NotReferencedSource => PlanRowKind.NotReferencedSource,
         _ => throw new NotSupportedException($"No Explain() kind for {cte.GetType().Name}."),
     };
 
@@ -124,7 +125,7 @@ public static class PlanExplainer
         CteDefinition.Union u => [.. u.Parts.Select(r => r.Index)],
         CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
         CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
-        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource => [],
+        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource => [],
         _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
     };
 
@@ -173,8 +174,32 @@ public static class PlanExplainer
             $"ChainJoin({CteLabel(cj.InnerMatch.Index)}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
         CteDefinition.CompartmentSource cs =>
             $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
+        CteDefinition.NotReferencedSource nr => PrintNotReferencedSource(nr, top, ref parameterOrdinal),
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
+
+    private static string PrintNotReferencedSource(CteDefinition.NotReferencedSource nr, int? top, ref int parameterOrdinal)
+    {
+        // The target ResourceTypeId is a bound parameter in Emit (EmitNotReferencedSource binds it as
+        // @pN, exactly as ResourceSource does), so this must consume an ordinal too or Explain()'s @pN
+        // numbering diverges from the emitted SQL. It is still shown inline for readability, like
+        // ResourceSource; only the counter is shared. The source-type and ref-param ids are inlined
+        // literals in Emit and consume no ordinal.
+        parameterOrdinal++;
+        var qualifiers = new List<string>();
+        if (nr.SourceResourceTypeId is { } sourceTypeId)
+        {
+            qualifiers.Add($"source={sourceTypeId}");
+        }
+
+        if (nr.ReferenceSearchParamId is { } refParamId)
+        {
+            qualifiers.Add($"ref={refParamId}");
+        }
+
+        var suffix = qualifiers.Count == 0 ? string.Empty : $" not referenced by {string.Join(" ", qualifiers)}";
+        return $"NotReferencedSource[{nr.TargetResourceTypeId}]{suffix}{PrintTop(top)}";
+    }
 
     private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)
     {
@@ -210,6 +235,7 @@ public static class PlanExplainer
         Predicate.GreaterThan gt => $"{gt.Column.Column} > @p{parameterOrdinal++}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= @p{parameterOrdinal++}",
         Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
+        Predicate.Not not => $"NOT ({PrintPredicate(not.Operand, ref parameterOrdinal)})",
         Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
         Predicate.False => UnsatisfiableRendering,
         Predicate.PrefixOfParameter pop => $"{pop.Column.Column} PREFIX_OF @p{parameterOrdinal++}{PrintCollation(pop.Collation)}",

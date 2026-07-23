@@ -114,7 +114,7 @@ public class EndToEndCompilationTests
         // Assert
         plan.Explain().ShouldBe(
             "cte0 = DateTimeSearchParam[104,203]  EndDateTime >= @p0\n" +
-            "cte1 = QuantitySearchParam[104,204]  LowValue > @p1\n" +
+            "cte1 = QuantitySearchParam[104,204]  HighValue > @p1\n" +
             "root = Intersect(cte0, cte1)");
         emitted.Sql.ShouldNotContain("2023");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
@@ -215,7 +215,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[104,302]  Code1 = @p0 AND LowValue2 >= @p1 AND HighValue3 <= @p2");
+        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[104,302]  Code1 = @p0 AND HighValue2 >= @p1 AND LowValue3 <= @p2");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6"), ("@p1", 5m), ("@p2", 10m)]);
     }
@@ -324,7 +324,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge (not Eq) so the raw value is used directly, no precision-widening bounds to compute
-        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,402]  Code1 = @p0 AND LowValue2 >= @p1");
+        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,402]  Code1 = @p0 AND HighValue2 >= @p1");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(120m));
     }
@@ -462,15 +462,16 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, ResourceSource, Except, then an outer Intersect
+        // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, then a single
+        // Except subtracting that Union from `active`. There is deliberately no ResourceSource here:
+        // anchoring the negation on one would read every Patient in the partition purely to subtract
+        // from it, when the `active` sibling is already the smaller anchor and yields the same set.
         plan.Explain().ShouldBe(
             "cte0 = TokenSearchParam[103,44]  Code = @p0\n" +
             "cte1 = StringSearchParam[103,202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
             "cte2 = StringSearchParam[103,202]  Text LIKE @p2 (StartsWith) collate CI_AI\n" +
             "cte3 = Union(cte1, cte2)\n" +
-            "cte4 = ResourceSource[103]\n" +
-            "cte5 = Except(cte4, cte3)\n" +
-            "root = Intersect(cte0, cte5)");
+            "root = Except(cte0, cte3)");
         emitted.Sql.ShouldNotContain("Smith");
         emitted.Sql.ShouldNotContain("Jones");
         emitted.Sql.ShouldNotContain("true");
@@ -557,15 +558,13 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
-    public async Task GivenAMultiValueIdNotQuery_WhenCompiled_ThenThrowsRatherThanSilentlyRoutingIntoTokenSearchParam()
+    public async Task GivenAMultiValueIdNotQuery_WhenCompiled_ThenLiftsANegatedOrIntoTheOuterWhere()
     {
         // Arrange -- Patient?_id:not=1,2 (comma-separated, so the binder wraps it as
-        // SearchParameterExpression(idParam, NotExpression(Or([pred("1", Modifier:null), pred("2", Modifier:null)])))
-        // -- the top-level extraction pass only recognizes a BARE SearchParameterPredicateExpression, so this
-        // shape is never extracted; each Or alternative reaches StructuralContext.Lower's dispatch choke point
-        // directly, where it must throw (a resource column has no TokenSearchParam row to match) rather than
-        // silently routing "_id" into TokenSearchParam via the generic Token dispatch, which would silently
-        // produce an always-empty (or always-true, once Except negates it) match instead of a loud failure.
+        // SearchParameterExpression(idParam, NotExpression(Or([pred("1", Modifier:null), pred("2", Modifier:null)])))).
+        // The extraction pass lifts the whole negated Or into the outer WHERE as NOT (ResourceId = @p OR
+        // ResourceId = @p) -- the same shape the shipping engine emits -- rather than routing "_id" into
+        // TokenSearchParam or dropping the negation.
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var tree = new SearchParameterExpression(
             idParam,
@@ -578,9 +577,18 @@ public class EndToEndCompilationTests
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        // Act & Assert
+        // Act
         var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        Should.Throw<NotSupportedException>(() => Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- a single ResourceSource, negation lifted into the outer WHERE, values never inlined
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+        var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
+        not.Operand.ShouldBeOfType<Predicate.Or>();
+        emitted.Sql.ShouldContain("NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Sql.ShouldNotContain("TokenSearchParam");
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "1", "2"]);
     }
 
     [Fact]
@@ -1740,12 +1748,12 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge: raw value used (no precision-widening bounds); SystemId and QuantityCodeId appended in that order
-        plan.Explain().ShouldBe("root = QuantitySearchParam[104,204]  LowValue >= @p0 AND SystemId = @p1 AND QuantityCodeId = @p2");
+        plan.Explain().ShouldBe("root = QuantitySearchParam[104,204]  HighValue >= @p0 AND SystemId = @p1 AND QuantityCodeId = @p2");
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.QuantitySearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND ((LowValue >= @p0 AND SystemId = @p1) AND QuantityCodeId = @p2)\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND ((HighValue >= @p0 AND SystemId = @p1) AND QuantityCodeId = @p2)\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");

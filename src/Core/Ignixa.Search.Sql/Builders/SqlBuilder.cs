@@ -265,6 +265,7 @@ public static class SqlBuilder
             $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
+        CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -272,9 +273,16 @@ public static class SqlBuilder
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
     {
         var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
+
+        // Most search-param tables hold rows for current versions only, so history is filtered once at
+        // hydration. dbo.TokenText carries its own IsHistory column and does keep superseded rows, so a
+        // query against it has to exclude them itself. Driven off the catalog rather than the table name:
+        // the filter is required by any table that has the column, and the catalog is generated from DDL.
+        var historyClause = p.Table.Columns.Any(c => c.Name == "IsHistory") ? " AND IsHistory = 0" : string.Empty;
+
         return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{predicateClause}";
+               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
     }
 
     /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>
@@ -501,6 +509,37 @@ public static class SqlBuilder
            $"      AND {EmitTypeInFilter("ResourceTypeId", cs.ResourceTypeIds)}\n" +
            $"      AND {EmitPredicate(cs.Predicate, parameters)}";
 
+    /// <summary>
+    /// Renders a NotReferencedSource: current, non-deleted rows of dbo.Resource for the target type that
+    /// no dbo.ReferenceSearchParam row points at. The anti-join correlates on reference-target identity
+    /// (ReferenceResourceId/ReferenceResourceTypeId against the candidate's own ResourceId/ResourceTypeId),
+    /// optionally narrowed to references originating from one source type and/or one reference path. Only
+    /// the target type is bound (as ResourceSource binds its own); the inner ids are schema surrogates,
+    /// inlined like every other schema id.
+    /// </summary>
+    private static string EmitNotReferencedSource(CteDefinition.NotReferencedSource nr, List<EmittedSqlParameter> parameters)
+    {
+        var innerFilters = string.Empty;
+        if (nr.SourceResourceTypeId is { } sourceTypeId)
+        {
+            innerFilters += $"\n          AND rsp.ResourceTypeId = {sourceTypeId}";
+        }
+
+        if (nr.ReferenceSearchParamId is { } refParamId)
+        {
+            innerFilters += $"\n          AND rsp.SearchParamId = {refParamId}";
+        }
+
+        return $"    SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+               $"    FROM dbo.Resource r\n" +
+               $"    WHERE r.ResourceTypeId = {EmitParam(new SqlParameterRef(nr.TargetResourceTypeId), parameters)} AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+               $"      AND NOT EXISTS (\n" +
+               $"        SELECT 1\n" +
+               $"        FROM dbo.ReferenceSearchParam rsp\n" +
+               $"        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+               $"          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId{innerFilters})";
+    }
+
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
     {
@@ -584,6 +623,7 @@ public static class SqlBuilder
         Predicate.GreaterThan gt => $"{gt.Column.Column} > {EmitParam(gt.Value, parameters)}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= {EmitParam(ge.Value, parameters)}",
         Predicate.Or or => $"({EmitPredicate(or.Left, parameters)} OR {EmitPredicate(or.Right, parameters)})",
+        Predicate.Not not => $"NOT ({EmitPredicate(not.Operand, parameters)})",
         Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
         Predicate.False => PlanExplainer.UnsatisfiableRendering,
         Predicate.PrefixOfParameter pop => $"LEFT({EmitParam(pop.Value, parameters)}, LEN({pop.Column.Column})){EmitCollation(pop.Collation)} = {pop.Column.Column}",

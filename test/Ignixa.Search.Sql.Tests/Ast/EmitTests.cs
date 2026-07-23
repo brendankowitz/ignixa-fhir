@@ -1200,4 +1200,94 @@ public class EmitTests
         emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", expectedPattern));
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", expectedPattern));
     }
+
+    [Fact]
+    public void GivenANotPredicateInTheOuterWhere_WhenEmitted_ThenWrapsTheOperandInNot()
+    {
+        // Arrange -- Patient?_id:not=a,b -- a negated resource-column filter over a Resource scan.
+        var idColumn = new SqlColumnRef("Resource", "ResourceId");
+        var outer = new Predicate.Not(
+            new Predicate.Or(
+                new Predicate.Equal(idColumn, new SqlParameterRef("a")),
+                new Predicate.Equal(idColumn, new SqlParameterRef("b"))));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), OuterPredicate: outer);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("WHERE NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "a", "b"]);
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceWithSourceTypeAndPath_WhenEmitted_ThenAntiJoinsReferenceSearchParamByTargetIdentity()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject. Target type 103, source type 96, ref
+        // param 969. The anti-join correlates on reference-target identity: a ReferenceSearchParam row's
+        // ReferenceResourceId/ReferenceResourceTypeId against the candidate Resource's own id and type.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.Resource r\n" +
+            "    WHERE r.ResourceTypeId = @p0 AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId\n" +
+            "          AND rsp.ResourceTypeId = 96\n" +
+            "          AND rsp.SearchParamId = 969)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.ShouldHaveSingleItem().ShouldBe(new EmittedSqlParameter("@p0", (short)103));
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceWithSourceTypeButNoPath_WhenEmitted_ThenFiltersOnSourceTypeButNotSearchParamId()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:* -- source type 96, no reference path. The
+        // anti-join narrows to references originating from Observation, but not to any single path.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, null)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId\n" +
+            "          AND rsp.ResourceTypeId = 96)\n");
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceFullWildcard_WhenEmitted_ThenTheAntiJoinFiltersOnlyOnTargetIdentity()
+    {
+        // Arrange -- Patient?_not-referenced=*:* -- a Patient referenced by nothing at all.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, null, null)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- no source-type or param filter inside the NOT EXISTS
+        emitted.Sql.ShouldContain(
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId)\n");
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId =");
+    }
 }

@@ -19,9 +19,19 @@ namespace Ignixa.Search.Sql.Lowering;
 /// overlapping the resource range, a deliberately looser relation than <c>eq</c>.
 /// </para>
 /// <para>
+/// The ordering comparators each constrain the bound the spec's intersection test names, which is the
+/// OPPOSITE bound to the direction of the operator: <c>gt</c>/<c>ge</c> ask whether the range above the
+/// search value reaches the target at all, which is true when the target's HighValue clears it;
+/// <c>lt</c>/<c>le</c> likewise test LowValue. <c>sa</c>/<c>eb</c> ask whether the target lies wholly to
+/// one side, so they take the other bound: <c>sa</c> is LowValue, <c>eb</c> is HighValue. Reading the
+/// operator as though it applied to the near bound (gt on LowValue) silently implements <c>sa</c>/
+/// <c>eb</c> semantics instead, which agrees with the spec only for point-valued rows.
+/// </para>
+/// <para>
 /// For a point-valued row (LowValue = HighValue, what a plain <c>valueQuantity</c> or number indexes to)
-/// containment and overlap coincide; the distinction only bites on a row that stores a genuine range,
-/// such as an indexed <c>Range</c> element.
+/// containment and overlap coincide, and so do all six ordering comparators' two candidate columns; the
+/// distinction only bites on a row that stores a genuine range, such as an indexed <c>Range</c> element,
+/// or one the row generator half-bounded with a sentinel.
 /// </para>
 /// </summary>
 internal static class NumericRangeComparison
@@ -30,10 +40,12 @@ internal static class NumericRangeComparison
     {
         SearchComparator.Eq => BuildEq(context, lowColumn, highColumn, value),
         SearchComparator.Ne => BuildNe(context, lowColumn, highColumn, value),
-        SearchComparator.Ge => new Predicate.GreaterThanOrEqual(lowColumn, context.Parameter(value)),
-        SearchComparator.Gt or SearchComparator.Sa => new Predicate.GreaterThan(lowColumn, context.Parameter(value)),
-        SearchComparator.Le => new Predicate.LessThanOrEqual(highColumn, context.Parameter(value)),
-        SearchComparator.Lt or SearchComparator.Eb => new Predicate.LessThan(highColumn, context.Parameter(value)),
+        SearchComparator.Ge => new Predicate.GreaterThanOrEqual(highColumn, context.Parameter(value)),
+        SearchComparator.Gt => new Predicate.GreaterThan(highColumn, context.Parameter(value)),
+        SearchComparator.Le => new Predicate.LessThanOrEqual(lowColumn, context.Parameter(value)),
+        SearchComparator.Lt => new Predicate.LessThan(lowColumn, context.Parameter(value)),
+        SearchComparator.Sa => new Predicate.GreaterThan(lowColumn, context.Parameter(value)),
+        SearchComparator.Eb => new Predicate.LessThan(highColumn, context.Parameter(value)),
         SearchComparator.Ap => BuildApproximate(context, lowColumn, highColumn, value),
         _ => throw new NotSupportedException($"Unknown SearchComparator '{comparator}'."),
     };

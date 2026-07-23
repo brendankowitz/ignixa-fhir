@@ -266,6 +266,17 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
         SearchParameterInfo component,
         string value)
     {
+        // A quantity, number, or date component owns the '|' and '/' characters within its own value
+        // grammar -- a quantity value is [prefix]number|system|code -- so the "any '|' means token, any
+        // '/' means reference" heuristic below must not fire for it. Without this guard a value-quantity
+        // component carrying a full system|code (e.g. gt38|http://unitsofmeasure.org|Cel) is misread as a
+        // token with two separators and the whole search is rejected. The same three ordered types are
+        // the ones NormalizeCompositeComparator already treats specially, for the same reason.
+        if (component.Type is SearchParamType.Quantity or SearchParamType.Number or SearchParamType.Date)
+        {
+            return component;
+        }
+
         SearchParamType? inferred = InferSearchParamTypeFromValue(value);
         if (inferred is null || inferred == component.Type)
         {
