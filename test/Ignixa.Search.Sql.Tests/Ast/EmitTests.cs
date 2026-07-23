@@ -776,6 +776,23 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenTheMissingPrimaryPhaseWithAResourceIdPrimaryKey_WhenEmitted_ThenThrowsInvalidOperationException()
+    {
+        // Arrange -- hand-constructed QueryPlan bypassing Lower.BuildSortSpec's own guard (Lower rejects
+        // this combination at construction time -- see LowerTests' equivalent throw test). QueryPlan is
+        // a public construction surface, so Emit defends against this shape too rather than trusting
+        // every caller to route through Lower: _id is never "missing," so EmitMissingPrimaryFilter
+        // must never be asked to render a NOT EXISTS for it (its SearchParamId is null by construction).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceId, SortOrder.Ascending)], SortPhase.MissingPrimary);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+
+        // Act & Assert
+        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
     public void GivenAPageBoundaryWithFewerValuesThanActiveSortKeys_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
     {
         // Arrange -- a 2-key Valued sort needs a 2-value boundary; this one only carries 1. Silently

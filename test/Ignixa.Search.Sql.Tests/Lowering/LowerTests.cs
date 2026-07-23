@@ -590,6 +590,28 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenAResourceIdPrimarySortKeyInTheMissingPrimaryPhase_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- _id is a resource-column key derived directly from ResourceId, so it can never be
+        // "missing." A caller driving the two-phase transition (SortPhase is a caller input, not
+        // something Lower computes) must never be able to construct a SortSpec([ResourceId key],
+        // MissingPrimary) -- EmitMissingPrimaryFilter would otherwise interpolate a null SearchParamId
+        // into SQL text.
+        var resourceId = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [new SortExpression(resourceId, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.MissingPrimary, page: null))
+            .Message.ShouldContain("never");
+    }
+
+    [Fact]
     public void GivenCountOnlyTrue_WhenLowered_ThenQueryPlanCountOnlyIsTrue()
     {
         // Arrange
