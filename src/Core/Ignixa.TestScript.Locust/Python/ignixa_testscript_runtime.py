@@ -322,20 +322,31 @@ def _send_request(user, metric_name, method, url, headers, body_bytes):
     response wrapper on any received response, or ``None`` for a transport
     failure (a returned Locust error response or a raised exception), which
     Locust already reports as a native failed HTTP event.
+
+    Only the client call itself is guarded broadly: real Locust's
+    ``catch_response=True`` requests never raise for ordinary network errors
+    (those come back as an errored response instead), but a small set of
+    configuration errors (for example an invalid URL scheme) can still raise
+    directly from ``request(...)``. Everything after the context manager is
+    entered -- the error check, ``success()``, and building the response
+    wrapper -- runs unguarded, so a genuine defect there surfaces as a real
+    exception instead of being silently reported as a transport failure.
     """
     kwargs = {"name": metric_name, "catch_response": True, "headers": dict(headers)}
     if body_bytes is not None:
         kwargs["data"] = body_bytes
 
     try:
-        with user.client.request(method, url, **kwargs) as response:
-            if getattr(response, "error", None) is not None:
-                return None
-            response.success()
-            wrapper = _wrap_response(response)
-        return wrapper
+        response_context = user.client.request(method, url, **kwargs)
     except Exception:
         return None
+
+    with response_context as response:
+        if getattr(response, "error", None) is not None:
+            return None
+        response.success()
+        wrapper = _wrap_response(response)
+    return wrapper
 
 
 def _record_semantic_failure(user, metric_name, message):
