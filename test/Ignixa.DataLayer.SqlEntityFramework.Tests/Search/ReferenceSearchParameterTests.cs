@@ -5,10 +5,12 @@
 
 using Shouldly;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Ignixa.DataLayer.SqlEntityFramework.Entities;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 using Xunit;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
@@ -20,13 +22,24 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 /// </summary>
 public class ReferenceSearchParameterTests : TestBase
 {
+    private static readonly SearchParameterInfo SubjectParameter = new(
+        name: "subject",
+        code: "subject",
+        searchParamType: SearchParamType.Reference,
+        url: new Uri("http://hl7.org/fhir/SearchParameter/Encounter-subject"));
+
     private readonly SearchParameterQueryGenerator _queryGenerator;
 
     public ReferenceSearchParameterTests()
     {
         _queryGenerator = new SearchParameterQueryGenerator(
             Context,
-            NullLoggerFactory.Instance.CreateLogger<SearchParameterQueryGenerator>());
+            Cache,
+            NullLoggerFactory.Instance.CreateLogger<SearchParameterQueryGenerator>(),
+            new CompositeSearchParameterQueryGenerator(
+                Context,
+                Cache,
+                NullLoggerFactory.Instance.CreateLogger<CompositeSearchParameterQueryGenerator>()));
     }
 
     [Fact]
@@ -52,25 +65,12 @@ public class ReferenceSearchParameterTests : TestBase
             searchParamId: 6);  // subject parameter
 
         // Create a reference expression: subject=Patient/searchpatient3
-        // This creates an AND expression with:
-        // - StringEquals(ReferenceResourceType, "Patient")
-        // - StringEquals(ReferenceResourceId, "searchpatient3")
-        var referenceTypeExpression = new StringExpression(
-            FieldName.ReferenceResourceType,
-            StringOperator.Equals,
-            "Patient");
-
-        var referenceIdExpression = new StringExpression(
-            FieldName.ReferenceResourceId,
-            StringOperator.Equals,
-            "searchpatient3");
-
-        var combinedExpression = Expression.And(referenceTypeExpression, referenceIdExpression);
+        var expression = CreateReferenceExpression("Patient", "searchpatient3");
 
         // Act: Process the reference search for Encounter resource type
-        var query = await _queryGenerator.ProcessExpressionAsync(
+        var query = await _queryGenerator.GenerateQueryAsync(
             resourceTypeId: 5,  // Encounter
-            expr: combinedExpression,
+            expression: expression,
             ct: CancellationToken.None);
 
         var results = await query.ToListAsync();
@@ -133,29 +133,20 @@ public class ReferenceSearchParameterTests : TestBase
             searchParamId: 6);  // subject parameter
 
         // Create reference search: subject=Patient/patient-1
-        var referenceTypeExpression = new StringExpression(
-            FieldName.ReferenceResourceType,
-            StringOperator.Equals,
-            "Patient");
-
-        var referenceIdExpression = new StringExpression(
-            FieldName.ReferenceResourceId,
-            StringOperator.Equals,
-            "patient-1");
-
-        var combinedExpression = Expression.And(referenceTypeExpression, referenceIdExpression);
+        var expression = CreateReferenceExpression("Patient", "patient-1");
 
         // Act: Process the reference search
-        var query = await _queryGenerator.ProcessExpressionAsync(
+        var query = await _queryGenerator.GenerateQueryAsync(
             resourceTypeId: 5,  // Encounter
-            expr: combinedExpression,
+            expression: expression,
             ct: CancellationToken.None);
 
         var results = await query.ToListAsync();
 
         // Assert: Should return only the two encounters referencing the specified patient
         results.Count.ShouldBe(2);
-        results.ShouldContain(new[] { encounter1.ResourceSurrogateId, encounter2.ResourceSurrogateId });
+        results.ShouldContain(encounter1.ResourceSurrogateId);
+        results.ShouldContain(encounter2.ResourceSurrogateId);
         results.ShouldNotContain(encounter3.ResourceSurrogateId);
     }
 
@@ -182,22 +173,12 @@ public class ReferenceSearchParameterTests : TestBase
             searchParamId: 6);  // subject parameter
 
         // Search for references to patient-1 (which doesn't exist)
-        var referenceTypeExpression = new StringExpression(
-            FieldName.ReferenceResourceType,
-            StringOperator.Equals,
-            "Patient");
-
-        var referenceIdExpression = new StringExpression(
-            FieldName.ReferenceResourceId,
-            StringOperator.Equals,
-            "patient-1");
-
-        var combinedExpression = Expression.And(referenceTypeExpression, referenceIdExpression);
+        var expression = CreateReferenceExpression("Patient", "patient-1");
 
         // Act: Process the reference search
-        var query = await _queryGenerator.ProcessExpressionAsync(
+        var query = await _queryGenerator.GenerateQueryAsync(
             resourceTypeId: 5,  // Encounter
-            expr: combinedExpression,
+            expression: expression,
             ct: CancellationToken.None);
 
         var results = await query.ToListAsync();
@@ -229,27 +210,42 @@ public class ReferenceSearchParameterTests : TestBase
             searchParamId: 6);  // subject parameter
 
         // Search for references to Organization (not Patient)
-        var referenceTypeExpression = new StringExpression(
-            FieldName.ReferenceResourceType,
-            StringOperator.Equals,
-            "Organization");  // Wrong type
-
-        var referenceIdExpression = new StringExpression(
-            FieldName.ReferenceResourceId,
-            StringOperator.Equals,
-            "patient-1");
-
-        var combinedExpression = Expression.And(referenceTypeExpression, referenceIdExpression);
+        var expression = CreateReferenceExpression("Organization", "patient-1");
 
         // Act: Process the reference search
-        var query = await _queryGenerator.ProcessExpressionAsync(
+        var query = await _queryGenerator.GenerateQueryAsync(
             resourceTypeId: 5,  // Encounter
-            expr: combinedExpression,
+            expression: expression,
             ct: CancellationToken.None);
 
         var results = await query.ToListAsync();
 
         // Assert: Should return empty results because resource type doesn't match
         results.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Builds the expression the search parser produces for <c>subject=Type/id</c>: an AND over
+    /// StringEquals(ReferenceResourceType) and StringEquals(ReferenceResourceId).
+    /// </summary>
+    private static SearchParameterExpression CreateReferenceExpression(string resourceType, string resourceId)
+    {
+        var referenceTypeExpression = new StringExpression(
+            StringOperator.Equals,
+            FieldName.ReferenceResourceType,
+            componentIndex: null,
+            resourceType,
+            ignoreCase: false);
+
+        var referenceIdExpression = new StringExpression(
+            StringOperator.Equals,
+            FieldName.ReferenceResourceId,
+            componentIndex: null,
+            resourceId,
+            ignoreCase: false);
+
+        return new SearchParameterExpression(
+            SubjectParameter,
+            Expression.And(referenceTypeExpression, referenceIdExpression));
     }
 }

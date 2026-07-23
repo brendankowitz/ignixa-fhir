@@ -6,6 +6,7 @@
 using Shouldly;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Terminology;
+using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -22,8 +23,9 @@ public class HybridTerminologyServiceTests
     {
         var sql = Substitute.For<ITerminologyService>();
         var fallback = Substitute.For<ITerminologyService>();
+        var importStatus = Substitute.For<ITerminologyImportStatusProvider>();
 
-        sql.GetImportStatusAsync("http://example.org/vs", Arg.Any<CancellationToken>())
+        importStatus.GetImportStatusAsync("http://example.org/vs", Arg.Any<CancellationToken>())
             .Returns(TerminologyImportStatus.Completed);
 
         sql.ValidateBindingAsync(
@@ -36,7 +38,7 @@ public class HybridTerminologyServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(new BindingValidationResult(true, BindingStrength.Required, IssueSeverity.Information, null, null));
 
-        var hybrid = new HybridTerminologyService(sql, fallback, NullLogger<HybridTerminologyService>.Instance);
+        var hybrid = new HybridTerminologyService(sql, importStatus, fallback, NullLogger<HybridTerminologyService>.Instance);
 
         var result = await hybrid.ValidateBindingAsync(
             "http://example.org/vs",
@@ -64,8 +66,9 @@ public class HybridTerminologyServiceTests
     {
         var sql = Substitute.For<ITerminologyService>();
         var fallback = Substitute.For<ITerminologyService>();
+        var importStatus = Substitute.For<ITerminologyImportStatusProvider>();
 
-        sql.GetImportStatusAsync("http://example.org/vs", Arg.Any<CancellationToken>())
+        importStatus.GetImportStatusAsync("http://example.org/vs", Arg.Any<CancellationToken>())
             .Returns((TerminologyImportStatus?)null);
 
         fallback.ValidateBindingAsync(
@@ -78,7 +81,7 @@ public class HybridTerminologyServiceTests
                 Arg.Any<CancellationToken>())
             .Returns(new BindingValidationResult(true, BindingStrength.Required, IssueSeverity.Information, null, null));
 
-        var hybrid = new HybridTerminologyService(sql, fallback, NullLogger<HybridTerminologyService>.Instance);
+        var hybrid = new HybridTerminologyService(sql, importStatus, fallback, NullLogger<HybridTerminologyService>.Instance);
 
         var result = await hybrid.ValidateBindingAsync(
             "http://example.org/vs",

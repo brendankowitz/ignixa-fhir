@@ -26,7 +26,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 /// uses SqlEntityFrameworkRepositoryFactory to create FhirDbContext instances scoped to the
 /// system partition. See also: ImportTerminologyResourceActivity, PackageLoadedTerminologyImportHandler
 /// </remarks>
-public class SqlTerminologyService : ITerminologyService
+public class SqlTerminologyService : ITerminologyService, ITerminologyImportStatusProvider
 {
     private readonly SqlEntityFrameworkRepositoryFactory _repositoryFactory;
     private readonly IMemoryCache _cache;

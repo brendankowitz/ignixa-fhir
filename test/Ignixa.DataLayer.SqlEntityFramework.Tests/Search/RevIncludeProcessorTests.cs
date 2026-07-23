@@ -4,14 +4,13 @@
 // -------------------------------------------------------------------------------------------------
 
 using Shouldly;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
-using NSubstitute;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
-using Ignixa.Domain.Models;
 using Ignixa.Search.Expressions;
-using Ignixa.Serialization;
+using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
 
@@ -31,73 +30,41 @@ public class RevIncludeProcessorTests : TestBase
             Context,
             Cache,
             compressor,
-            NullLoggerFactory.Instance.CreateLogger<RevIncludeProcessor>());
+            LoggerFactory.CreateLogger<RevIncludeProcessor>());
     }
 
     [Fact]
     public async Task GivenRevInclude_WhenObservationsReferencePatient_ThenReturnsObservations()
     {
         // Arrange: Create Patient and Observation
-        var patient = CreateResource(resourceTypeId: 1, resourceId: "patient-1");
+        CreateResource(resourceTypeId: 1, resourceId: "patient-1");
         var observation = CreateResource(resourceTypeId: 3, resourceId: "obs-1");
 
         // Observation references Patient
         CreateReference(observation.ResourceSurrogateId, sourceTypeId: 3, targetTypeId: 1, targetResourceId: "patient-1", searchParamId: 3);
 
-        // Mock repository to return Observation when requested
-        var obsWrapper = new ResourceWrapper(
-            ResourceType: "Observation",
-            ResourceId: "obs-1",
-            VersionId: "1",
-            LastModified: DateTimeOffset.UtcNow,
-            Resource: Substitute.For<ISourceNode>(),
-            Request: new ResourceRequest());
-
-        MockRepository.GetAsync(
-            Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-1"),
-            Arg.Any<CancellationToken>())
-            .Returns(obsWrapper);
-
-        // Create main results (Patient)
-        var mainResults = new List<ResourceWrapper>
+        var mainResults = new List<(string ResourceType, string ResourceId)>
         {
-            new ResourceWrapper(
-                ResourceType: "Patient",
-                ResourceId: "patient-1",
-                VersionId: "1",
-                LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+            ("Patient", "patient-1")
         };
 
         // Create revinclude expression: _revinclude=Observation:patient
-        var revIncludeExpression = new IncludeExpression(
-            resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
-            sourceResourceType: "Observation",
-            targetResourceType: "Patient",
-            referencedTypes: new[] { "Patient" },
-            wildCard: false,
-            reversed: true,
-            iterate: false);
+        var revIncludeExpression = CreateObservationPatientRevInclude();
 
         // Act
         var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
 
         // Assert
         result.ShouldHaveSingleItem();
-        result.First().ResourceType.ShouldBe("Observation");
-        result.First().ResourceId.ShouldBe("obs-1");
+        result[0].ResourceType.ShouldBe("Observation");
+        result[0].ResourceId.ShouldBe("obs-1");
     }
 
     [Fact]
     public async Task GivenRevInclude_WhenMultipleObservationsReferencePatient_ThenReturnsAll()
     {
         // Arrange: Create Patient and multiple Observations
-        var patient = CreateResource(resourceTypeId: 1, resourceId: "patient-1");
+        CreateResource(resourceTypeId: 1, resourceId: "patient-1");
         var obs1 = CreateResource(resourceTypeId: 3, resourceId: "obs-1");
         var obs2 = CreateResource(resourceTypeId: 3, resourceId: "obs-2");
 
@@ -105,52 +72,12 @@ public class RevIncludeProcessorTests : TestBase
         CreateReference(obs1.ResourceSurrogateId, sourceTypeId: 3, targetTypeId: 1, targetResourceId: "patient-1", searchParamId: 3);
         CreateReference(obs2.ResourceSurrogateId, sourceTypeId: 3, targetTypeId: 1, targetResourceId: "patient-1", searchParamId: 3);
 
-        // Mock repository responses
-        MockRepository.GetAsync(
-            Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-1"),
-            Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
-                ResourceType: "Observation",
-                ResourceId: "obs-1",
-                VersionId: "1",
-                LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
-
-        MockRepository.GetAsync(
-            Arg.Is<ResourceKey>(k => k.ResourceType == "Observation" && k.Id == "obs-2"),
-            Arg.Any<CancellationToken>())
-            .Returns(new ResourceWrapper(
-                ResourceType: "Observation",
-                ResourceId: "obs-2",
-                VersionId: "1",
-                LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest()));
-
-        var mainResults = new List<ResourceWrapper>
+        var mainResults = new List<(string ResourceType, string ResourceId)>
         {
-            new ResourceWrapper(
-                ResourceType: "Patient",
-                ResourceId: "patient-1",
-                VersionId: "1",
-                LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+            ("Patient", "patient-1")
         };
 
-        var revIncludeExpression = new IncludeExpression(
-            resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
-            sourceResourceType: "Observation",
-            targetResourceType: "Patient",
-            referencedTypes: new[] { "Patient" },
-            wildCard: false,
-            reversed: true,
-            iterate: false);
+        var revIncludeExpression = CreateObservationPatientRevInclude();
 
         // Act
         var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
@@ -165,36 +92,39 @@ public class RevIncludeProcessorTests : TestBase
     public async Task GivenRevInclude_WhenNoReferencingResources_ThenReturnsEmpty()
     {
         // Arrange: Create Patient with no Observations
-        var patient = CreateResource(resourceTypeId: 1, resourceId: "patient-1");
+        CreateResource(resourceTypeId: 1, resourceId: "patient-1");
 
-        var mainResults = new List<ResourceWrapper>
+        var mainResults = new List<(string ResourceType, string ResourceId)>
         {
-            new ResourceWrapper(
-                ResourceType: "Patient",
-                ResourceId: "patient-1",
-                VersionId: "1",
-                LastModified: DateTimeOffset.UtcNow,
-                Resource: Substitute.For<ISourceNode>(),
-                Request: new ResourceRequest())
+            ("Patient", "patient-1")
         };
 
-        var revIncludeExpression = new IncludeExpression(
-            resourceTypes: new[] { "Patient" },
-            referenceSearchParameter: new SearchParameterInfo("patient", SearchParamType.Reference)
-            {
-                TargetResourceTypes = new[] { "Patient" }
-            },
-            sourceResourceType: "Observation",
-            targetResourceType: "Patient",
-            referencedTypes: new[] { "Patient" },
-            wildCard: false,
-            reversed: true,
-            iterate: false);
+        var revIncludeExpression = CreateObservationPatientRevInclude();
 
         // Act
         var result = await _processor.ProcessRevIncludesAsync(mainResults, new[] { revIncludeExpression }, CancellationToken.None);
 
         // Assert
         result.ShouldBeEmpty();
+    }
+
+    private static IncludeExpression CreateObservationPatientRevInclude()
+    {
+        var referenceSearchParameter = new SearchParameterInfo(
+            name: "patient",
+            code: "patient",
+            searchParamType: SearchParamType.Reference,
+            url: new Uri("http://hl7.org/fhir/SearchParameter/Observation-patient"),
+            targetResourceTypes: new[] { "Patient" });
+
+        return new IncludeExpression(
+            resourceTypes: new[] { "Patient" },
+            referenceSearchParameter: referenceSearchParameter,
+            sourceResourceType: "Observation",
+            targetResourceType: "Patient",
+            referencedTypes: new[] { "Patient" },
+            wildCard: false,
+            reversed: true,
+            iterate: false);
     }
 }

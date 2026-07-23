@@ -119,7 +119,7 @@ public static class ValidationServicesRegistration
             var fallbackService = c.Resolve<InMemoryTerminologyService>();
             var logger = c.Resolve<ILogger<HybridTerminologyService>>();
 
-            return new HybridTerminologyService(sqlService, fallbackService, logger);
+            return new HybridTerminologyService(sqlService, sqlService, fallbackService, logger);
         }).InstancePerLifetimeScope();
     }
 

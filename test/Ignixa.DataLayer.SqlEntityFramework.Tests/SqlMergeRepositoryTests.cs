@@ -3,16 +3,14 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
+using Shouldly;
 using Xunit;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
-using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 using Ignixa.Domain.Models;
-using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.Tests;
 
@@ -61,159 +59,154 @@ public class SqlMergeRepositoryTests : TestBase
         Context.SaveChanges();
     }
 
-    #region Lookup Table Tests
-
     [Fact]
-    public async Task GetResourceTypeIdMapAsync_ReturnsCorrectMapping()
+    public async Task GivenSeededResourceTypes_WhenReadingResourceTypeMappings_ThenReturnsCorrectMapping()
     {
+        // Arrange
+        await Cache.PreloadResourceTypesAsync();
+
         // Act
-        var result = await _repository.GetResourceTypeIdMapAsync(CancellationToken.None);
+        var result = Cache.ResourceTypeMappings;
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("Patient"));
-        Assert.True(result.ContainsKey("Organization"));
-        Assert.True(result.ContainsKey("Observation"));
-        Assert.Equal(1, result["Patient"]);
-        Assert.Equal(2, result["Organization"]);
-        Assert.Equal(3, result["Observation"]);
+        result.ShouldNotBeNull();
+        result.ContainsKey("Patient").ShouldBeTrue();
+        result.ContainsKey("Organization").ShouldBeTrue();
+        result.ContainsKey("Observation").ShouldBeTrue();
+        result["Patient"].ShouldBe((short)1);
+        result["Organization"].ShouldBe((short)2);
+        result["Observation"].ShouldBe((short)3);
     }
 
     [Fact]
-    public async Task GetSearchParameterIdMapAsync_ExtractsCodeFromUri()
+    public async Task GivenSeededSearchParameters_WhenReadingSearchParameterMappings_ThenKeysAreCanonicalUris()
     {
+        // Arrange
+        await Cache.PreloadSearchParamsAsync();
+
         // Act
-        var result = await _repository.GetSearchParameterIdMapAsync(CancellationToken.None);
+        var result = Cache.SearchParameterMappings;
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("name"));
-        Assert.True(result.ContainsKey("organization"));
-        Assert.True(result.ContainsKey("patient"));
-        Assert.True(result.ContainsKey("code"));
-        Assert.Equal(1, result["name"]);
-        Assert.Equal(4, result["code"]);
+        // Keyed by canonical URI, not by the trailing code: "name" is ambiguous across
+        // Patient-name and Organization-name, so both must remain individually addressable.
+        result.ShouldNotBeNull();
+        result["http://hl7.org/fhir/SearchParameter/Patient-name"].ShouldBe((short)1);
+        result["http://hl7.org/fhir/SearchParameter/Organization-name"].ShouldBe((short)5);
+        result["http://hl7.org/fhir/SearchParameter/Patient-organization"].ShouldBe((short)2);
+        result["http://hl7.org/fhir/SearchParameter/Observation-patient"].ShouldBe((short)3);
+        result["http://hl7.org/fhir/SearchParameter/Observation-code"].ShouldBe((short)4);
     }
 
     [Fact]
-    public async Task GetSystemIdMapAsync_ReturnsSystemUriMapping()
+    public async Task GivenSeededSystems_WhenResolvingSystemUri_ThenReturnsSystemId()
     {
         // Act
-        var result = await _repository.GetSystemIdMapAsync(CancellationToken.None);
+        var loinc = await Cache.GetSystemIdAsync("http://loinc.org");
+        var snomed = await Cache.GetSystemIdAsync("http://snomed.info/sct");
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("http://loinc.org"));
-        Assert.True(result.ContainsKey("http://snomed.info/sct"));
-        Assert.Equal(1, result["http://loinc.org"]);
-        Assert.Equal(2, result["http://snomed.info/sct"]);
+        loinc.ShouldBe(1);
+        snomed.ShouldBe(2);
+        Cache.SystemMappings.ContainsKey("http://loinc.org").ShouldBeTrue();
+        Cache.SystemMappings.ContainsKey("http://snomed.info/sct").ShouldBeTrue();
     }
 
     [Fact]
-    public async Task GetQuantityCodeIdMapAsync_ReturnsQuantityCodeMapping()
+    public async Task GivenSeededQuantityCodes_WhenResolvingQuantityCode_ThenReturnsQuantityCodeId()
     {
         // Act
-        var result = await _repository.GetQuantityCodeIdMapAsync(CancellationToken.None);
+        var mg = await Cache.GetQuantityCodeIdAsync("mg");
+        var kg = await Cache.GetQuantityCodeIdAsync("kg");
 
         // Assert
-        Assert.NotNull(result);
-        Assert.True(result.ContainsKey("mg"));
-        Assert.True(result.ContainsKey("kg"));
-        Assert.Equal(1, result["mg"]);
-        Assert.Equal(2, result["kg"]);
+        mg.ShouldBe(1);
+        kg.ShouldBe(2);
+        Cache.QuantityCodeMappings.ContainsKey("mg").ShouldBeTrue();
+        Cache.QuantityCodeMappings.ContainsKey("kg").ShouldBeTrue();
     }
 
-    #endregion
-
-    #region Integration Tests
-
     [Fact]
-    public async Task MergeResourcesAsync_WithResourceSurrogateIdMap_CorrectlyAssignsIds()
+    public async Task GivenMultipleResources_WhenMerging_ThenTvpsAreMarshalledBeforeTheStoredProcedureCall()
     {
         // Arrange
         var transactionId = 1000L;
-        var patient1 = new ResourceJsonNode { ResourceType = "Patient", Id = "p1" };
-        var patient2 = new ResourceJsonNode { ResourceType = "Patient", Id = "p2" };
-
-        var wrapper1 = new ResourceWrapper(
-            resourceType: "Patient",
-            resourceId: "p1",
-            resource: patient1,
-            searchIndices: new List<object>(),
-            request: new ResourceRequest("POST", "Patient"),
-            isDeleted: false,
-            versionId: "1",
-            tenantId: null);
-
-        var wrapper2 = new ResourceWrapper(
-            resourceType: "Patient",
-            resourceId: "p2",
-            resource: patient2,
-            searchIndices: new List<object>(),
-            request: new ResourceRequest("POST", "Patient"),
-            isDeleted: false,
-            versionId: "1",
-            tenantId: null);
-
-        var resources = new[] { wrapper1, wrapper2 };
-
-        // Act
-        // This will fail with actual SQL Server but validates the TVP marshaling logic
-        try
+        var resources = new[]
         {
-            await _repository.MergeResourcesAsync(
-                transactionId,
-                singleTransaction: true,
-                resources,
-                CancellationToken.None);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No database provider"))
-        {
-            // Expected for in-memory database - this validates structure only
-        }
-    }
+            CreatePatientWrapper("p1"),
+            CreatePatientWrapper("p2")
+        };
 
-    [Fact]
-    public async Task MergeResourcesAsync_WithNoSearchIndices_ConvertsEmptyTvpsToNull()
-    {
-        // Arrange
-        // Resources with no search indices (empty searchIndices list)
-        // Tests that empty TVPs are materialized and converted to NULL
-        // SqlClient requires NULL (not empty IEnumerable) for TVPs to avoid ArgumentException
+        var entryIndices = new[] { 0, 1 };
 
-        var transactionId = 2000L;
-        var patient = new ResourceJsonNode { ResourceType = "Patient", Id = "p-empty" };
-
-        var wrapper = new ResourceWrapper(
-            resourceType: "Patient",
-            resourceId: "p-empty",
-            resource: patient,
-            searchIndices: new List<object>(),  // No search indices - validates empty TVP handling
-            request: new ResourceRequest("POST", "Patient"),
-            isDeleted: false,
-            versionId: "1",
-            tenantId: null);
-
-        var resources = new[] { wrapper };
-        var entryIndices = new[] { 0 };
-
-        // Act
-        // This will fail with actual SQL Server (no database provider) but validates TVP marshaling
-        // The important part is that empty TVPs are converted to NULL (not passed as empty enumerables)
-        try
-        {
-            await _repository.MergeResourcesAsync(
+        // Act / Assert
+        // The in-memory provider cannot execute the MergeResources stored procedure, so the call
+        // must reach - and only fail at - the relational boundary. Anything thrown earlier means
+        // surrogate ID mapping or TVP row generation is broken.
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _repository.MergeResourcesAsync(
                 transactionId,
                 singleTransaction: true,
                 resources,
                 entryIndices,
-                CancellationToken.None);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("No database provider"))
-        {
-            // Expected for in-memory database - validates structure only
-        }
+                CancellationToken.None));
+
+        exception.Message.ShouldContain("relational", Case.Insensitive);
     }
 
-    #endregion
+    [Fact]
+    public async Task GivenNoSearchIndices_WhenMerging_ThenTvpsAreMarshalledBeforeTheStoredProcedureCall()
+    {
+        // Arrange
+        // Resources with no search indices produce empty TVPs, which SqlClient requires to be
+        // passed as NULL rather than an empty IEnumerable.
+        var transactionId = 2000L;
+        var resources = new[] { CreatePatientWrapper("p-empty") };
+        var entryIndices = new[] { 0 };
+
+        // Act / Assert
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => _repository.MergeResourcesAsync(
+                transactionId,
+                singleTransaction: true,
+                resources,
+                entryIndices,
+                CancellationToken.None));
+
+        exception.Message.ShouldContain("relational", Case.Insensitive);
+    }
+
+    [Fact]
+    public async Task GivenEntryIndicesThatDoNotMatchResources_WhenMerging_ThenThrowsArgumentException()
+    {
+        // Arrange
+        var resources = new[] { CreatePatientWrapper("p1"), CreatePatientWrapper("p2") };
+        var entryIndices = new[] { 0 };
+
+        // Act / Assert
+        await Should.ThrowAsync<ArgumentException>(
+            () => _repository.MergeResourcesAsync(
+                transactionId: 3000L,
+                singleTransaction: true,
+                resources,
+                entryIndices,
+                CancellationToken.None));
+    }
+
+    private static ResourceWrapper CreatePatientWrapper(string id)
+    {
+        var patient = new ResourceJsonNode { ResourceType = "Patient", Id = id };
+
+        return new ResourceWrapper(
+            ResourceType: "Patient",
+            ResourceId: id,
+            VersionId: "1",
+            LastModified: DateTimeOffset.UtcNow,
+            Resource: patient,
+            Request: new ResourceRequest("POST", "Patient"),
+            IsDeleted: false)
+        {
+            SearchIndices = new List<object>()
+        };
+    }
 }

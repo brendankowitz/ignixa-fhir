@@ -15,18 +15,21 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 /// Hybrid terminology service that routes between SQL (fast) and JSON fallback implementations.
 /// Uses SQL terminology tables when available (imported), falls back to JSON parsing otherwise.
 /// </summary>
-public class HybridTerminologyService : ITerminologyService
+public class HybridTerminologyService : ITerminologyService, ITerminologyImportStatusProvider
 {
-    private readonly SqlTerminologyService _sqlService;
+    private readonly ITerminologyService _sqlService;
+    private readonly ITerminologyImportStatusProvider _importStatusProvider;
     private readonly ITerminologyService _fallbackService;
     private readonly ILogger<HybridTerminologyService> _logger;
 
     public HybridTerminologyService(
-        SqlTerminologyService sqlService,
+        ITerminologyService sqlService,
+        ITerminologyImportStatusProvider importStatusProvider,
         ITerminologyService fallbackService,
         ILogger<HybridTerminologyService> logger)
     {
         _sqlService = sqlService ?? throw new ArgumentNullException(nameof(sqlService));
+        _importStatusProvider = importStatusProvider ?? throw new ArgumentNullException(nameof(importStatusProvider));
         _fallbackService = fallbackService ?? throw new ArgumentNullException(nameof(fallbackService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -41,7 +44,7 @@ public class HybridTerminologyService : ITerminologyService
         CancellationToken cancellationToken)
     {
         // Check if CodeSystem is imported
-        var status = await _sqlService.GetImportStatusAsync(system, cancellationToken);
+        var status = await _importStatusProvider.GetImportStatusAsync(system, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
@@ -63,7 +66,7 @@ public class HybridTerminologyService : ITerminologyService
         CancellationToken cancellationToken)
     {
         // Check if ValueSet is imported
-        var status = await _sqlService.GetImportStatusAsync(parameters.Url, cancellationToken);
+        var status = await _importStatusProvider.GetImportStatusAsync(parameters.Url, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
@@ -96,7 +99,7 @@ public class HybridTerminologyService : ITerminologyService
         }
 
         // Check if ValueSet is imported
-        var status = await _sqlService.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        var status = await _importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
@@ -124,7 +127,7 @@ public class HybridTerminologyService : ITerminologyService
         CancellationToken cancellationToken)
     {
         // Check if ValueSet is imported
-        var status = await _sqlService.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        var status = await _importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
@@ -190,6 +193,6 @@ public class HybridTerminologyService : ITerminologyService
         string canonical,
         CancellationToken cancellationToken)
     {
-        return await _sqlService.GetImportStatusAsync(canonical, cancellationToken);
+        return await _importStatusProvider.GetImportStatusAsync(canonical, cancellationToken);
     }
 }

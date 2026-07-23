@@ -53,14 +53,15 @@ public abstract class TestBase : IDisposable
             new ResourceTypeEntity { ResourceTypeId = 5, Name = "Encounter" }
         );
 
-        // Add common search parameters
+        // Status is non-nullable on SearchParamEntity, so EF rejects the insert without it. "Enabled" is
+        // what SearchIndexReferenceDataCache writes when it seeds a parameter.
         Context.SearchParams.AddRange(
-            new SearchParamEntity { SearchParamId = 1, Uri = "http://hl7.org/fhir/SearchParameter/Patient-name" },
-            new SearchParamEntity { SearchParamId = 2, Uri = "http://hl7.org/fhir/SearchParameter/Patient-organization" },
-            new SearchParamEntity { SearchParamId = 3, Uri = "http://hl7.org/fhir/SearchParameter/Observation-patient" },
-            new SearchParamEntity { SearchParamId = 4, Uri = "http://hl7.org/fhir/SearchParameter/Observation-code" },
-            new SearchParamEntity { SearchParamId = 5, Uri = "http://hl7.org/fhir/SearchParameter/Organization-name" },
-            new SearchParamEntity { SearchParamId = 6, Uri = "http://hl7.org/fhir/SearchParameter/Encounter-subject" }
+            NewSearchParam(1, "http://hl7.org/fhir/SearchParameter/Patient-name"),
+            NewSearchParam(2, "http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            NewSearchParam(3, "http://hl7.org/fhir/SearchParameter/Observation-patient"),
+            NewSearchParam(4, "http://hl7.org/fhir/SearchParameter/Observation-code"),
+            NewSearchParam(5, "http://hl7.org/fhir/SearchParameter/Organization-name"),
+            NewSearchParam(6, "http://hl7.org/fhir/SearchParameter/Encounter-subject")
         );
 
         Context.SaveChanges();
@@ -71,11 +72,11 @@ public abstract class TestBase : IDisposable
     /// </summary>
     protected ResourceEntity CreateResource(short resourceTypeId, string resourceId, int version = 1, bool isHistory = false, bool isDeleted = false)
     {
-        // Create minimal RawResource JSON
-        var compressor = new Ignixa.DataLayer.SqlEntityFramework.Compression.GzipResourceCompressor();
+        // Minimal RawResource payload. GzipResourceCompressor.SerializeAndCompress takes a
+        // ResourceJsonNode, which is more machinery than a fixture needs; gzipping the bytes directly
+        // produces exactly what its DecompressBytes reads back.
         var minimalJson = @"{""resourceType"":""Resource"",""id"":""" + resourceId + @"""}";
-        var jsonBytes = System.Text.Encoding.UTF8.GetBytes(minimalJson);
-        var compressedBytes = compressor.CompressBytes(jsonBytes);
+        var compressedBytes = GzipCompress(System.Text.Encoding.UTF8.GetBytes(minimalJson));
 
         var resource = new ResourceEntity
         {
@@ -156,5 +157,24 @@ public abstract class TestBase : IDisposable
 
             _disposed = true;
         }
+    }
+
+    private static SearchParamEntity NewSearchParam(short searchParamId, string uri) => new()
+    {
+        SearchParamId = searchParamId,
+        Uri = uri,
+        Status = "Enabled",
+        LastUpdated = DateTimeOffset.UtcNow,
+    };
+
+    private static byte[] GzipCompress(byte[] bytes)
+    {
+        using var output = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(output, System.IO.Compression.CompressionLevel.Optimal))
+        {
+            gzip.Write(bytes, 0, bytes.Length);
+        }
+
+        return output.ToArray();
     }
 }
