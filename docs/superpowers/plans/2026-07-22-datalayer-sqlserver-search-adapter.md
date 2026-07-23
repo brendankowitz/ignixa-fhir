@@ -363,10 +363,14 @@ public static async Task<SearchTrace> CompileFromOptionsAsync(
     EmittedSqlTrace? sqlTrace = null;
     var failure = ResolveFailure(resolved.Unresolved);
 
+    // Declared here, not inside the `if` block below, even though it's only ever assigned inside it --
+    // the final `return`'s `CompiledPlan = lowered?.Plan` needs it in scope whether or not that block
+    // ran at all (an unresolved parameter skips the block entirely and this stays null, which is
+    // correct: no Lower call means no plan to report).
+    LoweredPlan? lowered = null;
+
     if (resolved.Unresolved.Count == 0)
     {
-        LoweredPlan? lowered = null;
-
         try
         {
             lowered = Lower.Run(
@@ -407,7 +411,9 @@ public static async Task<SearchTrace> CompileFromOptionsAsync(
 
 - [ ] **Step 5a: Add `CompiledPlan` to `SearchTrace`**
 
-`SearchTrace`'s own doc comment already explains why `Failure`/`Implicit` sit outside its positional constructor: "the constructor stays the four always-meaningful fields, so a further optional field can be added without touching every construction site." Add `CompiledPlan` the same way — an init-only property, not a fifth positional parameter, so no existing construction site (in `Ignixa.Search.Sql.Tests`) needs to change:
+`SearchTrace`'s own doc comment already explains why `Failure`/`Implicit` sit outside its positional constructor: "the constructor stays the four always-meaningful fields, so a further optional field can be added without touching every construction site." Add `CompiledPlan` the same way — an init-only property, not a fifth positional parameter, so no existing construction site (in `Ignixa.Search.Sql.Tests`) needs to change.
+
+**This step also widens `ResourceType` from `string` to `string?`.** `CompileFromOptionsAsync` (Step 5) passes its own `resourceType` parameter straight through to `new SearchTrace(resourceType, ...)`, and that parameter is deliberately nullable (a multi-type/system-level search has no single resource type — see this task's Interfaces note). Under this project's nullable-enabled, `TreatWarningsAsErrors` build, passing a `string?` into a non-nullable positional `string ResourceType` is a real CS8604 build error, not a style nit — leaving `ResourceType` non-nullable here would make Step 5's own code fail to build. Confirmed safe: grepped this plan for every place a `SearchTrace.ResourceType` is read, found none outside this file's own construction — no other task's code needs updating for this widening.
 
 ```csharp
 using Ignixa.Search.Parsing;
@@ -416,7 +422,7 @@ using Ignixa.Search.Sql.Ast;
 namespace Ignixa.Search.Sql.Tracing;
 
 public sealed record SearchTrace(
-    string ResourceType,
+    string? ResourceType,
     IReadOnlyList<ParameterTrace> Parameters,
     QueryPlanTrace? Plan,
     EmittedSqlTrace? Sql)
@@ -814,7 +820,7 @@ public class SqlBuilderCountPhaseScopedTests
 }
 ```
 
-Run `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj --filter "FullyQualifiedName~SqlBuilderCountPhaseScopedTests"` — expect both to fail first (compile error, `countPhaseScoped`/`CountPhaseScoped` don't exist yet), then pass once the guard/field/branch changes above are in place. Also re-run the existing Phase 9 `_total=accurate&_sort` combined-proof test (find it via `dotnet test ... --filter "FullyQualifiedName~CountOnly"` or similar — it exists somewhere in `EndToEndCompilationTests.cs` per the Phase 9 completeness work) and confirm it still passes unmodified — this is the real regression check, not the two new tests above.
+Run `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj --filter "FullyQualifiedName~SqlBuilderCountPhaseScopedTests"` — expect both to fail first (compile error, `countPhaseScoped`/`CountPhaseScoped` don't exist yet), then pass once the guard/field/branch changes above are in place. Also re-run the existing Phase 9 `_total=accurate&_sort` combined-proof test — `GivenACountOnlyPlanWithSortAndTopAndIncludesAllSet_WhenEmitted_ThenTheyAreAllIgnored` in `test/Ignixa.Search.Sql.Tests/Ast/EmitTests.cs` (`dotnet test ... --filter "FullyQualifiedName~GivenACountOnlyPlanWithSortAndTopAndIncludesAllSet"`) — and confirm it still passes unmodified (it asserts the full emitted SQL string via `ShouldBe`, so any byte-drift in the default-`countPhaseScoped: false` rendering path fails it immediately). This is the real regression check, not the two new tests above.
 
 - [ ] **Step 9: Write and run an end-to-end offset-paging compilation test**
 
@@ -927,7 +933,7 @@ Expected: FAIL — `Lower.Run` has no `surrogateIdRange` parameter yet (compile 
 
 - [ ] **Step 4: Add the parameter and composition logic**
 
-Add `(long Start, long End)? surrogateIdRange = null` as a new trailing optional parameter on `Lower.Run` (after Task 4's `offsetPage`, append-only). Immediately after `outerPredicate` is computed (both in the `expression is null` branch, where it starts as the implicit `null`, and the `expression is not null` branch, where `ExtractResourceColumnPredicates` sets it), AND in the surrogate-id range predicate:
+Add `(long Start, long End)? surrogateIdRange = null` as a new trailing optional parameter on `Lower.Run` (after Task 4's `offsetPage`/`countPhaseScoped`, append-only — Task 4 also adds a trailing parameter to this same method; since every parameter here is optional and always passed by name at every call site in this codebase's own style, the exact relative order between this task's `surrogateIdRange` and Task 4's `countPhaseScoped` doesn't matter functionally, only that both land after everything Task 1 already established. `CompileFromOptionsAsync`'s own consolidated signature, written across Tasks 3/4/5, is the actual source of truth for the final parameter order — re-read it before assuming this task's snippet's ordering is final). Immediately after `outerPredicate` is computed (both in the `expression is null` branch, where it starts as the implicit `null`, and the `expression is not null` branch, where `ExtractResourceColumnPredicates` sets it), AND in the surrogate-id range predicate:
 
 ```csharp
 if (surrogateIdRange is { } range)
@@ -1150,7 +1156,8 @@ git commit -m "fix(search-sql): add SortKeyKind.ResourceId so _sort=_id compiles
 **Design doc:** §5.
 
 **Files:**
-- Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer/Indexing/SqlServerSearchIndexReferenceDataCache.cs` — add read-only `TryGetSystemIdAsync`/`TryGetQuantityCodeIdAsync`, using the existing `MissingSentinel` negative-caching convention.
+- Modify: `src/DataLayer/Ignixa.DataLayer.SqlServer/Indexing/SqlServerSearchIndexReferenceDataCache.cs` — add read-only `TryGetSystemIdAsync`/`TryGetQuantityCodeIdAsync`, using the existing `MissingSentinel` negative-caching convention; make `GetOrCreateSystemIdAsync`/`GetOrCreateQuantityCodeIdAsync`'s own cache checks sentinel-aware; make the nested `OnDemandResolvingDictionary<TKey, TValue>`'s `TryGetValue` fast path sentinel-aware too (this is the actual object the write path's row generators read through via `SystemMappings`/`QuantityCodeMappings` — fixing only the get-or-create methods and leaving this fast path alone would still let a stale negative-cache entry reach the write path as if it were a real ID).
+- Modify: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Indexing/SqlServerSearchIndexReferenceDataCacheTests.cs` — its existing direct construction of `OnDemandResolvingDictionary<string, int>` (a 3-argument call today) needs a 4th argument once this task adds the sentinel parameter, or it stops compiling.
 - Create: `src/DataLayer/Ignixa.DataLayer.SqlServer/Search/SqlServerSymbolResolver.cs`.
 - Test: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/SqlServerSymbolResolverTests.cs` (new file).
 
@@ -1317,6 +1324,117 @@ public async Task<int?> TryGetQuantityCodeIdAsync(string code, CancellationToken
 
 **A real, disclosed risk this task must reason about explicitly, not silently inherit:** `_systemCache`/`_quantityCodeCache` are shared, single dictionaries used by BOTH the get-or-create write path (`GetOrCreateSystemIdAsync`/`GetOrCreateQuantityCodeIdAsync`) and these new read-only methods. Once `TryGetSystemIdAsync` caches `SystemQuantityMissingSentinel` for a system that was genuinely absent at search time, a LATER write (indexing a resource that introduces that same system) calls `GetOrCreateSystemIdAsync`, which checks the cache first (`_systemCache.TryGetValue(systemUri, out var cachedId)` — **returns the stale `-1` sentinel value directly as if it were a real ID**, since `GetOrCreateSystemIdAsync`'s existing code has no sentinel-awareness of its own). This is a genuine bug this task would introduce if left as-is. **Fix `GetOrCreateSystemIdAsync`/`GetOrCreateQuantityCodeIdAsync`'s existing cache-check lines to also treat `SystemQuantityMissingSentinel` as a cache miss** (mirroring exactly how `GetResourceTypeIdAsync`/`GetSearchParamIdAsync` already handle their own `MissingSentinel` correctly today): change `if (_systemCache.TryGetValue(systemUri, out var cachedId)) { return cachedId; }` to `if (_systemCache.TryGetValue(systemUri, out var cachedId) && cachedId != SystemQuantityMissingSentinel) { return cachedId; }` in both the fast-path and double-checked-locking-path checks, in both `GetOrCreateSystemIdAsync` and `GetOrCreateQuantityCodeIdAsync`. Write a test proving this specific interaction (a `TryGetSystemIdAsync` miss followed by a `GetOrCreateSystemIdAsync` for the same system correctly inserts and returns a real ID, not the stale sentinel) before considering this task done.
 
+- [ ] **Step 4a: Fix `OnDemandResolvingDictionary`'s own sentinel blindness — the actual object the write path reads through**
+
+Step 4's fix above covers `GetOrCreateSystemIdAsync`/`GetOrCreateQuantityCodeIdAsync` being called directly, but the write path's row generators don't call those methods directly — they read through `SystemMappings`/`QuantityCodeMappings` (`SqlServerMergeRepository.cs:44-64,160-161` construct/consume these two properties), which wrap `_systemCache`/`_quantityCodeCache` in `OnDemandResolvingDictionary<TKey, TValue>` (`SqlServerSearchIndexReferenceDataCache.cs`, the private nested class near the bottom of the file). Its `TryGetValue` fast path today is:
+
+```csharp
+public bool TryGetValue(TKey key, out TValue value)
+{
+    if (cache.TryGetValue(key, out value!))
+    {
+        return true;
+    }
+    // ... resolveAsync fallback
+}
+```
+
+This is sentinel-blind by construction — it has no idea `-1` means "confirmed missing," so it happily returns a stale sentinel as if it were a real ID, exactly the same class of bug Step 4 just fixed on the two get-or-create methods, just one layer further down. **This is the object `SystemMappings`/`QuantityCodeMappings` actually construct and hand to row generators — fixing only Step 4's methods and leaving this alone does not close the bug.** Fix: give `OnDemandResolvingDictionary` its own sentinel parameter and skip a cached sentinel exactly like every other cache check in this file already does.
+
+```csharp
+internal sealed class OnDemandResolvingDictionary<TKey, TValue>(
+    ConcurrentDictionary<TKey, TValue> cache,
+    Func<TKey, CancellationToken, Task<TValue>> resolveAsync,
+    ILogger logger,
+    TValue missingSentinel) : IReadOnlyDictionary<TKey, TValue>
+    where TKey : notnull
+{
+    public TValue this[TKey key] => TryGetValue(key, out var value)
+        ? value
+        : throw new KeyNotFoundException($"The given key '{key}' was not present in the dictionary.");
+
+    public IEnumerable<TKey> Keys => cache.Keys;
+
+    public IEnumerable<TValue> Values => cache.Values;
+
+    public int Count => cache.Count;
+
+    public bool ContainsKey(TKey key) => cache.ContainsKey(key);
+
+    public bool TryGetValue(TKey key, out TValue value)
+    {
+        if (cache.TryGetValue(key, out value!) && !EqualityComparer<TValue>.Default.Equals(value, missingSentinel))
+        {
+            return true;
+        }
+
+        try
+        {
+            value = resolveAsync(key, CancellationToken.None).GetAwaiter().GetResult();
+            cache[key] = value;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to resolve {Key} on demand -- row skipped", key);
+            value = default!;
+            return false;
+        }
+    }
+
+    public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator() => cache.GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+```
+
+Update the two constructing properties to pass the same `SystemQuantityMissingSentinel` this task already introduced in Step 4:
+
+```csharp
+public IReadOnlyDictionary<string, int> SystemMappings =>
+    new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, _logger, SystemQuantityMissingSentinel);
+
+public IReadOnlyDictionary<string, int> QuantityCodeMappings =>
+    new OnDemandResolvingDictionary<string, int>(_quantityCodeCache, GetOrCreateQuantityCodeIdAsync, _logger, SystemQuantityMissingSentinel);
+```
+
+**This changes an existing constructor's arity** — `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Indexing/SqlServerSearchIndexReferenceDataCacheTests.cs` already constructs `OnDemandResolvingDictionary<string, int>` directly (its `GivenAResolverThatThrows_WhenTryGetValueMisses_ThenAWarningIsLoggedAndFalseIsReturned` test) with 3 arguments — it needs a 4th now. That test's own scenario never touches the sentinel path (the backing dictionary starts empty, the resolver always throws), so any `int` value works; pass `-1` for consistency with the real sentinel value used elsewhere, even though this particular test doesn't exercise sentinel behavior:
+
+```csharp
+var wrapper = new SqlServerSearchIndexReferenceDataCache.OnDemandResolvingDictionary<string, int>(
+    backingCache,
+    (_, _) => Task.FromException<int>(new InvalidOperationException("simulated resolve failure")),
+    logger,
+    -1);
+```
+
+- [ ] **Step 4b: Write a test proving the sentinel never leaks through `SystemMappings`/`QuantityCodeMappings`**
+
+The interaction test in Step 5 below proves `GetOrCreateSystemIdAsync` itself is safe, but per this step's own point, that is not the object the write path actually calls — prove the real object is safe too:
+
+```csharp
+[Fact]
+public async Task GivenASystemMissedByReadOnlyLookup_WhenTheWritePathLaterCreatesItThroughSystemMappings_ThenTheRealIdIsReturnedNotTheStaleSentinel()
+{
+    // Arrange
+    var cache = /* same construction as the other tests in this file, ONE shared instance */;
+    const string system = "http://later-created-via-systemmappings.example.org/for-this-test";
+    var missedId = await cache.TryGetSystemIdAsync(system, CancellationToken.None);
+    missedId.ShouldBeNull();
+
+    // Act -- this is the actual call shape SqlServerMergeRepository's row generators use, not
+    // GetOrCreateSystemIdAsync directly
+    var found = cache.SystemMappings.TryGetValue(system, out var resolvedId);
+
+    // Assert
+    found.ShouldBeTrue();
+    resolvedId.ShouldBeGreaterThan(0);
+
+    var readBackId = await cache.TryGetSystemIdAsync(system, CancellationToken.None);
+    readBackId.ShouldBe(resolvedId);
+}
+```
+
 - [ ] **Step 5: Write the interaction test for the shared-cache sentinel fix**
 
 ```csharp
@@ -1408,7 +1526,7 @@ Expected: PASS, same baseline count as before this task plus the new tests.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/DataLayer/Ignixa.DataLayer.SqlServer/Indexing/SqlServerSearchIndexReferenceDataCache.cs src/DataLayer/Ignixa.DataLayer.SqlServer/Search/SqlServerSymbolResolver.cs test/Ignixa.DataLayer.SqlServer.IntegrationTests/SqlServerSymbolResolverTests.cs test/Ignixa.DataLayer.SqlServer.IntegrationTests/SqlServerSearchIndexReferenceDataCacheReadOnlyLookupTests.cs
+git add src/DataLayer/Ignixa.DataLayer.SqlServer/Indexing/SqlServerSearchIndexReferenceDataCache.cs src/DataLayer/Ignixa.DataLayer.SqlServer/Search/SqlServerSymbolResolver.cs test/Ignixa.DataLayer.SqlServer.IntegrationTests/SqlServerSymbolResolverTests.cs test/Ignixa.DataLayer.SqlServer.IntegrationTests/SqlServerSearchIndexReferenceDataCacheReadOnlyLookupTests.cs test/Ignixa.DataLayer.SqlServer.IntegrationTests/Indexing/SqlServerSearchIndexReferenceDataCacheTests.cs
 git commit -m "feat(datalayer-sqlserver): add SqlServerSymbolResolver with read-only system/quantity-code lookups"
 ```
 
@@ -1554,6 +1672,7 @@ using Ignixa.Domain.Models;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Tracing;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -1714,12 +1833,11 @@ private async IAsyncEnumerable<SearchEntryResult> ExecuteAndMaterializeAsync(
     BindParameters(command, sql.Parameters);
 
     var hasIncludes = plan.Includes is { Count: > 0 };
-    var hasSort = plan.Sort is not null;
 
     var rows = await _sqlExecutionService.ExecuteReaderAsync(
         _tenantId,
         command,
-        reader => ReadMatchRow(reader, hasIncludes, hasSort),
+        reader => ReadMatchRow(reader, hasIncludes),
         cancellationToken);
 
     var surrogateIds = rows.Select(r => (r.ResourceTypeId, r.SurrogateId)).ToList();
@@ -1757,7 +1875,7 @@ private async IAsyncEnumerable<SearchEntryResult> ExecuteAndMaterializeAsync(
 
 private readonly record struct MatchRow(short ResourceTypeId, long SurrogateId, bool? IsMatch);
 
-private static MatchRow ReadMatchRow(SqlDataReader reader, bool hasIncludes, bool hasSort)
+private static MatchRow ReadMatchRow(SqlDataReader reader, bool hasIncludes)
 {
     var resourceTypeId = reader.GetInt16(0);
     var surrogateId = reader.GetInt64(1);
@@ -1955,13 +2073,18 @@ This loop only applies when `options.Sort` is non-empty (this loop has no meanin
 
 - [ ] **Step 2: Write the failing test for a page straddling the phase boundary**
 
+**Both tests below encode `count: 5` via `ContinuationToken.Encode`, but the loop's own "+1 for hasMore" convention (Step 4b/4c — the same convention `CompileAsync` already applies for a token-driven request) means the ACTUAL requested count the algorithm works with is `6`, not `5`. Both tests' assertions and inline comments are written against that real `6`, not the `5` in the token — do not "fix" the algorithm to make these come out to `5`; `5` would silently break the hasMore convention Task 8 already established for the non-sorted path, and Task 13's differential paging test would eventually catch that regression two tasks later, the hard way.**
+
 ```csharp
 [Fact]
 public async Task GivenAPageStraddlingTheValuedMissingPrimaryBoundary_WhenSearchStreamAsyncCalled_ThenReturnsExactlyThePageWithNoDuplicatesOrGaps()
 {
     // Arrange -- create 10 Patients with a sortable String parameter set (Valued), then 5 more Patients
     // WITHOUT that parameter set (MissingPrimary). Sort ascending by that parameter, page size 5,
-    // request offset=8 (straddles: rows 8-9 come from Valued, rows 10-12 come from MissingPrimary).
+    // request offset=8. The token encodes count=5, but the +1-for-hasMore convention makes the real
+    // requestedCount 6: Valued has only 2 rows left from offset 8 (rows 8-9 of its 10), so Valued
+    // returns 2 and MissingPrimary fills the remaining 6-2=4 at its own offset 0 (rows 0-3 of its 5) --
+    // 2 + 4 = 6 rows total, straddling the phase boundary with no duplicate and no gap.
     var options = new SearchOptions
     {
         ResourceType = "Patient",
@@ -1977,17 +2100,23 @@ public async Task GivenAPageStraddlingTheValuedMissingPrimaryBoundary_WhenSearch
         results.Add(result);
     }
 
-    // Assert -- exactly 5 rows (2 from the tail of Valued, 3 from the head of MissingPrimary), no
-    // duplicates against an adjacent page, no gap.
-    results.Count.ShouldBe(5);
-    results.Select(r => r.ResourceId).Distinct().Count().ShouldBe(5);
+    // Assert -- exactly 6 rows (2 from the tail of Valued, 4 from the head of MissingPrimary, per the
+    // +1-for-hasMore arithmetic above), no duplicates against an adjacent page, no gap.
+    results.Count.ShouldBe(6);
+    results.Select(r => r.ResourceId).Distinct().Count().ShouldBe(6);
 }
 
 [Fact]
 public async Task GivenAPageEntirelyWithinMissingPrimary_WhenSearchStreamAsyncCalled_ThenComputesTheCorrectMissingPrimaryOffset()
 {
-    // Arrange -- same 10 Valued + 5 MissingPrimary setup. Request offset=12, count=5 -- entirely past
-    // the Valued phase's 10 rows, needing MissingPrimary offset 2 (12 - 10), not 0 and not 12.
+    // Arrange -- same 10 Valued + 5 MissingPrimary setup. Request offset=12, encoded count=5 (real
+    // requestedCount, after +1, is 6) -- entirely past the Valued phase's 10 rows (Valued returns 0),
+    // so a countPhaseScoped CountOnly compile reports the Valued total (10), giving MissingPrimary
+    // offset max(0, 12-10)=2, limit 6-0=6. MissingPrimary only has 5 total rows, 3 of which remain
+    // from its own offset 2 (rows 2, 3, 4) -- so min(6, 3) = 3 rows returned. The +1 convention doesn't
+    // change this test's answer (data runs out at 3 either way, whether the limit is 5 or 6), but the
+    // comment states the real 6 so a future reader isn't misled the way an earlier draft of this test
+    // was.
     var options = new SearchOptions
     {
         ResourceType = "Patient",
@@ -2003,9 +2132,7 @@ public async Task GivenAPageEntirelyWithinMissingPrimary_WhenSearchStreamAsyncCa
         results.Add(result);
     }
 
-    // Assert -- exactly 3 rows (rows 12, 13, 14 of the combined 15; MissingPrimary only has 5 total,
-    // rows 10-14 in the combined ordering, so offset 12 within MissingPrimary is its own offset 2,
-    // yielding its rows 2, 3, 4 -- 3 rows, not 5, since the page runs past the end of all data).
+    // Assert -- exactly 3 rows (rows 12, 13, 14 of the combined 15).
     results.Count.ShouldBe(3);
 }
 ```
@@ -2016,7 +2143,7 @@ public async Task GivenAPageEntirelyWithinMissingPrimary_WhenSearchStreamAsyncCa
 dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj --filter "FullyQualifiedName~StraddlingTheValued|EntirelyWithinMissingPrimary"
 ```
 
-Expected: FAIL — today's implementation hard-codes `SortPhase.Valued` and never runs a `MissingPrimary` phase at all, so the straddling test returns only 2 rows (Valued's tail) instead of 5, and the entirely-past test returns 0 rows instead of 3.
+Expected: FAIL — today's implementation hard-codes `SortPhase.Valued` and never runs a `MissingPrimary` phase at all, so the straddling test returns only 2 rows (Valued's tail) instead of 6, and the entirely-past test returns 0 rows instead of 3.
 
 - [ ] **Step 4: Extend `CompileFromOptionsAsync` and `CompileAsync` with `sortPhase`/`countPhaseScoped`, add an explicit-offset override, then implement the two-phase loop**
 
@@ -2143,10 +2270,20 @@ private async IAsyncEnumerable<SearchEntryResult> SearchStreamWithPhaseHandlingA
         throw new RequestNotValidException(valuedTrace.Failure?.Message ?? "The search could not be compiled.");
     }
 
+    // Only count Match-mode rows toward the phase-boundary arithmetic below. An includes-bearing plan's
+    // match-page CTE yields Match rows AND separately-unioned Include rows through the same reader --
+    // the OFFSET/FETCH paging and every offset/limit computed in this method govern the MATCH set only.
+    // Counting Include rows here would prematurely satisfy/shrink the page math on any sorted search
+    // combined with _include/_revinclude, silently dropping MissingPrimary match rows that should have
+    // been returned.
     var valuedCount = 0;
     await foreach (var result in ExecuteAndMaterializeAsync(valuedSql, valuedTrace.CompiledPlan!, cancellationToken))
     {
-        valuedCount++;
+        if (result.SearchMode == SearchEntryMode.Match)
+        {
+            valuedCount++;
+        }
+
         yield return result;
     }
 
@@ -2200,7 +2337,7 @@ private async IAsyncEnumerable<SearchEntryResult> SearchStreamWithPhaseHandlingA
 
 `SearchStreamAsync` (Task 8) should now call `SearchStreamWithPhaseHandlingAsync` instead of its own inline compile-and-execute logic. Note this method never constructs a `SearchOptions` copy with a different `ContinuationToken` — every phase-specific offset/limit goes through `offsetPageOverride` instead, avoiding the `SearchOptions with { ... }` pattern entirely (`SearchOptions` is a mutable class, not a record — `with` expressions do not compile against it; an earlier draft of this task used them and would not have built).
 
-**Re-verify the `results.Count.ShouldBe(3)`/`ShouldBe(5)` assertions in Step 2's two tests by hand-tracing the algorithm above against each test's exact Arrange data** — both were hand-traced against this corrected algorithm while writing this fix and both check out (straddling: Valued returns 2 of the requested 5 at offset 8, `MissingPrimary` fills the remaining 3 at offset 0 = 5 total; entirely-past: Valued returns 0 at offset 12, `CountOnly` reports 10, `MissingPrimary` runs at offset 2 with limit 5 against 5 total `MissingPrimary` rows = 3 remaining = 3 total) — but re-verify once more against whatever Step 2's test data actually ends up being if it changes.
+**Re-verify the `results.Count.ShouldBe(6)`/`ShouldBe(3)` assertions in Step 2's two tests by hand-tracing the algorithm above against each test's exact Arrange data, INCLUDING the `tokenCount + 1` convention** — both were hand-traced against this corrected algorithm and both check out: straddling — encoded `count: 5` becomes `requestedCount = 6`; Valued returns 2 of the requested 6 at offset 8 (only 2 rows remain in Valued past offset 8); `MissingPrimary` fills the remaining `6 - 2 = 4` at its own offset 0 = `2 + 4 = 6` total. Entirely-past — encoded `count: 5` becomes `requestedCount = 6`; Valued returns 0 at offset 12; `CountOnly` reports the Valued total as 10; `MissingPrimary` runs at offset `max(0, 12 - 10) = 2` with limit `6 - 0 = 6` against `MissingPrimary`'s 5 total rows, of which only 3 remain from offset 2 = `min(6, 3) = 3` total. **If a real implementation's numbers don't match these, that is an algorithm bug to investigate — not a signal to adjust the test's Arrange/Assert to whatever the implementation happens to produce.** Re-verify this hand-trace once more against whatever Step 2's test data actually ends up being if it changes.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
