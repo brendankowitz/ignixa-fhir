@@ -51,6 +51,16 @@ public sealed class StructuralContext
         return new CteRef(index);
     }
 
+    /// <summary>Lowers a <c>:text</c> search, which reads dbo.TokenText rather than a search-param table.</summary>
+    public CteRef LowerTokenText(SearchParameterInfo parameter, StringExpression expression, string resourceType, Expression provenanceNode)
+    {
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        _ctes.Add(TokenTextLoweringRule.Lower(parameter, expression, _leafContext, resourceTypeId));
+        var index = _ctes.Count - 1;
+        _origins.Add(new CteOrigin(index, provenanceNode));
+        return new CteRef(index);
+    }
+
     public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string resourceType, Expression provenanceNode)
     {
         foreach (var component in components)

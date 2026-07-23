@@ -272,9 +272,16 @@ public static class SqlBuilder
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
     {
         var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
+
+        // Most search-param tables hold rows for current versions only, so history is filtered once at
+        // hydration. dbo.TokenText carries its own IsHistory column and does keep superseded rows, so a
+        // query against it has to exclude them itself. Driven off the catalog rather than the table name:
+        // the filter is required by any table that has the column, and the catalog is generated from DDL.
+        var historyClause = p.Table.Columns.Any(c => c.Name == "IsHistory") ? " AND IsHistory = 0" : string.Empty;
+
         return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{predicateClause}";
+               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
     }
 
     /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>

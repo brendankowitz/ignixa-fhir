@@ -138,6 +138,11 @@ public static class Lower
             return context.LowerNot(context.Lower(positiveMatch, resourceType, provenanceNode: predicate), resourceType);
         }
 
+        if (sp.Expression is StringExpression { FieldName: FieldName.TokenText } text)
+        {
+            return context.LowerTokenText(sp.Parameter, text, resourceType, provenanceNode: sp);
+        }
+
         if (TryGetCompositeComponents(sp.Expression, out var components))
         {
             return context.LowerComposite(sp.Parameter, components!, resourceType, provenanceNode: sp);

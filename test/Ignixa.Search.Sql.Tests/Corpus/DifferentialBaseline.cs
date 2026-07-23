@@ -7,5 +7,5 @@ namespace Ignixa.Search.Sql.Tests.Corpus;
 public static class DifferentialBaseline
 {
     /// <summary>Captured queries the compiler can turn into SQL today.</summary>
-    public const int CompiledQueries = 171;
+    public const int CompiledQueries = 174;
 }
