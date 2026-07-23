@@ -894,6 +894,36 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenANegatedMultiValuedIdParameter_WhenLowered_ThenLiftsANegatedOrIntoTheOuterWhere()
+    {
+        // Arrange -- Observation?_id:not=a,b. The binder wraps a negated comma list as
+        // NotExpression(Or([_id=a, _id=b])), each alternative losing its own modifier. It must lift into
+        // the outer WHERE as NOT (ResourceId = @p0 OR ResourceId = @p1), not fall through to CTE lowering
+        // where the leaf dispatcher rejects resource columns.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new NotExpression(Expression.Or(
+            [
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null)),
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "b", text: null)),
+            ])));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Observation"] = 96 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
+        var or = not.Operand.ShouldBeOfType<Predicate.Or>();
+        or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        or.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+    }
+
+    [Fact]
     public void GivenANotReferencedSourceAndPath_WhenLowered_ThenProducesANotReferencedSourceCteWithResolvedIds()
     {
         // Arrange -- Patient?_not-referenced=Observation:subject.

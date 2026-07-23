@@ -235,6 +235,7 @@ public static class PlanExplainer
         Predicate.GreaterThan gt => $"{gt.Column.Column} > @p{parameterOrdinal++}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= @p{parameterOrdinal++}",
         Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
+        Predicate.Not not => $"NOT ({PrintPredicate(not.Operand, ref parameterOrdinal)})",
         Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
         Predicate.False => UnsatisfiableRendering,
         Predicate.PrefixOfParameter pop => $"{pop.Column.Column} PREFIX_OF @p{parameterOrdinal++}{PrintCollation(pop.Collation)}",

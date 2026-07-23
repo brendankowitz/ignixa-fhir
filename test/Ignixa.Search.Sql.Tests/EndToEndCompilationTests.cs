@@ -558,15 +558,13 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
-    public async Task GivenAMultiValueIdNotQuery_WhenCompiled_ThenThrowsRatherThanSilentlyRoutingIntoTokenSearchParam()
+    public async Task GivenAMultiValueIdNotQuery_WhenCompiled_ThenLiftsANegatedOrIntoTheOuterWhere()
     {
         // Arrange -- Patient?_id:not=1,2 (comma-separated, so the binder wraps it as
-        // SearchParameterExpression(idParam, NotExpression(Or([pred("1", Modifier:null), pred("2", Modifier:null)])))
-        // -- the top-level extraction pass only recognizes a BARE SearchParameterPredicateExpression, so this
-        // shape is never extracted; each Or alternative reaches StructuralContext.Lower's dispatch choke point
-        // directly, where it must throw (a resource column has no TokenSearchParam row to match) rather than
-        // silently routing "_id" into TokenSearchParam via the generic Token dispatch, which would silently
-        // produce an always-empty (or always-true, once Except negates it) match instead of a loud failure.
+        // SearchParameterExpression(idParam, NotExpression(Or([pred("1", Modifier:null), pred("2", Modifier:null)])))).
+        // The extraction pass lifts the whole negated Or into the outer WHERE as NOT (ResourceId = @p OR
+        // ResourceId = @p) -- the same shape the shipping engine emits -- rather than routing "_id" into
+        // TokenSearchParam or dropping the negation.
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var tree = new SearchParameterExpression(
             idParam,
@@ -579,9 +577,18 @@ public class EndToEndCompilationTests
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        // Act & Assert
+        // Act
         var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        Should.Throw<NotSupportedException>(() => Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- a single ResourceSource, negation lifted into the outer WHERE, values never inlined
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+        var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
+        not.Operand.ShouldBeOfType<Predicate.Or>();
+        emitted.Sql.ShouldContain("NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Sql.ShouldNotContain("TokenSearchParam");
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "1", "2"]);
     }
 
     [Fact]

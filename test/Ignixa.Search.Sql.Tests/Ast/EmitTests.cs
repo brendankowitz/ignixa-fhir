@@ -1202,6 +1202,25 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenANotPredicateInTheOuterWhere_WhenEmitted_ThenWrapsTheOperandInNot()
+    {
+        // Arrange -- Patient?_id:not=a,b -- a negated resource-column filter over a Resource scan.
+        var idColumn = new SqlColumnRef("Resource", "ResourceId");
+        var outer = new Predicate.Not(
+            new Predicate.Or(
+                new Predicate.Equal(idColumn, new SqlParameterRef("a")),
+                new Predicate.Equal(idColumn, new SqlParameterRef("b"))));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), OuterPredicate: outer);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("WHERE NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "a", "b"]);
+    }
+
+    [Fact]
     public void GivenANotReferencedSourceWithSourceTypeAndPath_WhenEmitted_ThenAntiJoinsReferenceSearchParamByTargetIdentity()
     {
         // Arrange -- Patient?_not-referenced=Observation:subject. Target type 103, source type 96, ref

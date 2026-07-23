@@ -301,6 +301,16 @@ public static class Lower
     /// </summary>
     private static Predicate? TryLowerResourceColumn(Expression expression, LeafContext leafContext)
     {
+        // A negated resource column (_id:not, _type:not) arrives as a NotExpression wrapping the positive
+        // alternatives, each stripped of its own modifier by the binder. Lower the positive form, then wrap
+        // it in Predicate.Not so the negation reaches the outer WHERE as NOT (...) rather than being
+        // silently dropped -- the failure the leaf rule's modifier guard exists to prevent.
+        if (expression is NotExpression not)
+        {
+            var inner = TryLowerResourceColumn(not.Expression, leafContext);
+            return inner is null ? null : new Predicate.Not(inner);
+        }
+
         if (expression is SearchParameterPredicateExpression predicate)
         {
             return ResourceColumnLoweringRule.TryLower(predicate, leafContext);

@@ -6,9 +6,9 @@
 
 | Verdict | Count |
 |---|---:|
-| NotCompiled | 4 |
+| NotCompiled | 3 |
 | Match | 69 |
-| CompilerDoesLess | 45 |
+| CompilerDoesLess | 46 |
 | CompilerDoesMore | 14 |
 | Divergent | 53 |
 
@@ -20,11 +20,6 @@
   - `/Patient?_id=ignixa-inc-pat1&_include=*`
   - `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*`
   - `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1`
-
-### Lower (1)
-
-- **1x** A resource-column predicate ('_id') reached the leaf/composite dispatch — only Lower.Run's top-level extraction pass (via ResourceColumnLoweringRule) handles these. Guarding here, at the dispatch choke point, covers every caller of Lower/LowerComposite structurally. Throwing rather than routing a resource column into an unrelated table, which would silently produce a wrong-scope or always-empty match.
-  - `/Observation?identifier=http://ignixa.io/testscript/suite/token%7C&_id:not=ignixa-tok-o1,ignixa-tok-o2&_count=100`
 
 ## Divergences -- compiled, but asks the database for something different
 
@@ -274,6 +269,37 @@ select0 = <-cte2  [order-by]
 cte0 = TokenStringCompositeSearchParam  Code1 = @p ResourceTypeId = <n> SearchParamId = <n> col:TextOverflow2 like @p  [distinct]
 cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
+```
+
+</details>
+
+### CompilerDoesLess: `/Observation?identifier=http://ignixa.io/testscript/suite/token%7C&_id:not=ignixa-tok-o1,ignixa-tok-o2&_count=100`
+
+Only the shipping engine does:
+- `table Resource`
+- `filter IsDeleted = <v>`
+- `filter IsHistory = <v>`
+- `filter ResourceTypeId = <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op distinct`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceId = @p ResourceTypeId = <n>  [not,or]
+cte1 = TokenSearchParam  <-cte0  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
+cte2 = <-cte1  [distinct,order-by,top]
+
+compiler:
+select0 = Resource  <-cte0  ResourceId = @p ResourceId = @p  [correlate,correlate,inner-join,not,or,order-by]
+cte0 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 ```
 
 </details>
