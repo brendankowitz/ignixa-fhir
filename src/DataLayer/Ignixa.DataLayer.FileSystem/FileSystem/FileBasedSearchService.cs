@@ -41,7 +41,7 @@ public partial class FileBasedSearchService : ISearchService
 
     public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         if (searchOptions is not SearchOptions options)
@@ -54,7 +54,7 @@ public partial class FileBasedSearchService : ISearchService
         var resourceType = options.ResourceType;
 
         // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {
@@ -109,7 +109,7 @@ public partial class FileBasedSearchService : ISearchService
         var results = new List<SearchEntryResult>();
         foreach (var key in pagedKeys)
         {
-            var resource = await _repository.GetAsync(key, ct);
+            var resource = await _repository.GetAsync(key, cancellationToken);
             if (resource != null)
             {
                 results.Add(resource);
@@ -124,7 +124,7 @@ public partial class FileBasedSearchService : ISearchService
 
     public async IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        [EnumeratorCancellation] CancellationToken ct = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         if (searchOptions is not SearchOptions options)
@@ -137,7 +137,7 @@ public partial class FileBasedSearchService : ISearchService
         var resourceType = options.ResourceType;
 
         // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {
@@ -192,9 +192,9 @@ public partial class FileBasedSearchService : ISearchService
         int streamed = 0;
         foreach (var key in pagedKeys)
         {
-            ct.ThrowIfCancellationRequested();
+            cancellationToken.ThrowIfCancellationRequested();
 
-            var resource = await _repository.GetAsync(key, ct);
+            var resource = await _repository.GetAsync(key, cancellationToken);
             if (resource != null)
             {
                 streamed++;
@@ -208,7 +208,7 @@ public partial class FileBasedSearchService : ISearchService
 
     public async ValueTask<int> CountAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         if (searchOptions is not SearchOptions options)
@@ -221,7 +221,7 @@ public partial class FileBasedSearchService : ISearchService
         var resourceType = options.ResourceType;
 
         // Step 1: Load metadata with search indices (lightweight - no resource JSON loading)
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {
@@ -261,12 +261,12 @@ public partial class FileBasedSearchService : ISearchService
     public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
         string resourceType,
         int numberOfRanges,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         LogGettingExportRanges(_logger, resourceType, numberOfRanges);
 
         // Load metadata for resource type
-        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, ct);
+        var allMetadata = await _repository.GetResourceMetadataAsync(resourceType, cancellationToken);
 
         if (allMetadata.Count == 0)
         {

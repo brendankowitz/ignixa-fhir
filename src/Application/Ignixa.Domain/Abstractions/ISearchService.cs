@@ -20,11 +20,11 @@ public interface ISearchService
     /// </summary>
     /// <typeparam name="TSearchOptions">The type of search options (e.g., SearchOptions from Sparky.Search).</typeparam>
     /// <param name="searchOptions">The search criteria.</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An async stream of matching resources with raw bytes.</returns>
     IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class;
 
     /// <summary>
@@ -33,11 +33,11 @@ public interface ISearchService
     /// </summary>
     /// <typeparam name="TSearchOptions">The type of search options (e.g., SearchOptions from Sparky.Search).</typeparam>
     /// <param name="searchOptions">The search criteria (only filter parameters are used; _sort, _include, _revinclude are ignored).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The count of matching resources.</returns>
     ValueTask<int> CountAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class;
 
     /// <summary>
@@ -47,7 +47,7 @@ public interface ISearchService
     /// </summary>
     /// <param name="resourceType">The FHIR resource type (e.g., "Patient", "Observation").</param>
     /// <param name="numberOfRanges">The desired number of ranges (e.g., 4-8 for parallelism).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>
     /// A list of (StartSurrogateId, EndSurrogateId) tuples representing non-overlapping, exhaustive ranges.
     /// Empty list if no resources exist for the resource type.
@@ -55,5 +55,5 @@ public interface ISearchService
     Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
         string resourceType,
         int numberOfRanges,
-        CancellationToken ct = default);
+        CancellationToken cancellationToken = default);
 }

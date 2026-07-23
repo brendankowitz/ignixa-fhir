@@ -69,7 +69,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     /// <inheritdoc/>
     public async IAsyncEnumerable<SearchEntryResult> SearchStreamAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         // Cast to SearchOptions (we only support this type for now)
@@ -87,7 +87,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             _logger.LogDebug("Null/empty ResourceType detected - building query without resource type constraint");
 
             // Build query without resource type ID constraint (expression must handle filtering)
-            var multiTypeQuery = await BuildQueryAsync(options, resourceTypeId: null, ct);
+            var multiTypeQuery = await BuildQueryAsync(options, resourceTypeId: null, cancellationToken);
 
             _logger.LogInformation("Executing streaming query for multi-type search\n{SQL}",
                 multiTypeQuery.ToQueryString());
@@ -97,7 +97,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             await foreach (var entity in multiTypeQuery
                 .Include(x => x.Transaction)
                 .Include(x => x.ResourceType)
-                .AsAsyncEnumerable().WithCancellation(ct))
+                .AsAsyncEnumerable().WithCancellation(cancellationToken))
             {
                 // For multi-type results, we need to determine the actual resource type from the entity
                 // entity.ResourceType is a ResourceTypeEntity, get the Name property
@@ -115,7 +115,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             // Process includes/revincludes if requested
             if (options.Include.Count > 0 || options.RevInclude.Count > 0)
             {
-                var includedResources = await ProcessIncludesAndRevIncludesAsync(multiTypeMainResults, options, ct);
+                var includedResources = await ProcessIncludesAndRevIncludesAsync(multiTypeMainResults, options, cancellationToken);
                 foreach (var included in includedResources)
                 {
                     // Mark included resources with Include mode instead of Match
@@ -126,7 +126,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
         }
 
         // Get ResourceTypeId for single-type searches
-        var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, ct);
+        var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, cancellationToken);
         if (!resourceTypeId.HasValue)
         {
             _logger.LogWarning("ResourceType not found: {ResourceType}", options.ResourceType);
@@ -134,7 +134,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
         }
 
         // Build query
-        var query = await BuildQueryAsync(options, resourceTypeId.Value, ct);
+        var query = await BuildQueryAsync(options, resourceTypeId.Value, cancellationToken);
 
         _logger.LogInformation("Executing streaming query for {ResourceType}\n{SQL}",
             options.ResourceType,
@@ -147,7 +147,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
         var mainResults = new List<SearchEntryResult>();
         await foreach (var entity in query
             .Include(x => x.Transaction)
-            .AsAsyncEnumerable().WithCancellation(ct))
+            .AsAsyncEnumerable().WithCancellation(cancellationToken))
         {
             var searchResult = MapResourceEntityToSearchResult(entity, options.ResourceType);
             if (hasIterateExpressions)
@@ -175,7 +175,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 // Stream each included resource directly to client
                 // For wildcard includes or unspecified target type, get resource type from navigation property or cache
                 await foreach (var entity in includeQuery
-                    .AsAsyncEnumerable().WithCancellation(ct))
+                    .AsAsyncEnumerable().WithCancellation(cancellationToken))
                 {
                     // Determine resource type: use target type if specified, otherwise get from entity or cache
                     var resourceTypeName = includeExpr.TargetResourceType
@@ -214,7 +214,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
                 // Stream each reverse-included resource directly to client
                 await foreach (var entity in revIncludeQuery
-                    .AsAsyncEnumerable().WithCancellation(ct))
+                    .AsAsyncEnumerable().WithCancellation(cancellationToken))
                 {
                     // Determine resource type from entity
                     // First try using the provided SourceResourceType, then navigation property, then fall back to cache lookup of the ID
@@ -252,7 +252,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             var iteratedResources = await _iterateProcessor.ProcessIteratesAsync(
                 iterationStartingPoint,
                 allIterateExpressions,
-                ct);
+                cancellationToken);
 
             foreach (var resource in iteratedResources)
             {
@@ -266,7 +266,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     /// <inheritdoc/>
     public async ValueTask<int> CountAsync<TSearchOptions>(
         TSearchOptions searchOptions,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
         where TSearchOptions : class
     {
         // Cast to SearchOptions (we only support this type for now)
@@ -291,7 +291,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 var typeIds = await _context.ResourceTypes
                     .Where(rt => resourceTypeNames.Contains(rt.Name))
                     .Select(rt => rt.ResourceTypeId)
-                    .ToListAsync(ct);
+                    .ToListAsync(cancellationToken);
 
                 if (typeIds.Count == 0)
                 {
@@ -322,15 +322,15 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     multiTypeBaseQuery,
                     null, // null means system-wide search - query all resource types
                     options.Expression,
-                    ct);
-                return await filteredQuery.CountAsync(ct);
+                    cancellationToken);
+                return await filteredQuery.CountAsync(cancellationToken);
             }
 
-            return await multiTypeBaseQuery.CountAsync(ct);
+            return await multiTypeBaseQuery.CountAsync(cancellationToken);
         }
 
         // Get ResourceTypeId for single-type searches
-        var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, ct);
+        var resourceTypeId = await GetResourceTypeIdAsync(options.ResourceType, cancellationToken);
         if (!resourceTypeId.HasValue)
         {
             return 0;
@@ -349,18 +349,18 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 baseQuery,
                 resourceTypeId.Value,
                 options.Expression,
-                ct);
-            return await filteredQuery.CountAsync(ct);
+                cancellationToken);
+            return await filteredQuery.CountAsync(cancellationToken);
         }
 
-        return await baseQuery.CountAsync(ct);
+        return await baseQuery.CountAsync(cancellationToken);
     }
 
     /// <inheritdoc/>
     public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
         string resourceType,
         int numberOfRanges,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation(
             "Getting export ranges: ResourceType={ResourceType}, NumberOfRanges={NumberOfRanges}",
@@ -368,7 +368,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             numberOfRanges);
 
         // Get ResourceTypeId
-        var resourceTypeId = await GetResourceTypeIdAsync(resourceType, ct);
+        var resourceTypeId = await GetResourceTypeIdAsync(resourceType, cancellationToken);
         if (!resourceTypeId.HasValue)
         {
             _logger.LogWarning("ResourceType not found: {ResourceType}", resourceType);
@@ -388,7 +388,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 MaxId = g.Max(x => x.ResourceSurrogateId),
                 Count = g.Count()
             })
-            .FirstOrDefaultAsync(ct);
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (stats == null || stats.Count == 0)
         {
@@ -463,7 +463,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     private async Task<List<SearchEntryResult>> ProcessIncludesAndRevIncludesAsync(
         List<SearchEntryResult> mainResults,
         SearchOptions options,
-        CancellationToken ct)
+        CancellationToken cancellationToken)
     {
         var allIncluded = new List<SearchEntryResult>();
 
@@ -480,7 +480,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             var included = await _includeProcessor.ProcessIncludesAsync(
                 resourceIdentities,
                 nonIterateIncludes,
-                ct);
+                cancellationToken);
 
             allIncluded.AddRange(included);
             _logger.LogDebug("Added {IncludedCount} included resources", included.Count);
@@ -494,7 +494,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             var revIncluded = await _revIncludeProcessor.ProcessRevIncludesAsync(
                 resourceIdentities,
                 nonIterateRevIncludes,
-                ct);
+                cancellationToken);
 
             allIncluded.AddRange(revIncluded);
             _logger.LogDebug("Added {RevIncludedCount} reverse included resources", revIncluded.Count);
@@ -516,7 +516,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
             var iteratedResources = await _iterateProcessor.ProcessIteratesAsync(
                 iterationStartingPoint,
                 allIterateExpressions,
-                ct);
+                cancellationToken);
 
             allIncluded.AddRange(iteratedResources);
             _logger.LogDebug("Added {IteratedCount} iterated resources", iteratedResources.Count);
@@ -528,7 +528,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
     private async Task<IQueryable<ResourceEntity>> BuildQueryAsync(
         SearchOptions options,
         short? resourceTypeId,
-        CancellationToken ct,
+        CancellationToken cancellationToken,
         bool includePagination = true,
         bool forIncludeProcessing = false)
     {
@@ -559,7 +559,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 var typeIds = await _context.ResourceTypes
                     .Where(rt => resourceTypeNames.Contains(rt.Name))
                     .Select(rt => rt.ResourceTypeId)
-                    .ToListAsync(ct);
+                    .ToListAsync(cancellationToken);
 
                 if (typeIds.Count == 0)
                 {
@@ -598,7 +598,7 @@ public class SqlEntityFrameworkSearchService : ISearchService
                     baseQuery,
                     resourceTypeId, // null for multi-type searches
                     options.Expression,
-                    ct);
+                    cancellationToken);
             }
             else
             {
@@ -1293,11 +1293,11 @@ public class SqlEntityFrameworkSearchService : ISearchService
             .OrderBy(r => r.ResourceSurrogateId);  // Stable order for streaming
     }
 
-    private async ValueTask<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken ct)
+    private async ValueTask<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
     {
         var entity = await _context.ResourceTypes
             .AsNoTracking()
-            .FirstOrDefaultAsync(rt => rt.Name == resourceType, ct);
+            .FirstOrDefaultAsync(rt => rt.Name == resourceType, cancellationToken);
 
         return entity?.ResourceTypeId;
     }
