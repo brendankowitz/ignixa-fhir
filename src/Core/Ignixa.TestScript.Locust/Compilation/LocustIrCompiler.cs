@@ -1,5 +1,7 @@
+using Ignixa.FhirPath.Parser;
 using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.Expressions;
+using Ignixa.TestScript.Locust.Compatibility;
 using Ignixa.TestScript.Locust.Diagnostics;
 using Ignixa.TestScript.Locust.Ir;
 using Ignixa.TestScript.Model;
@@ -14,6 +16,32 @@ namespace Ignixa.TestScript.Locust.Compilation;
 public sealed class LocustIrCompiler
 {
     private const string MetricDiagnosticCode = "LOCUST_METRIC";
+
+    // A single shared, thread-safe parser is sufficient: FhirPathParser.Parse is stateless per call
+    // and the compiler only uses it to probe whether an expression parses at all (LOCUST010).
+    private static readonly FhirPathParser s_fhirPathParser = new(preserveTrivia: false);
+
+    private readonly FhirPathCompatibilityManifest _manifest;
+
+    /// <summary>
+    /// Creates a compiler that gates FHIRPath expressions against the reviewed denylist embedded in
+    /// this assembly (<see cref="FhirPathCompatibilityManifest.LoadEmbedded"/>).
+    /// </summary>
+    public LocustIrCompiler()
+        : this(FhirPathCompatibilityManifest.LoadEmbedded())
+    {
+    }
+
+    /// <summary>
+    /// Creates a compiler that gates FHIRPath expressions against the supplied manifest. Intended for
+    /// tests that need to inject a specific incompatibility set.
+    /// </summary>
+    internal LocustIrCompiler(FhirPathCompatibilityManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        _manifest = manifest;
+    }
+
 
     /// <summary>
     /// Compiles <paramref name="definition"/> into a <see cref="LocustIrDocument"/>.
@@ -41,6 +69,17 @@ public sealed class LocustIrCompiler
 
         if (diagnostics.Exists(d => d.Severity == LocustDiagnosticSeverity.Error))
         {
+            return new LocustCompilationResult(null, diagnostics);
+        }
+
+        // Pre-lowering FHIRPath compatibility gate: reject any expression the Locust runtime would
+        // parse-fail on (LOCUST010) or is a reviewed Ignixa/fhirpathpy divergence (LOCUST009) before
+        // producing any partial document. On any such error the document is null, matching the
+        // analyzer-error and fixture-error contracts above.
+        List<LocustDiagnostic> compatibilityErrors = ScanFhirPathCompatibility(definition, options.Source);
+        if (compatibilityErrors.Count > 0)
+        {
+            diagnostics.AddRange(compatibilityErrors);
             return new LocustCompilationResult(null, diagnostics);
         }
 
@@ -175,6 +214,117 @@ public sealed class LocustIrCompiler
             diagnostics);
 
         return new LocustCompilationResult(document, diagnostics);
+    }
+
+    /// <summary>
+    /// Scans every FHIRPath expression the definition would lower into the runtime -- suite and test
+    /// <c>requiresCapability</c> (boolean), assertion <see cref="FhirPathCriteria"/> (boolean),
+    /// <see cref="FhirPathValueCriteria"/> (scalar), and <see cref="ExpressionExtraction"/> variables
+    /// (scalar) -- and returns a source-qualified error per expression that fails to parse (LOCUST010)
+    /// or is a reviewed incompatibility (LOCUST009).
+    /// </summary>
+    private List<LocustDiagnostic> ScanFhirPathCompatibility(TestScriptDefinition definition, string source)
+    {
+        List<LocustDiagnostic> errors = [];
+
+        ValidateFhirPath(
+            definition.Metadata.RequiresCapability,
+            FhirPathUsage.Boolean,
+            $"{source}:suite:requiresCapability",
+            errors);
+
+        ScanActionsForFhirPath(definition.Setup, $"{source}:setup:action:", errors);
+
+        foreach (TestPhaseDefinition test in definition.Tests)
+        {
+            ValidateFhirPath(
+                test.RequiresCapability,
+                FhirPathUsage.Boolean,
+                $"{source}:test:{test.Name}:requiresCapability",
+                errors);
+
+            ScanActionsForFhirPath(test.Actions, $"{source}:test:{test.Name}:action:", errors);
+        }
+
+        foreach (VariableDefinition variable in definition.Variables)
+        {
+            if (variable.Extraction is ExpressionExtraction extraction)
+            {
+                ValidateFhirPath(
+                    extraction.Expression,
+                    FhirPathUsage.Scalar,
+                    $"{source}:variable:{variable.Name}",
+                    errors);
+            }
+        }
+
+        return errors;
+    }
+
+    private void ScanActionsForFhirPath(
+        IReadOnlyList<ActionExpression> actions,
+        string sourcePrefix,
+        List<LocustDiagnostic> errors)
+    {
+        for (int i = 0; i < actions.Count; i++)
+        {
+            if (actions[i] is not AssertExpression assert)
+            {
+                continue;
+            }
+
+            switch (assert.Criteria)
+            {
+                case FhirPathCriteria fhirPath:
+                    ValidateFhirPath(fhirPath.Expression, FhirPathUsage.Boolean, $"{sourcePrefix}{i}", errors);
+                    break;
+                case FhirPathValueCriteria fhirPathValue:
+                    ValidateFhirPath(fhirPathValue.Expression, FhirPathUsage.Scalar, $"{sourcePrefix}{i}", errors);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private void ValidateFhirPath(
+        string? expression,
+        FhirPathUsage usage,
+        string source,
+        List<LocustDiagnostic> errors)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+        {
+            return;
+        }
+
+        try
+        {
+            s_fhirPathParser.Parse(expression);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException)
+        {
+            // The Ignixa parser rejects the expression; the Locust runtime would never evaluate it
+            // consistently, so fail compilation deterministically rather than emit a broken workload.
+            errors.Add(new LocustDiagnostic(
+                "LOCUST010",
+                LocustDiagnosticSeverity.Error,
+                source,
+                $"FHIRPath expression '{expression}' could not be parsed and is unsupported by the " +
+                $"Locust runtime: {ex.Message}"));
+            return;
+        }
+
+        string? reason = _manifest.FindReason(expression, usage);
+        if (reason is not null)
+        {
+            errors.Add(new LocustDiagnostic(
+                "LOCUST009",
+                LocustDiagnosticSeverity.Error,
+                source,
+                $"FHIRPath expression '{expression}' ({usage} usage) evaluates differently in the Locust " +
+                $"runtime than in Ignixa and is not supported: {reason}"));
+        }
     }
 
     private static List<LocustIrAction> LowerActions(IReadOnlyList<ActionExpression> actions, string idPrefix)

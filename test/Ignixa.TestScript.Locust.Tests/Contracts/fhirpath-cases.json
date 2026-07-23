@@ -1,0 +1,520 @@
+[
+    {
+      "name": "id-exists-present-boolean",
+      "expression": "Patient.id.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Patient", "id": "p1" }
+    },
+    {
+      "name": "active-scalar-lowercase-true",
+      "expression": "Patient.active",
+      "shape": "scalar",
+      "expected": "true",
+      "resource": { "resourceType": "Patient", "id": "p1", "active": true }
+    },
+    {
+      "name": "id-missing-scalar-null",
+      "expression": "Patient.id",
+      "shape": "scalar",
+      "expected": null,
+      "resource": { "resourceType": "Patient", "active": true }
+    },
+    {
+      "name": "id-exists-absent-boolean-false",
+      "expression": "Patient.id.exists()",
+      "shape": "boolean",
+      "expected": false,
+      "resource": { "resourceType": "Patient", "active": true }
+    },
+    {
+      "name": "id-scalar-value",
+      "expression": "Patient.id",
+      "shape": "scalar",
+      "expected": "p1",
+      "resource": { "resourceType": "Patient", "id": "p1" }
+    },
+    {
+      "name": "gender-scalar-code",
+      "expression": "Patient.gender",
+      "shape": "scalar",
+      "expected": "male",
+      "resource": { "resourceType": "Patient", "id": "p1", "gender": "male" }
+    },
+    {
+      "name": "deceased-choice-exists-boolean",
+      "expression": "Patient.deceased.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Patient", "id": "p1", "deceasedBoolean": true }
+    },
+    {
+      "name": "deceased-as-datetime-exists-boolean",
+      "expression": "(Patient.deceased as dateTime).exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Patient", "id": "p1", "deceasedDateTime": "2020-01-01" }
+    },
+    {
+      "name": "deceased-as-datetime-tostring-scalar",
+      "expression": "(Patient.deceased as dateTime).toString()",
+      "shape": "scalar",
+      "expected": "2020-01-01",
+      "resource": { "resourceType": "Patient", "id": "p1", "deceasedDateTime": "2020-01-01" }
+    },
+    {
+      "name": "meta-versionid-exists-boolean",
+      "expression": "Observation.meta.versionId.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Observation", "id": "o1", "status": "final", "code": {}, "meta": { "versionId": "3", "lastUpdated": "2021-05-01T12:00:00Z" } }
+    },
+    {
+      "name": "meta-versionid-scalar",
+      "expression": "Observation.meta.versionId",
+      "shape": "scalar",
+      "expected": "3",
+      "resource": { "resourceType": "Observation", "id": "o1", "status": "final", "code": {}, "meta": { "versionId": "3", "lastUpdated": "2021-05-01T12:00:00Z" } }
+    },
+    {
+      "name": "meta-lastupdated-scalar",
+      "expression": "Observation.meta.lastUpdated",
+      "shape": "scalar",
+      "expected": "2021-05-01T12:00:00Z",
+      "resource": { "resourceType": "Observation", "id": "o1", "status": "final", "code": {}, "meta": { "versionId": "3", "lastUpdated": "2021-05-01T12:00:00Z" } }
+    },
+    {
+      "name": "bundle-entry-count-scalar",
+      "expression": "Bundle.entry.count()",
+      "shape": "scalar",
+      "expected": "2",
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } }, { "resource": { "resourceType": "Patient", "id": "b" } } ] }
+    },
+    {
+      "name": "entry-count-eq-boolean",
+      "expression": "entry.count() = 2",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } }, { "resource": { "resourceType": "Patient", "id": "b" } } ] }
+    },
+    {
+      "name": "entry-count-le-boolean",
+      "expression": "entry.count() <= 2",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } } ] }
+    },
+    {
+      "name": "entry-count-ge-boolean",
+      "expression": "entry.count() >= 1",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } } ] }
+    },
+    {
+      "name": "total-scalar",
+      "expression": "Bundle.total",
+      "shape": "scalar",
+      "expected": "5",
+      "resource": { "resourceType": "Bundle", "type": "searchset", "total": 5 }
+    },
+    {
+      "name": "total-eq-boolean",
+      "expression": "total = 1",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "total": 1 }
+    },
+    {
+      "name": "total-ge-boolean",
+      "expression": "total >= 5",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "total": 7 }
+    },
+    {
+      "name": "total-exists-boolean",
+      "expression": "total.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "total": 0 }
+    },
+    {
+      "name": "oftype-count-scalar",
+      "expression": "Bundle.entry.resource.ofType(Patient).count()",
+      "shape": "scalar",
+      "expected": "1",
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "pat-1" } }, { "resource": { "resourceType": "Observation", "id": "obs-1", "status": "final", "code": {} } } ] }
+    },
+    {
+      "name": "oftype-first-id-scalar",
+      "expression": "Bundle.entry.resource.ofType(Patient).first().id",
+      "shape": "scalar",
+      "expected": "pat-1",
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "pat-1" } }, { "resource": { "resourceType": "Observation", "id": "obs-1", "status": "final", "code": {} } } ] }
+    },
+    {
+      "name": "oftype-first-id-exists-boolean",
+      "expression": "Bundle.entry.resource.ofType(Patient).first().id.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "pat-1" } } ] }
+    },
+    {
+      "name": "entry-exists-boolean",
+      "expression": "entry.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } } ] }
+    },
+    {
+      "name": "entry-empty-boolean-false",
+      "expression": "entry.empty()",
+      "shape": "boolean",
+      "expected": false,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } } ] }
+    },
+    {
+      "name": "oo-issue-where-severity-error-exists",
+      "expression": "OperationOutcome.issue.where(severity = 'error').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "error", "code": "not-found", "diagnostics": "resource with id foo was not found" } ] }
+    },
+    {
+      "name": "oo-issue-where-and-exists",
+      "expression": "OperationOutcome.issue.where(severity = 'error' and code = 'not-found').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "error", "code": "not-found", "diagnostics": "missing" } ] }
+    },
+    {
+      "name": "oo-issue-where-or-empty-false",
+      "expression": "OperationOutcome.issue.where(severity = 'error' or severity = 'fatal').empty()",
+      "shape": "boolean",
+      "expected": false,
+      "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "error", "code": "invalid" } ] }
+    },
+    {
+      "name": "oo-issue-where-diagnostics-contains-exists",
+      "expression": "OperationOutcome.issue.where(diagnostics.contains('foo')).exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "error", "code": "processing", "diagnostics": "the foo element is invalid" } ] }
+    },
+    {
+      "name": "oo-issue-where-expression-eq-exists",
+      "expression": "OperationOutcome.issue.where(expression = 'Patient.name').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "error", "code": "invalid", "expression": [ "Patient.name" ] } ] }
+    },
+    {
+      "name": "oo-issue-index-diagnostics-scalar",
+      "expression": "OperationOutcome.issue[0].diagnostics",
+      "shape": "scalar",
+      "expected": "cardinality mismatch",
+      "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "error", "code": "invalid", "diagnostics": "cardinality mismatch" } ] }
+    },
+    {
+      "name": "params-where-valuestring-scalar",
+      "expression": "Parameters.parameter.where(name='display').valueString",
+      "shape": "scalar",
+      "expected": "Result Display",
+      "resource": { "resourceType": "Parameters", "parameter": [ { "name": "display", "valueString": "Result Display" } ] }
+    },
+    {
+      "name": "params-where-valuecode-scalar",
+      "expression": "Parameters.parameter.where(name='outcome').valueCode",
+      "shape": "scalar",
+      "expected": "success",
+      "resource": { "resourceType": "Parameters", "parameter": [ { "name": "outcome", "valueCode": "success" } ] }
+    },
+    {
+      "name": "params-where-valueboolean-scalar",
+      "expression": "Parameters.parameter.where(name='result').valueBoolean",
+      "shape": "scalar",
+      "expected": "true",
+      "resource": { "resourceType": "Parameters", "parameter": [ { "name": "result", "valueBoolean": true } ] }
+    },
+    {
+      "name": "params-where-exists-boolean",
+      "expression": "Parameters.parameter.where(name = 'status').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Parameters", "parameter": [ { "name": "status", "valueString": "ok" } ] }
+    },
+    {
+      "name": "params-nested-part-thisval-exists-boolean",
+      "expression": "Parameters.parameter.where(name='match').part.where(name='concept').valueCoding.code.where($this = 'tgt-code').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Parameters", "parameter": [ { "name": "match", "part": [ { "name": "concept", "valueCoding": { "code": "tgt-code", "system": "http://example.org" } } ] } ] }
+    },
+    {
+      "name": "patient-address-count-scalar",
+      "expression": "Patient.address.count()",
+      "shape": "scalar",
+      "expected": "1",
+      "resource": { "resourceType": "Patient", "id": "p1", "address": [ { "use": "home", "city": "Boston" } ] }
+    },
+    {
+      "name": "patient-address-empty-boolean-false",
+      "expression": "Patient.address.empty()",
+      "shape": "boolean",
+      "expected": false,
+      "resource": { "resourceType": "Patient", "id": "p1", "address": [ { "use": "home", "city": "Boston" } ] }
+    },
+    {
+      "name": "patient-address-exists-boolean",
+      "expression": "Patient.address.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Patient", "id": "p1", "address": [ { "use": "home", "city": "Boston" } ] }
+    },
+    {
+      "name": "patient-address-where-city-scalar",
+      "expression": "Patient.address.where(use = 'home').city",
+      "shape": "scalar",
+      "expected": "Boston",
+      "resource": { "resourceType": "Patient", "id": "p1", "address": [ { "use": "home", "city": "Boston" }, { "use": "work", "city": "Cambridge" } ] }
+    },
+    {
+      "name": "patient-gp-reference-scalar",
+      "expression": "Patient.generalPractitioner.reference",
+      "shape": "scalar",
+      "expected": "Practitioner/gp1",
+      "resource": { "resourceType": "Patient", "id": "p1", "generalPractitioner": [ { "reference": "Practitioner/gp1" } ] }
+    },
+    {
+      "name": "patient-name-complex-scalar-null",
+      "expression": "Patient.name",
+      "shape": "scalar",
+      "expected": null,
+      "resource": { "resourceType": "Patient", "id": "p1", "name": [ { "family": "Smith", "given": [ "John" ] } ] }
+    },
+    {
+      "name": "person-name-complex-scalar-null",
+      "expression": "Person.name",
+      "shape": "scalar",
+      "expected": null,
+      "resource": { "resourceType": "Person", "id": "per1", "name": [ { "family": "Smith" } ] }
+    },
+    {
+      "name": "encounter-diagnosis-invalid-subpath-scalar-null",
+      "expression": "Encounter.diagnosis.foo",
+      "shape": "scalar",
+      "expected": null,
+      "resource": { "resourceType": "Encounter", "id": "e1", "status": "finished", "class": { "code": "AMB" }, "diagnosis": [ { "condition": { "reference": "Condition/c1" } } ] }
+    },
+    {
+      "name": "bundle-entry-index-resource-id-scalar",
+      "expression": "entry[0].resource.id",
+      "shape": "scalar",
+      "expected": "e0",
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "e0" } }, { "resource": { "resourceType": "Patient", "id": "e1" } } ] }
+    },
+    {
+      "name": "bundle-entry-response-status-startswith-boolean",
+      "expression": "entry[0].response.status.startsWith('2')",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "transaction-response", "entry": [ { "response": { "status": "200 OK" } } ] }
+    },
+    {
+      "name": "bundle-entry-response-status-matches-boolean",
+      "expression": "entry[0].response.status.matches('^204.*')",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "transaction-response", "entry": [ { "response": { "status": "204 No Content" } } ] }
+    },
+    {
+      "name": "bundle-entry-all-response-status-exists-boolean",
+      "expression": "entry.all(response.status.exists())",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "transaction-response", "entry": [ { "response": { "status": "200" } }, { "response": { "status": "201" } } ] }
+    },
+    {
+      "name": "bundle-entry-all-response-status-matches-boolean",
+      "expression": "entry.all(response.status.matches('^[0-9]{3}.*'))",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "transaction-response", "entry": [ { "response": { "status": "200 OK" } }, { "response": { "status": "404 Not Found" } } ] }
+    },
+    {
+      "name": "bundle-type-eq-boolean",
+      "expression": "type = 'transaction-response'",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "transaction-response" }
+    },
+    {
+      "name": "bundle-entry-nested-resource-type-eq-boolean",
+      "expression": "entry[0].resource.type = 'history'",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "batch-response", "entry": [ { "resource": { "resourceType": "Bundle", "type": "history" } } ] }
+    },
+    {
+      "name": "bundle-entry-where-resource-id-exists-boolean",
+      "expression": "entry.where(resource.id = 'ignixa-id-a').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "ignixa-id-a" } }, { "resource": { "resourceType": "Patient", "id": "ignixa-id-b" } } ] }
+    },
+    {
+      "name": "bundle-entry-where-resourcetype-ne-count-eq-boolean",
+      "expression": "entry.where(resource.resourceType != 'OperationOutcome').count() = 0",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "OperationOutcome", "issue": [ { "severity": "warning", "code": "incomplete" } ] } } ] }
+    },
+    {
+      "name": "bundle-entry-meta-lastupdated-compare-boolean",
+      "expression": "entry[0].resource.meta.lastUpdated <= entry[1].resource.meta.lastUpdated",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a", "meta": { "lastUpdated": "2021-01-01T00:00:00Z" } } }, { "resource": { "resourceType": "Patient", "id": "b", "meta": { "lastUpdated": "2022-01-01T00:00:00Z" } } } ] }
+    },
+    {
+      "name": "bundle-entry-subject-reference-startswith-boolean",
+      "expression": "entry[1].resource.subject.reference.startsWith('Patient/')",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "entry": [ { "resource": { "resourceType": "Patient", "id": "a" } }, { "resource": { "resourceType": "Observation", "id": "obs1", "status": "final", "code": {}, "subject": { "reference": "Patient/123" } } } ] }
+    },
+    {
+      "name": "bundle-link-where-relation-next-exists-boolean",
+      "expression": "link.where(relation = 'next').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Bundle", "type": "searchset", "link": [ { "relation": "self", "url": "http://x/1" }, { "relation": "next", "url": "http://x/2" } ] }
+    },
+    {
+      "name": "subscription-status-scalar",
+      "expression": "Subscription.status",
+      "shape": "scalar",
+      "expected": "active",
+      "resource": { "resourceType": "Subscription", "id": "s1", "status": "active", "reason": "test", "criteria": "Observation?code=1234-5", "channel": { "type": "rest-hook" } }
+    },
+    {
+      "name": "subscription-channel-endpoint-empty-boolean",
+      "expression": "Subscription.channel.endpoint.empty()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "Subscription", "id": "s1", "status": "active", "reason": "test", "criteria": "Observation?code=1234-5", "channel": { "type": "rest-hook" } }
+    },
+    {
+      "name": "valueset-expansion-contains-exists-boolean",
+      "expression": "ValueSet.expansion.contains.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "ValueSet", "id": "vs1", "status": "active", "url": "http://example.org/vs", "expansion": { "contains": [ { "system": "http://hl7.org/fhir/FHIR-version", "code": "4.0.1" } ] } }
+    },
+    {
+      "name": "valueset-expansion-contains-where-code-exists-boolean",
+      "expression": "ValueSet.expansion.contains.where(code = '4.0.1').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "ValueSet", "id": "vs1", "status": "active", "url": "http://example.org/vs", "expansion": { "contains": [ { "system": "http://hl7.org/fhir/FHIR-version", "code": "4.0.1" } ] } }
+    },
+    {
+      "name": "valueset-url-scalar",
+      "expression": "ValueSet.url",
+      "shape": "scalar",
+      "expected": "http://example.org/vs",
+      "resource": { "resourceType": "ValueSet", "id": "vs1", "status": "active", "url": "http://example.org/vs" }
+    },
+    {
+      "name": "capability-fhirversion-exists-boolean",
+      "expression": "CapabilityStatement.fhirVersion.exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": [ "json" ] }
+    },
+    {
+      "name": "capability-rest-resource-where-type-exists-boolean",
+      "expression": "rest.resource.where(type = 'Patient').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": [ "json" ], "rest": [ { "mode": "server", "resource": [ { "type": "Patient" } ] } ] }
+    },
+    {
+      "name": "capability-rest-resource-operation-where-name-exists-boolean",
+      "expression": "rest.resource.where(type='Patient').operation.where(name='everything').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": [ "json" ], "rest": [ { "mode": "server", "resource": [ { "type": "Patient", "operation": [ { "name": "everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything" } ] } ] } ] }
+    },
+    {
+      "name": "capability-rest-operation-where-name-definition-scalar",
+      "expression": "CapabilityStatement.rest.operation.where(name='patient-everything').definition",
+      "shape": "scalar",
+      "expected": "http://hl7.org/fhir/OperationDefinition/Patient-everything",
+      "resource": { "resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": [ "json" ], "rest": [ { "mode": "server", "operation": [ { "name": "patient-everything", "definition": "http://hl7.org/fhir/OperationDefinition/Patient-everything" } ] } ] }
+    },
+    {
+      "name": "capability-searchparam-where-definition-exists-boolean",
+      "expression": "rest.resource.where(type = 'Patient').searchParam.where(definition = 'https://azurehealthcareapis.com/data-extensions/expiry-date').exists()",
+      "shape": "boolean",
+      "expected": true,
+      "resource": { "resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": [ "json" ], "rest": [ { "mode": "server", "resource": [ { "type": "Patient", "searchParam": [ { "name": "expiry-date", "definition": "https://azurehealthcareapis.com/data-extensions/expiry-date", "type": "date" } ] } ] } ] }
+    },
+    {
+      "name": "capability-rest-resource-where-type-absent-boolean-false",
+      "expression": "rest.resource.where(type = 'Patient').exists()",
+      "shape": "boolean",
+      "expected": false,
+      "resource": { "resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": [ "json" ], "rest": [ { "mode": "server", "resource": [ { "type": "Observation" } ] } ] }
+    },
+    {
+      "name": "capability-conditional-update-literal-true-boolean-true",
+      "expression": "rest.resource.where(type='Patient').conditionalUpdate = true",
+      "shape": "boolean",
+      "expected": true,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient", "conditionalUpdate": true, "updateCreate": true}]}]}
+    },
+    {
+      "name": "capability-conditional-update-literal-false-boolean-false",
+      "expression": "rest.resource.where(type='Patient').conditionalUpdate = true",
+      "shape": "boolean",
+      "expected": false,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient", "conditionalUpdate": false}]}]}
+    },
+    {
+      "name": "capability-conditional-update-literal-absent-boolean-false",
+      "expression": "rest.resource.where(type='Patient').conditionalUpdate = true",
+      "shape": "boolean",
+      "expected": false,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient"}]}]}
+    },
+    {
+      "name": "capability-update-create-literal-true-boolean-true",
+      "expression": "rest.resource.where(type='Patient').updateCreate = true",
+      "shape": "boolean",
+      "expected": true,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient", "updateCreate": true}]}]}
+    },
+    {
+      "name": "capability-update-create-literal-absent-boolean-false",
+      "expression": "rest.resource.where(type='Patient').updateCreate = true",
+      "shape": "boolean",
+      "expected": false,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient"}]}]}
+    },
+    {
+      "name": "capability-conditional-and-update-create-both-true-boolean-true",
+      "expression": "rest.resource.where(type='Patient').conditionalUpdate = true and rest.resource.where(type='Patient').updateCreate = true",
+      "shape": "boolean",
+      "expected": true,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient", "conditionalUpdate": true, "updateCreate": true}]}]}
+    },
+    {
+      "name": "capability-conditional-and-update-create-one-false-boolean-false",
+      "expression": "rest.resource.where(type='Patient').conditionalUpdate = true and rest.resource.where(type='Patient').updateCreate = true",
+      "shape": "boolean",
+      "expected": false,
+      "resource": {"resourceType": "CapabilityStatement", "status": "active", "date": "2021-01-01", "kind": "instance", "fhirVersion": "4.0.1", "format": ["json"], "rest": [{"mode": "server", "resource": [{"type": "Patient", "conditionalUpdate": true, "updateCreate": false}]}]}
+    }
+]

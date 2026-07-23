@@ -1,4 +1,5 @@
 import copy
+import decimal
 import hashlib
 import itertools
 import json
@@ -13,6 +14,11 @@ SUPPORTED_SCHEMA_MAJOR = 1
 _USER_ORDINALS = itertools.count()
 
 _logger = logging.getLogger("ignixa.testscript")
+
+# Lazily-loaded FHIRPath R4 model (used by the assertion/capability adapter so choice-type
+# element navigation matches Ignixa's schema-aware FhirPath engine). This is the *model*, never
+# a fetched CapabilityStatement, so caching it retains no per-run capability state.
+_FHIRPATH_MODEL = None
 
 _VARIABLE_PATTERN = re.compile(r"\$\{([^}]+)\}")
 
@@ -121,6 +127,131 @@ def _suite_allowed():
 
 def _test_allowed(test_id):
     return _TEST_DECISIONS.get(test_id, True)
+
+
+def _fetch_capability(host, auth):
+    """Fetch the target server's CapabilityStatement, failing OPEN on any I/O error.
+
+    Performs exactly one uninstrumented ``GET {host}/metadata`` on a short-lived
+    ``requests.Session`` (never the Locust user client, so it is not counted as load),
+    with the parsed auth header applied and a 30s timeout. A transport error, HTTP
+    error status, unparseable body, or non-dict JSON all yield ``None`` (fail open:
+    no capability known). ``requests`` is imported lazily so the module stays importable
+    without third-party dependencies present.
+    """
+    import requests
+
+    url = f"{host.rstrip('/')}/metadata"
+    headers = {}
+    if auth is not None:
+        headers[auth[0]] = auth[1]
+
+    try:
+        with requests.Session() as session:
+            response = session.get(url, timeout=30, headers=headers)
+            response.raise_for_status()
+            body = response.json()
+        return body if isinstance(body, dict) else None
+    except (requests.exceptions.RequestException, ValueError):
+        return None
+
+
+def _evaluate_capability_requirement(expression, capability, scope_id):
+    """Evaluate a ``requiresCapability`` predicate against the CapabilityStatement.
+
+    Mirrors .NET ``EvaluateCapabilityRequirement``: an absent expression or an
+    unavailable capability fails OPEN (allowed); a malformed expression evaluated
+    against an *available* capability fails CLOSED (disallowed). The broad ``except``
+    is required because ``fhirpathpy`` raises a bare ``Exception`` for some malformed
+    expressions; the failure is logged as a structured error carrying the ``scope_id``
+    (the suite's stable IR identifier or the owning test's id), the offending
+    expression, and the evaluator exception, so it is never silent.
+    """
+    if not expression:
+        return True
+    if capability is None:
+        return True
+
+    try:
+        return bool(_evaluate_fhirpath(expression, capability, "boolean"))
+    except Exception as exc:  # noqa: BLE001 - parity with .NET; logged, never silent.
+        _logger.warning(
+            "requiresCapability expression '%s' for scope '%s' failed to evaluate: %s",
+            expression,
+            scope_id,
+            exc,
+        )
+        return False
+
+
+def initialize_engine(document, environment):
+    """Derive the immutable suite/test capability decisions for a run.
+
+    Resets stale decisions and the per-user ordinal counter *before* any validation
+    or I/O, so even a failed startup leaves the engine ready to spawn user 0. The IR
+    schema is validated before any metadata fetch or user spawn. The FHIR base URL is
+    resolved from ``environment.host`` first, then ``IGNIXA_BASE_URL`` (missing both is
+    a hard error). Auth is parsed *before* the fail-open metadata fetch so a malformed
+    ``IGNIXA_AUTH_HEADER`` fails startup closed and never fails open. Only the immutable
+    suite bool and per-test-id decision map are retained; the fetched capability, HTTP
+    session, and response are never stored.
+    """
+    global _SUITE_ALLOWED, _TEST_DECISIONS, _USER_ORDINALS
+
+    _SUITE_ALLOWED = True
+    _TEST_DECISIONS = {}
+    _USER_ORDINALS = itertools.count()
+
+    _check_schema_version(document)
+
+    host = environment.host or os.getenv("IGNIXA_BASE_URL")
+    if not host:
+        raise RuntimeError(
+            "No FHIR base URL available: set the Locust host (environment.host) or "
+            "the IGNIXA_BASE_URL environment variable"
+        )
+
+    try:
+        auth = _parse_auth_header()
+    except RuntimeError:
+        # Malformed auth fails startup CLOSED: disable everything, then re-raise. This must
+        # not fail open, so the decisions are pinned to False before propagating the error.
+        _SUITE_ALLOWED = False
+        _TEST_DECISIONS = {
+            test["id"]: False
+            for test in document.get("tests", [])
+            if test.get("id") is not None and test.get("requiresCapability") is not None
+        }
+        raise
+
+    capability = _fetch_capability(host, auth)
+
+    suite_scope = document["metadata"]["source"]
+    _SUITE_ALLOWED = _evaluate_capability_requirement(
+        document.get("requiresCapability"), capability, suite_scope
+    )
+
+    decisions = {}
+    for test in document.get("tests", []):
+        requirement = test.get("requiresCapability")
+        if requirement is not None:
+            decisions[test["id"]] = _evaluate_capability_requirement(
+                requirement, capability, test["id"]
+            )
+    _TEST_DECISIONS = decisions
+
+
+def clear_engine():
+    """Reset the engine's capability decisions and per-user ordinal counter.
+
+    Called on Locust ``test_stop`` so a subsequent run starts from a clean, fail-open
+    state with user ordinals restarting at 0.
+    """
+    global _SUITE_ALLOWED, _TEST_DECISIONS, _USER_ORDINALS
+
+    _SUITE_ALLOWED = True
+    _TEST_DECISIONS = {}
+    _USER_ORDINALS = itertools.count()
 
 
 def _fixture_variant_index(seed, hostname, ordinal, iteration, fixture_id, pool_length):
@@ -549,6 +680,56 @@ def _extract_by_fhirpath(response, expression):
     return str(value)
 
 
+def _fhirpath_model():
+    """Return the cached FHIRPath R4 model, importing ``fhirpathpy`` lazily.
+
+    The R4 model is required so choice-type navigation (e.g. ``Patient.deceased``)
+    resolves the same way Ignixa's schema-aware FhirPath engine resolves it.
+    """
+    global _FHIRPATH_MODEL
+    if _FHIRPATH_MODEL is None:
+        from fhirpathpy.models import models
+
+        _FHIRPATH_MODEL = models["r4"]
+    return _FHIRPATH_MODEL
+
+
+def _evaluate_fhirpath(expression, resource, shape):
+    """Evaluate ``expression`` against ``resource`` in one of two Ignixa-parity shapes.
+
+    ``boolean`` mirrors Ignixa ``IsTrue``: a real ``bool`` that is ``True`` only for a
+    single ``true`` boolean result, ``False`` otherwise. ``scalar`` mirrors
+    ``Select(...).AsString()``: the FhirPath ``toString()`` of a single primitive value
+    (lower-case booleans), or ``None`` for empty, multi-valued, or complex results.
+
+    ``fhirpathpy`` is imported lazily and evaluated with the R4 model so results match
+    Ignixa's schema-aware engine. This is the single adapter the shared contract holds
+    both the C# and Python halves accountable to.
+    """
+    import fhirpathpy
+
+    results = fhirpathpy.evaluate(resource, expression, {}, _fhirpath_model())
+
+    if shape == "boolean":
+        return len(results) == 1 and isinstance(results[0], bool) and results[0]
+
+    if shape == "scalar":
+        if len(results) != 1:
+            return None
+        value = results[0]
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (dict, list)):
+            return None
+        if isinstance(value, str):
+            return value
+        return str(value)
+
+    raise RuntimeError(f"Unsupported FHIRPath evaluation shape '{shape}'")
+
+
 def _extract_variables(document, context):
     """Extract every document variable from its selected response.
 
@@ -801,12 +982,469 @@ def _run_autodeletes(document, user, context):
     return any_failed
 
 
-def _execute_assertion(document, user, context, action):
-    """Placeholder assertion executor filled in by Task 9."""
-    raise RuntimeError(
-        "TestScript assertion execution is not implemented yet "
-        f"(action '{action.get('id')}')"
+def _matches_response_code(category, status_code):
+    """Map a response-category token to a status-code predicate (parity with .NET)."""
+    if category == "okay":
+        return 200 <= status_code < 300
+    return status_code == {
+        "created": 201,
+        "noContent": 204,
+        "notModified": 304,
+        "bad": 400,
+        "forbidden": 403,
+        "notFound": 404,
+        "methodNotAllowed": 405,
+        "conflict": 409,
+        "gone": 410,
+        "preconditionFailed": 412,
+        "unprocessable": 422,
+    }.get(category)
+
+
+def _media_type_of(header_value):
+    """Return the bare media type (drop any ``;``-delimited parameters)."""
+    if header_value is None:
+        return None
+    return header_value.split(";", 1)[0].strip()
+
+
+# Grammar for .NET ``NumberStyles.Number`` under the invariant culture: an optional leading OR
+# trailing sign, an integer part that must start with a digit and may then interleave digits with
+# invariant group separators (``,``) with no fixed group size (matching the BCL's lenient grouping,
+# so ``1,00`` and ``12,34,567`` are accepted while a leading/fractional comma is not), and an
+# optional invariant decimal point with fractional digits. Exponents, hex, and non-finite tokens do
+# not match, so they fall back to ordinal comparison.
+_INVARIANT_NUMBER_RE = re.compile(
+    r"^(?P<lead>[+-])?(?P<int>\d[\d,]*)?(?:\.(?P<frac>\d*))?(?P<trail>[+-])?$"
+)
+
+# .NET ``System.Decimal`` is a 96-bit unsigned significand scaled by ``10**-scale`` with a scale of
+# 0..28. Parsing rounds the exact value half-to-even to fit that representation (reducing the scale,
+# i.e. dropping fractional precision, as needed) and rejects any value whose integer magnitude cannot
+# fit the significand even at scale 0. These bounds reproduce that model exactly.
+_NET_DECIMAL_MAX_SIGNIFICAND = decimal.Decimal("79228162514264337593543950335")
+_NET_DECIMAL_MAX_SCALE = 28
+
+
+def _to_net_decimal(exact):
+    """Round/range an exact ``Decimal`` to the nearest representable .NET ``System.Decimal``.
+
+    Emulates the rounding/range behaviour of
+    ``decimal.TryParse(value, NumberStyles.Number, InvariantCulture)``: the value is rounded
+    half-to-even to fit a 96-bit significand with a scale of 0..28, preferring to keep as much
+    fractional precision as the significand allows. A value whose integer magnitude cannot fit even
+    at scale 0 is out of range and yields ``None`` (ordinal fallback). A fresh local context is used
+    for every operation, so the process-wide decimal context is never mutated (important because the
+    Locust runtime shares an interpreter across users).
+    """
+    if exact.is_zero():
+        return exact
+
+    negative = exact < 0
+    magnitude = exact.copy_abs()
+    context = decimal.Context(prec=60, rounding=decimal.ROUND_HALF_EVEN)
+
+    # Start at the value's own fractional length (capped at 28) so exact-fitting values keep their
+    # natural scale; only shed fractional digits when the significand would overflow.
+    scale = min(_NET_DECIMAL_MAX_SCALE, max(0, -magnitude.as_tuple().exponent))
+    unit = decimal.Decimal(1)
+    while scale >= 0:
+        try:
+            rounded = magnitude.quantize(unit.scaleb(-scale, context), context=context)
+            significand = rounded.scaleb(scale, context).to_integral_value(context=context)
+        except decimal.InvalidOperation:
+            # Result exceeds the working precision -> integer magnitude too large at this scale.
+            scale -= 1
+            continue
+        if significand <= _NET_DECIMAL_MAX_SIGNIFICAND:
+            return rounded.copy_negate() if negative else rounded
+        scale -= 1
+
+    return None
+
+
+def _try_decimal(value):
+    """Parse ``value`` as an invariant decimal, or ``None`` if it is not numeric.
+
+    Mirrors .NET ``decimal.TryParse(value, NumberStyles.Number, InvariantCulture)`` rather
+    than Python ``Decimal``'s broader grammar: leading/trailing whitespace, a single leading
+    *or* trailing sign, an invariant decimal point (``.``), and invariant thousands group
+    separators (``,``) between integer digits (BCL grouping leniency: no fixed group size, and
+    trailing/consecutive commas are tolerated, but a leading comma or a comma in the fractional
+    part is rejected) are accepted; exponent notation (``E``), hexadecimal, and the non-finite
+    tokens ``NaN``/``Infinity`` are rejected. Accepted values are rounded/ranged to the nearest
+    representable .NET ``System.Decimal`` (half-to-even, 96-bit significand, scale 0..28); values
+    outside that range return ``None``. A rejected value returns ``None`` so
+    :func:`_compare_ordered` falls back to ordinal string comparison.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+
+    match = _INVARIANT_NUMBER_RE.match(text)
+    if match is None:
+        return None
+
+    # NumberStyles.Number permits a leading OR trailing sign, never both.
+    if match.group("lead") and match.group("trail"):
+        return None
+
+    integer_digits = (match.group("int") or "").replace(",", "")
+    fraction_digits = match.group("frac")
+    # At least one digit must be present (rejects "", "-", ".", "+.", ",").
+    if not integer_digits and not fraction_digits:
+        return None
+
+    sign = match.group("lead") or match.group("trail") or ""
+    if sign == "+":
+        sign = ""
+    normalized = f"{sign}{integer_digits}"
+    if fraction_digits:
+        normalized += f".{fraction_digits}"
+
+    try:
+        exact = decimal.Decimal(normalized)
+    except (ArithmeticError, ValueError):
+        return None
+    return _to_net_decimal(exact)
+
+
+def _compare_ordered(actual, expected):
+    """Compare two strings numerically when both parse as decimals, else ordinally.
+
+    Mirrors .NET ``CompareOrdered``: invariant-decimal comparison is attempted first;
+    on any non-numeric operand it falls back to ordinal (codepoint) string comparison,
+    treating ``None`` as less than any string (as .NET ``string.Compare`` treats null).
+    """
+    da = _try_decimal(actual)
+    de = _try_decimal(expected)
+    if da is not None and de is not None:
+        if da < de:
+            return -1
+        if da > de:
+            return 1
+        return 0
+
+    if actual == expected:
+        return 0
+    if actual is None:
+        return -1
+    if expected is None:
+        return 1
+    return -1 if actual < expected else 1
+
+
+def _evaluate_with_operator(actual, expected, operator):
+    """Apply one of the ten assert operators (parity with .NET ``EvaluateWithOperator``)."""
+    if operator == "Equals":
+        return actual == expected
+    if operator == "NotEquals":
+        return actual != expected
+    if operator == "Contains":
+        return (expected or "") in actual if actual is not None else False
+    if operator == "NotContains":
+        return not ((expected or "") in actual if actual is not None else False)
+    if operator == "In":
+        return actual in [s.strip() for s in expected.split(",")] if expected is not None else False
+    if operator == "NotIn":
+        return not (actual in [s.strip() for s in expected.split(",")] if expected is not None else False)
+    if operator == "Empty":
+        return actual is None or actual == ""
+    if operator == "NotEmpty":
+        return not (actual is None or actual == "")
+    if operator == "GreaterThan":
+        return _compare_ordered(actual, expected) > 0
+    if operator == "LessThan":
+        return _compare_ordered(actual, expected) < 0
+    raise RuntimeError(f"Unhandled assert operator '{operator}'")
+
+
+def _resolve_assertion_response(action, context):
+    """Direction-aware response resolution (parity with .NET ``ResolveAssertionResponse``).
+
+    A request-direction assertion has no response. An absent ``sourceId`` selects the
+    last response; an explicit ``sourceId`` selects that response or raises when unknown.
+    """
+    if action.get("direction") == "request":
+        return None
+    source_id = action.get("sourceId")
+    if source_id is None:
+        return context["last_response"]
+    if source_id in context["responses"]:
+        return context["responses"][source_id]
+    raise RuntimeError(f"Assertion sourceId '{source_id}' refers to no known response")
+
+
+def _resolve_assertion_request(action, context):
+    """Resolve the request a request-direction assertion targets (parity with .NET)."""
+    source_id = action.get("sourceId")
+    if source_id is None:
+        return context["last_request"]
+    if source_id in context["requests"]:
+        return context["requests"][source_id]
+    raise RuntimeError(f"Assertion sourceId '{source_id}' refers to no known request")
+
+
+def _request_body_json(request):
+    """Parse a stored request wrapper's body bytes into JSON, or ``None``."""
+    if request is None:
+        return None
+    body = request.get("body")
+    if body is None:
+        return None
+    try:
+        if isinstance(body, (bytes, bytearray)):
+            return json.loads(bytes(body).decode("utf-8"))
+        if isinstance(body, str):
+            return json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if isinstance(body, dict):
+        return body
+    return None
+
+
+def _assertion_body_with_parse_error(action, context):
+    """Resolve the assertion body, capturing a response JSON parse error if any.
+
+    Returns ``(body_or_none, parse_error_or_none)``. For a request-direction assertion
+    the body is the resolved request's parsed body. For a response-direction assertion
+    the response's ``json()`` is used; a ``ValueError`` from an unparseable body is
+    captured as the parse reason so it can be surfaced in the failure message.
+    """
+    if action.get("direction") == "request":
+        request = _resolve_assertion_request(action, context)
+        return _request_body_json(request), None
+    response = _resolve_assertion_response(action, context)
+    if response is None:
+        return None, None
+    try:
+        return response.json(), None
+    except ValueError as exc:
+        return None, str(exc)
+
+
+def _no_body_message(parse_error):
+    if parse_error is not None:
+        return f"Response body was not valid JSON: {parse_error}"
+    return "No response body available to assert against with FHIRPath"
+
+
+def _evaluate_assertion_criteria(action, context):
+    """Evaluate one assertion's criteria, returning ``(passed, message)``.
+
+    Matches ``TestScriptEvaluator`` exactly for every criteria kind. May raise for an
+    unknown ``sourceId`` (an evaluation error the caller converts into a returned
+    failure); it never raises for a merely-failing assertion.
+    """
+    criteria = action["criteria"]
+    kind = criteria["kind"]
+
+    if kind in ("responseStatus", "responseCode", "contentType", "header"):
+        response = _resolve_assertion_response(action, context)
+        if response is None:
+            return (False, "No response available to assert against")
+
+        if kind == "responseStatus":
+            status = _response_status(response)
+            matched = _matches_response_code(criteria["value"], status)
+            return (matched, None if matched else f"Expected response '{criteria['value']}' but got status {status}")
+
+        if kind == "responseCode":
+            status = _response_status(response)
+            passed = str(status) == criteria["value"]
+            return (passed, None if passed else f"Expected responseCode '{criteria['value']}' but got {status}")
+
+        if kind == "contentType":
+            actual = _response_headers(response).get("Content-Type")
+            passed = _media_type_equal(actual, criteria["value"])
+            return (passed, None if passed else f"Expected content type '{criteria['value']}' but got '{actual}'")
+
+        # header
+        field = criteria["field"]
+        actual = _response_headers(response).get(field)
+        operator = criteria.get("operator") or ("NotEmpty" if criteria.get("value") is None else "Equals")
+        passed = _evaluate_with_operator(actual, criteria.get("value"), operator)
+        return (passed, None if passed else f"Header '{field}' value '{actual}' did not match expected '{criteria.get('value')}' with operator {operator}")
+
+    if kind == "resourceType":
+        response = _resolve_assertion_response(action, context)
+        if response is None:
+            return (False, "No response available to assert against")
+        body, parse_error = _assertion_body_with_parse_error(action, context)
+        if body is None:
+            return (False, _no_body_message(parse_error) if parse_error is not None else "No response body available to assert against")
+        actual = body.get("resourceType") if isinstance(body, dict) else None
+        passed = actual == criteria["value"]
+        return (passed, None if passed else f"Expected resource type '{criteria['value']}' but got '{actual}'")
+
+    if kind == "fhirPath":
+        body, parse_error = _assertion_body_with_parse_error(action, context)
+        if body is None:
+            return (False, _no_body_message(parse_error))
+        expression = _resolve(criteria["expression"], context)
+        result = _evaluate_fhirpath(expression, body, "boolean")
+        return (result, None if result else f"FHIRPath expression '{expression}' did not evaluate to true")
+
+    if kind == "fhirPathValue":
+        body, parse_error = _assertion_body_with_parse_error(action, context)
+        if body is None:
+            return (False, _no_body_message(parse_error))
+        expression = _resolve(criteria["expression"], context)
+        expected = _resolve(criteria.get("value") or "", context)
+        actual = _evaluate_fhirpath(expression, body, "scalar")
+        passed = _evaluate_with_operator(actual, expected, criteria["operator"])
+        return (passed, None if passed else f"FHIRPath expression '{expression}' value '{actual}' did not match expected '{expected}' with operator {criteria['operator']}")
+
+    if kind == "requestMethod":
+        request = _resolve_assertion_request(action, context)
+        if request is None:
+            return (False, "No request available to assert against")
+        actual = request["method"]
+        passed = actual.lower() == (criteria["value"] or "").lower()
+        return (passed, None if passed else f"Expected request method '{criteria['value']}' but was '{actual}'")
+
+    if kind == "requestUrl":
+        request = _resolve_assertion_request(action, context)
+        if request is None:
+            return (False, "No request available to assert against")
+        actual = request["url"]
+        operator = criteria.get("operator") or "Equals"
+        passed = _evaluate_with_operator(actual, criteria["value"], operator)
+        return (passed, None if passed else f"Expected request URL '{criteria['value']}' but was '{actual}'")
+
+    raise RuntimeError(f"Unsupported assertion criteria kind '{kind}'")
+
+
+def _media_type_equal(actual, expected):
+    """Case-insensitive media-type equality, treating two ``None`` values as equal."""
+    a = _media_type_of(actual)
+    b = _media_type_of(expected)
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    return a.lower() == b.lower()
+
+
+def _evaluate_assertion_member(action, context):
+    """Evaluate one assertion, returning ``(applicable, failed, message, is_error)``.
+
+    Applies the ``assertionWhenResponseStatus`` gate first (an unmatched gate is
+    inapplicable, not failed). Any evaluation error - including an unknown ``sourceId``
+    or a malformed FHIRPath expression - is caught and converted into a returned failure
+    marked ``is_error``: assertions never propagate an uncaught exception, so teardown
+    can never mask an earlier failure. The broad catch is logged to stay non-silent and
+    mirrors .NET ``EvaluateGroupMemberSafe``/``VisitAssert``.
+    """
+    try:
+        condition_source_id = action.get("whenResponseSourceId")
+        if condition_source_id is not None:
+            if condition_source_id not in context["responses"]:
+                raise RuntimeError(
+                    f"assertionWhenResponseStatus sourceId '{condition_source_id}' refers to no known response"
+                )
+            statuses = action.get("whenResponseStatuses") or []
+            if _response_status(context["responses"][condition_source_id]) not in statuses:
+                return (False, False, None, False)
+
+        passed, message = _evaluate_assertion_criteria(action, context)
+        return (True, not passed, message, False)
+    except Exception as exc:  # noqa: BLE001 - parity with .NET; returned as failure, logged.
+        _logger.warning("Assertion '%s' failed to evaluate: %s", action.get("id"), exc)
+        return (True, True, str(exc), True)
+
+
+def _fire_assertion_event(user, metric_name, exception):
+    """Fire exactly one ``TESTSCRIPT_ASSERT`` semantic event.
+
+    The event carries ``context={"source": metric_name}`` (never a ``response``), a
+    zero response time/length, and either ``None`` (pass) or the assertion exception
+    (fail).
+    """
+    user.environment.events.request.fire(
+        request_type="TESTSCRIPT_ASSERT",
+        name=metric_name,
+        response_time=0,
+        response_length=0,
+        exception=exception,
+        context={"source": metric_name},
     )
+
+
+def _execute_assertion(document, user, context, action):
+    """Execute one non-grouped TestScript assertion action.
+
+    A compiled assertion always carries criteria; its absence is an interpreter defect
+    surfaced before any metric/event work. A passing, applicable assertion fires one
+    event with no exception; a failing, applicable, non-warning-only assertion fires one
+    event carrying an ``AssertionError``; a failing ``warningOnly`` assertion logs the
+    source-qualified metric and message and fires no event; an inapplicable assertion
+    fires no event. Outcomes are always returned, never raised.
+    """
+    if action.get("criteria") is None:
+        raise RuntimeError(
+            f"TestScript assertion '{action.get('id')}' has no criteria to evaluate"
+        )
+
+    metric_name = _metric_name(document, action["id"])
+    applicable, failed, message, _is_error = _evaluate_assertion_member(action, context)
+
+    if not applicable:
+        return {"applicable": False, "failed": False}
+
+    if not failed:
+        _fire_assertion_event(user, metric_name, None)
+        return {"applicable": True, "failed": False}
+
+    if action.get("warningOnly", False):
+        _logger.warning("%s: assertion failed (warningOnly): %s", metric_name, message)
+        return {"applicable": True, "failed": True}
+
+    _fire_assertion_event(user, metric_name, AssertionError(message))
+    return {"applicable": True, "failed": True}
+
+
+def _record_group_result(document, user, group_id, members):
+    """Aggregate a buffered any-of group into one outcome + one event.
+
+    ``members`` is a list of ``(action, (applicable, failed, message, is_error))`` in
+    document order. Mirrors .NET ``RecordGroupResult``: any member that errored fails the
+    group; no applicable member fails the group (condition never matched); otherwise the
+    group passes iff at least one applicable member passed. Exactly one
+    ``TESTSCRIPT_ASSERT`` event is fired, always named for the first member's metric.
+    """
+    first_action = members[0][0]
+    metric_name = _metric_name(document, first_action["id"])
+
+    errored = next((m for m in members if m[1][3]), None)
+    applicable_members = [m for m in members if m[1][0]]
+    matched = next((m for m in applicable_members if not m[1][1]), None)
+
+    if errored is not None:
+        message = (
+            f"assertionAnyOfGroup '{group_id}': member '{errored[0].get('id')}' "
+            f"failed to evaluate: {errored[1][2]}"
+        )
+        failed = True
+    elif not applicable_members:
+        message = (
+            f"assertionAnyOfGroup '{group_id}': no member was applicable - "
+            "condition(s) never matched"
+        )
+        failed = True
+    elif matched is not None:
+        message = None
+        failed = False
+    else:
+        summary = "; ".join(f"{m[0].get('id')}: {m[1][2]}" for m in applicable_members)
+        message = f"assertionAnyOfGroup '{group_id}': no alternative matched ({summary})"
+        failed = True
+
+    _fire_assertion_event(user, metric_name, AssertionError(message) if failed else None)
+    return {"applicable": True, "failed": failed}
 
 
 def _execute_action(document, user, context, action):
@@ -829,14 +1467,37 @@ def _execute_action(document, user, context, action):
 def _run_phase(document, user, context, actions):
     """Run every action in a phase, aggregating phase failure separately.
 
-    Every action always runs, even after an earlier one fails. A phase is
-    marked failed only by a failed operation or a failed, applicable,
-    non-warning-only assertion; inapplicable assertions and failed
-    warning-only assertions never fail the phase.
+    Every action always runs, even after an earlier one fails. Assertions that belong
+    to an ``anyOfGroupId`` are evaluated (with no per-member event) and buffered; at the
+    group's last member the buffered results are aggregated into exactly one event and
+    one outcome. A phase is marked failed only by a failed operation, a failed applicable
+    non-warning-only assertion, or a failed any-of group; inapplicable assertions and
+    failed warning-only assertions never fail the phase.
     """
+    last_group_index = {}
+    for index, action in enumerate(actions):
+        if action.get("kind") == "assert":
+            group_id = action.get("anyOfGroupId")
+            if group_id is not None:
+                last_group_index[group_id] = index
+
     phase_failed = False
     results = []
-    for action in actions:
+    pending_groups = {}
+
+    for index, action in enumerate(actions):
+        group_id = action.get("anyOfGroupId") if action.get("kind") == "assert" else None
+
+        if group_id is not None:
+            member = _evaluate_assertion_member(action, context)
+            pending_groups.setdefault(group_id, []).append((action, member))
+            if index == last_group_index[group_id]:
+                group_result = _record_group_result(document, user, group_id, pending_groups[group_id])
+                results.append(group_result)
+                if group_result["failed"]:
+                    phase_failed = True
+            continue
+
         result = _execute_action(document, user, context, action)
         results.append(result)
         if not result.get("applicable", True):

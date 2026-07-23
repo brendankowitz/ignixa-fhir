@@ -3,6 +3,7 @@ using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Ignixa.TestScript.Expressions;
+using Ignixa.TestScript.Locust.Compatibility;
 using Ignixa.TestScript.Locust.Compilation;
 using Ignixa.TestScript.Locust.Diagnostics;
 using Ignixa.TestScript.Locust.Ir;
@@ -973,6 +974,190 @@ public class LocustIrCompilerTests
         Metadata = new TestScriptMetadata { Name = "Suite" },
         Setup = [operation]
     };
+
+    // ----------------------------------------------------------------------
+    // Task 9 (RED): FHIRPath compatibility gating diagnostics.
+    //
+    // These tests express the planned INTERNAL Task 9 compiler surface exactly:
+    //   internal enum FhirPathUsage { Boolean, Scalar }
+    //   internal sealed record FhirPathIncompatibility(string Expression, FhirPathUsage Usage, string Reason)
+    //   internal sealed class FhirPathCompatibilityManifest
+    //       internal ctor(IEnumerable<FhirPathIncompatibility> entries)
+    //       static FhirPathCompatibilityManifest LoadEmbedded()
+    //       string? FindReason(string expression, FhirPathUsage usage)
+    //   LocustIrCompiler(): parameterless ctor (loads embedded manifest)
+    //   internal LocustIrCompiler(FhirPathCompatibilityManifest manifest)
+    //
+    // None of these production types exist yet, so this file will not compile
+    // until Task 9 is implemented. That compile failure IS the intended RED.
+    // ----------------------------------------------------------------------
+
+    // Clearly malformed FHIRPath (unbalanced parenthesis) used to exercise the
+    // planned LOCUST010 "expression fails to parse" diagnostic in every location.
+    private const string MalformedFhirPathExpression = "Patient.where(";
+
+    [Fact]
+    public void GivenManifest_WhenQueried_ThenFindReasonAndLoadEmbeddedExposeExpectedApi()
+    {
+        FhirPathCompatibilityManifest manifest = new(
+        [
+            new FhirPathIncompatibility("Patient.name", FhirPathUsage.Scalar, "multi-value coercion differs")
+        ]);
+
+        // FindReason matches on (expression, usage); returns the recorded reason or null.
+        manifest.FindReason("Patient.name", FhirPathUsage.Scalar).ShouldBe("multi-value coercion differs");
+        manifest.FindReason("Patient.name", FhirPathUsage.Boolean).ShouldBeNull();
+        manifest.FindReason("Patient.id", FhirPathUsage.Scalar).ShouldBeNull();
+
+        // The embedded manifest is the source the parameterless compiler ctor uses.
+        FhirPathCompatibilityManifest embedded = FhirPathCompatibilityManifest.LoadEmbedded();
+        embedded.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenIncompatibleScalarExpressionInVariableExtraction_WhenCompiledWithManifest_ThenReturnsSourceQualifiedLocust009ErrorAndNullDocument()
+    {
+        FhirPathCompatibilityManifest manifest = new(
+        [
+            new FhirPathIncompatibility("Patient.name", FhirPathUsage.Scalar, "multi-value coercion differs")
+        ]);
+        LocustIrCompiler compiler = new(manifest);
+
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Variables =
+            [
+                new VariableDefinition
+                {
+                    Name = "value",
+                    Extraction = new ExpressionExtraction("Patient.name")
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await compiler.CompileAsync(
+            definition, Options(source: "incompat.json"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeTrue();
+        result.Document.ShouldBeNull();
+
+        LocustDiagnostic diagnostic = result.Diagnostics.Where(d => d.Code == "LOCUST009").ShouldHaveSingleItem();
+        diagnostic.Severity.ShouldBe(LocustDiagnosticSeverity.Error);
+        diagnostic.Source.ShouldNotBeNull();
+        diagnostic.Source.ShouldStartWith("incompat.json");
+        diagnostic.Source.ShouldContain(":");
+        diagnostic.Message.ShouldContain("multi-value coercion differs");
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST_METRIC");
+    }
+
+    [Fact]
+    public async Task GivenMalformedSuiteRequiresCapability_WhenCompiled_ThenReturnsSingleSourceQualifiedLocust010ErrorAndNullDocument()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata
+            {
+                Name = "Suite",
+                RequiresCapability = MalformedFhirPathExpression
+            }
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(
+            definition, Options(source: "malformed-suite.json"), CancellationToken.None);
+
+        AssertSingleSourceQualifiedError(result, "LOCUST010", "malformed-suite.json");
+    }
+
+    [Fact]
+    public async Task GivenMalformedTestRequiresCapability_WhenCompiled_ThenReturnsSingleSourceQualifiedLocust010ErrorAndNullDocument()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "case",
+                    RequiresCapability = MalformedFhirPathExpression
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(
+            definition, Options(source: "malformed-test.json"), CancellationToken.None);
+
+        AssertSingleSourceQualifiedError(result, "LOCUST010", "malformed-test.json");
+    }
+
+    [Fact]
+    public async Task GivenMalformedAssertionCriteria_WhenCompiled_ThenReturnsSingleSourceQualifiedLocust010ErrorAndNullDocument()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Setup = [new AssertExpression { Criteria = new FhirPathCriteria(MalformedFhirPathExpression) }]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(
+            definition, Options(source: "malformed-assert.json"), CancellationToken.None);
+
+        AssertSingleSourceQualifiedError(result, "LOCUST010", "malformed-assert.json");
+    }
+
+    [Fact]
+    public async Task GivenMalformedVariableExtraction_WhenCompiled_ThenReturnsSingleSourceQualifiedLocust010ErrorAndNullDocument()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Variables =
+            [
+                new VariableDefinition
+                {
+                    Name = "value",
+                    Extraction = new ExpressionExtraction(MalformedFhirPathExpression)
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(
+            definition, Options(source: "malformed-variable.json"), CancellationToken.None);
+
+        AssertSingleSourceQualifiedError(result, "LOCUST010", "malformed-variable.json");
+    }
+
+    [Fact]
+    public async Task GivenOversizedNumericLiteralInScannedExpression_WhenCompiled_ThenReturnsSingleSourceQualifiedLocust010ErrorAndNullDocument()
+    {
+        // An out-of-range integer literal makes the Ignixa parser throw OverflowException (not
+        // ArgumentException/FormatException). The compiler must surface this as a deterministic
+        // LOCUST010 rather than letting the exception escape the compile.
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Setup = [new AssertExpression { Criteria = new FhirPathCriteria("Patient.id = 9999999999") }]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(
+            definition, Options(source: "overflow-assert.json"), CancellationToken.None);
+
+        AssertSingleSourceQualifiedError(result, "LOCUST010", "overflow-assert.json");
+    }
+
+    private static void AssertSingleSourceQualifiedError(LocustCompilationResult result, string code, string source)
+    {
+        result.HasErrors.ShouldBeTrue();
+        result.Document.ShouldBeNull();
+
+        LocustDiagnostic diagnostic = result.Diagnostics.Where(d => d.Code == code).ShouldHaveSingleItem();
+        diagnostic.Severity.ShouldBe(LocustDiagnosticSeverity.Error);
+        diagnostic.Source.ShouldNotBeNull();
+        diagnostic.Source.ShouldStartWith(source);
+        diagnostic.Source.ShouldContain(":");
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST_METRIC");
+    }
 
     private static async Task<LocustIrAssertionCriteria> CompileSingleAssertCriteria(AssertCriteria criteria)
     {

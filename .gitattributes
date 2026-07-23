@@ -9,3 +9,4 @@ src/Sparky.Specification/Generated/*.g.cs linguist-generated=true
 # endings into every generated Locust artifact.
 src/Core/Ignixa.TestScript.Locust/Python/*.py text eol=lf
 src/Core/Ignixa.TestScript.Locust/Python/requirements.txt text eol=lf
+test/Ignixa.TestScript.Locust.Tests/Python/*.py text eol=lf

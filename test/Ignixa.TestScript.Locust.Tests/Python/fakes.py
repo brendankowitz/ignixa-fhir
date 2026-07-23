@@ -31,7 +31,12 @@ class FakeRequestEvents:
 
 
 class FakeEnvironment:
-    def __init__(self):
+    def __init__(self, host=None):
+        # ``host`` is the Locust ``environment.host`` engine startup resolves the
+        # FHIR base URL from first (before falling back to ``IGNIXA_BASE_URL``).
+        # It defaults to ``None`` so every existing lifecycle/operation test that
+        # constructs ``FakeEnvironment()`` is unaffected.
+        self.host = host
         self.events = type(
             "Events",
             (),
@@ -266,3 +271,69 @@ class FakeUser:
         self.host = "http://example.test"
         if client is not None and hasattr(client, "events"):
             client.events = self.environment.events
+
+
+class FakeMetadataResponse:
+    """A minimal stand-in for the ``requests`` response returned by the metadata fetch.
+
+    Mirrors just the surface engine startup touches: ``raise_for_status`` (which
+    raises an ``HTTPError`` for a >= 400 status, exactly like ``requests``), and
+    ``json`` (which returns the configured payload, or raises ``ValueError`` when a
+    body was marked unparseable). It is deliberately dependency-free at import so a
+    bare Task 7 lifecycle run still imports this module without ``requests`` present.
+    """
+
+    def __init__(self, status_code=200, json_data=_NO_JSON, json_error=None):
+        self.status_code = status_code
+        self._json_data = json_data
+        self._json_error = json_error
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            # Raise the same exception type real ``requests`` raises so a runtime
+            # that fails open on HTTP errors can catch ``requests.HTTPError``.
+            import requests
+
+            raise requests.HTTPError(f"HTTP {self.status_code}")
+
+    def json(self):
+        if self._json_error is not None:
+            raise self._json_error
+        if self._json_data is _NO_JSON:
+            raise ValueError("FakeMetadataResponse has no configured JSON payload")
+        return self._json_data
+
+
+class FakeRequestsSession:
+    """A minimal, queue-free stand-in for ``requests.Session`` used by engine startup.
+
+    Patch ``requests.Session`` with a zero-arg factory returning an instance of this
+    class (e.g. ``patch('requests.Session', lambda: session)``). It supports the
+    ``with requests.Session() as session:`` context-manager protocol the runtime uses,
+    records every ``get`` call (url/timeout/headers) for assertions, and either returns
+    the configured response or raises the configured transport error - never firing any
+    Locust event, since the metadata probe is uninstrumented.
+    """
+
+    def __init__(self, response=None, error=None):
+        self.response = response
+        self.error = error
+        self.get_calls = []
+        self.entered = False
+        self.closed = False
+
+    def __enter__(self):
+        self.entered = True
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.closed = True
+        return False
+
+    def get(self, url, timeout=None, headers=None, **kwargs):
+        self.get_calls.append(
+            {"url": url, "timeout": timeout, "headers": dict(headers or {})}
+        )
+        if self.error is not None:
+            raise self.error
+        return self.response
