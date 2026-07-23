@@ -189,7 +189,7 @@ public sealed class CompartmentSearchStep0Benchmark
                 try
                 {
                     var searchParamInfo = _searchParameterDefinitionManager.GetSearchParameter(resourceType, searchParamCode);
-                    var searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo);
+                    var searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo, ct);
                     if (!searchParamId.HasValue)
                     {
                         continue;

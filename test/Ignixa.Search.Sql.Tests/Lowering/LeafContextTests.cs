@@ -36,4 +36,31 @@ public class LeafContextTests
         // Assert
         parameterRef.Value.ShouldBe("Smith");
     }
+
+    [Fact]
+    public void GivenAnApproximationReferenceTime_WhenLeafContextConstructed_ThenTheTimeIsExposed()
+    {
+        // Arrange
+        var fixedTime = new DateTimeOffset(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        // Act
+        var context = new LeafContext(symbols, fixedTime);
+
+        // Assert
+        context.ApproximationReferenceTime.ShouldBe(fixedTime);
+    }
+
+    [Fact]
+    public void GivenNoApproximationReferenceTime_WhenLeafContextConstructed_ThenItIsNull()
+    {
+        // Arrange
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        // Act
+        var context = new LeafContext(symbols);
+
+        // Assert
+        context.ApproximationReferenceTime.ShouldBeNull();
+    }
 }

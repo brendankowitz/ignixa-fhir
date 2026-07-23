@@ -49,6 +49,11 @@ public class FhirRequestContext : IFhirRequestContext
     public TenantConfiguration? TenantConfiguration { get; set; }
 
     /// <summary>
+    /// Service base URI for this request, including the tenant route segment in multi-tenant mode.
+    /// </summary>
+    public Uri? BaseUri { get; set; }
+
+    /// <summary>
     /// FHIR version extracted from Content-Type/Accept headers.
     /// Defaults to R4.
     /// </summary>

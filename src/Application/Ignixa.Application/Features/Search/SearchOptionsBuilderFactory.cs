@@ -28,10 +28,24 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
+    private readonly IFhirBaseUriProvider? _baseUriProvider;
+
     public SearchOptionsBuilderFactory(IFhirVersionContext versionContext)
+        : this(versionContext, baseUriProvider: null)
+    {
+    }
+
+    /// <param name="baseUriProvider">
+    /// Supplies this server's base URI so an absolute self-reference in a search value is recognized as
+    /// internal. Must be the same provider <see cref="Ignixa.Search.Indexing.SearchIndexerFactory"/> is
+    /// given; if the query path and the index path disagree about what "internal" means, the two forms
+    /// stop reconciling.
+    /// </param>
+    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext, IFhirBaseUriProvider? baseUriProvider)
     {
         EnsureArg.IsNotNull(versionContext, nameof(versionContext));
         _versionContext = versionContext;
+        _baseUriProvider = baseUriProvider;
     }
 
     /// <inheritdoc/>
@@ -104,7 +118,7 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
                 () => searchParamDefinitionManager;
 
             // Create version-specific ReferenceSearchValueParser (builds regex patterns per version)
-            var referenceParser = new ReferenceSearchValueParser(schemaProvider);
+            var referenceParser = new ReferenceSearchValueParser(schemaProvider, _baseUriProvider);
 
             // Create version-specific SearchParameterExpressionParser (needs both parser and provider)
             // Rollback lever: if this parser (PR #332's handwritten-scanner rewrite) causes a

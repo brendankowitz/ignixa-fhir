@@ -246,4 +246,69 @@ public class PlanExplainerTests
             "root = StringSearchParam[103,202]  Text = @p0\n" +
             "countOnly = true");
     }
+
+    [Fact]
+    public void GivenAnIsNullPredicate_WhenExplained_ThenPrintsColumnIsNull()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.IsNull(new SqlColumnRef(table.TableName, "SystemId"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = TokenSearchParam[103,44]  SystemId IS NULL");
+    }
+
+    [Fact]
+    public void GivenAFalsePredicate_WhenExplained_ThenPrintsTheSameUnsatisfiableLiteralTheSqlEmitterUses()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.False();
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = TokenSearchParam[103,44]  1 = 0");
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicate_WhenExplained_ThenPrintsPrefixOfWithCollation()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"),
+            "Latin1_General_100_BIN2");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = UriSearchParam[103,202]  Uri PREFIX_OF @p0 collate Latin1_General_100_BIN2");
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicateWithoutCollation_WhenExplained_ThenPrintsPrefixOfWithoutCollation()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = UriSearchParam[103,202]  Uri PREFIX_OF @p0");
+    }
 }

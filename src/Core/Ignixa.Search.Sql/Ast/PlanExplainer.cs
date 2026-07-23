@@ -191,6 +191,15 @@ public static class PlanExplainer
         return $"ResourceSource[{rs.ResourceTypeId}]{predicateSuffix}{PrintTop(top)}";
     }
 
+    /// <summary>
+    /// How <see cref="Predicate.False"/> reads in an explained plan. Deliberately the same text the SQL
+    /// emitter produces, rather than a friendlier <c>false</c>: a plan and its SQL are read side by side in
+    /// a trace, and the emitter has no choice — <c>1 = 0</c> is the portable SQL literal for an
+    /// unsatisfiable predicate, while <c>false</c> is not valid in a T-SQL WHERE clause. Two spellings of
+    /// one node make the reader decide whether they are the same thing, and make a trace ungreppable.
+    /// </summary>
+    internal const string UnsatisfiableRendering = "1 = 0";
+
     private static string PrintPredicate(Predicate predicate, ref int parameterOrdinal) => predicate switch
     {
         Predicate.Equal e => $"{e.Column.Column} = @p{parameterOrdinal++}{PrintCollation(e.Collation)}",
@@ -201,6 +210,9 @@ public static class PlanExplainer
         Predicate.GreaterThan gt => $"{gt.Column.Column} > @p{parameterOrdinal++}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= @p{parameterOrdinal++}",
         Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
+        Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
+        Predicate.False => UnsatisfiableRendering,
+        Predicate.PrefixOfParameter pop => $"{pop.Column.Column} PREFIX_OF @p{parameterOrdinal++}{PrintCollation(pop.Collation)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {predicate.GetType().Name}."),
     };
 

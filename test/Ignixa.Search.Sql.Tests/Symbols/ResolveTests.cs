@@ -350,6 +350,84 @@ public class ResolveTests
         Should.Throw<KeyNotFoundException>(() => symbolTable.SearchParamId(lastUpdatedParam));
     }
 
+    [Fact]
+    public async Task GivenATokenQuantityCompositeWithDuplicateSystems_WhenResolved_ThenTerminologyResolvedOnceAndStoredInSymbolTable()
+    {
+        // Arrange -- mirrors the tree from GivenACompositeTree_WhenResolved_... with terminology IDs;
+        // "http://loinc.org" appears in both the composite leaf and a standalone leaf to prove deduplication.
+        var codeParam = new SearchParameterInfo(
+            "component-code", "component-code", SearchParamType.Token,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code"));
+        var quantityParam = new SearchParameterInfo(
+            "component-value-quantity", "component-value-quantity", SearchParamType.Quantity,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"));
+        var compositeParam = new SearchParameterInfo(
+            "component-code-value-quantity", "component-code-value-quantity", SearchParamType.Composite,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"));
+
+        var codePredicate = new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://loinc.org", "8480-6", text: null));
+        var quantityPredicate = new SearchParameterPredicateExpression(quantityParam, SearchComparator.Eq, modifier: null,
+            new QuantitySearchValue("http://unitsofmeasure.org", "mg", 107m));
+
+        var codeComponent = new CompositeComponentExpression(codeParam, 0, codePredicate);
+        var quantityComponent = new CompositeComponentExpression(quantityParam, 1, quantityPredicate);
+        var composite = new SearchParameterExpression(compositeParam,
+            new MultiaryExpression(MultiaryOperator.And, [codeComponent, quantityComponent]));
+
+        // A second leaf using the same system -- proves the collector deduplicates before calling the resolver.
+        var duplicatePredicate = new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://loinc.org", "8480-7", text: null));
+        var duplicateLeaf = new SearchParameterExpression(codeParam, duplicatePredicate);
+
+        var tree = new MultiaryExpression(MultiaryOperator.And, [composite, duplicateLeaf]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code"] = 401;
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-value-quantity"] = 402;
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"] = 400;
+        resolver.SystemIds["http://loinc.org"] = 7;
+        resolver.SystemIds["http://unitsofmeasure.org"] = 8;
+        resolver.QuantityCodeIds["mg"] = 42;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+
+        // Assert -- all three terminology values are present and resolved
+        symbolTable.SystemId("http://loinc.org").ShouldBe(7);
+        symbolTable.SystemId("http://unitsofmeasure.org").ShouldBe(8);
+        symbolTable.QuantityCodeId("mg").ShouldBe(42);
+
+        // Prove each resolver method was called exactly once per distinct string, not once per occurrence
+        resolver.SystemIdCallCounts["http://loinc.org"].ShouldBe(1);
+        resolver.SystemIdCallCounts["http://unitsofmeasure.org"].ShouldBe(1);
+        resolver.QuantityCodeIdCallCounts["mg"].ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task GivenASystemThatTheResolverDoesNotKnow_WhenResolved_ThenSymbolTableStoresAKnownMiss()
+    {
+        // Arrange -- "http://unknown.example" is in the tree but absent from the resolver, so it returns null
+        var codeParam = new SearchParameterInfo(
+            "code", "code", SearchParamType.Token,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var predicate = new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://unknown.example", "some-code", text: null));
+        var expression = new SearchParameterExpression(codeParam, predicate);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-code"] = 88;
+        // resolver.SystemIds does NOT contain "http://unknown.example" -- resolver returns null (known miss)
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(expression, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+
+        // Assert -- the system was collected and the resolver's null result was stored as a known miss
+        symbolTable.SystemId("http://unknown.example").ShouldBeNull();
+        // An uncollected system still throws (three-state invariant)
+        Should.Throw<KeyNotFoundException>(() => symbolTable.SystemId("http://never-seen.example"));
+    }
+
     /// <summary>
     /// An in-memory, dictionary-backed ICompartmentDefinitionManager test double -- not a mock,
     /// matching this file's existing FakeSymbolResolver philosophy.
@@ -403,6 +481,16 @@ public class ResolveTests
 
         public Dictionary<string, short> ResourceTypeIds { get; } = [];
 
+        public Dictionary<string, int> SystemIds { get; } = [];
+
+        public Dictionary<string, int> QuantityCodeIds { get; } = [];
+
+        /// <summary>Tracks how many times <see cref="GetSystemIdAsync"/> was called per system, for deduplication assertions.</summary>
+        public Dictionary<string, int> SystemIdCallCounts { get; } = [];
+
+        /// <summary>Tracks how many times <see cref="GetQuantityCodeIdAsync"/> was called per code, for deduplication assertions.</summary>
+        public Dictionary<string, int> QuantityCodeIdCallCounts { get; } = [];
+
         public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
         {
             var url = parameter.Url?.ToString();
@@ -411,5 +499,17 @@ public class ResolveTests
 
         public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
             => Task.FromResult(ResourceTypeIds.TryGetValue(resourceType, out var id) ? (short?)id : null);
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+        {
+            SystemIdCallCounts[system] = SystemIdCallCounts.GetValueOrDefault(system) + 1;
+            return Task.FromResult(SystemIds.TryGetValue(system, out var id) ? (int?)id : null);
+        }
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+        {
+            QuantityCodeIdCallCounts[code] = QuantityCodeIdCallCounts.GetValueOrDefault(code) + 1;
+            return Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
+        }
     }
 }

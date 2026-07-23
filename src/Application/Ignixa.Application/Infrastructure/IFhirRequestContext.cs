@@ -33,6 +33,14 @@ public interface IFhirRequestContext
     TenantConfiguration? TenantConfiguration { get; set; }
 
     /// <summary>
+    /// Service base URI for this request, including the tenant route segment in multi-tenant mode
+    /// (e.g. "https://host/tenant/1/"). Used to recognize an absolute reference that points back at this
+    /// server so it can be reconciled with the equivalent relative reference.
+    /// Null for background work that has no request to derive it from.
+    /// </summary>
+    Uri? BaseUri { get; set; }
+
+    /// <summary>
     /// FHIR version extracted from Content-Type/Accept headers.
     /// Defaults to R4 if not specified in headers.
     /// Examples: FhirVersion.R4, FhirVersion.R5

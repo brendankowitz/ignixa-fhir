@@ -8,6 +8,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Parsing;
@@ -65,7 +66,26 @@ public static class SearchServicesRegistration
                 c.Resolve<IPackageResourceRepository>(),
                 c.Resolve<IPackageResourceProvider>(),
                 c.Resolve<ICompositeSchemaProviderRegistry>(),
-                c.Resolve<ConformanceState>());
+                c.Resolve<ConformanceState>(),
+                c.Resolve<IFhirBaseUriProvider>());
+        }).SingleInstance();
+
+        // Service base URI, used to recognize an absolute reference that points back at this server so it
+        // reconciles with the equivalent relative reference. Safe as a singleton despite depending on the
+        // scoped accessor: FhirRequestContextAccessor is backed by a static AsyncLocal, so one instance
+        // still observes the calling request's context. "Fhir:BaseUri" is the fallback for background
+        // indexing (reindex, $import), which has no request to derive a base from -- it must agree with
+        // what the request path produces or the two will store references in different forms.
+        builder.Register<IFhirBaseUriProvider>(c =>
+        {
+            var configuredBaseUri = configuration["Fhir:BaseUri"] is { Length: > 0 } value
+                && Uri.TryCreate(value, UriKind.Absolute, out var parsed)
+                    ? parsed
+                    : null;
+
+            return new FhirRequestContextBaseUriProvider(
+                c.Resolve<IFhirRequestContextAccessor>(),
+                configuredBaseUri);
         }).SingleInstance();
 
         // SearchOptionsBuilderFactory

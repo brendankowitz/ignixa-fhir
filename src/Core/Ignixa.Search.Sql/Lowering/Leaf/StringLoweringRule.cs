@@ -11,11 +11,18 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// compare against Text; longer values compare against TextOverflow, which holds the whole value.
 /// <para>
 /// Comparing a single column is not correct for every modifier once a row has overflowed, because Text
-/// then holds only the first 256 characters. <c>:contains</c> within the inline width would miss a
-/// substring that occurs only past character 256, and <c>:exact</c> at exactly the inline width could
-/// false-positive on a longer value sharing the same 256-char prefix — both throw rather than return
-/// wrong rows. The default StartsWith case is always safe, since a prefix within the inline width is
-/// fully captured in Text. Handling the two thrown cases would need the IR to search both columns.
+/// then holds only the first 256 characters. <c>:exact</c> for a value at or within the inline width
+/// returns <c>IsNull(TextOverflow) AND Text = value</c> — the IsNull guard excludes overflowed rows
+/// whose truncated Text prefix would otherwise false-positive match. For values longer than the inline
+/// width, <c>:exact</c> compares TextOverflow directly, which holds the complete stored value.
+/// <c>:contains</c> within the inline width searches both columns:
+/// <c>Or(And(IsNull(TextOverflow), Like(Text, …, Contains)), Like(TextOverflow, …, Contains))</c>.
+/// Non-overflowed rows are matched via Text (the IsNull guard ensures TextOverflow is absent); overflowed
+/// rows are matched via the complete TextOverflow column. For values exceeding the inline width,
+/// <c>:contains</c> targets TextOverflow only — such a substring can only exist in a value that itself
+/// exceeds the inline width, so TextOverflow is guaranteed populated.
+/// The default StartsWith case is always safe, since a prefix within the inline width is fully captured
+/// in Text.
 /// </para>
 /// </summary>
 public static class StringLoweringRule
@@ -29,37 +36,27 @@ public static class StringLoweringRule
         var inlineWidth = table.Column("Text").MaxLength
             ?? throw new InvalidOperationException("StringSearchParam.Text has no MaxLength in SqlCatalog.");
 
+        var textColumn = new SqlColumnRef(table.TableName, "Text");
+        var overflowColumn = new SqlColumnRef(table.TableName, "TextOverflow");
         var usesTextColumn = value.String.Length <= inlineWidth;
-        var column = new SqlColumnRef(table.TableName, usesTextColumn ? "Text" : "TextOverflow");
 
         var exact = predicate.Modifier?.SearchModifierCode == SearchModifierCode.Exact;
         var contains = predicate.Modifier?.SearchModifierCode == SearchModifierCode.Contains;
 
-        if (usesTextColumn && contains)
+        Predicate p = (exact, contains, usesTextColumn) switch
         {
-            throw new NotSupportedException(
-                $"':contains' cannot be expressed correctly against StringSearchParam.Text for a value within the inline " +
-                $"width ({inlineWidth} chars): an overflowed row's Text holds only the first {inlineWidth} characters of its " +
-                "true value, so a substring match that exists only at or after that offset in TextOverflow would be silently " +
-                "missed. The predicate IR has no Or/IsNull to search both columns, so this cannot be expressed correctly yet.");
-        }
-
-        if (usesTextColumn && exact && value.String.Length == inlineWidth)
-        {
-            throw new NotSupportedException(
-                $"':exact' cannot be expressed correctly against StringSearchParam.Text for a value exactly {inlineWidth} " +
-                $"characters long: an overflowed row's Text is always exactly {inlineWidth} characters (a truncated prefix " +
-                "of its true value), so 'Text = @p' could false-positive match a row whose true value is longer but shares " +
-                $"the same {inlineWidth}-char prefix as the search value.");
-        }
-
-        var collation = exact ? CaseSensitiveCollation : CaseInsensitiveCollation;
-
-        Predicate p = (exact, contains) switch
-        {
-            (true, _) => new Predicate.Equal(column, context.Parameter(value.String), collation),
-            (false, true) => new Predicate.Like(column, context.Parameter(value.String), LikeMatch.Contains, collation),
-            _ => new Predicate.Like(column, context.Parameter(value.String), LikeMatch.StartsWith, collation),
+            (true, _, true) => new Predicate.And(
+                new Predicate.IsNull(overflowColumn),
+                new Predicate.Equal(textColumn, context.Parameter(value.String), CaseSensitiveCollation)),
+            (true, _, false) => new Predicate.Equal(overflowColumn, context.Parameter(value.String), CaseSensitiveCollation),
+            // Each Like takes its own parameter ref, so emission binds @p0 then @p1 rather than reusing one.
+            (_, true, true) => new Predicate.Or(
+                new Predicate.And(
+                    new Predicate.IsNull(overflowColumn),
+                    new Predicate.Like(textColumn, context.Parameter(value.String), LikeMatch.Contains, CaseInsensitiveCollation)),
+                new Predicate.Like(overflowColumn, context.Parameter(value.String), LikeMatch.Contains, CaseInsensitiveCollation)),
+            (_, true, false) => new Predicate.Like(overflowColumn, context.Parameter(value.String), LikeMatch.Contains, CaseInsensitiveCollation),
+            _ => new Predicate.Like(usesTextColumn ? textColumn : overflowColumn, context.Parameter(value.String), LikeMatch.StartsWith, CaseInsensitiveCollation),
         };
 
         return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), p);

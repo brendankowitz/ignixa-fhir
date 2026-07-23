@@ -26,7 +26,7 @@ public static class CompositeLoweringDispatcher
         {
             return LowerCore(compositeParameter, ordered, context, resourceTypeId);
         }
-        catch (NotSupportedException ex) when (!ex.Data.Contains(LeafLoweringDispatcher.ParameterDataKey))
+        catch (Exception ex) when (LeafLoweringDispatcher.IsUnattributedLoweringFailure(ex))
         {
             LeafLoweringDispatcher.Enrich(ex, compositeParameter, ordered.Count > 0 ? ordered[0].Span : null);
             throw;

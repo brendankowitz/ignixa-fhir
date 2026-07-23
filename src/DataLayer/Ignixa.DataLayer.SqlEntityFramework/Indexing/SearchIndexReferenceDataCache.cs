@@ -32,6 +32,11 @@ public class SearchIndexReferenceDataCache : IDisposable
     private readonly ConcurrentDictionary<string, int> _quantityCodeCache = new();
     private readonly ConcurrentDictionary<string, short> _resourceTypeCache = new();
 
+    // Negative caches for the read-only lookups. Kept separate from the positive caches above because
+    // those are shared with the get-or-create write path, which reads every cached integer as a real ID.
+    private readonly NegativeLookupCache _missingSystems;
+    private readonly NegativeLookupCache _missingQuantityCodes;
+
     // Lazy-loading wrappers (initialized on-demand)
     private LazyLoadingDictionary<string, short>? _resourceTypeMappingsWrapper;
     private LazyLoadingDictionary<string, short>? _searchParameterMappingsWrapper;
@@ -43,12 +48,16 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// </summary>
     /// <param name="context">The EF Core DbContext.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="timeProvider">Clock backing the negative caches' TTL. Defaults to <see cref="TimeProvider.System"/>.</param>
     public SearchIndexReferenceDataCache(
         FhirDbContext context,
-        ILogger<SearchIndexReferenceDataCache> logger)
+        ILogger<SearchIndexReferenceDataCache> logger,
+        TimeProvider? timeProvider = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _missingSystems = new NegativeLookupCache(timeProvider);
+        _missingQuantityCodes = new NegativeLookupCache(timeProvider);
     }
 
     /// <summary>
@@ -86,8 +95,9 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="uri">The search parameter URI (e.g., "http://hl7.org/fhir/SearchParameter/Patient-name").</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
     /// <returns>The SearchParamId, or null if not found.</returns>
-    public async ValueTask<short?> GetSearchParamIdAsync(string uri)
+    public async ValueTask<short?> GetSearchParamIdAsync(string uri, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(uri))
         {
@@ -102,7 +112,7 @@ public class SearchIndexReferenceDataCache : IDisposable
         }
 
         // Acquire lock for database access (DbContext is not thread-safe)
-        await _dbLock.WaitAsync();
+        await _dbLock.WaitAsync(cancellationToken);
         try
         {
             // Double-check cache after acquiring lock (another thread may have loaded it)
@@ -114,7 +124,7 @@ public class SearchIndexReferenceDataCache : IDisposable
             // Query database
             var entity = await _context.SearchParams
                 .AsNoTracking()
-                .FirstOrDefaultAsync(sp => sp.Uri == uri);
+                .FirstOrDefaultAsync(sp => sp.Uri == uri, cancellationToken);
 
             if (entity == null)
             {
@@ -140,8 +150,9 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// to handle cases where Implementation Guide parameters override base FHIR parameters.
     /// </summary>
     /// <param name="searchParameter">The search parameter containing URL and optional OverridesUrl.</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
     /// <returns>The SearchParamId, or null if not found (even after checking OverridesUrl).</returns>
-    public async ValueTask<short?> GetSearchParamIdAsync(SearchParameterInfo searchParameter)
+    public async ValueTask<short?> GetSearchParamIdAsync(SearchParameterInfo searchParameter, CancellationToken cancellationToken = default)
     {
         if (searchParameter?.Url == null)
         {
@@ -149,7 +160,7 @@ public class SearchIndexReferenceDataCache : IDisposable
         }
 
         // Try primary lookup using the parameter's URL
-        var searchParamId = await GetSearchParamIdAsync(searchParameter.Url.ToString());
+        var searchParamId = await GetSearchParamIdAsync(searchParameter.Url.ToString(), cancellationToken);
         if (searchParamId.HasValue)
         {
             return searchParamId;
@@ -158,7 +169,7 @@ public class SearchIndexReferenceDataCache : IDisposable
         // Fallback: if this parameter overrides another parameter, try the overridden URL
         if (searchParameter.OverridesUrl != null)
         {
-            return await GetSearchParamIdAsync(searchParameter.OverridesUrl.ToString());
+            return await GetSearchParamIdAsync(searchParameter.OverridesUrl.ToString(), cancellationToken);
         }
 
         return null;
@@ -170,8 +181,9 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="systemUri">The system URI (e.g., "http://loinc.org").</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
     /// <returns>The SystemId, or null if systemUri is null/empty.</returns>
-    public async ValueTask<int?> GetOrCreateSystemIdAsync(string? systemUri)
+    public async ValueTask<int?> GetOrCreateSystemIdAsync(string? systemUri, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(systemUri))
         {
@@ -185,7 +197,7 @@ public class SearchIndexReferenceDataCache : IDisposable
         }
 
         // Acquire lock for database access (DbContext is not thread-safe)
-        await _dbLock.WaitAsync();
+        await _dbLock.WaitAsync(cancellationToken);
         try
         {
             // Double-check cache after acquiring lock
@@ -196,12 +208,13 @@ public class SearchIndexReferenceDataCache : IDisposable
 
             // Query database
             var entity = await _context.Systems
-                .FirstOrDefaultAsync(s => s.Value == systemUri);
+                .FirstOrDefaultAsync(s => s.Value == systemUri, cancellationToken);
 
             if (entity != null)
             {
                 // Cache existing entry
                 _systemCache.TryAdd(systemUri, entity.SystemId);
+                _missingSystems.Forget(systemUri);
                 return entity.SystemId;
             }
 
@@ -212,12 +225,14 @@ public class SearchIndexReferenceDataCache : IDisposable
             };
 
             _context.Systems.Add(newEntity);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogDebug("Created new System entry: {SystemUri} -> {SystemId}", systemUri, newEntity.SystemId);
 
-            // Cache and return
+            // Cache and return. Forgetting the negative entry is what stops a search that already
+            // recorded this system as missing from continuing to report it missing now that it exists.
             _systemCache.TryAdd(systemUri, newEntity.SystemId);
+            _missingSystems.Forget(systemUri);
             return newEntity.SystemId;
         }
         finally
@@ -232,8 +247,9 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="code">The unit code (e.g., "mg", "kg").</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
     /// <returns>The QuantityCodeId, or null if code is null/empty.</returns>
-    public async ValueTask<int?> GetOrCreateQuantityCodeIdAsync(string? code)
+    public async ValueTask<int?> GetOrCreateQuantityCodeIdAsync(string? code, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(code))
         {
@@ -247,7 +263,7 @@ public class SearchIndexReferenceDataCache : IDisposable
         }
 
         // Acquire lock for database access (DbContext is not thread-safe)
-        await _dbLock.WaitAsync();
+        await _dbLock.WaitAsync(cancellationToken);
         try
         {
             // Double-check cache after acquiring lock
@@ -258,12 +274,13 @@ public class SearchIndexReferenceDataCache : IDisposable
 
             // Query database
             var entity = await _context.QuantityCodes
-                .FirstOrDefaultAsync(qc => qc.Value == code);
+                .FirstOrDefaultAsync(qc => qc.Value == code, cancellationToken);
 
             if (entity != null)
             {
                 // Cache existing entry
                 _quantityCodeCache.TryAdd(code, entity.QuantityCodeId);
+                _missingQuantityCodes.Forget(code);
                 return entity.QuantityCodeId;
             }
 
@@ -274,13 +291,222 @@ public class SearchIndexReferenceDataCache : IDisposable
             };
 
             _context.QuantityCodes.Add(newEntity);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogDebug("Created new QuantityCode entry: {Code} -> {QuantityCodeId}", code, newEntity.QuantityCodeId);
 
-            // Cache and return
+            // Cache and return. Forgetting the negative entry is what stops a search that already
+            // recorded this code as missing from continuing to report it missing now that it exists.
             _quantityCodeCache.TryAdd(code, newEntity.QuantityCodeId);
+            _missingQuantityCodes.Forget(code);
             return newEntity.QuantityCodeId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Looks up an existing SystemId for the given system URI without creating a new row.
+    /// Returns null when <paramref name="systemUri"/> is null/empty or has no matching row.
+    /// Caches only positive (found) results in <c>_systemCache</c>: that cache is also used by
+    /// <see cref="GetOrCreateSystemIdAsync"/>, which treats every cached integer as a real ID, so
+    /// caching a sentinel would corrupt the write path. Misses go to the separate
+    /// <see cref="NegativeLookupCache"/>, consulted before the lock so a search naming unindexed
+    /// terminology does not serialize behind ingest on every occurrence.
+    /// Thread-safe: uses <c>_dbLock</c> for database access.
+    /// </summary>
+    /// <param name="systemUri">The system URI to look up (e.g., "http://loinc.org").</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
+    /// <returns>The SystemId if found; null otherwise.</returns>
+    public async ValueTask<int?> GetSystemIdAsync(string? systemUri, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(systemUri))
+        {
+            return null;
+        }
+
+        // Check cache first (only positive results are stored here)
+        if (_systemCache.TryGetValue(systemUri, out var cachedId))
+        {
+            return cachedId;
+        }
+
+        if (_missingSystems.IsKnownMissing(systemUri))
+        {
+            return null;
+        }
+
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check cache after acquiring lock
+            if (_systemCache.TryGetValue(systemUri, out cachedId))
+            {
+                return cachedId;
+            }
+
+            // Read-only query: no tracking, no entity creation, no SaveChangesAsync
+            var entity = await _context.Systems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Value == systemUri, cancellationToken);
+
+            if (entity == null)
+            {
+                _logger.LogDebug("System not found: {SystemUri}", systemUri);
+                _missingSystems.RecordMiss(systemUri);
+                return null;
+            }
+
+            // Cache positive result only -- misses are not cached to avoid corrupting the write path
+            _systemCache.TryAdd(systemUri, entity.SystemId);
+            return entity.SystemId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Looks up existing SystemIds for a set of system URIs in a single database round trip
+    /// (<c>WHERE Value IN (...)</c>), taking <c>_dbLock</c> at most once for the whole set.
+    /// Every requested URI appears in the result, mapped to null when it has no row.
+    /// </summary>
+    /// <remarks>
+    /// Same caching contract as <see cref="GetSystemIdAsync"/>: positive results land in the shared
+    /// <c>_systemCache</c>, misses in the separate negative cache. Keys already answerable from either
+    /// cache are excluded from the query, so a warm cache issues no round trip at all.
+    /// </remarks>
+    /// <param name="systemUris">The system URIs to look up.</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
+    /// <returns>A map from every requested URI to its SystemId, or null where no row exists.</returns>
+    public async Task<IReadOnlyDictionary<string, int?>> GetSystemIdsAsync(
+        IReadOnlyCollection<string> systemUris,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(systemUris);
+
+        var results = new Dictionary<string, int?>(StringComparer.Ordinal);
+        var pending = new List<string>();
+
+        foreach (var systemUri in systemUris)
+        {
+            if (string.IsNullOrEmpty(systemUri) || results.ContainsKey(systemUri))
+            {
+                continue;
+            }
+
+            if (_systemCache.TryGetValue(systemUri, out var cachedId))
+            {
+                results[systemUri] = cachedId;
+            }
+            else if (_missingSystems.IsKnownMissing(systemUri))
+            {
+                results[systemUri] = null;
+            }
+            else
+            {
+                results[systemUri] = null;
+                pending.Add(systemUri);
+            }
+        }
+
+        if (pending.Count == 0)
+        {
+            return results;
+        }
+
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            var found = await _context.Systems
+                .AsNoTracking()
+                .Where(s => pending.Contains(s.Value))
+                .Select(s => new { s.Value, s.SystemId })
+                .ToListAsync(cancellationToken);
+
+            foreach (var entry in found)
+            {
+                _systemCache.TryAdd(entry.Value, entry.SystemId);
+                results[entry.Value] = entry.SystemId;
+            }
+
+            foreach (var systemUri in pending)
+            {
+                if (results[systemUri] is null)
+                {
+                    _logger.LogDebug("System not found: {SystemUri}", systemUri);
+                    _missingSystems.RecordMiss(systemUri);
+                }
+            }
+
+            return results;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Looks up an existing QuantityCodeId for the given unit code without creating a new row.
+    /// Returns null when <paramref name="code"/> is null/empty or has no matching row.
+    /// Caches only positive (found) results in <c>_quantityCodeCache</c>: that cache is also used by
+    /// <see cref="GetOrCreateQuantityCodeIdAsync"/>, which treats every cached integer as a real ID,
+    /// so caching a sentinel would corrupt the write path. Misses go to the separate
+    /// <see cref="NegativeLookupCache"/>, consulted before the lock so a search naming unindexed
+    /// terminology does not serialize behind ingest on every occurrence.
+    /// Thread-safe: uses <c>_dbLock</c> for database access.
+    /// </summary>
+    /// <param name="code">The unit code to look up (e.g., "mg").</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
+    /// <returns>The QuantityCodeId if found; null otherwise.</returns>
+    public async ValueTask<int?> GetQuantityCodeIdAsync(string? code, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(code))
+        {
+            return null;
+        }
+
+        // Check cache first (only positive results are stored here)
+        if (_quantityCodeCache.TryGetValue(code, out var cachedId))
+        {
+            return cachedId;
+        }
+
+        if (_missingQuantityCodes.IsKnownMissing(code))
+        {
+            return null;
+        }
+
+        // Acquire lock for database access (DbContext is not thread-safe)
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Double-check cache after acquiring lock
+            if (_quantityCodeCache.TryGetValue(code, out cachedId))
+            {
+                return cachedId;
+            }
+
+            // Read-only query: no tracking, no entity creation, no SaveChangesAsync
+            var entity = await _context.QuantityCodes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(qc => qc.Value == code, cancellationToken);
+
+            if (entity == null)
+            {
+                _logger.LogDebug("QuantityCode not found: {Code}", code);
+                _missingQuantityCodes.RecordMiss(code);
+                return null;
+            }
+
+            // Cache positive result only -- misses are not cached to avoid corrupting the write path
+            _quantityCodeCache.TryAdd(code, entity.QuantityCodeId);
+            return entity.QuantityCodeId;
         }
         finally
         {
@@ -295,8 +521,9 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// Thread-safe: Uses semaphore to ensure single database access at a time.
     /// </summary>
     /// <param name="resourceTypeName">The resource type name (e.g., "Patient").</param>
+    /// <param name="cancellationToken">Token that cancels the lock wait and the database round trip.</param>
     /// <returns>The ResourceTypeId, or null if not found.</returns>
-    public async ValueTask<short?> GetResourceTypeIdAsync(string? resourceTypeName)
+    public async ValueTask<short?> GetResourceTypeIdAsync(string? resourceTypeName, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(resourceTypeName))
         {
@@ -311,7 +538,7 @@ public class SearchIndexReferenceDataCache : IDisposable
         }
 
         // Acquire lock for database access (DbContext is not thread-safe)
-        await _dbLock.WaitAsync();
+        await _dbLock.WaitAsync(cancellationToken);
         try
         {
             // Double-check cache after acquiring lock
@@ -323,7 +550,7 @@ public class SearchIndexReferenceDataCache : IDisposable
             // Query database
             var entity = await _context.ResourceTypes
                 .AsNoTracking()
-                .FirstOrDefaultAsync(rt => rt.Name == resourceTypeName);
+                .FirstOrDefaultAsync(rt => rt.Name == resourceTypeName, cancellationToken);
 
             if (entity == null)
             {
@@ -774,8 +1001,17 @@ public class SearchIndexReferenceDataCache : IDisposable
 
         /// <summary>
         /// Attempts to get the value for the specified key, lazy-loading from database if not in cache.
-        /// Uses blocking async call to load missing values synchronously.
+        /// Returns false only for "no such row"; a failed load throws rather than masquerading as an
+        /// absent key, because callers turn an absent key into an unindexed search-parameter row --
+        /// a silent data-loss outcome that a transient database error must never produce.
         /// </summary>
+        /// <remarks>
+        /// The load is sync-over-async because <see cref="IReadOnlyDictionary{TKey, TValue}"/> fixes this
+        /// signature and the TVP row generators calling it are synchronous. It is dispatched through
+        /// <see cref="Task.Run{TResult}(Func{Task{TResult}})"/> so the continuation never tries to resume
+        /// on a captured synchronization context while this thread is blocked on it -- the classic
+        /// sync-over-async deadlock -- since the load itself waits on the cache's own semaphore.
+        /// </remarks>
         /// <param name="key">The key to look up.</param>
         /// <param name="value">The value if found.</param>
         /// <returns>True if value was found or loaded successfully, false otherwise.</returns>
@@ -800,7 +1036,7 @@ public class SearchIndexReferenceDataCache : IDisposable
 
             try
             {
-                var loadedValue = _loadFunc(key).GetAwaiter().GetResult();
+                var loadedValue = Task.Run(() => _loadFunc(key)).GetAwaiter().GetResult();
 
                 // Check if loaded value is valid
                 if (_isValidValue != null && !_isValidValue(loadedValue))
@@ -823,9 +1059,15 @@ public class SearchIndexReferenceDataCache : IDisposable
                     return true;
                 }
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to lazy load value for key {Key}", key);
+                throw new InvalidOperationException(
+                    $"Failed to lazy load reference-data value for key '{key}'. Reporting the key as absent would silently drop a search-index row.",
+                    ex);
             }
 
             value = default!;

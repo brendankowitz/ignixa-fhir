@@ -65,6 +65,8 @@ public class FhirRequestContextMiddleware
                 tenantId);
         }
 
+        fhirContext.BaseUri = BuildBaseUri(httpContext, fhirContext.TenantId);
+
         // Extract FHIR version from Content-Type/Accept headers
         fhirContext.FhirVersion = FhirVersionExtractor.ExtractFhirVersion(httpContext);
 
@@ -93,5 +95,25 @@ public class FhirRequestContextMiddleware
             fhirContext.ExecutingBatchOrTransaction);
 
         await _next(httpContext);
+    }
+
+    /// <summary>
+    /// Builds the service base URI for this request. Tenant-explicit routes carry the "/tenant/{id}"
+    /// segment; agnostic single-tenant routes do not. Mirrors the base-URL form the endpoints already use
+    /// when emitting Location headers and pagination links, so a reference written against a link this
+    /// server handed out is recognized as internal.
+    /// </summary>
+    private static Uri? BuildBaseUri(HttpContext httpContext, int tenantId)
+    {
+        if (!httpContext.Request.Host.HasValue)
+        {
+            return null;
+        }
+
+        var isTenantExplicitRoute = httpContext.Request.Path.Value?.StartsWith("/tenant/", StringComparison.OrdinalIgnoreCase) == true;
+        var origin = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}";
+        var baseUrl = isTenantExplicitRoute ? $"{origin}/tenant/{tenantId}/" : $"{origin}/";
+
+        return Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) ? baseUri : null;
     }
 }

@@ -125,5 +125,11 @@ public class SearchTraceImplicitParameterTests
 
         public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
             => Task.FromResult<short?>(103);
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
     }
 }

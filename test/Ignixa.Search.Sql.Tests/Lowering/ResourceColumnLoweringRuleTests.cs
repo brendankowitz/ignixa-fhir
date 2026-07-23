@@ -13,10 +13,12 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class ResourceColumnLoweringRuleTests
 {
-    private static LeafContext ContextResolving(string resourceType, short resourceTypeId)
-        => new(new SymbolTable(
-            new Dictionary<string, short>(),
-            new Dictionary<string, short> { [resourceType] = resourceTypeId }));
+    private static LeafContext ContextResolving(string resourceType, short resourceTypeId, DateTimeOffset? approximationReferenceTime = null)
+        => new(
+            new SymbolTable(
+                new Dictionary<string, short>(),
+                new Dictionary<string, short> { [resourceType] = resourceTypeId }),
+            approximationReferenceTime);
 
     private static SearchParameterInfo IdParameter()
         => new("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
@@ -127,4 +129,160 @@ public class ResourceColumnLoweringRuleTests
 
         Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
     }
+
+    // :ap — _lastUpdated is a single point column (ResourceSurrogateId), unlike date's [Start, End]
+    // column pair, so the widened [Start, End] interval from ApproximateDateRange.Widen becomes a
+    // between-style AND against that one column: ResourceSurrogateId >= lower AND <= upper, each bound
+    // converted through the same ToSurrogateId truncation as the exact-instant Eq/Ge/etc. case above.
+    [Fact]
+    public void GivenAnApComparatorExactInstantLastUpdatedParameter_WhenTried_ThenComparesWidenedRangeAgainstResourceSurrogateId()
+    {
+        // Arrange: instant is exactly 1 day before the reference instant -- 1-day gap / 10 = 2h24m
+        // tolerance, so widened = [instant - 2h24m, instant + 2h24m]. Both land on whole seconds, so
+        // ToSurrogateId's millisecond truncation is a no-op here (covered separately below).
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var referenceTime = new DateTimeOffset(2023, 6, 16, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
+        var widenedStart = new DateTimeOffset(2023, 6, 15, 10, 6, 0, TimeSpan.Zero);
+        var widenedEnd = new DateTimeOffset(2023, 6, 15, 14, 54, 0, TimeSpan.Zero);
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103, referenceTime));
+
+        var and = result.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        ge.Column.Column.ShouldBe("ResourceSurrogateId");
+        le.Column.Column.ShouldBe("ResourceSurrogateId");
+        ge.Value.Value.ShouldBe(widenedStart.UtcTicks << 3);
+
+        // The upper bound must cover the whole boundary millisecond. The database appends a uniquifier of
+        // 0-79999 at write time, so comparing against the bare floor would match only the row that drew 0,
+        // dropping up to 79,999 resources written in that millisecond.
+        le.Value.Value.ShouldBe((widenedEnd.UtcTicks << 3) + 79999);
+    }
+
+    [Fact]
+    public void GivenAnApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenComparesWidenedRangeAgainstResourceSurrogateId()
+    {
+        // Arrange: "2023-06" resolves to [Jun 1 00:00:00, Jun 30 23:59:59.9999999]. The proportional term
+        // is 36h, but the value's own precision -- one month less one tick -- is larger, so the max()
+        // floor selects it and the interval widens by a full month either side. widenedEnd's
+        // sub-millisecond remainder is truncated away by ToSurrogateId, landing on .999s -- expressed
+        // directly below via the millisecond-precision constructor instead of replicating that math.
+        var value = DateTimeSearchValue.Parse("2023-06");
+        var referenceTime = new DateTimeOffset(2023, 7, 1, 0, 0, 0, TimeSpan.Zero);
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
+        var widenedStart = new DateTimeOffset(2023, 5, 2, 0, 0, 0, TimeSpan.Zero);
+        var truncatedWidenedEnd = new DateTimeOffset(2023, 7, 30, 23, 59, 59, 999, TimeSpan.Zero);
+
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103, referenceTime));
+
+        var and = result.ShouldBeOfType<Predicate.And>();
+        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        ge.Column.Column.ShouldBe("ResourceSurrogateId");
+        le.Column.Column.ShouldBe("ResourceSurrogateId");
+        ge.Value.Value.ShouldBe(widenedStart.UtcTicks << 3);
+        le.Value.Value.ShouldBe((truncatedWidenedEnd.UtcTicks << 3) + 79999);
+    }
+
+    [Fact]
+    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingLowerRun()
+    {
+        // Arrange -- ApproximateDateRange.Widen (the shared helper Task 3 already covers directly)
+        // requires an explicit reference instant; this proves this rule's :ap call site surfaces that
+        // same failure rather than swallowing or rewording it.
+        var value = new DateTimeSearchValue(new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero));
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
+
+        var exception = Should.Throw<InvalidOperationException>(
+            () => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+        exception.Message.ShouldContain("Lower.Run");
+    }
+
+    [Fact]
+    public void GivenANonApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenStillThrows()
+    {
+        // Arrange -- proves the partial-precision guard remains in force for every comparator except
+        // :ap (e.g. :ge here, distinct from the :eq case already covered above), so :ap's new
+        // Widen-based handling can't have accidentally loosened it for the others.
+        var value = DateTimeSearchValue.Parse("2023");
+        var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, modifier: null, value);
+
+        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+    }
+
+    /// <summary>
+    /// Every comparator whose bound is the top of the millisecond must compare against
+    /// <c>floor + 79999</c>, not the bare floor. The database appends a uniquifier drawn from a sequence
+    /// declared MAXVALUE 79999, so a bound at the floor addresses only the single resource that happened
+    /// to draw 0 and silently drops up to 79,999 others written in that millisecond.
+    /// </summary>
+    /// <remarks>
+    /// Ge, Lt and Eb are deliberately absent: they bound at the bottom of the millisecond, where the
+    /// floor is the correct value. "eb" means the resource ends strictly before the instant, so it
+    /// belongs with Lt, not with Sa.
+    /// </remarks>
+    public static TheoryData<SearchComparator> UpperBoundComparators() => new()
+    {
+        SearchComparator.Eq,
+        SearchComparator.Ne,
+        SearchComparator.Gt,
+        SearchComparator.Sa,
+        SearchComparator.Le,
+    };
+
+    [Theory]
+    [MemberData(nameof(UpperBoundComparators))]
+    public void GivenAnExactInstantLastUpdated_WhenLoweredWithAnUpperBoundComparator_ThenTheBoundCoversTheWholeMillisecond(
+        SearchComparator comparator)
+    {
+        // Arrange
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var predicate = new SearchParameterPredicateExpression(
+            LastUpdatedParameter(), comparator, modifier: null, new DateTimeSearchValue(instant));
+        var floor = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks << 3;
+
+        // Act
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        // Assert -- whichever shape the comparator produces, the upper parameter it binds is the last
+        // surrogate id in the millisecond.
+        var bounds = CollectParameterValues(result.ShouldNotBeNull()).ToArray();
+        bounds.ShouldContain(floor + 79999, $"'{comparator}' must bound at the top of the millisecond bucket.");
+    }
+
+    [Fact]
+    public void GivenAnExactInstantLastUpdated_WhenLoweredWithEqAndNe_ThenTheirBoundsAreIdentical()
+    {
+        // Arrange -- eq and ne must address exactly the same bucket, or a resource can satisfy both or
+        // neither.
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+
+        // Act
+        var eq = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, null, value),
+            ContextResolving("Patient", 103));
+        var ne = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ne, null, value),
+            ContextResolving("Patient", 103));
+
+        // Assert
+        CollectParameterValues(eq.ShouldNotBeNull()).OrderBy(v => v)
+            .ShouldBe(CollectParameterValues(ne.ShouldNotBeNull()).OrderBy(v => v));
+    }
+
+    private static IEnumerable<long> CollectParameterValues(Predicate predicate) => predicate switch
+    {
+        Predicate.And and => CollectParameterValues(and.Left).Concat(CollectParameterValues(and.Right)),
+        Predicate.Or or => CollectParameterValues(or.Left).Concat(CollectParameterValues(or.Right)),
+        Predicate.Equal e => [(long)e.Value.Value!],
+        Predicate.LessThan lt => [(long)lt.Value.Value!],
+        Predicate.LessThanOrEqual le => [(long)le.Value.Value!],
+        Predicate.GreaterThan gt => [(long)gt.Value.Value!],
+        Predicate.GreaterThanOrEqual ge => [(long)ge.Value.Value!],
+        _ => [],
+    };
 }

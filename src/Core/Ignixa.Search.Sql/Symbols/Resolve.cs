@@ -96,17 +96,38 @@ public static class Resolve
             resourceTypes.Add(targetResourceType);
         }
 
+        // A resource type the resolver cannot find is recorded as unmatchable rather than dropped: dropping
+        // it turns into a KeyNotFoundException the moment Lower looks it up, so the very first search
+        // against an empty catalog throws instead of returning an empty bundle. An unknown system already
+        // lowers to a false predicate; an unknown resource type is the same structurally-unsatisfiable
+        // query and now behaves the same way.
         var resourceTypeIds = new Dictionary<string, short>();
         foreach (var resourceType in resourceTypes)
         {
             var id = await resolver.GetResourceTypeIdAsync(resourceType, cancellationToken);
-            if (id.HasValue)
-            {
-                resourceTypeIds[resourceType] = id.Value;
-            }
+            resourceTypeIds[resourceType] = id ?? SymbolTable.UnmatchableResourceTypeId;
         }
 
-        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership), unresolved);
+        var allSystems = new HashSet<string>(collector.TokenSystems, StringComparer.Ordinal);
+        allSystems.UnionWith(collector.QuantitySystems);
+        // Re-keyed off the requested set rather than trusted verbatim: SymbolTable's three-state contract
+        // needs an entry for every collected system, and a resolver overriding the batch method could
+        // return fewer.
+        var resolvedSystems = await resolver.GetSystemIdsAsync(allSystems, cancellationToken);
+        var systemIds = new Dictionary<string, int?>(StringComparer.Ordinal);
+        foreach (var system in allSystems)
+        {
+            systemIds[system] = resolvedSystems.GetValueOrDefault(system);
+        }
+
+        // Resolve every distinct quantity code exactly once, storing null for known misses.
+        var quantityCodeIds = new Dictionary<string, int?>();
+        foreach (var code in collector.QuantityCodes)
+        {
+            quantityCodeIds[code] = await resolver.GetQuantityCodeIdAsync(code, cancellationToken);
+        }
+
+        return new ResolvedSymbols(new SymbolTable(searchParamIds, resourceTypeIds, compartmentMembership, systemIds, quantityCodeIds), unresolved);
     }
 
     private static Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? ResolveCompartmentMembership(

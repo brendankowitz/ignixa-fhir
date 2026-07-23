@@ -1051,4 +1051,153 @@ public class EmitTests
             ")\n" +
             "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
     }
+
+    [Fact]
+    public void GivenAnIsNullPredicate_WhenEmitted_ThenProducesIsNullWithNoParameters()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.IsNull(new SqlColumnRef(table.TableName, "SystemId"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND SystemId IS NULL\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenAFalsePredicate_WhenEmitted_ThenProduces1Equals0WithNoParameters()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.False();
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND 1 = 0\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicate_WhenEmitted_ThenProducesLeftLenComparison()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"),
+            "Latin1_General_100_BIN2");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.UriSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND LEFT(@p0, LEN(Uri)) COLLATE Latin1_General_100_BIN2 = Uri\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(1);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "http://example.org/fhir/Patient/123"));
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicateWithoutCollation_WhenEmitted_ThenProducesLeftLenComparisonWithoutCollate()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("LEFT(@p0, LEN(Uri)) = Uri");
+        emitted.Sql.ShouldNotContain("COLLATE");
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "http://example.org/fhir/Patient/123"));
+    }
+
+    [Fact]
+    public void GivenADualColumnContainsPredicate_WhenEmitted_ThenProducesFullyParenthesizedOrWithIsNullGuardAndTwoLikeParameters()
+    {
+        // Arrange — the Or(And(IsNull(TextOverflow), Like(Text)), Like(TextOverflow)) shape produced
+        // by StringLoweringRule for :contains within the inline width.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var textColumn = new SqlColumnRef(table.TableName, "Text");
+        var overflowColumn = new SqlColumnRef(table.TableName, "TextOverflow");
+        var predicate = new Predicate.Or(
+            new Predicate.And(
+                new Predicate.IsNull(overflowColumn),
+                new Predicate.Like(textColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
+            new Predicate.Like(overflowColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert — exact full SQL
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND ((TextOverflow IS NULL AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\') OR TextOverflow COLLATE Latin1_General_100_CI_AI LIKE @p1 ESCAPE '\\')\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(2);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "%mit%"));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "%mit%"));
+    }
+
+    [Fact]
+    public void GivenADualColumnContainsWithSpecialCharacters_WhenEmitted_ThenBothParametersAreEscapedOnceAndWrappedWithPercent()
+    {
+        // Arrange — value containing all four LIKE metacharacters: %, _, [, \
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var textColumn = new SqlColumnRef(table.TableName, "Text");
+        var overflowColumn = new SqlColumnRef(table.TableName, "TextOverflow");
+        var specialValue = @"%_[\";
+        var predicate = new Predicate.Or(
+            new Predicate.And(
+                new Predicate.IsNull(overflowColumn),
+                new Predicate.Like(textColumn, new SqlParameterRef(specialValue), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
+            new Predicate.Like(overflowColumn, new SqlParameterRef(specialValue), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert — escaped once: \ → \\, % → \%, _ → \_, [ → \[ then wrapped %...%
+        var expectedPattern = @"%\%\_\[\\%";
+        emitted.Parameters.Count.ShouldBe(2);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", expectedPattern));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", expectedPattern));
+    }
 }

@@ -44,7 +44,7 @@ public class NumberLoweringRuleTests
     }
 
     [Fact]
-    public void GivenNeComparator_WhenLowered_ThenBuildsOrOfWidenedLowAndHighBounds()
+    public void GivenNeComparator_WhenLowered_ThenNegatesTheEqContainment()
     {
         // Arrange
         var parameter = Parameter();
@@ -57,10 +57,10 @@ public class NumberLoweringRuleTests
         cte.ResourceTypeId.ShouldBe((short)103);
         var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
         var lt = or.Left.ShouldBeOfType<Predicate.LessThan>();
-        lt.Column.Column.ShouldBe("HighValue");
+        lt.Column.Column.ShouldBe("LowValue");
         lt.Value.Value.ShouldBe(5.35m);
         var gt = or.Right.ShouldBeOfType<Predicate.GreaterThan>();
-        gt.Column.Column.ShouldBe("LowValue");
+        gt.Column.Column.ShouldBe("HighValue");
         gt.Value.Value.ShouldBe(5.45m);
     }
 
@@ -166,15 +166,123 @@ public class NumberLoweringRuleTests
         lt.Value.Value.ShouldBe(5.4m);
     }
 
+    // :ap — numeric approximation is OVERLAP against the widened bounds, not containment:
+    // tolerance = max(precision_modifier, abs(value) * 0.10)
+    // 5.4m: pm=0.05, rel=0.54, tol=0.54 → LowValue <= 5.94 AND HighValue >= 4.86
     [Fact]
-    public void GivenApComparator_WhenLowered_ThenThrows()
+    public void GivenApComparator_WhenLoweredWith5Point4_ThenBuildsApproximateOverlapLowLe5Point94HighGe4Point86()
     {
         // Arrange
         var parameter = Parameter();
         var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(5.4m));
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103));
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        cte.SearchParamId.ShouldBe((short)201);
+        cte.ResourceTypeId.ShouldBe((short)103);
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
+        le.Value.Value.ShouldBe(5.94m);
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(4.86m);
+    }
+
+    // -50m: pm=0.5, rel=5.0, tol=5.0 → LowValue <= -45.0 AND HighValue >= -55.0
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithNegative50_ThenBuildsApproximateOverlapLowLeMinus45HighGeMinus55()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(-50m));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
+        le.Value.Value.ShouldBe(-45.0m);
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(-55.0m);
+    }
+
+    // 0m: pm=0.5, rel=0.0, tol=0.5 → LowValue <= 0.5 AND HighValue >= -0.5
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithZero_ThenBuildsApproximateOverlapLowLe0Point5HighGeMinus0Point5()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(0m));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
+        le.Value.Value.ShouldBe(0.5m);
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(-0.5m);
+    }
+
+    // 0.001m: pm=0.0005, rel=0.0001, tol=0.0005 → LowValue <= 0.0015 AND HighValue >= 0.0005
+    [Fact]
+    public void GivenApComparator_WhenLoweredWith0Point001_ThenBuildsApproximateOverlapLowLe0Point0015HighGe0Point0005()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(0.001m));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
+        le.Value.Value.ShouldBe(0.0015m);
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(0.0005m);
+    }
+
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithDecimalMaxValue_ThenBuildsRepresentableHighValueBoundOnly()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(decimal.MaxValue));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(decimal.MaxValue - (decimal.MaxValue * 0.10m));
+    }
+
+    [Fact]
+    public void GivenApComparator_WhenLoweredWithDecimalMinValue_ThenBuildsRepresentableLowValueBoundOnly()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ap, modifier: null, new NumberSearchValue(decimal.MinValue));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
+        var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
+        le.Value.Value.ShouldBe(decimal.MinValue + (decimal.MaxValue * 0.10m));
     }
 }

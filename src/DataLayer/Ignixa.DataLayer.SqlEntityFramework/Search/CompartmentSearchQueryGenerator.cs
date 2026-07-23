@@ -128,7 +128,7 @@ public class CompartmentSearchQueryGenerator
                     var searchParamInfo = _searchParameterDefinitionManager.GetSearchParameter(resourceType, searchParamCode);
 
                     // Get SearchParamId from cache (handles OverridesUrl fallback)
-                    var searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo);
+                    var searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo, ct);
                     if (!searchParamId.HasValue)
                     {
                         _logger.LogDebug("SearchParamId not found for URI: {Uri}", searchParamInfo.Url);
