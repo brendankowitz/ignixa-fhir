@@ -258,7 +258,8 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
         var wrapper = new SqlServerSearchIndexReferenceDataCache.OnDemandResolvingDictionary<string, int>(
             backingCache,
             (_, _) => Task.FromException<int>(new InvalidOperationException("simulated resolve failure")),
-            logger);
+            logger,
+            -1);
 
         var found = wrapper.TryGetValue("any-key", out var value);
 

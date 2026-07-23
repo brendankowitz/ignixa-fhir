@@ -20,6 +20,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     ILogger<SqlServerSearchIndexReferenceDataCache> logger) : IDisposable
 {
     private const short MissingSentinel = -1;
+    private const int SystemQuantityMissingSentinel = -1;
 
     private readonly ISqlExecutionService _sqlExecutionService =
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
@@ -61,10 +62,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     // not a snapshot -- so inserts from any wrapper instance are immediately visible everywhere,
     // matching SqlServerMergeRepository's expectation that these mappings stay live.
     public IReadOnlyDictionary<string, int> SystemMappings =>
-        new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, _logger);
+        new OnDemandResolvingDictionary<string, int>(_systemCache, GetOrCreateSystemIdAsync, _logger, SystemQuantityMissingSentinel);
 
     public IReadOnlyDictionary<string, int> QuantityCodeMappings =>
-        new OnDemandResolvingDictionary<string, int>(_quantityCodeCache, GetOrCreateQuantityCodeIdAsync, _logger);
+        new OnDemandResolvingDictionary<string, int>(_quantityCodeCache, GetOrCreateQuantityCodeIdAsync, _logger, SystemQuantityMissingSentinel);
 
     public async Task PreloadResourceTypesAsync(CancellationToken cancellationToken)
     {
@@ -315,7 +316,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     {
         ArgumentException.ThrowIfNullOrEmpty(systemUri);
 
-        if (_systemCache.TryGetValue(systemUri, out var cachedId))
+        if (_systemCache.TryGetValue(systemUri, out var cachedId) && cachedId != SystemQuantityMissingSentinel)
         {
             return cachedId;
         }
@@ -323,7 +324,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            if (_systemCache.TryGetValue(systemUri, out cachedId))
+            if (_systemCache.TryGetValue(systemUri, out cachedId) && cachedId != SystemQuantityMissingSentinel)
             {
                 return cachedId;
             }
@@ -365,7 +366,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     {
         ArgumentException.ThrowIfNullOrEmpty(code);
 
-        if (_quantityCodeCache.TryGetValue(code, out var cachedId))
+        if (_quantityCodeCache.TryGetValue(code, out var cachedId) && cachedId != SystemQuantityMissingSentinel)
         {
             return cachedId;
         }
@@ -373,7 +374,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            if (_quantityCodeCache.TryGetValue(code, out cachedId))
+            if (_quantityCodeCache.TryGetValue(code, out cachedId) && cachedId != SystemQuantityMissingSentinel)
             {
                 return cachedId;
             }
@@ -400,6 +401,95 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             _logger.LogDebug("Created new QuantityCode entry: {Code} -> {QuantityCodeId}", code, newId);
             _quantityCodeCache[code] = newId;
             return newId;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Read-only, miss-returns-null system lookup for the search path. Unlike
+    /// <see cref="GetOrCreateSystemIdAsync"/>, never inserts a new <c>dbo.System</c> row as a side
+    /// effect -- an unresolved system just means "no match," not a silent database write. Shares
+    /// <see cref="_systemCache"/> with the write path; a genuine miss here is cached via
+    /// <see cref="SystemQuantityMissingSentinel"/>, which <see cref="GetOrCreateSystemIdAsync"/> is
+    /// itself sentinel-aware of so a later write for the same system still creates a real row.
+    /// </summary>
+    public async Task<int?> TryGetSystemIdAsync(string systemUri, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(systemUri);
+
+        if (_systemCache.TryGetValue(systemUri, out var cachedId))
+        {
+            return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+        }
+
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_systemCache.TryGetValue(systemUri, out cachedId))
+            {
+                return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+            }
+
+            using var command = new SqlCommand("SELECT SystemId FROM dbo.System WHERE Value = @Value");
+            command.Parameters.Add("@Value", SqlDbType.NVarChar).Value = systemUri;
+            var rows = await _sqlExecutionService.ExecuteReaderAsync(
+                tenantId, command, reader => reader.GetInt32(0), cancellationToken);
+
+            if (rows.Count == 0)
+            {
+                _systemCache[systemUri] = SystemQuantityMissingSentinel;
+                return null;
+            }
+
+            var id = rows[0];
+            _systemCache[systemUri] = id;
+            return id;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Read-only, miss-returns-null quantity-code lookup for the search path -- see
+    /// <see cref="TryGetSystemIdAsync"/>'s remarks; same shape, same shared-cache sentinel contract
+    /// with <see cref="GetOrCreateQuantityCodeIdAsync"/>.
+    /// </summary>
+    public async Task<int?> TryGetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(code);
+
+        if (_quantityCodeCache.TryGetValue(code, out var cachedId))
+        {
+            return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+        }
+
+        await _dbLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_quantityCodeCache.TryGetValue(code, out cachedId))
+            {
+                return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+            }
+
+            using var command = new SqlCommand("SELECT QuantityCodeId FROM dbo.QuantityCode WHERE Value = @Value");
+            command.Parameters.Add("@Value", SqlDbType.NVarChar).Value = code;
+            var rows = await _sqlExecutionService.ExecuteReaderAsync(
+                tenantId, command, reader => reader.GetInt32(0), cancellationToken);
+
+            if (rows.Count == 0)
+            {
+                _quantityCodeCache[code] = SystemQuantityMissingSentinel;
+                return null;
+            }
+
+            var id = rows[0];
+            _quantityCodeCache[code] = id;
+            return id;
         }
         finally
         {
@@ -511,7 +601,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     internal sealed class OnDemandResolvingDictionary<TKey, TValue>(
         ConcurrentDictionary<TKey, TValue> cache,
         Func<TKey, CancellationToken, Task<TValue>> resolveAsync,
-        ILogger logger) : IReadOnlyDictionary<TKey, TValue>
+        ILogger logger,
+        TValue missingSentinel) : IReadOnlyDictionary<TKey, TValue>
         where TKey : notnull
     {
         public TValue this[TKey key] => TryGetValue(key, out var value)
@@ -528,7 +619,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
         public bool TryGetValue(TKey key, out TValue value)
         {
-            if (cache.TryGetValue(key, out value!))
+            if (cache.TryGetValue(key, out value!) && !EqualityComparer<TValue>.Default.Equals(value, missingSentinel))
             {
                 return true;
             }
