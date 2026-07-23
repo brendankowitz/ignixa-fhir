@@ -866,10 +866,18 @@ class HttpOutcomeSemanticsTests(RuntimeOperationsTestCase):
         self.assertEqual(0, len(_semantic_events(user)))
 
     def test_transport_exception_fires_exactly_one_native_event_with_http_method_request_type(self):
+        # Review correction: real Locust's HttpSession only lets a
+        # requests.exceptions.RequestException escape client.request() itself
+        # (before any response context exists) for URL/schema construction
+        # errors such as InvalidURL/MissingSchema/InvalidSchema - ordinary
+        # transport failures (e.g. ConnectionError) come back as a *returned*
+        # response with .error set instead (see HttpOutcomeSemanticsTests'
+        # returned-error-response coverage below). This test now exercises a
+        # realistic exception type for the "no response context" path.
         document = _document(metadata={"name": "n", "source": "s/transport.xml", "fhirVersion": None})
         user, client = make_user()
         context = new_context(self.runtime, document)
-        exc = requests.exceptions.ConnectionError("connection reset")
+        exc = requests.exceptions.InvalidURL("no scheme supplied")
         client.queue_exception(exc)
         action = _operation("op-1", type="read", resource="Patient/1", request_id="op-1", response_id="op-1")
 
@@ -880,6 +888,29 @@ class HttpOutcomeSemanticsTests(RuntimeOperationsTestCase):
         self.assertEqual("s/transport.xml::op-1", native[0]["name"])
         self.assertIsNotNone(native[0]["exception"])
         self.assertEqual(0, len(_semantic_events(user)), "no duplicate semantic event for a transport failure")
+        self.assertTrue(result.get("failed", False))
+
+    def test_returned_error_response_fires_exactly_one_native_failure_success_not_called(self):
+        # The common real-Locust path: HttpSession.request(catch_response=True)
+        # never lets an ordinary transport failure (e.g. a dropped connection)
+        # raise - it returns a response with `.error` set instead. The runtime
+        # must not call success() on such a response, letting the fake's (and
+        # real Locust's) default failure-on-exit behavior fire exactly one
+        # native failure event, with no semantic duplicate.
+        document = _document(metadata={"name": "n", "source": "s/transport.xml", "fhirVersion": None})
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        transport_error = requests.exceptions.ConnectionError("connection reset")
+        response = client.queue_response(fakes.FakeResponse(status_code=0, error=transport_error))
+        action = _operation("op-1", type="read", resource="Patient/1", request_id="op-1", response_id="op-1")
+
+        result = run_operation(self, self.runtime, document, user, context, action)
+
+        self.assertFalse(response.success_called, "success() must not be called for a response carrying .error")
+        native = _events_of_type(user, "GET")
+        self.assertEqual(1, len(native))
+        self.assertIsNotNone(native[0]["exception"])
+        self.assertEqual(0, len(_semantic_events(user)))
         self.assertTrue(result.get("failed", False))
 
     def test_unexpected_non_requests_exception_propagates_uncaught(self):
@@ -907,7 +938,11 @@ class HttpOutcomeSemanticsTests(RuntimeOperationsTestCase):
 
 class EncodeRequestUrlWarningTests(RuntimeOperationsTestCase):
     def test_encode_request_url_false_logs_warning_sends_request_and_emits_no_failed_semantic_event(self):
-        document = _document()
+        # Review correction: the warning must carry the full source-qualified
+        # metric name and the evaluator-equivalent meaning verbatim
+        # ("encodeRequestUrl=false is not supported; URL was encoded"), not a
+        # differently-worded paraphrase.
+        document = _document(metadata={"name": "n", "source": "s/enc.xml", "fhirVersion": None})
         user, client = make_user()
         context = new_context(self.runtime, document)
         client.queue_response(fakes.FakeResponse(status_code=200, json_data={}))
@@ -919,9 +954,14 @@ class EncodeRequestUrlWarningTests(RuntimeOperationsTestCase):
         with self.assertLogs("ignixa.testscript", level="WARNING") as log_ctx:
             run_operation(self, self.runtime, document, user, context, action)
 
-        self.assertTrue(
-            any("url was encoded" in message.lower() for message in log_ctx.output),
-            log_ctx.output,
+        joined = "\n".join(log_ctx.output)
+        self.assertIn(
+            "s/enc.xml::op-1", joined,
+            "the warning must be source-qualified with the full metric name",
+        )
+        self.assertIn(
+            "encodeRequestUrl=false is not supported; URL was encoded", joined,
+            "the warning must match the evaluator-equivalent meaning verbatim",
         )
         self.assertEqual(1, len(client.calls))
         self.assertEqual(0, len(_semantic_events(user)))
@@ -1053,6 +1093,22 @@ class FhirPathExtractionTests(RuntimeOperationsTestCase):
         response = fakes.FakeResponse(status_code=200, json_data=_PATIENT_WITH_NAMES)
         context = _run_variable_extraction(self, variable, response)
         self.assertEqual("unset", context["variables"]["first_name"])
+
+    def test_single_null_element_result_is_a_no_op(self):
+        # Review correction: fhirpathpy can return a single-element result
+        # list whose only element is itself None (e.g. a null array entry).
+        # That must be treated as a no-op too, not stringified to the literal
+        # text "None".
+        variable = _variable(
+            "contact", default_value="unset", source_id="op-1", extraction_kind="fhirPath",
+            selector="Patient.contact",
+        )
+        response = fakes.FakeResponse(
+            status_code=200,
+            json_data={"resourceType": "Patient", "contact": [None]},
+        )
+        context = _run_variable_extraction(self, variable, response)
+        self.assertEqual("unset", context["variables"]["contact"])
 
     def test_malformed_expression_fails_the_operation_and_emits_testscript_operation_event(self):
         document = _document(
@@ -1242,6 +1298,68 @@ class FixtureAutocreateTests(RuntimeOperationsTestCase):
         self.assertEqual(0, len(_semantic_events(user)))
         self.assertTrue(outcome["setup_failed"])
 
+    def test_autocreate_returned_error_response_is_native_only(self):
+        # The realistic real-Locust path: a transport failure comes back as a
+        # *returned* response with .error set, not a raised exception.
+        document = _document(
+            metadata={"name": "n", "source": "s/fixtures.xml", "fhirVersion": None},
+            fixtures=[_fixture("patient", [{"resourceType": "Patient"}], autocreate=True)],
+        )
+        user, client = make_user()
+        response = client.queue_response(
+            fakes.FakeResponse(status_code=0, error=requests.exceptions.ConnectionError("boom"))
+        )
+
+        outcome = self._run(document, user, client)
+
+        self.assertFalse(response.success_called)
+        native = _events_of_type(user, "POST")
+        self.assertEqual(1, len(native))
+        self.assertIsNotNone(native[0]["exception"])
+        self.assertEqual(0, len(_semantic_events(user)))
+        self.assertTrue(outcome["setup_failed"])
+
+    def test_autocreate_extraction_failure_fires_one_semantic_event_and_fails_setup_skipping_tests(self):
+        # Review correction: _run_autocreate previously discarded
+        # _extract_variables' failure list entirely, so a malformed
+        # extraction pinned to the fixture's own response silently
+        # succeeded. It must instead fire one source-qualified semantic
+        # failure, fail the autocreate (aggregating into setup_failed so
+        # tests are skipped), while still letting later variables extract.
+        document = _document(
+            metadata={"name": "n", "source": "sample.xml", "fhirVersion": None},
+            variables=[
+                _variable("bad", source_id="patient", extraction_kind="fhirPath", selector="foo("),
+                _variable("good", source_id="patient", extraction_kind="path", selector="id"),
+            ],
+            fixtures=[_fixture("patient", [{"resourceType": "Patient"}], autocreate=True)],
+            tests=[_test_phase("test-1", actions=[])],
+        )
+        user, client = make_user()
+        client.queue_response(
+            fakes.FakeResponse(status_code=201, json_data={"resourceType": "Patient", "id": "server-1"})
+        )
+        state = self.runtime.initialize_user(document, user)
+
+        outcome = run_execute(self, self.runtime, document, user, state)
+
+        semantic = _semantic_events(user)
+        self.assertEqual(1, len(semantic), "one distinct extraction-failure event, no duplicate")
+        self.assertEqual("sample.xml::fixture.patient.autocreate", semantic[0]["name"])
+        self.assertIsNotNone(semantic[0]["exception"])
+
+        native = _events_of_type(user, "POST")
+        self.assertEqual(1, len(native))
+        self.assertIsNone(native[0]["exception"], "the HTTP layer received a 2xx response")
+
+        self.assertTrue(outcome["setup_failed"])
+        self.assertEqual(1, len(outcome["tests"]))
+        self.assertTrue(outcome["tests"][0]["skipped"])
+
+        context = outcome["context"]
+        self.assertNotIn("bad", context["variables"])
+        self.assertEqual("server-1", context["variables"]["good"], "later variables still extract")
+
 
 class FixtureAutodeleteTests(RuntimeOperationsTestCase):
     def _run(self, document, user, client):
@@ -1302,6 +1420,27 @@ class FixtureAutodeleteTests(RuntimeOperationsTestCase):
 
         outcome = self._run(document, user, client)
 
+        native = _events_of_type(user, "DELETE")
+        self.assertEqual(1, len(native))
+        self.assertIsNotNone(native[0]["exception"])
+        self.assertEqual(0, len(_semantic_events(user)))
+        self.assertTrue(outcome["teardown_failed"])
+
+    def test_autodelete_returned_error_response_is_native_only(self):
+        # The realistic real-Locust path: a transport failure comes back as a
+        # *returned* response with .error set, not a raised exception.
+        document = _document(
+            metadata={"name": "n", "source": "s/fixtures.xml", "fhirVersion": None},
+            fixtures=[_fixture("patient", [{"resourceType": "Patient", "id": "server-9"}], autodelete=True)],
+        )
+        user, client = make_user()
+        response = client.queue_response(
+            fakes.FakeResponse(status_code=0, error=requests.exceptions.ConnectionError("boom"))
+        )
+
+        outcome = self._run(document, user, client)
+
+        self.assertFalse(response.success_called)
         native = _events_of_type(user, "DELETE")
         self.assertEqual(1, len(native))
         self.assertIsNotNone(native[0]["exception"])
@@ -1408,7 +1547,14 @@ class WaitForPollingTests(RuntimeOperationsTestCase):
 
         self.assertEqual(3, len(client.calls))
         self.assertTrue(result.get("failed", False))
-        self.assertEqual(1, len(_semantic_events(user)))
+        semantic = _semantic_events(user)
+        self.assertEqual(1, len(semantic))
+        # Review correction: message must match the evaluator's exact wording,
+        # not merely convey the same idea in different words.
+        self.assertEqual(
+            "Timed out waiting for job completion after 3 attempts (last status: 202)",
+            str(semantic[0]["exception"]),
+        )
         self.assertEqual(202, context["last_response"].status_code)
 
     def test_waitfor_stops_on_transport_exception_without_semantic_duplicate(self):
@@ -1432,10 +1578,33 @@ class WaitForPollingTests(RuntimeOperationsTestCase):
         native = _events_of_type(user, "GET")
         self.assertEqual(1, len([e for e in native if e["exception"] is not None]))
 
+    def test_waitfor_stops_on_returned_error_response_without_semantic_duplicate(self):
+        # The realistic real-Locust path: the second polling attempt comes
+        # back as a *returned* response with .error set, not a raised
+        # exception; polling must still stop with exactly one native failure
+        # and no semantic duplicate.
+        document = _document(metadata={"name": "n", "source": "s/poll.xml", "fhirVersion": None})
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        client.queue_response(fakes.FakeResponse(status_code=202))
+        error_response = client.queue_response(
+            fakes.FakeResponse(status_code=0, error=requests.exceptions.ConnectionError("boom"))
+        )
 
+        action = _operation(
+            "op-1", type="read", resource="Patient/_history/1", request_id="op-1", response_id="op-1",
+            wait_for=_wait_for(202, 5, 10),
+        )
 
+        with patch("gevent.sleep"):
+            result = run_operation(self, self.runtime, document, user, context, action)
 
-
+        self.assertEqual(2, len(client.calls))
+        self.assertFalse(error_response.success_called)
+        self.assertTrue(result.get("failed", False))
+        self.assertEqual(0, len(_semantic_events(user)), "no semantic duplicate for a native transport failure")
+        native = _events_of_type(user, "GET")
+        self.assertEqual(1, len([e for e in native if e["exception"] is not None]))
 
 
 

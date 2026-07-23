@@ -538,6 +538,8 @@ def _extract_by_fhirpath(response, expression):
         return None
 
     value = results[0]
+    if value is None:
+        return None
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (dict, list)):
@@ -608,9 +610,8 @@ def _execute_operation(document, user, context, action):
 
     if not action.get("encodeRequestUrl", True):
         _logger.warning(
-            "encodeRequestUrl=false is not supported for action '%s'; "
-            "the url was encoded anyway",
-            action_id,
+            "%s: encodeRequestUrl=false is not supported; URL was encoded",
+            metric_name,
         )
 
     try:
@@ -641,8 +642,8 @@ def _execute_operation(document, user, context, action):
             user,
             metric_name,
             RuntimeError(
-                f"waitFor exhausted after {wait_for['maxAttempts']} attempts "
-                f"(last status {_response_status(response)})"
+                f"Timed out waiting for job completion after {wait_for['maxAttempts']} attempts "
+                f"(last status: {_response_status(response)})"
             ),
         )
 
@@ -704,18 +705,25 @@ def _run_autocreate(document, user, context, fixture):
         context["fixtures"] = dict(context["fixtures"])
         context["fixtures"][fixture_id] = body
 
-    _extract_variables(document, context)
+    extraction_failures = _extract_variables(document, context)
+
+    failed = False
+    if extraction_failures:
+        failed = True
+        _fire_semantic_failure(
+            user, metric_name, RuntimeError("; ".join(extraction_failures))
+        )
 
     status = _response_status(response)
     if not (200 <= status < 300):
+        failed = True
         _fire_semantic_failure(
             user,
             metric_name,
             RuntimeError(f"Autocreate for fixture '{fixture_id}' returned HTTP {status}"),
         )
-        return True
 
-    return False
+    return failed
 
 
 def _run_autodelete(document, user, context, fixture):
