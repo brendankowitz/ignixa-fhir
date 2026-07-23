@@ -131,22 +131,28 @@ def _test_allowed(test_id):
     return _TEST_DECISIONS.get(test_id, True)
 
 
-def _fetch_capability(host, auth):
+def _apply_authentication(headers):
+    authorization = _AUTH_PROVIDER.authorization_value()
+    if authorization is not None:
+        headers["Authorization"] = authorization
+
+
+def _fetch_capability(host):
     """Fetch the target server's CapabilityStatement, failing OPEN on any I/O error.
 
     Performs exactly one uninstrumented ``GET {host}/metadata`` on a short-lived
     ``requests.Session`` (never the Locust user client, so it is not counted as load),
-    with the parsed auth header applied and a 30s timeout. A transport error, HTTP
-    error status, unparseable body, or non-dict JSON all yield ``None`` (fail open:
-    no capability known). ``requests`` is imported lazily so the module stays importable
-    without third-party dependencies present.
+    with the active authentication provider applied and a 30s timeout. A transport
+    error, HTTP error status, unparseable body, or non-dict JSON all yield ``None``
+    (fail open: no capability known). Authentication acquisition failures are not
+    swallowed. ``requests`` is imported lazily so the module stays importable without
+    third-party dependencies present.
     """
     import requests
 
     url = f"{host.rstrip('/')}/metadata"
-    headers = {}
-    if auth is not None:
-        headers[auth[0]] = auth[1]
+    headers = _new_headers()
+    _apply_authentication(headers)
 
     try:
         with requests.Session() as session:
@@ -189,20 +195,19 @@ def _evaluate_capability_requirement(expression, capability, scope_id):
 def initialize_engine(document, environment):
     """Derive the immutable suite/test capability decisions for a run.
 
-    Resets stale decisions and the per-user ordinal counter *before* any validation
-    or I/O, so even a failed startup leaves the engine ready to spawn user 0. The IR
-    schema is validated before any metadata fetch or user spawn. The FHIR base URL is
-    resolved from ``environment.host`` first, then ``IGNIXA_BASE_URL`` (missing both is
-    a hard error). Auth is parsed *before* the fail-open metadata fetch so a malformed
-    ``IGNIXA_AUTH_HEADER`` fails startup closed and never fails open. Only the immutable
-    suite bool and per-test-id decision map are retained; the fetched capability, HTTP
-    session, and response are never stored.
+    Closes any prior auth provider and resets stale decisions and the per-user ordinal
+    counter *before* validation, so even a failed startup leaves the engine ready to
+    spawn user 0. The IR schema is validated before any auth-provider construction,
+    credential acquisition, or metadata fetch. The FHIR base URL is resolved from
+    ``environment.host`` first, then ``IGNIXA_BASE_URL`` (missing both is a hard error).
+    Managed identity auth is initialized before metadata so one token is acquired and
+    cached prior to the uninstrumented capability probe. Only the immutable suite bool
+    and per-test-id decision map are retained; the fetched capability, HTTP session,
+    and response are never stored.
     """
-    global _SUITE_ALLOWED, _TEST_DECISIONS, _USER_ORDINALS
+    global _AUTH_PROVIDER, _SUITE_ALLOWED, _TEST_DECISIONS, _USER_ORDINALS
 
-    _SUITE_ALLOWED = True
-    _TEST_DECISIONS = {}
-    _USER_ORDINALS = itertools.count()
+    clear_engine()
 
     _check_schema_version(document)
 
@@ -213,20 +218,27 @@ def initialize_engine(document, environment):
             "the IGNIXA_BASE_URL environment variable"
         )
 
+    provider = None
     try:
-        auth = _parse_auth_header()
+        provider = _create_auth_provider()
+        provider.initialize()
     except RuntimeError:
-        # Malformed auth fails startup CLOSED: disable everything, then re-raise. This must
-        # not fail open, so the decisions are pinned to False before propagating the error.
+        if provider is not None:
+            try:
+                provider.close()
+            except RuntimeError as close_exc:
+                _logger.warning("%s", close_exc)
+        _AUTH_PROVIDER = _NoAuthProvider()
         _SUITE_ALLOWED = False
         _TEST_DECISIONS = {
             test["id"]: False
             for test in document.get("tests", [])
-            if test.get("id") is not None and test.get("requiresCapability") is not None
+            if test.get("id") is not None
         }
         raise
+    _AUTH_PROVIDER = provider
 
-    capability = _fetch_capability(host, auth)
+    capability = _fetch_capability(host)
 
     suite_scope = document["metadata"]["source"]
     _SUITE_ALLOWED = _evaluate_capability_requirement(
@@ -247,13 +259,24 @@ def clear_engine():
     """Reset the engine's capability decisions and per-user ordinal counter.
 
     Called on Locust ``test_stop`` so a subsequent run starts from a clean, fail-open
-    state with user ordinals restarting at 0.
+    state with user ordinals restarting at 0 and no active auth provider.
     """
-    global _SUITE_ALLOWED, _TEST_DECISIONS, _USER_ORDINALS
+    global _AUTH_PROVIDER, _SUITE_ALLOWED, _TEST_DECISIONS, _USER_ORDINALS
 
-    _SUITE_ALLOWED = True
-    _TEST_DECISIONS = {}
-    _USER_ORDINALS = itertools.count()
+    provider = _AUTH_PROVIDER
+    failure = None
+    try:
+        provider.close()
+    except RuntimeError as exc:
+        failure = exc
+    finally:
+        _AUTH_PROVIDER = _NoAuthProvider()
+        _SUITE_ALLOWED = True
+        _TEST_DECISIONS = {}
+        _USER_ORDINALS = itertools.count()
+
+    if failure is not None:
+        raise failure
 
 
 def _fixture_variant_index(seed, hostname, ordinal, iteration, fixture_id, pool_length):
