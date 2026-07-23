@@ -21,5 +21,5 @@ public sealed record LocustIrDocument
 
     public IReadOnlyList<LocustIrTest> Tests { get; init; } = [];
 
-    public IReadOnlyList<LocustIrOperation> Teardown { get; init; } = [];
+    public IReadOnlyList<LocustIrAction> Teardown { get; init; } = [];
 }

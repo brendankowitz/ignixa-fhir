@@ -20,6 +20,16 @@ public class LocustIrSerializerTests
                     Method = "POST",
                     Resource = "Patient"
                 }
+            ],
+            Teardown =
+            [
+                new LocustIrOperation
+                {
+                    Id = "teardown.0",
+                    Type = "delete",
+                    Method = "DELETE",
+                    Resource = "Patient"
+                }
             ]
         };
 
@@ -29,6 +39,8 @@ public class LocustIrSerializerTests
         json["metadata"]!["source"]!.GetValue<string>().ShouldBe("CRUD/basic.json");
         json["setup"]![0]!["kind"]!.GetValue<string>().ShouldBe("operation");
         json["setup"]![0]!["method"]!.GetValue<string>().ShouldBe("POST");
+        json["teardown"]![0]!["kind"]!.GetValue<string>().ShouldBe("operation");
+        json["teardown"]![0]!["method"]!.GetValue<string>().ShouldBe("DELETE");
         json.AsObject().ContainsKey("requiresCapability").ShouldBeFalse();
     }
 
