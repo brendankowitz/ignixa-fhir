@@ -114,7 +114,7 @@ public class EndToEndCompilationTests
         // Assert
         plan.Explain().ShouldBe(
             "cte0 = DateTimeSearchParam[104,203]  EndDateTime >= @p0\n" +
-            "cte1 = QuantitySearchParam[104,204]  LowValue > @p1\n" +
+            "cte1 = QuantitySearchParam[104,204]  HighValue > @p1\n" +
             "root = Intersect(cte0, cte1)");
         emitted.Sql.ShouldNotContain("2023");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(dateValue.Start));
@@ -215,7 +215,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[104,302]  Code1 = @p0 AND LowValue2 >= @p1 AND HighValue3 <= @p2");
+        plan.Explain().ShouldBe("root = TokenNumberNumberCompositeSearchParam[104,302]  Code1 = @p0 AND HighValue2 >= @p1 AND LowValue3 <= @p2");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"8480-6"), ("@p1", 5m), ("@p2", 10m)]);
     }
@@ -324,7 +324,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge (not Eq) so the raw value is used directly, no precision-widening bounds to compute
-        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,402]  Code1 = @p0 AND LowValue2 >= @p1");
+        plan.Explain().ShouldBe("root = TokenQuantityCompositeSearchParam[104,402]  Code1 = @p0 AND HighValue2 >= @p1");
         emitted.Sql.ShouldNotContain("8480-6");
         emitted.Parameters.ShouldContain(p => p.Value.Equals(120m));
     }
@@ -1740,12 +1740,12 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge: raw value used (no precision-widening bounds); SystemId and QuantityCodeId appended in that order
-        plan.Explain().ShouldBe("root = QuantitySearchParam[104,204]  LowValue >= @p0 AND SystemId = @p1 AND QuantityCodeId = @p2");
+        plan.Explain().ShouldBe("root = QuantitySearchParam[104,204]  HighValue >= @p0 AND SystemId = @p1 AND QuantityCodeId = @p2");
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.QuantitySearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND ((LowValue >= @p0 AND SystemId = @p1) AND QuantityCodeId = @p2)\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND ((HighValue >= @p0 AND SystemId = @p1) AND QuantityCodeId = @p2)\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");

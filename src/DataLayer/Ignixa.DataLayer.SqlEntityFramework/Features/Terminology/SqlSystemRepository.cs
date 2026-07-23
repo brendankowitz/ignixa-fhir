@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -17,11 +18,26 @@ public class SqlSystemRepository : ISystemRepository
 {
     private readonly FhirDbContext _context;
     private readonly ILogger<SqlSystemRepository> _logger;
+    private readonly MultiTenantSearchIndexCache? _searchIndexCache;
 
-    public SqlSystemRepository(FhirDbContext context, ILogger<SqlSystemRepository> logger)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SqlSystemRepository"/> class.
+    /// </summary>
+    /// <param name="context">The EF Core DbContext.</param>
+    /// <param name="logger">Logger instance.</param>
+    /// <param name="searchIndexCache">
+    /// Reference-data caches to notify when a row is created here, so a search that already recorded this system
+    /// as missing stops answering from that record. Optional only so callers that construct this repository
+    /// directly, outside the container, keep working; those callers get a cache that self-heals on TTL instead.
+    /// </param>
+    public SqlSystemRepository(
+        FhirDbContext context,
+        ILogger<SqlSystemRepository> logger,
+        MultiTenantSearchIndexCache? searchIndexCache = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _searchIndexCache = searchIndexCache;
     }
 
     /// <summary>
@@ -58,6 +74,7 @@ public class SqlSystemRepository : ISystemRepository
             await _context.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("Created new System: {SystemUri} → SystemId={SystemId}", normalizedUri, newSystem.SystemId);
+            _searchIndexCache?.ForgetMissingSystem(normalizedUri);
             return newSystem.SystemId;
         }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
@@ -78,6 +95,7 @@ public class SqlSystemRepository : ISystemRepository
             }
 
             _logger.LogDebug("Race condition resolved for System: {SystemUri} → SystemId={SystemId}", normalizedUri, existingSystemAfterRace.SystemId);
+            _searchIndexCache?.ForgetMissingSystem(normalizedUri);
             return existingSystemAfterRace.SystemId;
         }
     }

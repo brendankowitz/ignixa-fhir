@@ -25,6 +25,23 @@ public sealed class LeafContext
 
     public short ResourceTypeId(string resourceType) => _symbols.ResourceTypeId(resourceType);
 
+    /// <summary>
+    /// The unsatisfiable predicate for a resource type the resolver could not find, or
+    /// <see langword="null"/> when it resolved normally.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> matches no row, so a plain
+    /// <c>Equal(ResourceTypeId, -1)</c> is already unsatisfiable — but only
+    /// <see cref="Predicate.False"/> carries the reason, and SearchCompiler.MarkKnownMisses recognises
+    /// nothing else. Emitting it here makes an unknown resource type as diagnosable as the unknown token
+    /// system handled in <see cref="TokenColumnEquality"/>, instead of a miss the caller can only find by
+    /// reading the emitted SQL for a magic -1.
+    /// </remarks>
+    public Predicate.False? UnmatchableResourceType(string resourceType)
+        => ResourceTypeId(resourceType) == SymbolTable.UnmatchableResourceTypeId
+            ? new Predicate.False($"No resource type '{resourceType}' exists in the catalog.")
+            : null;
+
     public IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)> CompartmentMembership(string compartmentType) => _symbols.CompartmentMembership(compartmentType);
 
     /// <inheritdoc cref="SymbolTable.SystemId"/>

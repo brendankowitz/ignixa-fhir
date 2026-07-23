@@ -296,8 +296,16 @@ public class DateTimeLoweringRuleTests
         var lowered = DateTimeLoweringRule.Lower(
             predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203, referenceTime), 103);
 
-        // Assert
-        lowered.ShouldNotBeNull();
+        // Assert — tolerance is 20000/10 = 2000 ticks, so only the lower endpoint saturates. Asserting the
+        // endpoints, not merely that something was produced: clamping to MaxValue instead of MinValue would
+        // also be non-null, and would invert the range.
+        var and = lowered.Predicate.ShouldBeOfType<Predicate.And>();
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("StartDateTime");
+        le.Value.Value.ShouldBe(new DateTimeOffset(1000 + 2000, TimeSpan.Zero));
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("EndDateTime");
+        ge.Value.Value.ShouldBe(DateTimeOffset.MinValue);
     }
 
     [Fact]
@@ -316,8 +324,14 @@ public class DateTimeLoweringRuleTests
         var lowered = DateTimeLoweringRule.Lower(
             predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203, referenceTime), 103);
 
-        // Assert
-        lowered.ShouldNotBeNull();
+        // Assert — mirror image of the underflow case: only the upper endpoint saturates
+        var and = lowered.Predicate.ShouldBeOfType<Predicate.And>();
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("StartDateTime");
+        le.Value.Value.ShouldBe(DateTimeOffset.MaxValue);
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("EndDateTime");
+        ge.Value.Value.ShouldBe(new DateTimeOffset(DateTimeOffset.MaxValue.UtcTicks - 1000 - 2000, TimeSpan.Zero));
     }
 
     [Fact]

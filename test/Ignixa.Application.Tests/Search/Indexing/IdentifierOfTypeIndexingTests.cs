@@ -8,6 +8,7 @@
 using Shouldly;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Indexing.Converters;
@@ -40,7 +41,8 @@ public class IdentifierOfTypeIndexingTests
         _indexer = SearchIndexerFactory.CreateInstance(
             _schemaProvider,
             loggerFactory,
-            searchParamManager);
+            searchParamManager,
+            NullFhirBaseUriProvider.Instance);
     }
 
     [Fact]

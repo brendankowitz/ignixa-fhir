@@ -1291,7 +1291,7 @@ public class SearchParameterQueryGenerator
         // Add system filter if specified
         if (!string.IsNullOrEmpty(systemUri))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri, ct);
+            var systemId = await _cache.GetSystemIdAsync(systemUri, ct);
             if (!systemId.HasValue)
             {
                 _logger.LogDebug("Quantity system not found: {SystemUri}", systemUri);
@@ -1303,7 +1303,7 @@ public class SearchParameterQueryGenerator
         // Add code filter if specified
         if (!string.IsNullOrEmpty(code))
         {
-            var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code, ct);
+            var quantityCodeId = await _cache.GetQuantityCodeIdAsync(code, ct);
             if (!quantityCodeId.HasValue)
             {
                 _logger.LogDebug("Quantity code not found: {Code}", code);
@@ -1411,7 +1411,7 @@ public class SearchParameterQueryGenerator
         // Add system filter if specified
         if (!string.IsNullOrEmpty(system))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(system, ct);
+            var systemId = await _cache.GetSystemIdAsync(system, ct);
             if (!systemId.HasValue)
             {
                 _logger.LogDebug("Token system not found: {System}", system);
@@ -1428,7 +1428,7 @@ public class SearchParameterQueryGenerator
         // Handle identifier type for :of-type modifier
         if (!string.IsNullOrEmpty(identifierTypeSystem))
         {
-            var identifierTypeSystemId = await _cache.GetOrCreateSystemIdAsync(identifierTypeSystem, ct);
+            var identifierTypeSystemId = await _cache.GetSystemIdAsync(identifierTypeSystem, ct);
             if (!identifierTypeSystemId.HasValue)
             {
                 _logger.LogDebug("Identifier type system not found: {System}", identifierTypeSystem);
@@ -1655,7 +1655,15 @@ public class SearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(system))
         {
-            systemId = await _cache.GetOrCreateSystemIdAsync(system, ct);
+            systemId = await _cache.GetSystemIdAsync(system, ct);
+
+            // A system that has no row cannot match any indexed token. Falling through with a null systemId
+            // would drop the system filter from the predicate below and widen the search to every system.
+            if (!systemId.HasValue)
+            {
+                _logger.LogDebug("Token system not found: {System}", system);
+                return Enumerable.Empty<long>().AsQueryable();
+            }
         }
 
         var baseQuery = _context.TokenSearchParams
@@ -1853,9 +1861,9 @@ public class SearchParameterQueryGenerator
         string systemUri,
         CancellationToken ct)
     {
-        // Look up SystemId from System table via cache
-        // Note: GetOrCreateSystemIdAsync will find existing systems first (won't create during search)
-        var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri, ct);
+        // Read-only lookup: the query path must never create terminology rows. Creating one here would
+        // both write on a GET and suppress the "known miss" diagnostic for a typo'd system.
+        var systemId = await _cache.GetSystemIdAsync(systemUri, ct);
 
         if (!systemId.HasValue)
         {
@@ -1891,9 +1899,8 @@ public class SearchParameterQueryGenerator
         string code,
         CancellationToken ct)
     {
-        // Look up QuantityCodeId from QuantityCode table via cache
-        // Note: GetOrCreateQuantityCodeIdAsync will find existing codes first (won't create during search)
-        var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code, ct);
+        // Read-only lookup: see GenerateQuantitySystemQueryAsync.
+        var quantityCodeId = await _cache.GetQuantityCodeIdAsync(code, ct);
 
         if (!quantityCodeId.HasValue)
         {

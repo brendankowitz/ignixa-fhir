@@ -63,6 +63,13 @@ public static class FhirRequestContextFactory
             TenantConfiguration = parentContext.TenantConfiguration,
             FhirVersion = parentContext.FhirVersion,
             VersionContext = parentContext.VersionContext,
+
+            // Without these the entry indexes self-references as external while the enclosing request
+            // would have collapsed them, so the same reference is stored differently inside and outside
+            // a bundle.
+            BaseUri = parentContext.BaseUri,
+            ServiceBaseUris = parentContext.ServiceBaseUris,
+
             ResourceType = resourceType,
             ExecutingBatchOrTransaction = true,
             BundleEntryIndex = entryIndex,

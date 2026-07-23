@@ -165,6 +165,41 @@ The SQL Server provider uses the same database as Tenant 0 (system partition), e
 }
 ```
 
+## Service Base URI
+
+`Fhir:BaseUri` is this deployment's public FHIR service root. Set it in every environment that runs
+`$reindex` or `$import`.
+
+```json
+{
+  "Fhir": {
+    "BaseUri": "https://fhir.example.org"
+  }
+}
+```
+
+It is used to recognise a reference written as an absolute URL that points back at this server, so it
+reconciles with the equivalent relative reference. `Patient/p1`, `https://fhir.example.org/Patient/p1` and
+`https://fhir.example.org/tenant/1/Patient/p1` all name the same resource, and all three are stored — and
+searched — the same way. Both the root and each tenant's `/tenant/{id}/` base are recognised, so it does
+not matter which route form a client used to write or to search.
+
+Two things depend on setting it:
+
+- **Background indexing.** `$reindex` and `$import` have no HTTP request to derive a base from. With
+  `Fhir:BaseUri` unset they recognise nothing, so reindexed rows file self-references as external while the
+  rows they replace filed them as internal, and those resources drop out of absolute searches. The server
+  logs a warning at startup when the setting is missing.
+- **Host header trust.** With `Fhir:BaseUri` unset, the base is derived from the request's `Host` header,
+  which a client controls — a forged `Host` decides whether an inbound reference is stored as internal or
+  external. When it is set, the `Host` header is ignored for this purpose. Independently, set `AllowedHosts`
+  to your real hostnames rather than leaving it at `*`.
+
+:::note
+Only rows written after the setting is in place are affected. References already stored against a
+self-referencing absolute base keep it until a `$reindex`.
+:::
+
 ## Authentication
 
 Configure OIDC authentication with any compliant provider (Entra ID, Okta, etc.):
@@ -329,6 +364,9 @@ Override any setting with environment variables:
 ```bash
 # Tenant connection string
 export Tenants__Configurations__1__Storage__ConnectionString="Server=..."
+
+# Public FHIR service root (see "Service Base URI")
+export Fhir__BaseUri="https://fhir.example.org"
 
 # Enable authorization
 export Authorization__Enabled=true

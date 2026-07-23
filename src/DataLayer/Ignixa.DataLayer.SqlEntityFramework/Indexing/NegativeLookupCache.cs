@@ -27,7 +27,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Indexing;
 /// </para>
 /// <para>
 /// In-process creation must call <see cref="Forget"/> so a search cannot keep reporting "missing" for
-/// terminology the write path has since created.
+/// terminology the write path has since created. Two writers create <c>dbo.System</c> rows --
+/// <c>SearchIndexReferenceDataCache.GetOrCreateSystemIdAsync</c> and
+/// <c>SqlSystemRepository.GetOrCreateAsync</c> (CodeSystem import) -- and both invalidate. This is a
+/// discipline enforced by review, not by the type: a third writer, or a <c>SqlSystemRepository</c>
+/// constructed without a reference-data cache to notify, would leave the entry standing until its TTL.
+/// That is the failure mode the TTL exists to bound, not one it exists to excuse.
 /// </para>
 /// </remarks>
 public sealed class NegativeLookupCache

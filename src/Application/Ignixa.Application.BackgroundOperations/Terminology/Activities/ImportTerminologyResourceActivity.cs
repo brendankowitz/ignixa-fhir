@@ -44,7 +44,10 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
         var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
 
         await using var fhirDbContext = await repositoryFactory.GetDbContextAsync(input.TenantId, CancellationToken.None);
-        var systemRepository = new SqlSystemRepository(fhirDbContext, loggerFactory.CreateLogger<SqlSystemRepository>());
+        var systemRepository = new SqlSystemRepository(
+            fhirDbContext,
+            loggerFactory.CreateLogger<SqlSystemRepository>(),
+            scope.ServiceProvider.GetService<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>());
         ITerminologyImporter terminologyImporter = new SqlCodeSystemImporter(
             fhirDbContext,
             systemRepository,

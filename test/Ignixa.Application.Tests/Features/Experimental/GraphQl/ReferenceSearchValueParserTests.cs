@@ -18,7 +18,7 @@ public class ReferenceSearchValueParserTests
     {
         var schemaProvider = Substitute.For<IFhirSchemaProvider>();
         schemaProvider.ResourceTypeNames.Returns(new HashSet<string> { "Patient", "Observation" });
-        _parser = new ReferenceSearchValueParser(schemaProvider);
+        _parser = new ReferenceSearchValueParser(schemaProvider, NullFhirBaseUriProvider.Instance);
     }
 
     [Theory]

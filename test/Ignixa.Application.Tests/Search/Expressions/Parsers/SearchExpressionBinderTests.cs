@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Abstractions;
 using Ignixa.Search;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
@@ -509,7 +510,7 @@ public class SearchExpressionBinderTests
     {
         return new SearchExpressionBinder(
             new SearchAtomicValueParser(
-                new ReferenceSearchValueParser(context.SchemaProvider),
+                new ReferenceSearchValueParser(context.SchemaProvider, NullFhirBaseUriProvider.Instance),
                 context.SchemaProvider));
     }
 

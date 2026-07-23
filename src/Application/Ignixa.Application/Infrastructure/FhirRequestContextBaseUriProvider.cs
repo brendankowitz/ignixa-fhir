@@ -8,19 +8,37 @@ using Ignixa.Abstractions;
 namespace Ignixa.Application.Infrastructure;
 
 /// <summary>
-/// Resolves the service base URI from the ambient FHIR request context, falling back to a configured
-/// value when there is no request — reindex, $import, and subscription delivery all index resources
-/// outside the HTTP pipeline.
+/// Resolves this server's service base URIs from the ambient FHIR request context, falling back to the
+/// configured deployment root when there is no request — reindex, $import, and subscription delivery all
+/// index resources outside the HTTP pipeline.
 /// </summary>
 /// <remarks>
-/// The fallback is what keeps background-indexed rows consistent with request-indexed ones. Without it a
-/// reindex would classify every absolute self-reference as external and store a BaseUri that the request
-/// path would have stripped, so the same reference would be searchable before a reindex and not after.
+/// Request and background paths run the same <see cref="FhirServiceBaseUriResolver"/> over the same tenant,
+/// so a reindex classifies a given absolute self-reference exactly as the request that first stored it did.
+/// Without a configured root the fallback yields nothing, and background-indexed rows will store
+/// self-references as external while request-indexed rows collapsed them — see
+/// <see cref="FhirServiceBaseUriResolver"/> for why <c>Fhir:BaseUri</c> is not optional in practice.
 /// </remarks>
 public sealed class FhirRequestContextBaseUriProvider(
     IFhirRequestContextAccessor requestContextAccessor,
-    Uri? configuredBaseUri = null) : IFhirBaseUriProvider
+    FhirServiceBaseUriResolver resolver) : IFhirBaseUriProvider
 {
     /// <inheritdoc />
-    public Uri? GetBaseUri() => requestContextAccessor.RequestContext?.BaseUri ?? configuredBaseUri;
+    public Uri? GetBaseUri() => GetServiceBaseUris() is [var canonical, ..] ? canonical : null;
+
+    /// <inheritdoc />
+    public IReadOnlyList<Uri> GetServiceBaseUris()
+    {
+        var context = requestContextAccessor.RequestContext;
+
+        if (context?.ServiceBaseUris is { Count: > 0 } fromRequest)
+        {
+            return fromRequest;
+        }
+
+        return resolver.Resolve(
+            requestOrigin: null,
+            context?.TenantId,
+            FhirServiceBaseUriForm.TenantScoped);
+    }
 }

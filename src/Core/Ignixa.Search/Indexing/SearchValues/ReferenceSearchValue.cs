@@ -20,11 +20,33 @@ public class ReferenceSearchValue : ISearchValue
     /// <param name="baseUri">The base URI of the resource.</param>
     /// <param name="resourceType">The resource type.</param>
     /// <param name="resourceId">The resource id.</param>
+    /// <remarks>
+    /// <paramref name="referenceKind"/> and <paramref name="baseUri"/> are two views of the same fact, so
+    /// they are required to agree: <see cref="ReferenceKind.Internal"/> means "this server", which carries
+    /// no base, and <see cref="ReferenceKind.External"/> means "that server", which is meaningless without
+    /// one. <see cref="ReferenceKind.InternalOrExternal"/> is the only kind that permits either. Consumers
+    /// branch on one or the other to build their SQL, so a disagreeing pair makes two consumers reach
+    /// opposite conclusions from the same value, widening or narrowing a search with no diagnostic.
+    /// </remarks>
     public ReferenceSearchValue(ReferenceKind referenceKind, Uri baseUri, string resourceType, string resourceId)
     {
         if (baseUri != null) EnsureArg.IsNotNullOrWhiteSpace(resourceType, nameof(resourceType));
 
         EnsureArg.IsNotNullOrWhiteSpace(resourceId, nameof(resourceId));
+
+        if (referenceKind == ReferenceKind.Internal && baseUri != null)
+        {
+            throw new ArgumentException(
+                $"A {nameof(ReferenceKind.Internal)} reference resolves to this server and must not carry a base URI, but '{baseUri}' was supplied.",
+                nameof(baseUri));
+        }
+
+        if (referenceKind == ReferenceKind.External && baseUri == null)
+        {
+            throw new ArgumentException(
+                $"An {nameof(ReferenceKind.External)} reference must carry the base URI of the server it points at.",
+                nameof(baseUri));
+        }
 
         Kind = referenceKind;
         BaseUri = baseUri;
