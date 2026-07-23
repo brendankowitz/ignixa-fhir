@@ -367,6 +367,10 @@ def _metric_name(document, action_id):
     return f"{document['metadata']['source']}::{action_id}"
 
 
+_AUTH_REFRESH_WINDOW_SECONDS = 300
+_AUTHORIZATION_SCHEME = "Bearer"
+
+
 class _NoAuthProvider:
     def initialize(self):
         return None
@@ -393,17 +397,17 @@ class _ManagedIdentityAuthProvider:
         self._cached_access_token = None
 
     def initialize(self):
-        return None
+        return self.authorization_value()
 
     def authorization_value(self):
         token = self._cached_access_token
         if token is not None and token.expires_on - self._clock() > _AUTH_REFRESH_WINDOW_SECONDS:
-            return f"{_AUTHORIZATION_SCHEME} {token.access_token}"
+            return f"{_AUTHORIZATION_SCHEME} {token.token}"
 
         with self._lock:
             token = self._cached_access_token
             if token is not None and token.expires_on - self._clock() > _AUTH_REFRESH_WINDOW_SECONDS:
-                return f"{_AUTHORIZATION_SCHEME} {token.access_token}"
+                return f"{_AUTHORIZATION_SCHEME} {token.token}"
 
             try:
                 token = self._credential.get_token(self._scope)
@@ -413,7 +417,7 @@ class _ManagedIdentityAuthProvider:
                 ) from exc
 
             self._cached_access_token = token
-            return f"{_AUTHORIZATION_SCHEME} {token.access_token}"
+            return f"{_AUTHORIZATION_SCHEME} {token.token}"
 
     def invalidate(self):
         with self._lock:
@@ -424,18 +428,13 @@ class _ManagedIdentityAuthProvider:
         if close is None:
             return None
 
-        with self._lock:
-            try:
-                close()
-            except Exception as exc:  # noqa: BLE001 - stable wrapper around credential disposal failures.
-                raise RuntimeError(
-                    f"Failed to close managed identity credential ({type(exc).__name__})"
-                ) from exc
+        try:
+            close()
+        except Exception as exc:  # noqa: BLE001 - stable wrapper around credential disposal failures.
+            raise RuntimeError(
+                f"Failed to close managed identity credential ({type(exc).__name__})"
+            ) from exc
         return None
-
-
-_AUTH_REFRESH_WINDOW_SECONDS = 300
-_AUTHORIZATION_SCHEME = "Bearer"
 
 
 def _non_empty_env(name, required=False):
@@ -463,11 +462,7 @@ def _create_auth_provider():
     if "IGNIXA_AUTH_HEADER" in os.environ:
         raise RuntimeError("IGNIXA_AUTH_HEADER is no longer supported")
 
-    raw_mode = os.environ.get("IGNIXA_AUTH_MODE", _MISSING_ENV)
-    if raw_mode is _MISSING_ENV:
-        return _NoAuthProvider()
-
-    mode = _non_empty_env("IGNIXA_AUTH_MODE", required=True)
+    mode = _non_empty_env("IGNIXA_AUTH_MODE") or "none"
     if mode == "none":
         return _NoAuthProvider()
 

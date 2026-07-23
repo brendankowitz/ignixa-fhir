@@ -7,8 +7,8 @@ import fakes
 
 
 class FakeAccessToken:
-    def __init__(self, access_token, expires_on):
-        self.access_token = access_token
+    def __init__(self, token, expires_on):
+        self.token = token
         self.expires_on = expires_on
 
 
@@ -256,7 +256,7 @@ class ManagedIdentityAuthenticationTests(unittest.TestCase):
         self.assertNotIn("https://example/.default", message)
         self.assertNotIn("secret-body=leak", message)
 
-    def test_close_disposes_the_credential_and_wraps_close_failures(self):
+    def test_close_disposes_the_credential(self):
         credential = FakeManagedIdentityCredential([FakeAccessToken("ignored", 5000)])
         provider = self.runtime._ManagedIdentityAuthProvider("https://example/.default", credential, clock=lambda: 1000)
 
@@ -264,6 +264,7 @@ class ManagedIdentityAuthenticationTests(unittest.TestCase):
 
         self.assertEqual(1, credential.close_calls)
 
+    def test_close_failure_is_wrapped_without_source_message(self):
         failing = FakeManagedIdentityCredential(
             [FakeAccessToken("ignored", 5000)],
             close_exception=RuntimeError("close-body=leak"),
@@ -276,4 +277,3 @@ class ManagedIdentityAuthenticationTests(unittest.TestCase):
         message = str(context.exception)
         self.assertIn("RuntimeError", message)
         self.assertNotIn("close-body=leak", message)
-
