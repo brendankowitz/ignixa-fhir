@@ -53,15 +53,7 @@ public sealed class SqlServerCompiledSearchService(
             throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
         }
 
-        var trace = await CompileAsync(options, cancellationToken);
-        if (trace.Sql is not { } sql)
-        {
-            throw new RequestNotValidException(trace.Failure?.Message ?? "The search could not be compiled.");
-        }
-
-        // trace.CompiledPlan, not trace.Plan (the latter is QueryPlanTrace, a display-only projection with
-        // no Includes/Sort structure of its own -- see SearchTrace.CompiledPlan's own remarks).
-        await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.CompiledPlan!, cancellationToken))
+        await foreach (var result in SearchStreamWithPhaseHandlingAsync(options, cancellationToken))
         {
             yield return result;
         }
@@ -146,14 +138,143 @@ public sealed class SqlServerCompiledSearchService(
         return ranges;
     }
 
-    private async Task<SearchTrace> CompileAsync(SearchOptions options, CancellationToken cancellationToken, bool countOnly = false)
+    /// <summary>
+    /// Drives the two-phase Valued/MissingPrimary sort executor loop (design doc §3's corrected formula):
+    /// runs Valued at the requested offset/limit; a full page stops there; a short, non-empty Valued page
+    /// runs MissingPrimary at offset 0 to fill the rest; a zero-row Valued page runs a countPhaseScoped
+    /// CountOnly compile to learn the Valued total, then runs MissingPrimary at the offset that total
+    /// implies. Applies to EVERY sorted search, including a token-less first page -- offset 0 is just
+    /// OffsetSpec(0, Limit), not a special case that can skip this loop, or page 1 would silently omit
+    /// every missing-value resource. Unsorted searches keep the single Valued-only compile (Valued is the
+    /// SortPhase default and this loop has no meaning for keyset paging, which the compiler already
+    /// handles correctly in one compile via its own boundary mechanism).
+    /// </summary>
+    private async IAsyncEnumerable<SearchEntryResult> SearchStreamWithPhaseHandlingAsync(
+        SearchOptions options,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (options.Sort.Count == 0)
+        {
+            var trace = await CompileAsync(options, cancellationToken);
+            if (trace.Sql is not { } sql)
+            {
+                throw new RequestNotValidException(trace.Failure?.Message ?? "The search could not be compiled.");
+            }
+
+            await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.CompiledPlan!, cancellationToken))
+            {
+                yield return result;
+            }
+
+            yield break;
+        }
+
+        int requestedOffset;
+        int requestedCount;
+        if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
+            && ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount))
+        {
+            requestedOffset = tokenOffset;
+            requestedCount = tokenCount + 1; // same +1-for-hasMore convention CompileAsync itself uses
+        }
+        else
+        {
+            requestedOffset = 0;
+            requestedCount = options.MaxItemCount;
+        }
+
+        var valuedTrace = await CompileAsync(
+            options, cancellationToken, sortPhase: SortPhase.Valued,
+            offsetPageOverride: new OffsetSpec(requestedOffset, requestedCount));
+        if (valuedTrace.Sql is not { } valuedSql)
+        {
+            throw new RequestNotValidException(valuedTrace.Failure?.Message ?? "The search could not be compiled.");
+        }
+
+        // Only count Match-mode rows toward the phase-boundary arithmetic below. An includes-bearing plan's
+        // match-page CTE yields Match rows AND separately-unioned Include rows through the same reader --
+        // the OFFSET/FETCH paging and every offset/limit computed in this method govern the MATCH set only.
+        // Counting Include rows here would prematurely satisfy/shrink the page math on any sorted search
+        // combined with _include/_revinclude, silently dropping MissingPrimary match rows that should have
+        // been returned.
+        var valuedCount = 0;
+        await foreach (var result in ExecuteAndMaterializeAsync(valuedSql, valuedTrace.CompiledPlan!, cancellationToken))
+        {
+            if (result.SearchMode == SearchEntryMode.Match)
+            {
+                valuedCount++;
+            }
+
+            yield return result;
+        }
+
+        if (valuedCount >= requestedCount)
+        {
+            yield break; // Valued alone filled the whole page -- no room left for MissingPrimary rows.
+        }
+
+        int missingPrimaryOffset;
+        if (valuedCount > 0)
+        {
+            // A short, non-empty Valued page: the phase boundary is unambiguously inside this page.
+            missingPrimaryOffset = 0;
+        }
+        else
+        {
+            // Valued returned ZERO rows: the offset landed at-or-past the Valued total, and the boundary's
+            // exact location is ambiguous without asking -- learn it via a countPhaseScoped CountOnly compile
+            // (Task 4/§3's mechanism, purpose-built for exactly this disambiguation).
+            var valuedCountTrace = await CompileAsync(
+                options, cancellationToken, countOnly: true, countPhaseScoped: true, sortPhase: SortPhase.Valued);
+            if (valuedCountTrace.Sql is not { } valuedCountSql)
+            {
+                throw new RequestNotValidException(valuedCountTrace.Failure?.Message ?? "The search could not be compiled.");
+            }
+
+            // CA2100 suppressed: valuedCountSql.Sql is Ignixa.Search.Sql's own compiler output -- every
+            // user-controlled value in it is already a named @pN parameter (valuedCountSql.Parameters,
+            // bound below via BindParameters), never string-concatenated. Same rationale as CountAsync's
+            // identical suppression.
+#pragma warning disable CA2100
+            using var countCommand = new SqlCommand(valuedCountSql.Sql);
+#pragma warning restore CA2100
+            BindParameters(countCommand, valuedCountSql.Parameters);
+            var countRows = await _sqlExecutionService.ExecuteReaderAsync(
+                _tenantId, countCommand, reader => reader.GetInt64(0), cancellationToken);
+            var valuedTotal = checked((int)(countRows.Count > 0 ? countRows[0] : 0L));
+
+            missingPrimaryOffset = Math.Max(0, requestedOffset - valuedTotal);
+        }
+
+        var missingPrimaryLimit = requestedCount - valuedCount;
+        var missingTrace = await CompileAsync(
+            options, cancellationToken, sortPhase: SortPhase.MissingPrimary,
+            offsetPageOverride: new OffsetSpec(missingPrimaryOffset, missingPrimaryLimit));
+        if (missingTrace.Sql is not { } missingSql)
+        {
+            throw new RequestNotValidException(missingTrace.Failure?.Message ?? "The search could not be compiled.");
+        }
+
+        await foreach (var result in ExecuteAndMaterializeAsync(missingSql, missingTrace.CompiledPlan!, cancellationToken))
+        {
+            yield return result;
+        }
+    }
+
+    private async Task<SearchTrace> CompileAsync(
+        SearchOptions options,
+        CancellationToken cancellationToken,
+        bool countOnly = false,
+        bool countPhaseScoped = false,
+        SortPhase sortPhase = SortPhase.Valued,
+        OffsetSpec? offsetPageOverride = null)
     {
         // resourceType may legitimately be null/empty (a multi-type/system-level search) -- both
         // CompileFromOptionsAsync and the underlying Lower.Run already support this via systemLevelSearch.
         var resourceType = options.ResourceType;
 
-        OffsetSpec? offsetPage = null;
-        if (!countOnly)
+        OffsetSpec? offsetPage = offsetPageOverride;
+        if (offsetPage is null && !countOnly)
         {
             // Must match SqlEntityFrameworkSearchService.BuildQueryAsync's exact pagination convention:
             // options.MaxItemCount arrives from the caller ALREADY "+1'd" for hasMore detection when there is
@@ -174,7 +295,8 @@ public sealed class SqlServerCompiledSearchService(
         }
         // else: countOnly (CountAsync) never pages -- SqlEntityFrameworkSearchService.CountAsync ignores
         // ContinuationToken/MaxItemCount entirely (every code path ends in a bare .CountAsync() call with no
-        // Skip/Take), so this adapter matches that by leaving offsetPage null whenever countOnly is true.
+        // Skip/Take), so this adapter matches that by leaving offsetPage null whenever countOnly is true and
+        // no offsetPageOverride (the two-phase loop's own explicit-offset bypass) was supplied.
 
         (long Start, long End)? surrogateIdRange = options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue
             ? (options.StartSurrogateId.Value, options.EndSurrogateId.Value)
@@ -196,6 +318,8 @@ public sealed class SqlServerCompiledSearchService(
             surrogateIdRange,
             countOnly,
             includeLimit,
+            countPhaseScoped,
+            sortPhase,
             cancellationToken);
     }
 

@@ -152,6 +152,8 @@ public static class SearchCompiler
         (long Start, long End)? surrogateIdRange = null,
         bool countOnly = false,
         int includeLimit = 0,
+        bool countPhaseScoped = false,
+        SortPhase sortPhase = SortPhase.Valued,
         CancellationToken cancellationToken = default)
     {
         // resourceType is deliberately NOT null-checked here -- null/empty means a multi-type/system-level
@@ -202,12 +204,13 @@ public static class SearchCompiler
                     options.RevInclude,
                     includeLimit,
                     options.Sort,
-                    SortPhase.Valued,
+                    sortPhase,
                     page: null,
                     countOnly: countOnly,
                     systemLevelSearch: resourceType is null,
                     approximationReferenceTime: approximationReferenceTime,
                     offsetPage: offsetPage,
+                    countPhaseScoped: countPhaseScoped,
                     surrogateIdRange: surrogateIdRange);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
