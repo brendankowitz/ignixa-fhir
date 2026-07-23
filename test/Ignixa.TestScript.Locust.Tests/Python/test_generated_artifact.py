@@ -347,6 +347,8 @@ class GeneratedArtifactSmokeTest(unittest.TestCase):
 
         env_backup = {key: os.environ.get(key) for key in _MANAGED_ENV_KEYS}
         # Snapshot the global event handler lists so the locustfile's test_start/test_stop
+        # WHY: this private _handlers coupling is intentionally pinned to locust==2.33.2;
+        # reverify the snapshot/restore approach on any Locust version bump.
         # registrations and our request listener can be removed again exactly.
         saved_start = list(locust.events.test_start._handlers)
         saved_stop = list(locust.events.test_stop._handlers)
@@ -485,6 +487,7 @@ class GeneratedArtifactSmokeTest(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=10)
+            self.assertFalse(thread.is_alive(), "loopback server thread must stop after shutdown and join")
 
             if path_inserted:
                 try:
