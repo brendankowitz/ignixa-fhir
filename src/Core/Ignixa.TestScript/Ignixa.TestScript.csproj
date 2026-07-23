@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.TestScript.Tests" />
+    <InternalsVisibleTo Include="Ignixa.TestScript.Locust" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,6 @@
 using Ignixa.Abstractions;
 using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Ignixa.TestScript.Expressions;
 using Ignixa.TestScript.Locust.Compilation;
@@ -13,11 +14,39 @@ public class LocustIrCompilerTests
 {
     private static readonly LocustIrCompiler s_compiler = new();
 
-    private static LocustCompilerOptions Options(string source = "read.json") => new(
+    private const string FhirFakesExtensionUrl = "http://ignixa.io/testscript/fhirfakes";
+
+    private static LocustCompilerOptions Options(
+        string source = "read.json", string? fhirVersion = "4.0", int fixtureVariants = 0) => new(
         source,
-        "4.0",
+        fhirVersion,
         FhirVersion.R4.GetSchemaProvider(),
-        0);
+        fixtureVariants);
+
+    private static FixtureDefinition FhirFakesPatientFixture(
+        string id = "fakes-fixture", bool autocreate = false, bool autodelete = false) => new()
+    {
+        Id = id,
+        Autocreate = autocreate,
+        Autodelete = autodelete,
+        Resource = ResourceJsonNode.Parse($$"""
+            {
+                "resourceType": "Basic",
+                "extension": [
+                    { "url": "{{FhirFakesExtensionUrl}}", "valueCode": "Patient" }
+                ]
+            }
+            """)
+    };
+
+    private static FixtureDefinition LiteralPatientFixture(
+        string id = "literal-fixture", bool autocreate = false, bool autodelete = false) => new()
+    {
+        Id = id,
+        Autocreate = autocreate,
+        Autodelete = autodelete,
+        Resource = ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{id}}-1"}""")
+    };
 
     [Fact]
     public async Task GivenRepresentativeSupportedDefinition_WhenCompiled_ThenNoErrorsAndDocumentMatchesShape()
@@ -517,6 +546,426 @@ public class LocustIrCompilerTests
 
         await Should.ThrowAsync<OperationCanceledException>(
             () => s_compiler.CompileAsync(definition, Options(), cts.Token));
+    }
+
+    [Fact]
+    public async Task GivenTestWithNonMatchingFhirVersion_WhenCompiled_ThenTestIsExcludedFromDocument()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition { Name = "r5-only", FhirVersions = ["5.0"] },
+                new TestPhaseDefinition { Name = "r4-only", FhirVersions = ["4.0"] }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fhirVersion: "4.0"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrDocument document = result.Document.ShouldNotBeNull();
+        LocustIrTest test = document.Tests.ShouldHaveSingleItem();
+        test.Id.ShouldBe("test.1");
+        test.Name.ShouldBe("r4-only");
+    }
+
+    [Theory]
+    [InlineData("4.0", "4.0", true)]
+    [InlineData("4.0", "4.0.1", true)]
+    [InlineData("4.0.1", "4.0.1", true)]
+    [InlineData("4.0.1", "4.0.2", false)]
+    [InlineData("4.*", "4.3", true)]
+    [InlineData("5.0", "4.3", false)]
+    [InlineData("4.3", "4.0", false)]
+    public async Task GivenVersionSpecs_WhenCompiled_ThenSharedCompatibilityHelperGatesTestInclusion(
+        string spec, string actualVersion, bool expectIncluded)
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests = [new TestPhaseDefinition { Name = "gated", FhirVersions = [spec] }]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fhirVersion: actualVersion), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrDocument document = result.Document.ShouldNotBeNull();
+        document.Tests.Count.ShouldBe(expectIncluded ? 1 : 0);
+    }
+
+    [Fact]
+    public async Task GivenTestWithNullActualVersionOrEmptyDeclaredVersions_WhenCompiled_ThenTestRemainsCompatible()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition { Name = "declared", FhirVersions = ["4.0"] },
+                new TestPhaseDefinition { Name = "undeclared" }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fhirVersion: null), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrDocument document = result.Document.ShouldNotBeNull();
+        document.Tests.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task GivenParametrizedTest_WhenCompiled_ThenEmitsOneTestPerValueWithUniqueIdsAndBoundVariables()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "case",
+                    Description = "desc",
+                    Parameters = new ParametrizeDefinition("code", ["a", "b", "a"]),
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient" }]
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrDocument document = result.Document.ShouldNotBeNull();
+        document.Tests.Count.ShouldBe(3);
+
+        document.Tests[0].Id.ShouldBe("test.0.param.0");
+        document.Tests[0].Name.ShouldBe("case [a]");
+        document.Tests[0].Description.ShouldBe("desc");
+        document.Tests[0].DiscardContextAfterExecution.ShouldBeTrue();
+        document.Tests[0].InitialVariables.ShouldContainKeyAndValue("code", "a");
+        document.Tests[0].Actions[0].Id.ShouldBe("test.0.param.0.action.0");
+
+        document.Tests[1].Id.ShouldBe("test.0.param.1");
+        document.Tests[1].Name.ShouldBe("case [b]");
+        document.Tests[1].InitialVariables.ShouldContainKeyAndValue("code", "b");
+        document.Tests[1].Actions[0].Id.ShouldBe("test.0.param.1.action.0");
+
+        document.Tests[2].Id.ShouldBe("test.0.param.2");
+        document.Tests[2].Name.ShouldBe("case [a]");
+        document.Tests[2].InitialVariables.ShouldContainKeyAndValue("code", "a");
+        document.Tests[2].Actions[0].Id.ShouldBe("test.0.param.2.action.0");
+    }
+
+    [Fact]
+    public async Task GivenNonParametrizedTest_WhenCompiled_ThenRetainsOriginalIndexAndDoesNotDiscardContext()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "case",
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient" }]
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrTest test = result.Document.ShouldNotBeNull().Tests.ShouldHaveSingleItem();
+        test.Id.ShouldBe("test.0");
+        test.Name.ShouldBe("case");
+        test.DiscardContextAfterExecution.ShouldBeFalse();
+        test.InitialVariables.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenFilteredTest_WhenLaterTestsCompiled_ThenOriginalIndexGapIsPreservedNotRenumbered()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition { Name = "excluded", FhirVersions = ["5.0"] },
+                new TestPhaseDefinition { Name = "included-one" },
+                new TestPhaseDefinition { Name = "included-two" }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fhirVersion: "4.0"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrDocument document = result.Document.ShouldNotBeNull();
+        document.Tests.Count.ShouldBe(2);
+        document.Tests[0].Id.ShouldBe("test.1");
+        document.Tests[1].Id.ShouldBe("test.2");
+    }
+
+    [Fact]
+    public async Task GivenSuiteAndTestRequiresCapability_WhenCompiled_ThenExpressionsAreCopiedVerbatimNotEvaluated()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata
+            {
+                Name = "Suite",
+                RequiresCapability = "rest.resource.where(type='Patient').exists()"
+            },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "case",
+                    RequiresCapability = "rest.resource.where(type='Patient').operation.where(name='everything').exists()"
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrDocument document = result.Document.ShouldNotBeNull();
+        document.RequiresCapability.ShouldBe("rest.resource.where(type='Patient').exists()");
+        document.Tests.ShouldHaveSingleItem().RequiresCapability
+            .ShouldBe("rest.resource.where(type='Patient').operation.where(name='everything').exists()");
+    }
+
+    [Fact]
+    public async Task GivenLiteralFixture_WhenCompiled_ThenEmitsExactlyOneClonedVariantPreservingFlagsEvenWithZeroVariants()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [LiteralPatientFixture(id: "literal-fixture", autocreate: true, autodelete: true)]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fixtureVariants: 0), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrFixture fixture = result.Document.ShouldNotBeNull().Fixtures.ShouldHaveSingleItem();
+        fixture.Id.ShouldBe("literal-fixture");
+        fixture.Autocreate.ShouldBeTrue();
+        fixture.Autodelete.ShouldBeTrue();
+        fixture.Variants.ShouldHaveSingleItem()["resourceType"]!.GetValue<string>().ShouldBe("Patient");
+    }
+
+    [Fact]
+    public async Task GivenFhirFakesFixture_WhenFixtureVariantsIsZero_ThenReturnsLocust007ErrorAndNullDocument()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [FhirFakesPatientFixture()]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fixtureVariants: 0), CancellationToken.None);
+
+        result.HasErrors.ShouldBeTrue();
+        result.Document.ShouldBeNull();
+        result.Diagnostics.ShouldContain(d => d.Code == "LOCUST007" && d.Severity == LocustDiagnosticSeverity.Error);
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST_METRIC");
+    }
+
+    [Fact]
+    public async Task GivenFhirFakesFixture_WhenFixtureVariantsIsThree_ThenEmitsThreeSchemaValidPatientVariants()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [FhirFakesPatientFixture()]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fixtureVariants: 3), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        LocustIrFixture fixture = result.Document.ShouldNotBeNull().Fixtures.ShouldHaveSingleItem();
+        fixture.Variants.Count.ShouldBe(3);
+        fixture.Variants.ShouldAllBe(resource => resource["resourceType"]!.GetValue<string>() == "Patient");
+    }
+
+    [Fact]
+    public async Task GivenUnmaterializableFixture_WhenCompiled_ThenReturnsLocust008ErrorAndNullDocumentWithNoMetrics()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [new FixtureDefinition { Id = "empty-fixture", Resource = null }]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fixtureVariants: 1), CancellationToken.None);
+
+        result.HasErrors.ShouldBeTrue();
+        result.Document.ShouldBeNull();
+        result.Diagnostics.ShouldContain(d => d.Code == "LOCUST008" && d.Severity == LocustDiagnosticSeverity.Error);
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST_METRIC");
+    }
+
+    [Fact]
+    public async Task GivenSupportWarningAndUnmaterializableFixture_WhenCompiled_ThenBothDiagnosticSetsSurviveWithNullDocumentAndNoMetrics()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [new FixtureDefinition { Id = "empty-fixture", Resource = null }],
+            Setup = [new OperationExpression { Type = "read", Resource = "Patient", EncodeRequestUrl = false }]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fixtureVariants: 1), CancellationToken.None);
+
+        result.HasErrors.ShouldBeTrue();
+        result.Document.ShouldBeNull();
+        result.Diagnostics.ShouldContain(d => d.Code == "LOCUST004" && d.Severity == LocustDiagnosticSeverity.Warning);
+        result.Diagnostics.ShouldContain(d => d.Code == "LOCUST008" && d.Severity == LocustDiagnosticSeverity.Error);
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST_METRIC");
+    }
+
+    [Fact]
+    public async Task GivenAnalyzerErrors_WhenDefinitionAlsoHasFixtures_ThenFixturesAreNeverCompiled()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [new FixtureDefinition { Id = "empty-fixture", Resource = null }],
+            Setup = [new OperationExpression { Type = "read", Resource = "Patient", Destination = 2 }]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options(fixtureVariants: 1), CancellationToken.None);
+
+        result.HasErrors.ShouldBeTrue();
+        result.Document.ShouldBeNull();
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST008");
+        result.Diagnostics.ShouldContain(d => d.Code == "LOCUST001");
+    }
+
+    [Fact]
+    public async Task GivenFixtureWithAutocreateAndAutodelete_WhenCompiled_ThenEmitsBothLifecycleMetricMappings()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [LiteralPatientFixture(id: "patient-fixture", autocreate: true, autodelete: true)]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("lifecycle.json"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        List<LocustDiagnostic> metrics = [.. result.Diagnostics.Where(d => d.Code == "LOCUST_METRIC")];
+
+        metrics.ShouldContain(d =>
+            d.Message == "Metric 'lifecycle.json::fixture.patient-fixture.autocreate'"
+            && d.Severity == LocustDiagnosticSeverity.Info);
+        metrics.ShouldContain(d =>
+            d.Message == "Metric 'lifecycle.json::fixture.patient-fixture.autodelete'"
+            && d.Severity == LocustDiagnosticSeverity.Info);
+    }
+
+    [Fact]
+    public async Task GivenFixtureWithOnlyAutocreate_WhenCompiled_ThenEmitsOnlyAutocreateLifecycleMapping()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [LiteralPatientFixture(id: "patient-fixture", autocreate: true, autodelete: false)]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("lifecycle.json"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        List<LocustDiagnostic> metrics = [.. result.Diagnostics.Where(d => d.Code == "LOCUST_METRIC")];
+
+        metrics.ShouldContain(d => d.Message == "Metric 'lifecycle.json::fixture.patient-fixture.autocreate'");
+        metrics.ShouldNotContain(d => d.Message == "Metric 'lifecycle.json::fixture.patient-fixture.autodelete'");
+    }
+
+    [Fact]
+    public async Task GivenFixtureWithOnlyAutodelete_WhenCompiled_ThenEmitsOnlyAutodeleteLifecycleMapping()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [LiteralPatientFixture(id: "patient-fixture", autocreate: false, autodelete: true)]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("lifecycle.json"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        List<LocustDiagnostic> metrics = [.. result.Diagnostics.Where(d => d.Code == "LOCUST_METRIC")];
+
+        metrics.ShouldNotContain(d => d.Message == "Metric 'lifecycle.json::fixture.patient-fixture.autocreate'");
+        metrics.ShouldContain(d => d.Message == "Metric 'lifecycle.json::fixture.patient-fixture.autodelete'");
+    }
+
+    [Fact]
+    public async Task GivenFixtureWithNeitherAutocreateNorAutodelete_WhenCompiled_ThenEmitsNoLifecycleMappings()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Fixtures = [LiteralPatientFixture(id: "patient-fixture")]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("lifecycle.json"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        result.Diagnostics.Where(d => d.Code == "LOCUST_METRIC")
+            .ShouldNotContain(d => d.Message.Contains("fixture.patient-fixture", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GivenFilteredTest_WhenCompiled_ThenNoMetricMappingIsEmittedForIt()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "excluded",
+                    FhirVersions = ["5.0"],
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient" }]
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("filtered.json", fhirVersion: "4.0"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        result.Diagnostics.ShouldNotContain(d => d.Code == "LOCUST_METRIC");
+    }
+
+    [Fact]
+    public async Task GivenParametrizedTest_WhenCompiled_ThenMetricMappingsUseFullExpandedActionIds()
+    {
+        TestScriptDefinition definition = new()
+        {
+            Metadata = new TestScriptMetadata { Name = "Suite" },
+            Tests =
+            [
+                new TestPhaseDefinition
+                {
+                    Name = "case",
+                    Parameters = new ParametrizeDefinition("code", ["a", "b"]),
+                    Actions = [new OperationExpression { Type = "read", Resource = "Patient" }]
+                }
+            ]
+        };
+
+        LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("params.json"), CancellationToken.None);
+
+        result.HasErrors.ShouldBeFalse();
+        List<LocustDiagnostic> metrics = [.. result.Diagnostics.Where(d => d.Code == "LOCUST_METRIC")];
+
+        LocustDiagnostic first = metrics.Single(d => d.Message == "Metric 'params.json::test.0.param.0.action.0'");
+        LocustDiagnostic second = metrics.Single(d => d.Message == "Metric 'params.json::test.0.param.1.action.0'");
+
+        // Distinct expansions of the same TestPhaseDefinition share a Name, so the diagnostic Source
+        // must be disambiguated per value index rather than colliding on an identical location.
+        first.Source.ShouldNotBe(second.Source);
     }
 
     private static TestScriptDefinition SingleSetupOperation(OperationExpression operation) => new()

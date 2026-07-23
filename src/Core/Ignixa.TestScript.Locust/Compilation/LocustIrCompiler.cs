@@ -1,3 +1,4 @@
+using Ignixa.TestScript.Evaluation;
 using Ignixa.TestScript.Expressions;
 using Ignixa.TestScript.Locust.Diagnostics;
 using Ignixa.TestScript.Locust.Ir;
@@ -22,10 +23,10 @@ public sealed class LocustIrCompiler
     /// <param name="cancellationToken">A token used to observe cancellation requests.</param>
     /// <returns>
     /// The compilation result. <see cref="LocustCompilationResult.Document"/> is <see langword="null"/>
-    /// when <see cref="LocustSupportAnalyzer.Analyze"/> reports any error-severity diagnostic; no
-    /// lowering is attempted in that case.
+    /// when <see cref="LocustSupportAnalyzer.Analyze"/> reports any error-severity diagnostic, or when
+    /// any fixture fails to compile; no partial document is ever produced in either case.
     /// </returns>
-    public Task<LocustCompilationResult> CompileAsync(
+    public async Task<LocustCompilationResult> CompileAsync(
         TestScriptDefinition definition,
         LocustCompilerOptions options,
         CancellationToken cancellationToken)
@@ -40,7 +41,33 @@ public sealed class LocustIrCompiler
 
         if (diagnostics.Exists(d => d.Severity == LocustDiagnosticSeverity.Error))
         {
-            return Task.FromResult(new LocustCompilationResult(null, diagnostics));
+            return new LocustCompilationResult(null, diagnostics);
+        }
+
+        var fixtureCompiler = new LocustFixtureCompiler(options.Schema);
+        List<LocustIrFixture> fixtures = new(definition.Fixtures.Count);
+        var hasFixtureError = false;
+        foreach (FixtureDefinition fixture in definition.Fixtures)
+        {
+            (LocustIrFixture? compiledFixture, LocustDiagnostic? fixtureDiagnostic) = await fixtureCompiler.CompileAsync(
+                fixture,
+                options.FixtureVariants,
+                $"{options.Source}:fixture:{fixture.Id}",
+                cancellationToken);
+
+            if (fixtureDiagnostic is not null)
+            {
+                diagnostics.Add(fixtureDiagnostic);
+                hasFixtureError = true;
+                continue;
+            }
+
+            fixtures.Add(compiledFixture!);
+        }
+
+        if (hasFixtureError)
+        {
+            return new LocustCompilationResult(null, diagnostics);
         }
 
         List<LocustIrAction> setup = new(definition.Setup.Count);
@@ -50,22 +77,58 @@ public sealed class LocustIrCompiler
         }
 
         List<LocustIrTest> tests = new(definition.Tests.Count);
+        List<(TestPhaseDefinition Definition, string Id, string SourceSuffix)> testMetricSources = [];
         for (int ti = 0; ti < definition.Tests.Count; ti++)
         {
             TestPhaseDefinition test = definition.Tests[ti];
-            List<LocustIrAction> actions = new(test.Actions.Count);
-            for (int ai = 0; ai < test.Actions.Count; ai++)
+
+            if (test.FhirVersions.Count > 0
+                && !TestScriptVersionCompatibility.IsCompatible(test.FhirVersions, options.FhirVersion))
             {
-                actions.Add(LowerAction(test.Actions[ai], $"test.{ti}.action.{ai}"));
+                continue;
             }
 
-            tests.Add(new LocustIrTest
+            if (test.Parameters is null)
             {
-                Id = $"test.{ti}",
-                Name = test.Name,
-                Description = test.Description,
-                Actions = actions
-            });
+                string testId = $"test.{ti}";
+                List<LocustIrAction> actions = LowerActions(test.Actions, testId);
+
+                tests.Add(new LocustIrTest
+                {
+                    Id = testId,
+                    Name = test.Name,
+                    Description = test.Description,
+                    RequiresCapability = test.RequiresCapability,
+                    Actions = actions
+                });
+                testMetricSources.Add((test, testId, string.Empty));
+            }
+            else
+            {
+                ParametrizeDefinition parameters = test.Parameters;
+                for (int vi = 0; vi < parameters.Values.Count; vi++)
+                {
+                    string value = parameters.Values[vi];
+                    string testId = $"test.{ti}.param.{vi}";
+                    List<LocustIrAction> actions = LowerActions(test.Actions, testId);
+
+                    tests.Add(new LocustIrTest
+                    {
+                        Id = testId,
+                        Name = $"{test.Name} [{value}]",
+                        Description = test.Description,
+                        RequiresCapability = test.RequiresCapability,
+                        DiscardContextAfterExecution = true,
+                        InitialVariables = new Dictionary<string, string> { [parameters.VariableName] = value },
+                        Actions = actions
+                    });
+                    // Every parametrize expansion shares the same underlying TestPhaseDefinition (and
+                    // therefore the same Name), so the diagnostic Source must be disambiguated by value
+                    // index -- otherwise distinct compiled actions across expansions would collide on
+                    // an identical (Code, Severity, Source) tuple, differing only by Message text.
+                    testMetricSources.Add((test, testId, $":param:{vi}"));
+                }
+            }
         }
 
         List<LocustIrOperation> teardown = new(definition.Teardown.Count);
@@ -77,11 +140,15 @@ public sealed class LocustIrCompiler
         LocustIrDocument document = new()
         {
             Metadata = new LocustIrMetadata(definition.Metadata.Name, options.Source, options.FhirVersion),
+            RequiresCapability = definition.Metadata.RequiresCapability,
+            Fixtures = fixtures,
             Variables = [.. definition.Variables.Select(LowerVariable)],
             Setup = setup,
             Tests = tests,
             Teardown = teardown
         };
+
+        AppendFixtureMetricDiagnostics(fixtures, options.Source, diagnostics);
 
         AppendMetricDiagnostics(
             definition.Setup,
@@ -90,14 +157,13 @@ public sealed class LocustIrCompiler
             "setup.",
             diagnostics);
 
-        for (int ti = 0; ti < definition.Tests.Count; ti++)
+        foreach ((TestPhaseDefinition test, string testId, string sourceSuffix) in testMetricSources)
         {
-            TestPhaseDefinition test = definition.Tests[ti];
             AppendMetricDiagnostics(
                 test.Actions,
                 options.Source,
-                $"{options.Source}:test:{test.Name}:action:",
-                $"test.{ti}.action.",
+                $"{options.Source}:test:{test.Name}{sourceSuffix}:action:",
+                $"{testId}.action.",
                 diagnostics);
         }
 
@@ -108,7 +174,54 @@ public sealed class LocustIrCompiler
             "teardown.",
             diagnostics);
 
-        return Task.FromResult(new LocustCompilationResult(document, diagnostics));
+        return new LocustCompilationResult(document, diagnostics);
+    }
+
+    private static List<LocustIrAction> LowerActions(IReadOnlyList<ActionExpression> actions, string idPrefix)
+    {
+        List<LocustIrAction> result = new(actions.Count);
+        for (int i = 0; i < actions.Count; i++)
+        {
+            result.Add(LowerAction(actions[i], $"{idPrefix}.action.{i}"));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Appends a <see cref="LocustDiagnosticSeverity.Info"/> metric-mapping diagnostic for every
+    /// enabled fixture lifecycle operation (<see cref="LocustIrFixture.Autocreate"/> and
+    /// <see cref="LocustIrFixture.Autodelete"/>), in fixture-definition order. Only successfully
+    /// compiled fixtures reach this point, since any fixture-compilation failure short-circuits the
+    /// whole compilation before this method is ever called.
+    /// </summary>
+    private static void AppendFixtureMetricDiagnostics(
+        IReadOnlyList<LocustIrFixture> fixtures,
+        string metricSource,
+        List<LocustDiagnostic> diagnostics)
+    {
+        foreach (LocustIrFixture fixture in fixtures)
+        {
+            if (fixture.Autocreate)
+            {
+                string id = $"fixture.{fixture.Id}.autocreate";
+                diagnostics.Add(new LocustDiagnostic(
+                    MetricDiagnosticCode,
+                    LocustDiagnosticSeverity.Info,
+                    $"{metricSource}:fixture:{fixture.Id}:autocreate",
+                    $"Metric '{metricSource}::{id}'"));
+            }
+
+            if (fixture.Autodelete)
+            {
+                string id = $"fixture.{fixture.Id}.autodelete";
+                diagnostics.Add(new LocustDiagnostic(
+                    MetricDiagnosticCode,
+                    LocustDiagnosticSeverity.Info,
+                    $"{metricSource}:fixture:{fixture.Id}:autodelete",
+                    $"Metric '{metricSource}::{id}'"));
+            }
+        }
     }
 
     /// <summary>
