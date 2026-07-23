@@ -40,7 +40,8 @@ public static class Lower
         bool systemLevelSearch = false,
         DateTimeOffset? approximationReferenceTime = null,
         OffsetSpec? offsetPage = null,
-        bool countPhaseScoped = false)
+        bool countPhaseScoped = false,
+        (long Start, long End)? surrogateIdRange = null)
     {
         if (offsetPage is not null && (page is not null || top is not null))
         {
@@ -115,6 +116,16 @@ public static class Lower
         }
 
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
+
+        if (surrogateIdRange is { } range)
+        {
+            var table = SqlCatalog.Default.Table("Resource");
+            var column = new SqlColumnRef(table.TableName, "ResourceSurrogateId");
+            var rangePredicate = new Predicate.And(
+                new Predicate.GreaterThanOrEqual(column, new SqlParameterRef(range.Start)),
+                new Predicate.LessThanOrEqual(column, new SqlParameterRef(range.End)));
+            outerPredicate = outerPredicate is null ? rangePredicate : new Predicate.And(outerPredicate, rangePredicate);
+        }
 
         return new LoweredPlan(
             new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly, offsetPage, countPhaseScoped),

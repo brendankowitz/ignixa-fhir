@@ -3,6 +3,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -898,6 +899,7 @@ public class LowerTests
 
         // Assert -- no search-param CTE is needed for a query that only filters resource columns
         plan.OuterPredicate.ShouldNotBeNull();
+
         plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
     }
 
@@ -1044,5 +1046,59 @@ public class LowerTests
         var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
         plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.NotReferencedSource>();
         plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+    }
+
+    [Fact]
+    public void GivenASurrogateIdRangeAlongsideAnExistingOuterPredicate_WhenLowered_ThenBothAreAndedTogetherInOuterPredicate()
+    {
+        // Arrange -- Patient?_id=456, plus an export-worker-style surrogate-ID range. _id already
+        // contributes a resource-column predicate to OuterPredicate via ExtractResourceColumnPredicates;
+        // the range must AND onto it rather than replace it.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var idPredicate = new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "456", text: null));
+        var tree = new SearchParameterExpression(idParam, idPredicate);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, surrogateIdRange: (Start: 1000L, End: 2000L)).Plan;
+
+        // Assert
+        var table = SqlCatalog.Default.Table("Resource");
+        var column = new SqlColumnRef(table.TableName, "ResourceSurrogateId");
+        var rangePredicate = new Predicate.And(
+            new Predicate.GreaterThanOrEqual(column, new SqlParameterRef(1000L)),
+            new Predicate.LessThanOrEqual(column, new SqlParameterRef(2000L)));
+        plan.OuterPredicate.ShouldBeOfType<Predicate.And>();
+        ((Predicate.And)plan.OuterPredicate!).Right.ShouldBe(rangePredicate);
+    }
+
+    [Fact]
+    public void GivenASurrogateIdRangeWithNoOtherResourceColumnPredicate_WhenLowered_ThenOuterPredicateIsTheRangeAlone()
+    {
+        // Arrange -- covers the expression is not null branch where ExtractResourceColumnPredicates
+        // itself contributes no OuterPredicate at all (an ordinary search-parameter-table leaf), so the
+        // range predicate becomes the whole of OuterPredicate rather than the right side of an And.
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, surrogateIdRange: (Start: 1000L, End: 2000L)).Plan;
+
+        // Assert
+        var table = SqlCatalog.Default.Table("Resource");
+        var column = new SqlColumnRef(table.TableName, "ResourceSurrogateId");
+        var expected = new Predicate.And(
+            new Predicate.GreaterThanOrEqual(column, new SqlParameterRef(1000L)),
+            new Predicate.LessThanOrEqual(column, new SqlParameterRef(2000L)));
+        plan.OuterPredicate.ShouldBe(expected);
     }
 }

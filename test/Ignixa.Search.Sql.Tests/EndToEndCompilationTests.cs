@@ -3025,6 +3025,61 @@ public class EndToEndCompilationTests
         (emitted.Sql.Split("OFFSET", StringSplitOptions.None).Length - 1).ShouldBe(1);
     }
 
+    [Fact]
+    public async Task GivenASurrogateIdRange_WhenCompiledAlongsideAnOrdinaryPredicate_ThenBothPredicatesAppearInOuterPredicate()
+    {
+        // Arrange -- Patient?_id=123&active=true, plus an export-worker-style surrogate-ID range --
+        // composes with a resource-column predicate the search expression itself already contributed
+        // to OuterPredicate (_id), not just the bare-expression case.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null))),
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null)),
+        ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var lowered = Lower.Run(tree, symbolTable, targetResourceType: "Patient",
+            includes: [], revIncludes: [], includeLimit: 0, sort: [], SortPhase.Valued, page: null,
+            surrogateIdRange: (Start: 1000L, End: 2000L));
+        var emitted = SqlBuilder.Run(lowered.Plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("ResourceSurrogateId >= @p");
+        emitted.Sql.ShouldContain("ResourceSurrogateId <= @p");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(1000L));
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(2000L));
+    }
+
+    [Fact]
+    public async Task GivenOnlyASurrogateIdRangeWithNoOtherExpression_WhenCompiled_ThenComposesWithTheBareResourceSource()
+    {
+        // Arrange -- the common export case: no search predicate at all, just a resource-type +
+        // surrogate-range scan (covers Lower.Run's expression == null branch, where OuterPredicate
+        // starts out as the implicit null rather than something ExtractResourceColumnPredicates set).
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(expression: null, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var lowered = Lower.Run(expression: null, symbolTable, targetResourceType: "Patient",
+            includes: [], revIncludes: [], includeLimit: 0, sort: [], SortPhase.Valued, page: null,
+            surrogateIdRange: (Start: 1000L, End: 2000L));
+        var emitted = SqlBuilder.Run(lowered.Plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("ResourceSurrogateId >= @p");
+        emitted.Sql.ShouldContain("ResourceSurrogateId <= @p");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(1000L));
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(2000L));
+    }
+
     /// <summary>Collects the transitive set of CTE indices reachable from a root index, walking the public
     /// CteDefinition graph (used to prove branch-scoped composition without touching internal helpers).</summary>
     private static HashSet<int> CollectReachable(int rootIndex, QueryPlan plan)
