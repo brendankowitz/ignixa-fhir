@@ -314,9 +314,7 @@ ignixa-matrix serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --po
 
 Scripts are parsed once at startup; auth is a static `--auth-header`/`FHIR_AUTH_HEADER` or OAuth2
 client-credentials (`FHIR_TOKEN_URL`/`FHIR_CLIENT_ID`/`FHIR_CLIENT_SECRET`/`FHIR_SCOPES`, cached and
-refreshed automatically). Packaging the runner into an Azure Load Testing artifact (locustfile,
-`requirements.txt`, `locust.conf`, packaging scripts) lives in
-[`tools/Ignixa.ConformanceMatrix.Cli/loadtest/`](https://github.com/brendankowitz/ignixa-fhir/tree/main/tools/Ignixa.ConformanceMatrix.Cli/loadtest).
+refreshed automatically).
 
 ## Published FHIR Conformance Report
 

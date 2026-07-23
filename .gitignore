@@ -170,9 +170,6 @@ publish/
 # Note: Comment the next line if you want to checkin your web deploy settings,
 # but database connection strings (with potential passwords) will be unencrypted
 *.pubxml
-# The load-runner sidecar publish profile carries build properties only — no deploy
-# settings or connection strings — and must ship with the repo.
-!tools/Ignixa.ConformanceMatrix.Cli/Properties/PublishProfiles/linux-x64-sidecar.pubxml
 *.publishproj
 
 # Microsoft Azure Web App publish settings. Comment the next line if you want to

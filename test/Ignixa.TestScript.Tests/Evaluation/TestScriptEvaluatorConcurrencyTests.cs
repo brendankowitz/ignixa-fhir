@@ -13,8 +13,7 @@ using NSubstitute;
 
 namespace Ignixa.TestScript.Tests.Evaluation;
 
-// Spike B (docs/features/load-testing/investigations/azure-load-testing-locust.md, Phase 0):
-// the load-serve host builds one TestScriptEvaluator per HTTP request, all sharing the same
+// The `ignixa-matrix serve` host builds one TestScriptEvaluator per HTTP request, all sharing the same
 // ITestRequestProvider/IFixtureProvider/IFhirSchemaProvider instances, and Kestrel dispatches
 // those requests concurrently. These tests reproduce that shape and look for cross-run
 // contamination through the shared seam rather than merely asserting "no exception".

@@ -83,10 +83,8 @@ completed run against a live server.
 
 Hosts TestScripts as a local load-test runner: a Kestrel listener that parses every `*.json` under
 `--tests` once at startup and evaluates one on demand per `POST /run`, instead of running a suite
-once and exiting. This is the sidecar described in
-[`docs/features/load-testing/investigations/azure-load-testing-locust.md`](../../docs/features/load-testing/investigations/azure-load-testing-locust.md) —
-meant to be spawned once per Azure Load Testing / Locust engine instance and driven by a locustfile
-over `127.0.0.1`.
+once and exiting. It is designed to run as a sidecar — spawned once per load-generator instance
+(e.g. an Azure Load Testing / Locust engine) and driven over `127.0.0.1`.
 
 ```bash
 ignixa-matrix serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --port 5599
@@ -157,15 +155,5 @@ Two mutually exclusive auth modes, in order of precedence:
 | `FHIR_CLIENT_SECRET` | Client secret for the token request. Never logged. |
 | `FHIR_SCOPES` | Space-separated scopes (optional). |
 | `FHIR_AUTH_HEADER` | Static auth header, used when `--auth-header` is not passed and `FHIR_TOKEN_URL` is unset. |
-
-### Publishing the sidecar binary
-
-`Properties/PublishProfiles/linux-x64-sidecar.pubxml` produces a self-contained, single-file,
-trimmed-globalization linux-x64 build for uploading as an Azure Load Testing artifact zip:
-
-```bash
-dotnet publish tools/Ignixa.ConformanceMatrix.Cli/Ignixa.ConformanceMatrix.Cli.csproj \
-  -p:PublishProfile=linux-x64-sidecar -c Release
-```
 
 Built on the [Ignixa.TestScript](https://www.nuget.org/packages/Ignixa.TestScript) execution engine.

@@ -1,4 +1,0 @@
-# Dependencies for the Locust load test runner
-# Note: locust is NOT listed here because Azure Load Testing provides it in the engine environment
-
-requests

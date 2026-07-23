@@ -16,4 +16,3 @@ Produce a static site (GitHub Pages) with a pass/fail matrix like https://health
 
 - [E2E Testing Feature](../e2e-testing/readme.md) — internal E2E test coverage for ignixa-fhir
 - [FhirFaker Feature](../fhir-faker/readme.md) — synthetic FHIR data generation
-- [Load Testing Feature](../load-testing/readme.md) — the same CLI also has an `ignixa-matrix serve` mode used as an Azure Load Testing / Locust runner
