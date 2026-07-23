@@ -212,4 +212,77 @@ public class ResourceColumnLoweringRuleTests
 
         Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
     }
+
+    /// <summary>
+    /// Every comparator whose bound is the top of the millisecond must compare against
+    /// <c>floor + 79999</c>, not the bare floor. The database appends a uniquifier drawn from a sequence
+    /// declared MAXVALUE 79999, so a bound at the floor addresses only the single resource that happened
+    /// to draw 0 and silently drops up to 79,999 others written in that millisecond.
+    /// </summary>
+    /// <remarks>
+    /// Ge, Lt and Eb are deliberately absent: they bound at the bottom of the millisecond, where the
+    /// floor is the correct value. "eb" means the resource ends strictly before the instant, so it
+    /// belongs with Lt, not with Sa.
+    /// </remarks>
+    public static TheoryData<SearchComparator> UpperBoundComparators() => new()
+    {
+        SearchComparator.Eq,
+        SearchComparator.Ne,
+        SearchComparator.Gt,
+        SearchComparator.Sa,
+        SearchComparator.Le,
+    };
+
+    [Theory]
+    [MemberData(nameof(UpperBoundComparators))]
+    public void GivenAnExactInstantLastUpdated_WhenLoweredWithAnUpperBoundComparator_ThenTheBoundCoversTheWholeMillisecond(
+        SearchComparator comparator)
+    {
+        // Arrange
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var predicate = new SearchParameterPredicateExpression(
+            LastUpdatedParameter(), comparator, modifier: null, new DateTimeSearchValue(instant));
+        var floor = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks << 3;
+
+        // Act
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        // Assert -- whichever shape the comparator produces, the upper parameter it binds is the last
+        // surrogate id in the millisecond.
+        var bounds = CollectParameterValues(result.ShouldNotBeNull()).ToArray();
+        bounds.ShouldContain(floor + 79999, $"'{comparator}' must bound at the top of the millisecond bucket.");
+    }
+
+    [Fact]
+    public void GivenAnExactInstantLastUpdated_WhenLoweredWithEqAndNe_ThenTheirBoundsAreIdentical()
+    {
+        // Arrange -- eq and ne must address exactly the same bucket, or a resource can satisfy both or
+        // neither.
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+
+        // Act
+        var eq = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, null, value),
+            ContextResolving("Patient", 103));
+        var ne = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ne, null, value),
+            ContextResolving("Patient", 103));
+
+        // Assert
+        CollectParameterValues(eq.ShouldNotBeNull()).OrderBy(v => v)
+            .ShouldBe(CollectParameterValues(ne.ShouldNotBeNull()).OrderBy(v => v));
+    }
+
+    private static IEnumerable<long> CollectParameterValues(Predicate predicate) => predicate switch
+    {
+        Predicate.And and => CollectParameterValues(and.Left).Concat(CollectParameterValues(and.Right)),
+        Predicate.Or or => CollectParameterValues(or.Left).Concat(CollectParameterValues(or.Right)),
+        Predicate.Equal e => [(long)e.Value.Value!],
+        Predicate.LessThan lt => [(long)lt.Value.Value!],
+        Predicate.LessThanOrEqual le => [(long)le.Value.Value!],
+        Predicate.GreaterThan gt => [(long)gt.Value.Value!],
+        Predicate.GreaterThanOrEqual ge => [(long)ge.Value.Value!],
+        _ => [],
+    };
 }

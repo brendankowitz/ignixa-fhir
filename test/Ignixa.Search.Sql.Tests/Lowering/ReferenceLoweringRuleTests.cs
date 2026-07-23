@@ -150,4 +150,36 @@ public class ReferenceLoweringRuleTests
         externalBaseUri.Collation.ShouldBeNull();
     }
 
+    [Fact]
+    public void GivenAnInternalOrExternalReference_WhenLowered_ThenEmitsNoBaseUriPredicate()
+    {
+        // Arrange -- a bare relative search value such as "subject=Patient/123". The spec requires that a
+        // relative reference match a stored row whether or not that row carries a base, so this must NOT
+        // constrain BaseUri at all. Emitting "BaseUri IS NULL" here -- as a strict local/external XOR
+        // would -- silently excludes every externally-based row.
+        var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var value = new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: "Patient", resourceId: "123");
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, value);
+        var context = new LeafContext(new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 77 },
+            new Dictionary<string, short> { ["Patient"] = 103 }));
+
+        // Act
+        var cte = ReferenceLoweringRule.Lower(predicate, value, context, 104);
+
+        // Assert -- exactly Type AND Id, with no BaseUri arm anywhere in the tree.
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        and.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceTypeId");
+        and.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceId");
+        ReferencesBaseUri(cte.Predicate).ShouldBeFalse("InternalOrExternal must leave BaseUri unconstrained.");
+    }
+
+    private static bool ReferencesBaseUri(Predicate predicate) => predicate switch
+    {
+        Predicate.And and => ReferencesBaseUri(and.Left) || ReferencesBaseUri(and.Right),
+        Predicate.Or or => ReferencesBaseUri(or.Left) || ReferencesBaseUri(or.Right),
+        Predicate.IsNull isNull => isNull.Column.Column == "BaseUri",
+        Predicate.Equal equal => equal.Column.Column == "BaseUri",
+        _ => false,
+    };
 }
