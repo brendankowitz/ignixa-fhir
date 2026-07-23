@@ -17,39 +17,9 @@ namespace Ignixa.DataLayer.SqlServer;
 /// <summary>
 /// Raw-ADO.NET port of <c>SqlEntityFrameworkRepository</c> (Ignixa.DataLayer.SqlEntityFramework)
 /// against the same legacy fhir-server schema, using <see cref="ISqlExecutionService"/> instead of
-/// EF Core (design doc section 4: no ORM). Delegates bulk/index writes to
-/// <see cref="SqlServerMergeRepository"/> exactly as the EF version delegates to
-/// <c>SqlMergeRepository</c>.
-///
-/// Phase D Task 6 implements 5 of the 12 <see cref="IFhirRepository"/> members
-/// (<see cref="GetAsync"/>, <see cref="CreateOrUpdateAsync"/>, <see cref="DeleteAsync"/>,
-/// <see cref="GetNextTransactionIdAsync"/>, <see cref="CommitTransactionAsync"/>) plus the two shared
-/// private helpers (<see cref="GetOrCreateResourceTypeIdAsync"/>, <see cref="GetNextSurrogateIdAsync"/>)
-/// and <see cref="UpsertResourceTtlAsync"/>/<see cref="DeleteSearchIndexEntriesAsync"/>.
-///
-/// Phase D Task 7 adds <see cref="BatchWriteAsync"/> and <see cref="GetStalledTransactionsAsync"/>,
-/// porting <c>SqlEntityFrameworkRepository.cs:337-631/651-685</c>: cache-first resource-type
-/// resolution with a single batched fallback query, 100-item-chunked existing-resource lookup via a
-/// <c>VALUES</c> table-value constructor join (one round trip per chunk, not N), and the client-side
-/// version/surrogate-id pre-flight checks that mirror the merge stored procedure's own validation.
-///
-/// Phase D Task 8 adds <see cref="GetResourceHistoryAsync"/>/<see cref="GetTypeHistoryAsync"/>/
-/// <see cref="GetSystemHistoryAsync"/>, porting <c>SqlEntityFrameworkRepository.cs:756-931</c>'s
-/// shared <c>ExecuteHistoryQueryAsync</c> helper as <see cref="ExecuteHistoryQueryAsync"/>: a
-/// <c>LEFT JOIN</c> to <c>dbo.Transactions</c> for <c>_since</c>/<c>_until</c> filtering and sort
-/// ordering, with <c>LastModified</c> computed from <c>r.ResourceSurrogateId</c> via <c>IdHelper</c>
-/// (a faithful, non-divergent port -- confirmed correct, not the "bug" an earlier draft of this plan
-/// mistakenly believed it to be). <see cref="ISqlExecutionService"/> only exposes a
-/// fully-materializing <c>ExecuteReaderAsync</c> (no server-side cursor streaming), so unlike the EF
-/// original's <c>AsAsyncEnumerable()</c>, this port materializes each page's rows in one round trip
-/// and then yields the successfully-mapped ones -- the public surface is still
-/// <see cref="IAsyncEnumerable{T}"/>, per-row try/catch-and-skip is preserved exactly.
-///
-/// Phase D Task 9 adds <see cref="GetExpiredResourcesAsync"/>/<see cref="HardDeleteResourceAsync"/>,
-/// porting <c>SqlEntityFrameworkRepository.cs:934-1026</c>: the former translates a 3-way LINQ join
-/// (ResourceTtl JOIN Resource JOIN ResourceType) to raw SQL, the latter transcribes the original's
-/// already-raw-SQL statement text nearly verbatim (the one method in the whole port with no LINQ to
-/// translate) -- this completes all 12 <see cref="IFhirRepository"/> members on this class.
+/// EF Core. Delegates bulk/index writes to <see cref="SqlServerMergeRepository"/>, history queries
+/// to <see cref="SqlServerHistoryQueryExecutor"/>. Full port history and task-by-task rationale:
+/// <c>docs/superpowers/plans/2026-07-20-ignixa-datalayer-sqlserver-phase-d.md</c>.
 /// </summary>
 public class SqlServerFhirRepository(
     ISqlExecutionService sqlExecutionService,
@@ -255,34 +225,11 @@ public class SqlServerFhirRepository(
 
         var newVersion = currentEntity.Value.Version + 1;
 
-        // transactionId is this method's own OPTIONAL parameter (nullable) -- NOT a value obtained
-        // via GetNextTransactionIdAsync(). No CommitTransactionAsync call anywhere in this method:
-        // these statements run sequentially, uncommitted-as-a-unit, matching CLAUDE.md's documented
-        // application-level-transaction philosophy.
-        //
-        // Deliberate, documented divergence from legacy on the transactionId != null path:
-        // legacy SqlEntityFrameworkRepository.DeleteAsync (SqlEntityFrameworkRepository.cs:205-316)
-        // only flushes its EF-tracked writes -- the IsHistory flip on the old row and the tombstone
-        // insert -- via `if (!transactionId.HasValue) { await _context.SaveChangesAsync(cancellationToken); }`
-        // (:304-307). When transactionId IS non-null (a bundle/batch context), that guard is skipped,
-        // so those two EF-tracked changes are only persisted as an incidental side effect of
-        // UpsertResourceTtlAsync's own SaveChangesAsync call (:1078/:1091) -- and legacy's delete path
-        // always passes expiresAt: null, so UpsertResourceTtlAsync only calls SaveChangesAsync at all
-        // if a TTL row already existed to remove (:1088-1096). Meanwhile DeleteSearchIndexEntriesAsync
-        // (:1112) is raw SQL (ExecuteSqlRawAsync) and always executes immediately, regardless of
-        // transactionId. Net effect: legacy's non-null-transactionId path can wipe a resource's
-        // search-index rows while never actually persisting the tombstone/history-flip that was
-        // supposed to replace them -- a latent data-loss/inconsistency bug, not an intended behavior.
-        //
-        // This port does NOT replicate that bug: every statement below (history flip, tombstone
-        // insert, TTL upsert, search-index wipe) executes immediately via ExecuteNonQueryAsync in ALL
-        // cases, whether transactionId is null or not. This is an intentional improvement, confirmed
-        // safe because the only real production caller (DeleteResourceHandler) always passes
-        // transactionId: null, so this divergence is currently inert in production -- but it is a
-        // real, deliberate change in behavior on the transactionId != null path, not an oversight.
-        // See SqlServerFhirRepositoryCrudTests for a test pinning this port's own
-        // transactionId != null semantics directly (not a differential test -- legacy's behavior here
-        // is a bug, not a baseline worth replicating).
+        // Deliberate divergence from the legacy EF port: this method never allocates a transactionId
+        // (no transaction-scoped delete), matching the documented semantics pinned directly by
+        // SqlServerFhirRepositoryCrudTests -- see that file for the exact behavioral contract this
+        // comment used to restate in full. This divergence is currently inert in production: the only
+        // real caller (DeleteResourceHandler) always passes transactionId: null.
         using (var historyCommand = new SqlCommand(
             "UPDATE dbo.Resource SET IsHistory=1, HistoryTransactionId=@HistoryTransactionId WHERE ResourceSurrogateId=@ResourceSurrogateId"))
         {
@@ -375,9 +322,43 @@ public class SqlServerFhirRepository(
             currentVersions.Count,
             operations.Count - currentVersions.Count);
 
-        // Validate surrogate IDs and versions BEFORE building the wrapper / sending to the database.
-        // This replicates the stored procedure's validation check to catch issues early with better
-        // error messages.
+        var resourceWrappers = await BuildResourceWrappersAsync(operations, resourceTypeMap, currentVersions, transactionId, cancellationToken);
+
+        var entryIndices = operations.Select(op => op.entryIndex).ToList();
+
+        // Delegate the actual write to the merge repository -- same mechanism as CreateOrUpdateAsync.
+        // Does NOT commit internally: commit happens later via a separate CommitTransactionAsync call.
+        await _mergeRepository.MergeResourcesAsync(
+            transactionId.Value,
+            singleTransaction: true,
+            resourceWrappers,
+            entryIndices,
+            cancellationToken);
+
+        var results = new List<ResourceKey>(operations.Count);
+        for (var i = 0; i < operations.Count; i++)
+        {
+            results.Add(new ResourceKey(operations[i].resourceType, operations[i].resourceId, resourceWrappers[i].VersionId, null));
+        }
+
+        _logger.LogInformation(
+            "Batch wrote {Count} resources for transaction {TransactionId}",
+            operations.Count,
+            transactionId.Value);
+
+        return results;
+    }
+
+    // Validates surrogate IDs and versions BEFORE building the wrapper / sending to the database.
+    // This replicates the stored procedure's own validation check to catch issues early with better
+    // error messages.
+    private Task<IReadOnlyList<ResourceWrapper>> BuildResourceWrappersAsync(
+        IReadOnlyList<(string resourceType, string resourceId, ResourceJsonNode resource, IReadOnlyList<object> searchIndexes, string httpMethod, int entryIndex)> operations,
+        Dictionary<string, short> resourceTypeMap,
+        Dictionary<(short TypeId, string ResourceId), (int MaxVersion, long MaxSurrogateId)> currentVersions,
+        TransactionId transactionId,
+        CancellationToken cancellationToken)
+    {
         var resourceWrappers = new List<ResourceWrapper>(operations.Count);
 
         foreach (var (resourceType, resourceId, resource, searchIndexes, httpMethod, entryIndex) in operations)
@@ -430,29 +411,7 @@ public class SqlServerFhirRepository(
             resourceWrappers.Add(wrapper);
         }
 
-        var entryIndices = operations.Select(op => op.entryIndex).ToList();
-
-        // Delegate the actual write to the merge repository -- same mechanism as CreateOrUpdateAsync.
-        // Does NOT commit internally: commit happens later via a separate CommitTransactionAsync call.
-        await _mergeRepository.MergeResourcesAsync(
-            transactionId.Value,
-            singleTransaction: true,
-            resourceWrappers,
-            entryIndices,
-            cancellationToken);
-
-        var results = new List<ResourceKey>(operations.Count);
-        for (var i = 0; i < operations.Count; i++)
-        {
-            results.Add(new ResourceKey(operations[i].resourceType, operations[i].resourceId, resourceWrappers[i].VersionId, null));
-        }
-
-        _logger.LogInformation(
-            "Batch wrote {Count} resources for transaction {TransactionId}",
-            operations.Count,
-            transactionId.Value);
-
-        return results;
+        return Task.FromResult<IReadOnlyList<ResourceWrapper>>(resourceWrappers);
     }
 
     /// <inheritdoc/>
