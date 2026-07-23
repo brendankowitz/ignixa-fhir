@@ -6,20 +6,15 @@
 
 | Verdict | Count |
 |---|---:|
-| NotCompiled | 3 |
+| NotCompiled | 0 |
 | Match | 69 |
 | CompilerDoesLess | 46 |
 | CompilerDoesMore | 14 |
-| Divergent | 53 |
+| Divergent | 56 |
 
 ## Gaps -- queries the compiler cannot express
 
-### build:InvalidSearchOperationException (3)
-
-- **3x** The _include search is missing the type to search.
-  - `/Patient?_id=ignixa-inc-pat1&_include=*`
-  - `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*`
-  - `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1`
+None.
 
 ## Divergences -- compiled, but asks the database for something different
 
@@ -3319,6 +3314,137 @@ cte2 = <-cte1  [distinct,order-by,top]
 compiler:
 select0 = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join,order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+```
+
+</details>
+
+### Divergent: `/Patient?_id=ignixa-inc-pat1&_include=*`
+
+Only the shipping engine does:
+- `filter Row < <v>`
+
+Only the compiler does:
+- `table Resource`
+- `filter ResourceTypeId = <v> (x6)`
+- `filter col:BaseUri is-null`
+
+Operator differences (encoding, not semantics):
+- `legacy: op distinct (x3)`
+- `legacy: op in`
+- `legacy: op row-number`
+- `legacy: op top`
+- `compiler: op or (x5)`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
+cte1 = <-cte0  [distinct,order-by,row-number,top]
+select0 = Resource  <-cte4  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte1 = 
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte3 = <-cte2  [count-big,distinct,top]
+cte4 = <-cte1,cte3  [correlate,correlate,exists,not,union-all]
+
+compiler:
+select0 = <-cteMatchPage,inc0lim  [correlate,correlate,exists,not,union-all]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+cteMatchPage = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join]
+inc0 = ReferenceSearchParam+Resource  <-cteMatchPage  IsDeleted = <n> IsHistory = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,exists,inner-join,or,or,or,or,or,order-by,top]
+inc0lim = <-inc0  [count-big,order-by,top]
+```
+
+</details>
+
+### Divergent: `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*`
+
+Only the shipping engine does:
+- `filter Row < <v> (x2)`
+
+Only the compiler does:
+- `table Resource`
+- `filter ResourceTypeId = <v> (x7)`
+- `filter col:BaseUri is-null (x2)`
+
+Operator differences (encoding, not semantics):
+- `legacy: op distinct (x4)`
+- `legacy: op in (x2)`
+- `legacy: op row-number`
+- `legacy: op top`
+- `compiler: op correlate (x2)`
+- `compiler: op or (x5)`
+- `compiler: op order-by (x2)`
+- `compiler: op union-all`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
+cte1 = <-cte0  [distinct,order-by,row-number,top]
+select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte1 = 
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte3 = <-cte2  [count-big,distinct,top]
+cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte5 = <-cte4  [count-big,distinct,top]
+cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+
+compiler:
+select0 = <-cteMatchPage,inc0lim,inc1lim  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+cteMatchPage = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join]
+inc0 = ReferenceSearchParam+Resource  <-cteMatchPage  IsDeleted = <n> IsHistory = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,exists,inner-join,or,or,or,or,or,order-by,top]
+inc0lim = <-inc0  [count-big,order-by,top]
+inc1 = ReferenceSearchParam+Resource  <-cteMatchPage,inc0lim  IsDeleted = <n> IsHistory = <n> ResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,correlate,correlate,distinct,exists,inner-join,order-by,top,union-all]
+inc1lim = <-inc1  [count-big,order-by,top]
+```
+
+</details>
+
+### Divergent: `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1`
+
+Only the shipping engine does:
+- `filter Row < <v> (x2)`
+
+Only the compiler does:
+- `table Resource`
+- `filter ResourceTypeId = <v> (x7)`
+- `filter col:BaseUri is-null (x2)`
+
+Operator differences (encoding, not semantics):
+- `legacy: op distinct (x4)`
+- `legacy: op in (x2)`
+- `legacy: op row-number`
+- `legacy: op top`
+- `compiler: op correlate (x2)`
+- `compiler: op or (x5)`
+- `compiler: op order-by (x2)`
+- `compiler: op union-all`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
+cte1 = <-cte0  [distinct,order-by,row-number,top]
+select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte1 = 
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte3 = <-cte2  [count-big,distinct,top]
+cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte5 = <-cte4  [count-big,distinct,top]
+cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+
+compiler:
+select0 = <-cteMatchPage,inc0lim,inc1lim  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+cteMatchPage = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join]
+inc0 = ReferenceSearchParam+Resource  <-cteMatchPage  IsDeleted = <n> IsHistory = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,exists,inner-join,or,or,or,or,or,order-by,top]
+inc0lim = <-inc0  [count-big,order-by,top]
+inc1 = ReferenceSearchParam+Resource  <-cteMatchPage,inc0lim  IsDeleted = <n> IsHistory = <n> ResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,correlate,correlate,distinct,exists,inner-join,order-by,top,union-all]
+inc1lim = <-inc1  [count-big,order-by,top]
 ```
 
 </details>
