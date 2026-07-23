@@ -819,6 +819,54 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenANegatedPredicateAndedWithAPositiveOne_WhenLowered_ThenSubtractsFromThePositiveRatherThanScanningEveryResource()
+    {
+        // Arrange -- Patient?name=Smith&active:not=true. Anchoring the negation on a ResourceSource makes
+        // the plan read every resource of the type just to subtract from it; the positive sibling is
+        // already a strictly smaller set and (A and not B) is (A except B), so it is the better anchor.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var name = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var notActive = new SearchParameterExpression(
+            activeParam,
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "true", text: null)));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [name, notActive]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202, [activeParam.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldNotContain(cte => cte is CteDefinition.ResourceSource);
+        var except = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe((short)202);
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe((short)44);
+    }
+
+    [Fact]
+    public void GivenANegatedPredicateWithNoPositiveSibling_WhenLowered_ThenStillAnchorsOnTheResourceSource()
+    {
+        // Arrange -- Patient?active:not=true. There is no smaller set to subtract from, so the full
+        // resource set remains the only correct anchor.
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var tree = new SearchParameterExpression(
+            activeParam,
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "true", text: null)));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [activeParam.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldContain(cte => cte is CteDefinition.ResourceSource);
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+    }
+
+    [Fact]
     public void GivenAMultiValuedIdParameter_WhenLowered_ThenLiftsTheWholeOrIntoTheOuterWhere()
     {
         // Arrange -- Patient?_id=a,b,c. A comma list binds to one SearchParameterExpression wrapping an

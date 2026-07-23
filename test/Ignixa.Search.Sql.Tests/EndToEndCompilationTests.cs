@@ -462,15 +462,16 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, ResourceSource, Except, then an outer Intersect
+        // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, then a single
+        // Except subtracting that Union from `active`. There is deliberately no ResourceSource here:
+        // anchoring the negation on one would read every Patient in the partition purely to subtract
+        // from it, when the `active` sibling is already the smaller anchor and yields the same set.
         plan.Explain().ShouldBe(
             "cte0 = TokenSearchParam[103,44]  Code = @p0\n" +
             "cte1 = StringSearchParam[103,202]  Text LIKE @p1 (StartsWith) collate CI_AI\n" +
             "cte2 = StringSearchParam[103,202]  Text LIKE @p2 (StartsWith) collate CI_AI\n" +
             "cte3 = Union(cte1, cte2)\n" +
-            "cte4 = ResourceSource[103]\n" +
-            "cte5 = Except(cte4, cte3)\n" +
-            "root = Intersect(cte0, cte5)");
+            "root = Except(cte0, cte3)");
         emitted.Sql.ShouldNotContain("Smith");
         emitted.Sql.ShouldNotContain("Jones");
         emitted.Sql.ShouldNotContain("true");

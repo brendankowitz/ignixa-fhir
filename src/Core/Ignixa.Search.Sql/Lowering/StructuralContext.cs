@@ -158,9 +158,16 @@ public sealed class StructuralContext
     }
 
     public CteRef LowerNot(CteRef innerMatch, string resourceType)
+        => Except(LowerResourceSource(resourceType), innerMatch);
+
+    /// <summary>
+    /// Subtracts one match set from another. Callers that already hold a narrower left-hand set should
+    /// use this directly rather than <see cref="LowerNot"/>, whose ResourceSource anchor reads every
+    /// resource of the type.
+    /// </summary>
+    public CteRef Except(CteRef left, CteRef right)
     {
-        var baseRef = LowerResourceSource(resourceType);
-        _ctes.Add(new CteDefinition.Except(baseRef, innerMatch));
+        _ctes.Add(new CteDefinition.Except(left, right));
         return new CteRef(_ctes.Count - 1);
     }
 

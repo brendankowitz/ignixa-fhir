@@ -182,17 +182,68 @@ public static class Lower
         return false;
     }
 
-    /// <summary>Lowers an AND by lowering each child and intersecting the results left to right.</summary>
+    /// <summary>
+    /// Lowers an AND by intersecting its positive children, then subtracting each negated child from that
+    /// intersection. Lowering a negation on its own has to anchor it on every resource of the type just to
+    /// subtract from something (see <see cref="StructuralContext.LowerNot"/>); inside an AND the positive
+    /// siblings are already a smaller anchor, and `A AND NOT B` is `A EXCEPT B`. With no positive sibling
+    /// there is nothing smaller to subtract from, so the ResourceSource anchor is still the only option.
+    /// </summary>
     private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string resourceType)
     {
-        var refs = and.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList();
+        var positives = new List<Expression>();
+        var negated = new List<Expression>();
+        foreach (var child in and.Expressions)
+        {
+            var inner = TryGetNegatedInner(child);
+            (inner is null ? positives : negated).Add(inner ?? child);
+        }
+
+        if (negated.Count == 0)
+        {
+            return Intersect(positives, context, resourceType);
+        }
+
+        // The positives must be lowered first: an Except may only reference CTEs already defined above it.
+        var result = positives.Count > 0
+            ? Intersect(positives, context, resourceType)
+            : context.LowerResourceSource(resourceType);
+
+        foreach (var inner in negated)
+        {
+            result = context.Except(result, LowerNode(inner, context, resourceType));
+        }
+
+        return result;
+    }
+
+    private static CteRef Intersect(IReadOnlyList<Expression> expressions, StructuralContext context, string resourceType)
+    {
+        var refs = expressions.Select(e => LowerNode(e, context, resourceType)).ToList();
         var result = refs[0];
         for (var i = 1; i < refs.Count; i++)
         {
             result = context.Intersect(result, refs[i]);
         }
+
         return result;
     }
+
+    /// <summary>
+    /// Returns the expression whose match set a negated child subtracts -- its positive inner match -- or
+    /// null when the child is not a negation. The three shapes a binder produces (an explicit
+    /// NotExpression, a :not-modified predicate, and :missing=true) all reduce to an expression
+    /// <see cref="LowerNode"/> already knows how to lower positively.
+    /// </summary>
+    private static Expression? TryGetNegatedInner(Expression child) => child switch
+    {
+        SearchParameterExpression { Expression: NotExpression not } => not.Expression,
+        SearchParameterExpression { Expression: SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } predicate } =>
+            new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value) { Span = predicate.Span },
+        MissingSearchParameterExpression { IsMissing: true } missing =>
+            new MissingSearchParameterExpression(missing.Parameter, isMissing: false),
+        _ => null,
+    };
 
     /// <summary>
     /// Splits an expression into the resource-column predicates (_id/_type/_lastUpdated, ANDed together
