@@ -2,16 +2,23 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
+using Ignixa.DataLayer.SqlEntityFramework.Search;
+using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
+using Ignixa.DataLayer.SqlServer.Search;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Search.Definition;
+using Ignixa.Specification.Extensions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 using Shouldly;
+using SqlServerGzipResourceCompressor = Ignixa.DataLayer.SqlServer.Compression.GzipResourceCompressor;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Differential;
 
@@ -36,6 +43,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
     private readonly FhirDbContext _legacyCacheDbContext;
     private readonly SearchIndexReferenceDataCache _legacyCache;
     private readonly GzipResourceCompressor _compressor;
+    private readonly SqlServerSearchIndexReferenceDataCache _newSearchCache;
 
     private DifferentialTestHarness(
         TestTenantDatabase legacyDatabase,
@@ -45,7 +53,10 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         SearchIndexReferenceDataCache legacyCache,
         GzipResourceCompressor compressor,
         IFhirRepository legacyRepository,
-        SqlMergeRepository legacyMergeRepository)
+        SqlMergeRepository legacyMergeRepository,
+        ISearchService legacySearchService,
+        SqlServerSearchIndexReferenceDataCache newSearchCache,
+        ISearchService newSearchService)
     {
         _legacyDatabase = legacyDatabase;
         _newDatabase = newDatabase;
@@ -57,6 +68,9 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
         LegacyMergeRepository = legacyMergeRepository;
         NewRepository = newDatabase.Repository;
         NewMergeRepository = newDatabase.MergeRepository;
+        LegacySearchService = legacySearchService;
+        _newSearchCache = newSearchCache;
+        NewSearchService = newSearchService;
     }
 
     /// <summary>The real EF-based repository, wired to database A ("legacy").</summary>
@@ -80,6 +94,20 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
     /// via <see cref="TestTenantDatabase.CreateSqlServerFhirRepositoryAsync"/> (Task 6).
     /// </summary>
     public SqlServerMergeRepository NewMergeRepository { get; }
+
+    /// <summary>
+    /// The real EF-based search service, wired to database A ("legacy") -- mirrors
+    /// <c>SqlEntityFrameworkRepositoryFactory.CreateServiceFactory</c>'s <c>createSearchService</c>
+    /// closure's production wiring exactly (same generator/processor chain feeding
+    /// <see cref="SqlEntityFrameworkSearchService"/>).
+    /// </summary>
+    public ISearchService LegacySearchService { get; }
+
+    /// <summary>
+    /// The compiler-driven <see cref="SqlServerCompiledSearchService"/>, wired to database B ("new").
+    /// Mirrors <c>SqlServerCompiledSearchServiceTests.InitializeAsync</c>'s construction pattern.
+    /// </summary>
+    public ISearchService NewSearchService { get; }
 
     /// <summary>
     /// Provisions two independent, throwaway tenant databases and wires <see cref="LegacyRepository"/>
@@ -127,6 +155,74 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
             legacyCache,
             NullLogger<SqlEntityFrameworkRepository>.Instance);
 
+        // Definition managers are pure, I/O-free lookup structures over the pre-generated R4 catalog
+        // (matches every FhirVersion.R4-hardcoded fixture elsewhere in this project, e.g.
+        // SqlServerCompiledSearchServiceTests.cs) -- safe to share one instance across both search
+        // services below, exactly as SqlEntityFrameworkRepositoryFactory.GetOrCreateDefinitionManagers
+        // shares its cached pair across every tenant of the same FHIR version.
+        var compartmentDefinitionManager = new CompartmentDefinitionManager(FhirVersion.R4);
+        var schemaProvider = FhirVersion.R4.GetSchemaProvider();
+        var searchParameterDefinitionManager = new SearchParameterDefinitionManager(
+            schemaProvider, NullLogger<SearchParameterDefinitionManager>.Instance);
+
+        // Mirrors SqlEntityFrameworkRepositoryFactory.CreateServiceFactory's createSearchService closure
+        // exactly (same generator chain feeding SqlEntityFrameworkSearchService), constructed here against
+        // database A's own DbContext/repository/cache instead of a per-request closure.
+        var compositeQueryGenerator = new CompositeSearchParameterQueryGenerator(
+            legacyRepositoryDbContext, legacyCache, NullLogger<CompositeSearchParameterQueryGenerator>.Instance);
+        var parameterQueryGenerator = new SearchParameterQueryGenerator(
+            legacyRepositoryDbContext, legacyCache, NullLogger<SearchParameterQueryGenerator>.Instance, compositeQueryGenerator);
+        var chainedExpressionProcessor = new ChainedExpressionProcessor(
+            legacyRepositoryDbContext, legacyCache, parameterQueryGenerator, NullLogger<ChainedExpressionProcessor>.Instance);
+        var compartmentQueryGenerator = new CompartmentSearchQueryGenerator(
+            legacyRepositoryDbContext, legacyCache, compartmentDefinitionManager, searchParameterDefinitionManager,
+            NullLogger<CompartmentSearchQueryGenerator>.Instance);
+        var patientEverythingQueryGenerator = new PatientEverythingQueryGenerator(
+            legacyRepositoryDbContext, compartmentQueryGenerator, NullLogger<PatientEverythingQueryGenerator>.Instance);
+        var legacyQueryBuilder = new SearchExpressionQueryBuilder(
+            legacyRepositoryDbContext,
+            parameterQueryGenerator,
+            chainedExpressionProcessor,
+            compartmentQueryGenerator,
+            patientEverythingQueryGenerator,
+            searchParameterDefinitionManager,
+            NullLogger<SearchExpressionQueryBuilder>.Instance);
+        var legacyIncludeProcessor = new IncludeProcessor(
+            legacyRepositoryDbContext, legacyCache, compressor, NullLogger<IncludeProcessor>.Instance);
+        var legacyRevIncludeProcessor = new RevIncludeProcessor(
+            legacyRepositoryDbContext, legacyCache, compressor, NullLogger<RevIncludeProcessor>.Instance);
+        var legacyIterateProcessor = new IterateProcessor(
+            legacyIncludeProcessor, legacyRevIncludeProcessor, NullLogger<IterateProcessor>.Instance);
+
+        var legacySearchService = new SqlEntityFrameworkSearchService(
+            legacyRepositoryDbContext,
+            legacyRepository,
+            legacyQueryBuilder,
+            legacyIncludeProcessor,
+            legacyRevIncludeProcessor,
+            legacyIterateProcessor,
+            compressor,
+            legacyCache,
+            NullLogger<SqlEntityFrameworkSearchService>.Instance);
+
+        // Mirrors SqlServerCompiledSearchServiceTests.InitializeAsync's construction exactly, against
+        // database B -- a search-side reference-data cache distinct from newDatabase's own internal one
+        // (private, write-path-only), matching that test's identical rationale for a separate instance.
+        var newSearchCache = new SqlServerSearchIndexReferenceDataCache(
+            newDatabase.SqlExecutionService, newDatabase.TenantId, NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
+        await newSearchCache.PreloadResourceTypesAsync(cancellationToken);
+        var newSymbolResolver = new SqlServerSymbolResolver(newSearchCache);
+        var newCompressor = new SqlServerGzipResourceCompressor(new RecyclableMemoryStreamManager());
+
+        var newSearchService = new SqlServerCompiledSearchService(
+            newDatabase.SqlExecutionService,
+            newDatabase.TenantId,
+            newSymbolResolver,
+            compartmentDefinitionManager,
+            searchParameterDefinitionManager,
+            newCompressor,
+            NullLogger.Instance);
+
         return new DifferentialTestHarness(
             legacyDatabase,
             newDatabase,
@@ -135,7 +231,44 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
             legacyCache,
             compressor,
             legacyRepository,
-            legacyMergeRepository);
+            legacyMergeRepository,
+            legacySearchService,
+            newSearchCache,
+            newSearchService);
+    }
+
+    /// <summary>
+    /// Seeds an identical dbo.SearchParam catalog row -- the same literal INSERT statement -- into BOTH
+    /// database A (legacy) and database B (new). Both write paths' RowGenerators (see
+    /// SearchParameterIdLookupHelper.TryGetSearchParamId, present verbatim in both DataLayer projects) and
+    /// both search paths' symbol resolution (Resolve.RunAsync's per-parameter GetSearchParamIdAsync;
+    /// SearchExpressionQueryBuilder's equivalent) silently treat an unseeded URL as "not found" -- an empty
+    /// result on the compiled side, a compile failure via Resolve's Unresolved list on the other -- rather
+    /// than creating the catalog row on demand (dbo.SearchParam has no seed data of its own, matching
+    /// dbo.ResourceType's on-demand-only story before Task 6, and dbo.SearchParam never got that same
+    /// on-demand path -- see SqlServerCompiledSearchServiceSortTests.cs's identical manual-INSERT
+    /// requirement). Every differential search test (Tasks 11-13) needs this before its first
+    /// CreateOrUpdateAsync/SearchStreamAsync call for any parameter beyond the resource columns
+    /// (_id/_type/_lastUpdated), so it lives on the shared harness rather than being duplicated per test.
+    /// </summary>
+    public async Task SeedSearchParameterCatalogAsync(IEnumerable<Uri> searchParameterUrls, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(searchParameterUrls);
+
+        foreach (var url in searchParameterUrls.Distinct())
+        {
+            await SeedSearchParameterOnAsync(_legacyDatabase, url, cancellationToken);
+            await SeedSearchParameterOnAsync(_newDatabase, url, cancellationToken);
+        }
+    }
+
+    private static async Task SeedSearchParameterOnAsync(TestTenantDatabase database, Uri url, CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand(
+            "INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) " +
+            "VALUES (@Uri, 'active', SYSDATETIMEOFFSET(), 0)");
+        command.Parameters.Add("@Uri", System.Data.SqlDbType.VarChar).Value = url.ToString();
+        await database.SqlExecutionService.ExecuteNonQueryAsync(database.TenantId, command, cancellationToken);
     }
 
     /// <summary>Dumps a table's rows from database A (legacy) ONLY via <c>SELECT * FROM tableName WHERE whereClause</c>.</summary>
@@ -369,6 +502,7 @@ public sealed class DifferentialTestHarness : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _legacyCache.Dispose();
+        _newSearchCache.Dispose();
         await _legacyRepositoryDbContext.DisposeAsync();
         await _legacyCacheDbContext.DisposeAsync();
         await _legacyDatabase.DisposeAsync();
