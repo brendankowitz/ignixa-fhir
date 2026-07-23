@@ -521,6 +521,24 @@ internal static class SearchTraceFixtures
             "Patient", [new QueryParameter("_id", "123")], builder, resolver);
     }
 
+    /// <summary>Patient?_id=abc -- a resource-column parameter with a string value, built directly rather
+    /// than through ISearchOptionsBuilder -- for SearchCompilerCompileFromOptionsTests, which skips Build
+    /// entirely and constructs the SearchOptions it hands to CompileFromOptionsAsync by hand.</summary>
+    public static (SearchOptions Options, ISymbolResolver Resolver) BuildPatientIdAbcOptionsAndResolver()
+    {
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var predicate = new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "abc", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 3),
+        };
+        var expression = new SearchParameterExpression(idParam, predicate);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return (new SearchOptions { ResourceType = "Patient", Expression = expression }, resolver);
+    }
+
     /// <summary>Patient?organization.name=Acme where the chain's own reference parameter is unregistered -- the
     /// unresolved parameter lives on the ChainedExpression, not on any leaf predicate.</summary>
     public static Task<SearchTrace> TraceUnresolvedChainReferenceParameterAsync()
