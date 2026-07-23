@@ -1019,6 +1019,33 @@ class FixtureLifecycleTests(unittest.TestCase):
         self.assertEqual(1, len(client.calls))
         self.assertEqual({"resourceType": "Patient", "id": "1"}, outcome["context"]["fixtures"]["good"])
 
+    def test_autocreate_failure_alone_still_skips_all_tests(self):
+        # Regression: an autocreate failure must skip tests even when every
+        # explicit setup action succeeds -- ``outcome["setup_failed"]``
+        # aggregates autocreate and explicit setup failures, and that
+        # aggregate (not just the explicit setup phase) gates test execution.
+        document = _document(
+            fixtures=[_fixture("bad", autocreate=True, variants=[{"active": True}])],
+            setup=[{"id": "setup.0", "kind": "operation"}],
+            tests=[{"id": "test.0", "actions": []}],
+        )
+
+        def fake_execute_action(document, user, context, action):
+            return {"applicable": True, "failed": False}
+
+        self.runtime._execute_action = fake_execute_action
+
+        client = fakes.FakeClient()
+        user = fakes.FakeUser(client)
+        state = self.runtime.initialize_user(document, user)
+
+        outcome = self.runtime.execute(document, user, state)
+
+        self.assertTrue(outcome["setup_failed"])
+        self.assertEqual(1, len(outcome["tests"]))
+        self.assertTrue(outcome["tests"][0]["skipped"])
+        self.assertFalse(outcome["tests"][0]["failed"])
+
     def test_autodelete_failures_aggregate_into_teardown_but_all_actions_still_run(self):
         document = _document(
             fixtures=[_fixture("orphan", autodelete=True, variants=[{"resourceType": "Patient"}])],

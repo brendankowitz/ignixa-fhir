@@ -777,7 +777,7 @@ def execute(document, user, state):
         outcome["setup_results"] = autocreate_results + setup_results
 
         for test in document.get("tests", []):
-            if setup_failed or not _test_allowed(test["id"]):
+            if outcome["setup_failed"] or not _test_allowed(test["id"]):
                 outcome["tests"].append(_skipped_test_outcome(test))
                 continue
 
