@@ -35,4 +35,43 @@ public class SearchCompilerCompileFromOptionsTests
         trace.CompiledPlan.ShouldNotBeNull();
         trace.CompiledPlan!.Ctes.ShouldNotBeEmpty();
     }
+
+    [Fact]
+    public async Task GivenAnEmptyStringResourceType_WhenCompiledFromOptions_ThenItBehavesIdenticallyToNull()
+    {
+        // Arrange -- ?status=final, a genuine system-level search (no resource type anywhere), compiled
+        // once with resourceType: null and once with resourceType: "" -- proving CompileFromOptionsAsync
+        // normalizes the empty string to null before it reaches Resolve/Lower, rather than the two
+        // diverging on whether this is a system-level search.
+        var (nullOptions, nullResolver) = SearchTraceFixtures.BuildSystemLevelStatusFinalOptionsAndResolver();
+        var (emptyOptions, emptyResolver) = SearchTraceFixtures.BuildSystemLevelStatusFinalOptionsAndResolver();
+
+        // Act
+        var nullTrace = await SearchCompiler.CompileFromOptionsAsync(
+            nullOptions,
+            null,
+            nullResolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            CancellationToken.None);
+
+        var emptyTrace = await SearchCompiler.CompileFromOptionsAsync(
+            emptyOptions,
+            string.Empty,
+            emptyResolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            CancellationToken.None);
+
+        // Assert
+        nullTrace.Failure.ShouldBeNull();
+        emptyTrace.Failure.ShouldBeNull();
+        nullTrace.Sql.ShouldNotBeNull();
+        emptyTrace.Sql.ShouldNotBeNull();
+        nullTrace.Sql!.Sql.ShouldBe(emptyTrace.Sql!.Sql);
+        nullTrace.ResourceType.ShouldBeNull();
+        emptyTrace.ResourceType.ShouldBeNull();
+    }
 }

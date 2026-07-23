@@ -151,9 +151,14 @@ public static class SearchCompiler
         CancellationToken cancellationToken = default)
     {
         // resourceType is deliberately NOT null-checked here -- null/empty means a multi-type/system-level
-        // search, a real supported case (see this task's Interfaces note), not a caller error.
+        // search, a real supported case (see this task's Interfaces note), not a caller error. Normalized
+        // to null ONCE, here, before any downstream use -- Resolve.RunAsync, Lower.Run, systemLevelSearch,
+        // and the final SearchTrace.ResourceType must all observe the exact same value, or an empty string
+        // would read as system-level to one and as a literal (unmatchable) resource type to the others.
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(resolver);
+
+        resourceType = string.IsNullOrEmpty(resourceType) ? null : resourceType;
 
         var approximationReferenceTime = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var outcomes = new List<ParameterTrace>();
@@ -195,7 +200,7 @@ public static class SearchCompiler
                     options.Sort,
                     SortPhase.Valued,
                     page: null,
-                    systemLevelSearch: string.IsNullOrEmpty(resourceType),
+                    systemLevelSearch: resourceType is null,
                     approximationReferenceTime: approximationReferenceTime);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
