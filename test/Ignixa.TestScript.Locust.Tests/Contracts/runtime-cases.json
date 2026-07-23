@@ -1,0 +1,2581 @@
+{
+  "schema": "ignixa-runtime-contract/1",
+  "description": "Reviewed, immutable cross-language runtime contract shared by the .NET RuntimeContractTests and the Python test_runtime_contract.py. Each case pins the real TestScriptParser + TestScriptEvaluator + LocustIrCompiler behaviour against the Python locust runtime executing the same compiled IR. Do not regenerate from tests.",
+  "cases": [
+    {
+      "name": "crud",
+      "description": "CRUD: create (POST body from fixture), read, update, delete with a server-id variable flowing into later request URLs.",
+      "source": "crud.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "CRUD patient",
+        "status": "active",
+        "fixture": [
+          {
+            "id": "patient",
+            "autocreate": false,
+            "autodelete": false,
+            "resource": {
+              "resourceType": "Patient",
+              "name": [
+                {
+                  "family": "Smith"
+                }
+              ]
+            }
+          }
+        ],
+        "variable": [
+          {
+            "name": "id",
+            "sourceId": "createResp",
+            "path": "id"
+          }
+        ],
+        "test": [
+          {
+            "name": "crud",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "create"
+                  },
+                  "resource": "Patient",
+                  "sourceId": "patient",
+                  "responseId": "createResp",
+                  "requestId": "createReq",
+                  "label": "create"
+                }
+              },
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/${id}",
+                  "accept": "application/fhir+json",
+                  "responseId": "readResp",
+                  "label": "read"
+                }
+              },
+              {
+                "operation": {
+                  "type": {
+                    "code": "update"
+                  },
+                  "resource": "Patient",
+                  "params": "/${id}",
+                  "sourceId": "patient",
+                  "label": "update"
+                }
+              },
+              {
+                "operation": {
+                  "type": {
+                    "code": "delete"
+                  },
+                  "resource": "Patient",
+                  "params": "/${id}",
+                  "label": "delete"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 201,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "123"
+          }
+        },
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "123",
+            "name": [
+              {
+                "family": "Smith"
+              }
+            ]
+          }
+        },
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "123"
+          }
+        },
+        {
+          "status": 204,
+          "headers": {}
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "CRUD patient",
+          "source": "crud.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [
+          {
+            "id": "patient",
+            "autocreate": false,
+            "autodelete": false,
+            "variants": [
+              {
+                "resourceType": "Patient",
+                "name": [
+                  {
+                    "family": "Smith"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "variables": [
+          {
+            "name": "id",
+            "sourceId": "createResp",
+            "extractionKind": "path",
+            "selector": "id"
+          }
+        ],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "crud",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "create",
+                "method": "POST",
+                "resource": "Patient",
+                "sourceId": "patient",
+                "responseId": "createResp",
+                "requestId": "createReq",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "create"
+              },
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/${id}",
+                "accept": "application/fhir+json",
+                "responseId": "readResp",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.1",
+                "label": "read"
+              },
+              {
+                "kind": "operation",
+                "type": "update",
+                "method": "PUT",
+                "resource": "Patient",
+                "params": "/${id}",
+                "sourceId": "patient",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.2",
+                "label": "update"
+              },
+              {
+                "kind": "operation",
+                "type": "delete",
+                "method": "DELETE",
+                "resource": "Patient",
+                "params": "/${id}",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.3",
+                "label": "delete"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "POST",
+          "url": "Patient",
+          "body": {
+            "json": {
+              "resourceType": "Patient",
+              "name": [
+                {
+                  "family": "Smith"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "url": "Patient/123",
+          "body": null,
+          "headers": {
+            "accept": "application/fhir+json"
+          }
+        },
+        {
+          "method": "PUT",
+          "url": "Patient/123",
+          "body": {
+            "json": {
+              "resourceType": "Patient",
+              "name": [
+                {
+                  "family": "Smith"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "DELETE",
+          "url": "Patient/123",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "pass",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "crud",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": [],
+        "tests": [
+          {
+            "name": "crud",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "create",
+                "groupId": null
+              },
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read",
+                "groupId": null
+              },
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "update",
+                "groupId": null
+              },
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "delete",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {
+        "id": "123"
+      },
+      "expectedEvents": [
+        {
+          "type": "POST",
+          "name": "crud.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "GET",
+          "name": "crud.json::test.0.action.1",
+          "failed": false
+        },
+        {
+          "type": "PUT",
+          "name": "crud.json::test.0.action.2",
+          "failed": false
+        },
+        {
+          "type": "DELETE",
+          "name": "crud.json::test.0.action.3",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "post-search",
+      "description": "POST search collapses to <resource>/_search with the query string moved into a form-encoded body.",
+      "source": "search.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "POST search",
+        "status": "active",
+        "test": [
+          {
+            "name": "search",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "search"
+                  },
+                  "resource": "Patient",
+                  "method": "POST",
+                  "params": "?name=smith&_count=2",
+                  "responseId": "bundle",
+                  "label": "search"
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Bundle",
+                  "label": "is-bundle"
+                }
+              },
+              {
+                "assert": {
+                  "response": "okay",
+                  "label": "is-okay"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Bundle",
+            "type": "searchset",
+            "entry": []
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "POST search",
+          "source": "search.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "search",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "search",
+                "method": "POST",
+                "resource": "Patient",
+                "params": "?name=smith&_count=2",
+                "responseId": "bundle",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "search"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Bundle"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.1",
+                "label": "is-bundle"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "responseStatus",
+                  "value": "okay"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.2",
+                "label": "is-okay"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "POST",
+          "url": "Patient/_search",
+          "body": {
+            "form": "name=smith&_count=2"
+          }
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "search",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "search",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "search",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "is-bundle",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "is-okay",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "POST",
+          "name": "search.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "search.json::test.0.action.1",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "search.json::test.0.action.2",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "history",
+      "description": "History lookup pinned through both a response-direction assertion (sourceId=hist) and request-direction assertions (sourceId=histReq).",
+      "source": "history.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "History",
+        "status": "active",
+        "test": [
+          {
+            "name": "history",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "history"
+                  },
+                  "resource": "Patient",
+                  "params": "/_history",
+                  "responseId": "hist",
+                  "requestId": "histReq",
+                  "label": "history"
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Bundle",
+                  "sourceId": "hist",
+                  "direction": "response",
+                  "label": "resp-is-bundle"
+                }
+              },
+              {
+                "assert": {
+                  "requestMethod": "GET",
+                  "sourceId": "histReq",
+                  "direction": "request",
+                  "label": "req-was-get"
+                }
+              },
+              {
+                "assert": {
+                  "requestURL": "Patient/_history",
+                  "sourceId": "histReq",
+                  "direction": "request",
+                  "operator": "equals",
+                  "label": "req-url"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Bundle",
+            "type": "history",
+            "entry": []
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "History",
+          "source": "history.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "history",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "history",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/_history",
+                "responseId": "hist",
+                "requestId": "histReq",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "history"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Bundle"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "sourceId": "hist",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.1",
+                "label": "resp-is-bundle"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "requestMethod",
+                  "value": "GET"
+                },
+                "warningOnly": false,
+                "direction": "request",
+                "sourceId": "histReq",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.2",
+                "label": "req-was-get"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "requestUrl",
+                  "value": "Patient/_history",
+                  "operator": "Equals"
+                },
+                "warningOnly": false,
+                "direction": "request",
+                "sourceId": "histReq",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.3",
+                "label": "req-url"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/_history",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "history",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "history",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "history",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "resp-is-bundle",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "req-was-get",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "req-url",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "history.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "history.json::test.0.action.1",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "history.json::test.0.action.2",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "history.json::test.0.action.3",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "polling-success",
+      "description": "waitFor polls while the status is 202, then succeeds when a non-polling status arrives; attempts and outbound requests are pinned, sleep interval is 0.",
+      "source": "poll-ok.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Polling success",
+        "status": "active",
+        "test": [
+          {
+            "name": "poll",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/job1",
+                  "responseId": "job",
+                  "label": "poll",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/waitFor",
+                      "extension": [
+                        {
+                          "url": "pollingStatusCode",
+                          "valueInteger": 202
+                        },
+                        {
+                          "url": "maxAttempts",
+                          "valueInteger": 5
+                        },
+                        {
+                          "url": "intervalMs",
+                          "valueInteger": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "assert": {
+                  "response": "okay",
+                  "label": "poll-okay"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 202,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Task",
+            "status": "in-progress"
+          }
+        },
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Task",
+            "status": "completed"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Polling success",
+          "source": "poll-ok.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "poll",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/job1",
+                "responseId": "job",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "waitFor": {
+                  "pollingStatusCode": 202,
+                  "maxAttempts": 5,
+                  "intervalMs": 0
+                },
+                "id": "test.0.action.0",
+                "label": "poll"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "responseStatus",
+                  "value": "okay"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.1",
+                "label": "poll-okay"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/job1",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "url": "Patient/job1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "poll",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "poll",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "poll",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "poll-okay",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "poll-ok.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "GET",
+          "name": "poll-ok.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "poll-ok.json::test.0.action.1",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "polling-timeout",
+      "description": "waitFor exhausts maxAttempts while still observing the polling status; the evaluator-compatible exhaustion message and attempt count are pinned.",
+      "source": "poll-timeout.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Polling timeout",
+        "status": "active",
+        "test": [
+          {
+            "name": "poll",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/job1",
+                  "responseId": "job",
+                  "label": "poll",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/waitFor",
+                      "extension": [
+                        {
+                          "url": "pollingStatusCode",
+                          "valueInteger": 202
+                        },
+                        {
+                          "url": "maxAttempts",
+                          "valueInteger": 3
+                        },
+                        {
+                          "url": "intervalMs",
+                          "valueInteger": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 202,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Task",
+            "status": "in-progress"
+          }
+        },
+        {
+          "status": 202,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Task",
+            "status": "in-progress"
+          }
+        },
+        {
+          "status": 202,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Task",
+            "status": "in-progress"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Polling timeout",
+          "source": "poll-timeout.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "poll",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/job1",
+                "responseId": "job",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "waitFor": {
+                  "pollingStatusCode": 202,
+                  "maxAttempts": 3,
+                  "intervalMs": 0
+                },
+                "id": "test.0.action.0",
+                "label": "poll"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/job1",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "url": "Patient/job1",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "url": "Patient/job1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "poll",
+            "outcome": "error",
+            "skipped": false,
+            "failed": true
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "poll",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "error",
+                "label": "poll",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedPollingTimeoutMessage": "Timed out waiting for job completion after 3 attempts (last status: 202)",
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "poll-timeout.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "GET",
+          "name": "poll-timeout.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "GET",
+          "name": "poll-timeout.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_OPERATION",
+          "name": "poll-timeout.json::test.0.action.0",
+          "failed": true
+        }
+      ]
+    },
+    {
+      "name": "warning-only-assertion",
+      "description": "A failing warningOnly assertion emits no failed semantic event and does not fail its phase (Task 9 parity).",
+      "source": "warn.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Warning only",
+        "status": "active",
+        "test": [
+          {
+            "name": "warn",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/1",
+                  "responseId": "r",
+                  "label": "read"
+                }
+              },
+              {
+                "assert": {
+                  "responseCode": "201",
+                  "warningOnly": true,
+                  "label": "warn-code"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "1"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Warning only",
+          "source": "warn.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "warn",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/1",
+                "responseId": "r",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "read"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "responseCode",
+                  "value": "201"
+                },
+                "warningOnly": true,
+                "direction": "response",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.1",
+                "label": "warn-code"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "warn",
+            "outcome": "warning",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "warn",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "warning",
+                "label": "warn-code",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "warn.json::test.0.action.0",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "skipped-assertion",
+      "description": "An assertionWhenResponseStatus gate that does not match makes the assertion inapplicable: no semantic event, phase not failed.",
+      "source": "skip.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Skipped assertion",
+        "status": "active",
+        "test": [
+          {
+            "name": "skip",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/1",
+                  "responseId": "r",
+                  "label": "read"
+                }
+              },
+              {
+                "assert": {
+                  "responseCode": "200",
+                  "label": "gated",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionWhenResponseStatus",
+                      "extension": [
+                        {
+                          "url": "sourceId",
+                          "valueString": "r"
+                        },
+                        {
+                          "url": "status",
+                          "valueInteger": 404
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "1"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Skipped assertion",
+          "source": "skip.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "skip",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/1",
+                "responseId": "r",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "read"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "responseCode",
+                  "value": "200"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "whenResponseSourceId": "r",
+                "whenResponseStatuses": [
+                  404
+                ],
+                "id": "test.0.action.1",
+                "label": "gated"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "skip",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "skip",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "skip",
+                "label": "gated",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "skip.json::test.0.action.0",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "any-of-pass",
+      "description": "An any-of group with one passing alternative aggregates to a single passing event under the first member's metric, with no per-member events.",
+      "source": "anyof-pass.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Any-of pass",
+        "status": "active",
+        "test": [
+          {
+            "name": "anyof",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/1",
+                  "responseId": "r",
+                  "label": "read"
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Observation",
+                  "label": "alt-observation",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionAnyOfGroup",
+                      "valueString": "g1"
+                    }
+                  ]
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Patient",
+                  "label": "alt-patient",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionAnyOfGroup",
+                      "valueString": "g1"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "1"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Any-of pass",
+          "source": "anyof-pass.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "anyof",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/1",
+                "responseId": "r",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "read"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Observation"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "anyOfGroupId": "g1",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.1",
+                "label": "alt-observation"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Patient"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "anyOfGroupId": "g1",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.2",
+                "label": "alt-patient"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "anyof",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "anyof",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "pass",
+                "label": "alt-patient",
+                "groupId": "g1"
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "anyof-pass.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "anyof-pass.json::test.0.action.1",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "any-of-aggregate-fail",
+      "description": "An any-of group where every applicable alternative fails aggregates to a single failing event under the first member's metric.",
+      "source": "anyof-fail.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Any-of fail",
+        "status": "active",
+        "test": [
+          {
+            "name": "anyof",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/1",
+                  "responseId": "r",
+                  "label": "read"
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Observation",
+                  "label": "alt-observation",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionAnyOfGroup",
+                      "valueString": "g1"
+                    }
+                  ]
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Bundle",
+                  "label": "alt-bundle",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionAnyOfGroup",
+                      "valueString": "g1"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "1"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Any-of fail",
+          "source": "anyof-fail.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "anyof",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/1",
+                "responseId": "r",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "read"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Observation"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "anyOfGroupId": "g1",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.1",
+                "label": "alt-observation"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Bundle"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "anyOfGroupId": "g1",
+                "whenResponseStatuses": [],
+                "id": "test.0.action.2",
+                "label": "alt-bundle"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "anyof",
+            "outcome": "fail",
+            "skipped": false,
+            "failed": true
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "anyof",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "fail",
+                "label": "alt-observation",
+                "groupId": "g1"
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "anyof-fail.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "anyof-fail.json::test.0.action.1",
+          "failed": true
+        }
+      ]
+    },
+    {
+      "name": "any-of-none-applicable",
+      "description": "An any-of group whose members are all gated off (condition never matched) aggregates to a single failing event; no member events.",
+      "source": "anyof-na.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Any-of none applicable",
+        "status": "active",
+        "test": [
+          {
+            "name": "anyof",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/1",
+                  "responseId": "r",
+                  "label": "read"
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Patient",
+                  "label": "alt-patient",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionAnyOfGroup",
+                      "valueString": "g1"
+                    },
+                    {
+                      "url": "http://ignixa.io/testscript/assertionWhenResponseStatus",
+                      "extension": [
+                        {
+                          "url": "sourceId",
+                          "valueString": "r"
+                        },
+                        {
+                          "url": "status",
+                          "valueInteger": 404
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "assert": {
+                  "resource": "Observation",
+                  "label": "alt-observation",
+                  "extension": [
+                    {
+                      "url": "http://ignixa.io/testscript/assertionAnyOfGroup",
+                      "valueString": "g1"
+                    },
+                    {
+                      "url": "http://ignixa.io/testscript/assertionWhenResponseStatus",
+                      "extension": [
+                        {
+                          "url": "sourceId",
+                          "valueString": "r"
+                        },
+                        {
+                          "url": "status",
+                          "valueInteger": 404
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "1"
+          }
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Any-of none applicable",
+          "source": "anyof-na.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "anyof",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/1",
+                "responseId": "r",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "read"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Patient"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "anyOfGroupId": "g1",
+                "whenResponseSourceId": "r",
+                "whenResponseStatuses": [
+                  404
+                ],
+                "id": "test.0.action.1",
+                "label": "alt-patient"
+              },
+              {
+                "kind": "assert",
+                "criteria": {
+                  "kind": "resourceType",
+                  "value": "Observation"
+                },
+                "warningOnly": false,
+                "direction": "response",
+                "anyOfGroupId": "g1",
+                "whenResponseSourceId": "r",
+                "whenResponseStatuses": [
+                  404
+                ],
+                "id": "test.0.action.2",
+                "label": "alt-observation"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "absent",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "anyof",
+            "outcome": "error",
+            "skipped": false,
+            "failed": true
+          }
+        ],
+        "teardown": {
+          "outcome": "absent",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": null,
+        "tests": [
+          {
+            "name": "anyof",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read",
+                "groupId": null
+              },
+              {
+                "kind": "assertion",
+                "outcome": "error",
+                "label": "alt-patient",
+                "groupId": "g1"
+              }
+            ]
+          }
+        ],
+        "teardown": null
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "anyof-na.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "anyof-na.json::test.0.action.1",
+          "failed": true
+        }
+      ]
+    },
+    {
+      "name": "setup-failure",
+      "description": "A failing setup assertion fails the setup phase, skips every test, and still runs teardown.",
+      "source": "setup-fail.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Setup failure",
+        "status": "active",
+        "setup": {
+          "action": [
+            {
+              "operation": {
+                "type": {
+                  "code": "read"
+                },
+                "resource": "Patient",
+                "params": "/1",
+                "responseId": "r",
+                "label": "setup-read"
+              }
+            },
+            {
+              "assert": {
+                "responseCode": "404",
+                "label": "setup-expect-404"
+              }
+            }
+          ]
+        },
+        "test": [
+          {
+            "name": "t1",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/1",
+                  "label": "t1-read"
+                }
+              }
+            ]
+          }
+        ],
+        "teardown": {
+          "action": [
+            {
+              "operation": {
+                "type": {
+                  "code": "delete"
+                },
+                "resource": "Patient",
+                "params": "/1",
+                "label": "teardown-delete"
+              }
+            }
+          ]
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "1"
+          }
+        },
+        {
+          "status": 204,
+          "headers": {}
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Setup failure",
+          "source": "setup-fail.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [],
+        "variables": [],
+        "setup": [
+          {
+            "kind": "operation",
+            "type": "read",
+            "method": "GET",
+            "resource": "Patient",
+            "params": "/1",
+            "responseId": "r",
+            "encodeRequestUrl": true,
+            "headers": [],
+            "id": "setup.0",
+            "label": "setup-read"
+          },
+          {
+            "kind": "assert",
+            "criteria": {
+              "kind": "responseCode",
+              "value": "404"
+            },
+            "warningOnly": false,
+            "direction": "response",
+            "whenResponseStatuses": [],
+            "id": "setup.1",
+            "label": "setup-expect-404"
+          }
+        ],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "t1",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/1",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "t1-read"
+              }
+            ]
+          }
+        ],
+        "teardown": [
+          {
+            "kind": "operation",
+            "type": "delete",
+            "method": "DELETE",
+            "resource": "Patient",
+            "params": "/1",
+            "encodeRequestUrl": true,
+            "headers": [],
+            "id": "teardown.0",
+            "label": "teardown-delete"
+          }
+        ]
+      },
+      "expectedRequests": [
+        {
+          "method": "GET",
+          "url": "Patient/1",
+          "body": null
+        },
+        {
+          "method": "DELETE",
+          "url": "Patient/1",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "fail",
+          "failed": true
+        },
+        "tests": [
+          {
+            "name": "t1",
+            "outcome": "skip",
+            "skipped": true,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "pass",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": [
+          {
+            "kind": "operation",
+            "outcome": "pass",
+            "label": "setup-read",
+            "groupId": null
+          },
+          {
+            "kind": "assertion",
+            "outcome": "fail",
+            "label": "setup-expect-404",
+            "groupId": null
+          }
+        ],
+        "tests": [
+          {
+            "name": "t1",
+            "actions": [
+              {
+                "kind": "assertion",
+                "outcome": "skip",
+                "label": null,
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": [
+          {
+            "kind": "operation",
+            "outcome": "pass",
+            "label": "teardown-delete",
+            "groupId": null
+          }
+        ]
+      },
+      "expectedVariables": {},
+      "expectedEvents": [
+        {
+          "type": "GET",
+          "name": "setup-fail.json::setup.0",
+          "failed": false
+        },
+        {
+          "type": "TESTSCRIPT_ASSERT",
+          "name": "setup-fail.json::setup.1",
+          "failed": true
+        },
+        {
+          "type": "DELETE",
+          "name": "setup-fail.json::teardown.0",
+          "failed": false
+        }
+      ]
+    },
+    {
+      "name": "fixture-autocreate-autodelete",
+      "description": "Fixture autocreate replaces the fixture with the server response, a server-assigned id flows into an explicit test read, and autodelete uses the server-assigned type/id.",
+      "source": "fixture.json",
+      "fhirVersion": "4.0",
+      "env": {
+        "host": "http://example.test"
+      },
+      "input": {
+        "resourceType": "TestScript",
+        "name": "Fixture lifecycle",
+        "status": "active",
+        "fixture": [
+          {
+            "id": "pt",
+            "autocreate": true,
+            "autodelete": true,
+            "resource": {
+              "resourceType": "Patient",
+              "name": [
+                {
+                  "family": "Doe"
+                }
+              ]
+            }
+          }
+        ],
+        "variable": [
+          {
+            "name": "pid",
+            "sourceId": "pt",
+            "path": "id"
+          }
+        ],
+        "test": [
+          {
+            "name": "read-created",
+            "action": [
+              {
+                "operation": {
+                  "type": {
+                    "code": "read"
+                  },
+                  "resource": "Patient",
+                  "params": "/${pid}",
+                  "responseId": "readResp",
+                  "label": "read-created"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "responses": [
+        {
+          "status": 201,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "srv-9",
+            "name": [
+              {
+                "family": "Doe"
+              }
+            ]
+          }
+        },
+        {
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/fhir+json"
+          },
+          "body": {
+            "resourceType": "Patient",
+            "id": "srv-9",
+            "name": [
+              {
+                "family": "Doe"
+              }
+            ]
+          }
+        },
+        {
+          "status": 204,
+          "headers": {}
+        }
+      ],
+      "canonicalIr": {
+        "schemaVersion": "1.0",
+        "compilerVersion": "0.1.0",
+        "metadata": {
+          "name": "Fixture lifecycle",
+          "source": "fixture.json",
+          "fhirVersion": "4.0"
+        },
+        "fixtures": [
+          {
+            "id": "pt",
+            "autocreate": true,
+            "autodelete": true,
+            "variants": [
+              {
+                "resourceType": "Patient",
+                "name": [
+                  {
+                    "family": "Doe"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "variables": [
+          {
+            "name": "pid",
+            "sourceId": "pt",
+            "extractionKind": "path",
+            "selector": "id"
+          }
+        ],
+        "setup": [],
+        "tests": [
+          {
+            "id": "test.0",
+            "name": "read-created",
+            "discardContextAfterExecution": false,
+            "initialVariables": {},
+            "actions": [
+              {
+                "kind": "operation",
+                "type": "read",
+                "method": "GET",
+                "resource": "Patient",
+                "params": "/${pid}",
+                "responseId": "readResp",
+                "encodeRequestUrl": true,
+                "headers": [],
+                "id": "test.0.action.0",
+                "label": "read-created"
+              }
+            ]
+          }
+        ],
+        "teardown": []
+      },
+      "expectedRequests": [
+        {
+          "method": "POST",
+          "url": "Patient",
+          "body": {
+            "json": {
+              "resourceType": "Patient",
+              "name": [
+                {
+                  "family": "Doe"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "method": "GET",
+          "url": "Patient/srv-9",
+          "body": null
+        },
+        {
+          "method": "DELETE",
+          "url": "Patient/srv-9",
+          "body": null
+        }
+      ],
+      "expectedPhases": {
+        "setup": {
+          "outcome": "pass",
+          "failed": false
+        },
+        "tests": [
+          {
+            "name": "read-created",
+            "outcome": "pass",
+            "skipped": false,
+            "failed": false
+          }
+        ],
+        "teardown": {
+          "outcome": "pass",
+          "failed": false
+        }
+      },
+      "expectedReport": {
+        "setup": [
+          {
+            "kind": "operation",
+            "outcome": "pass",
+            "label": "fixture:pt",
+            "groupId": null
+          }
+        ],
+        "tests": [
+          {
+            "name": "read-created",
+            "actions": [
+              {
+                "kind": "operation",
+                "outcome": "pass",
+                "label": "read-created",
+                "groupId": null
+              }
+            ]
+          }
+        ],
+        "teardown": [
+          {
+            "kind": "operation",
+            "outcome": "pass",
+            "label": "fixture:pt",
+            "groupId": null
+          }
+        ]
+      },
+      "expectedVariables": {
+        "pid": "srv-9"
+      },
+      "expectedEvents": [
+        {
+          "type": "POST",
+          "name": "fixture.json::fixture.pt.autocreate",
+          "failed": false
+        },
+        {
+          "type": "GET",
+          "name": "fixture.json::test.0.action.0",
+          "failed": false
+        },
+        {
+          "type": "DELETE",
+          "name": "fixture.json::fixture.pt.autodelete",
+          "failed": false
+        }
+      ]
+    }
+  ]
+}
