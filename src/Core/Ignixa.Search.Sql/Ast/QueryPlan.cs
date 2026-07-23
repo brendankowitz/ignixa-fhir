@@ -23,7 +23,9 @@ public sealed record QueryPlan(
     IReadOnlyList<IncludeStage>? Includes = null,
     SortSpec? Sort = null,
     PageSpec? Page = null,
-    bool CountOnly = false)
+    bool CountOnly = false,
+    OffsetSpec? OffsetPage = null,
+    bool CountPhaseScoped = false)
 {
     public string Explain() => PlanExplainer.Print(this);
 }

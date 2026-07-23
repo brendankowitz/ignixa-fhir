@@ -63,3 +63,12 @@ public sealed record PageSpec(
     IReadOnlyList<SqlParameterRef> Boundary,
     SqlParameterRef BoundaryResourceTypeId,
     SqlParameterRef BoundarySurrogateId);
+
+/// <summary>
+/// An offset+count paging request — the alternative to <see cref="PageSpec"/>'s keyset boundary, for
+/// callers bridging Ignixa.Search.Models.ContinuationToken's offset+count model (which this compiler's
+/// own KeysetContinuationToken is explicitly not compatible with). Mutually exclusive with PageSpec and
+/// with QueryPlan.Top at the Lower.Run call site — Lower.Run throws if more than one paging mechanism is
+/// supplied.
+/// </summary>
+public sealed record OffsetSpec(int Offset, int Limit);

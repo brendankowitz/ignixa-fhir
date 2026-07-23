@@ -2945,6 +2945,34 @@ public class EndToEndCompilationTests
         expansion.Seed.ShouldBe(new CteRef(4)); // the filtered compartment, not the raw cte2
     }
 
+    [Fact]
+    public async Task GivenAnOffsetPageRequest_WhenCompiledWithNoIncludesOrSort_ThenEmitsOffsetFetchNext()
+    {
+        // Arrange -- Patient?_id=123, offset-mode paging instead of the keyset PageSpec.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null)));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        var offsetPage = new OffsetSpec(Offset: 20, Limit: 10);
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var lowered = Lower.Run(tree, symbolTable, targetResourceType: "Patient",
+            includes: [], revIncludes: [], includeLimit: 0, sort: [], SortPhase.Valued, page: null, offsetPage: offsetPage);
+        var emitted = SqlBuilder.Run(lowered.Plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("OFFSET @p");
+        emitted.Sql.ShouldContain("FETCH NEXT @p");
+        emitted.Sql.ShouldContain("ROWS ONLY");
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(20));
+        emitted.Parameters.ShouldContain(p => p.Value.Equals(10));
+    }
+
     /// <summary>Collects the transitive set of CTE indices reachable from a root index, walking the public
     /// CteDefinition graph (used to prove branch-scoped composition without touching internal helpers).</summary>
     private static HashSet<int> CollectReachable(int rootIndex, QueryPlan plan)

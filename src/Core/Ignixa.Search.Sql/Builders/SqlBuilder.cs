@@ -35,15 +35,31 @@ public static class SqlBuilder
             writer.Append(";WITH ");
             writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
             writer.Append("\n");
-            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
 
+            var countSortJoins = plan.CountPhaseScoped ? EmitSortJoins(plan.Sort) : string.Empty;
+            writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
+
+            var countWhereClauses = new List<string>();
             if (plan.OuterPredicate is not null)
             {
-                var outerPredicateText = EmitPredicate(plan.OuterPredicate, parameters);
-                writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\nWHERE ");
+                countWhereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+            }
+
+            if (plan.CountPhaseScoped && plan.Sort is { Phase: SortPhase.MissingPrimary })
+            {
+                countWhereClauses.Add(EmitMissingPrimaryFilter(plan.Sort));
+            }
+
+            if (countWhereClauses.Count > 0)
+            {
+                var resourceJoin = plan.OuterPredicate is null
+                    ? string.Empty
+                    : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
+                writer.Append(resourceJoin);
+                writer.Append("\nWHERE ");
                 using (writer.Section(Where, SqlRangeKind.Where))
                 {
-                    writer.Append(outerPredicateText);
+                    writer.Append(string.Join(" AND ", countWhereClauses));
                 }
             }
 
@@ -100,6 +116,11 @@ public static class SqlBuilder
                 writer.Append(orderByText);
             }
 
+            if (plan.OffsetPage is { } offsetPage)
+            {
+                writer.Append($"\nOFFSET {EmitParam(new SqlParameterRef(offsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(offsetPage.Limit), parameters)} ROWS ONLY");
+            }
+
             return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
         }
 
@@ -111,7 +132,9 @@ public static class SqlBuilder
         // is null, cteMatchPage has no TOP and so must have no ORDER BY of its own either. The outer
         // final UNION ALL's ORDER BY (EmitOuterOrderByForIncludes, below) is a plain top-level SELECT,
         // always legal regardless of TOP, and is unaffected by this.
-        var cteOrderBy = plan.Top is not null ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}" : string.Empty;
+        var cteOrderBy = plan.Top is not null || plan.OffsetPage is not null
+            ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}"
+            : string.Empty;
 
         var matchWhereClauses = new List<string>();
         int? matchSeekClauseIndex = null;
@@ -182,6 +205,11 @@ public static class SqlBuilder
             }
 
             writer.Append(cteOrderBy);
+            if (plan.OffsetPage is { } matchOffsetPage)
+            {
+                writer.Append($"\n    OFFSET {EmitParam(new SqlParameterRef(matchOffsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(matchOffsetPage.Limit), parameters)} ROWS ONLY");
+            }
+
             writer.Append("\n)");
         }
 

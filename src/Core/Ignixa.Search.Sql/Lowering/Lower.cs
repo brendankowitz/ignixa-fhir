@@ -38,8 +38,29 @@ public static class Lower
         bool countOnly = false,
         int? top = null,
         bool systemLevelSearch = false,
-        DateTimeOffset? approximationReferenceTime = null)
+        DateTimeOffset? approximationReferenceTime = null,
+        OffsetSpec? offsetPage = null,
+        bool countPhaseScoped = false)
     {
+        if (offsetPage is not null && (page is not null || top is not null))
+        {
+            throw new NotSupportedException(
+                "offsetPage cannot be combined with the keyset page boundary or with top -- T-SQL forbids TOP " +
+                "and OFFSET in the same query (error 10741), and offset-mode paging and keyset paging are " +
+                "distinct, non-composable pagination models. page+top together remains valid -- that is keyset " +
+                "paging's own existing call shape (top is keyset's page-size mechanism), unaffected by this guard.");
+        }
+
+        if (countPhaseScoped && !(countOnly && sort.Count > 0))
+        {
+            throw new ArgumentException(
+                "countPhaseScoped is only meaningful combined with countOnly: true and a non-empty sort -- it asks " +
+                "'how many rows would this specific sort phase's own join produce', not the whole match set's count " +
+                "(that's what countOnly alone already does, unconditionally). Without both, there is no phase to " +
+                "scope the count to.",
+                nameof(countPhaseScoped));
+        }
+
         var context = new StructuralContext(symbols, approximationReferenceTime);
         CteRef match;
         Predicate? outerPredicate = null;
@@ -96,7 +117,7 @@ public static class Lower
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly),
+            new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly, offsetPage, countPhaseScoped),
             new PlanProvenance(context.Origins));
     }
 
