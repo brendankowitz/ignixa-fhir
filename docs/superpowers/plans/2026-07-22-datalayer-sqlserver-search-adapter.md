@@ -178,9 +178,9 @@ git commit -m "merge: reconcile Ignixa.Search.Sql with origin/main (PR #353)"
 **Design doc:** §1 (Prerequisite / early-task work).
 
 **Files:**
-- Modify: `src/Application/Ignixa.Domain/Abstractions/ISearchService.cs` (3 members: `SearchStreamAsync`, `CountAsync`, `GetExportRangesAsync` already uses `CancellationToken cancellationToken` correctly — confirm this at Step 1, only the first two need the rename).
+- Modify: `src/Application/Ignixa.Domain/Abstractions/ISearchService.cs` (**correction: all 3 members use `CancellationToken ct = default` today, including `GetExportRangesAsync` — the earlier draft of this brief incorrectly claimed `GetExportRangesAsync` was already correct; it isn't, confirmed by direct inspection. Rename all 3.**).
 - Modify: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Search/SqlEntityFrameworkSearchService.cs` (rename `ct` → `cancellationToken` throughout — both the 2 public method signatures and every internal usage of the parameter).
-- Modify: `src/DataLayer/Ignixa.DataLayer.FileSystem/FileSystem/FileBasedSearchService.cs` (same — 3 public methods: `SearchAsync`, `SearchStreamAsync`, `CountAsync` all use `ct`; `GetExportRangesAsync` already uses `cancellationToken`... verify at Step 1, do not assume).
+- Modify: `src/DataLayer/Ignixa.DataLayer.FileSystem/FileSystem/FileBasedSearchService.cs` (**correction: all 4 public methods — `SearchAsync`, `SearchStreamAsync`, `CountAsync`, and `GetExportRangesAsync` — use `CancellationToken ct = default` today; none is already correct. Rename all 4.**).
 - Test: any existing test file that calls these methods with a named `ct:` argument (grep for it at Step 1 — same pattern as sub-project 2's Task 1).
 
 **Interfaces:**
@@ -208,7 +208,7 @@ Rename the parameter on `SearchStreamAsync`'s and `CountAsync`'s signatures (inc
 
 - [ ] **Step 4: Rename in `FileBasedSearchService.cs`**
 
-Same treatment for `SearchAsync`, `SearchStreamAsync`, `CountAsync`.
+Same treatment for `SearchAsync`, `SearchStreamAsync`, `CountAsync`, **and `GetExportRangesAsync`** (all 4 use `ct` today — do not skip the last one on the assumption it's already correct).
 
 - [ ] **Step 5: Fix any test call sites using a named `ct:` argument**
 
@@ -246,11 +246,13 @@ git commit -m "refactor(search): rename ct to cancellationToken across ISearchSe
 **Files:**
 - Modify: `src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs`.
 - Modify: `src/Core/Ignixa.Search.Sql/Tracing/EmittedSqlTrace.cs`.
-- Test: `test/Ignixa.Search.Sql.Tests/Tracing/SearchCompilerCompileFromOptionsTests.cs` (new file).
+- Modify: `src/Core/Ignixa.Search.Sql/Tracing/SearchTrace.cs` (adds a `CompiledPlan` field — see Step 5a).
+- Test: `test/Ignixa.Search.Sql.Tests/Tracing/EmittedSqlTraceParametersTests.cs` (new file, Step 3).
+- Test: `test/Ignixa.Search.Sql.Tests/Tracing/SearchCompilerCompileFromOptionsTests.cs` (new file, Step 6 — directly tests the new entry point; a prior draft of this brief named this file in the Files list but never actually created it, leaving `CompileFromOptionsAsync` untested until Task 8 used it two tasks later. Fixed below.).
 
 **Interfaces:**
 - Consumes: Task 1's reconciled `SearchCompiler.CompileWithTimeProviderAsync` (post-merge shape — re-verify its exact current signature before writing this task's code; the sketch below is based on `origin/main`'s pre-reconciliation shape and may shift slightly depending on how Task 1's merge landed).
-- Produces: `SearchCompiler.CompileFromOptionsAsync(SearchOptions options, string resourceType, ISymbolResolver resolver, ICompartmentDefinitionManager? compartmentDefinitionManager, ISearchParameterDefinitionManager? searchParameterDefinitionManager, TimeProvider? timeProvider, CancellationToken cancellationToken) : Task<SearchTrace>` — Task 8's `SqlServerCompiledSearchService` is this method's first production caller. `EmittedSqlTrace` gains a `Parameters` property — Task 8 reads `SearchTrace.Sql!.Parameters` to bind `@pN` placeholders at execution time.
+- Produces: `SearchCompiler.CompileFromOptionsAsync(SearchOptions options, string? resourceType, ISymbolResolver resolver, ICompartmentDefinitionManager? compartmentDefinitionManager, ISearchParameterDefinitionManager? searchParameterDefinitionManager, TimeProvider? timeProvider, CancellationToken cancellationToken) : Task<SearchTrace>` — **`resourceType` is nullable, not `string`, deliberately.** `Resolve.RunAsync`/`Lower.Run` both already accept `string? targetResourceType` for multi-type/system-level search (`systemLevelSearch: true`), and this entry point must support that too — a caller passing `null`/empty `resourceType` (a multi-type search) is a real, supported case, not an error this method should reject. (Task 8's adapter is the concrete caller that needs this — see its own Step 2 for how it computes `systemLevelSearch` from the same value.) Task 8's `SqlServerCompiledSearchService` is this method's first production caller. `EmittedSqlTrace` gains a `Parameters` property — Task 8 reads `SearchTrace.Sql!.Parameters` to bind `@pN` placeholders at execution time. `SearchTrace` gains a `QueryPlan? CompiledPlan` property (populated from the same `lowered.Plan` this method already has in scope) — Task 8 and Task 10 read `trace.CompiledPlan!.Includes`/`.Sort` directly to pick the correct result-row shape, rather than inferring it from `SearchOptions` (which can diverge from what `Lower` actually produced — e.g. `BuildIncludeStages` silently drops a degenerate stage and returns null even when `options.Include` is non-empty).
 
 - [ ] **Step 1: Re-read the post-Task-1 current state**
 
@@ -329,15 +331,16 @@ Expected: FAIL — `EmittedSqlTrace` doesn't yet have a `Parameters` property (c
 /// </summary>
 public static async Task<SearchTrace> CompileFromOptionsAsync(
     SearchOptions options,
-    string resourceType,
+    string? resourceType,
     ISymbolResolver resolver,
     ICompartmentDefinitionManager? compartmentDefinitionManager,
     ISearchParameterDefinitionManager? searchParameterDefinitionManager,
     TimeProvider? timeProvider,
     CancellationToken cancellationToken = default)
 {
+    // resourceType is deliberately NOT null-checked here -- null/empty means a multi-type/system-level
+    // search, a real supported case (see this task's Interfaces note), not a caller error.
     ArgumentNullException.ThrowIfNull(options);
-    ArgumentNullException.ThrowIfNull(resourceType);
     ArgumentNullException.ThrowIfNull(resolver);
 
     var approximationReferenceTime = (timeProvider ?? TimeProvider.System).GetUtcNow();
@@ -376,7 +379,7 @@ public static async Task<SearchTrace> CompileFromOptionsAsync(
                 options.Sort,
                 SortPhase.Valued,
                 page: null,
-                systemLevelSearch: string.IsNullOrEmpty(options.ResourceType),
+                systemLevelSearch: string.IsNullOrEmpty(resourceType),
                 approximationReferenceTime: approximationReferenceTime);
 
             planTrace = BuildPlanTrace(lowered, outcomes);
@@ -395,25 +398,114 @@ public static async Task<SearchTrace> CompileFromOptionsAsync(
     {
         Failure = failure,
         Implicit = DetectImplicit(options),
+        CompiledPlan = lowered?.Plan,
     };
 }
 ```
 
 **This code assumes Task 1 landed the merged `Lower.Run` signature from Step 2a of Task 1's brief exactly (both `systemLevelSearch` and `approximationReferenceTime` present) and that `MarkKnownMisses` exists (added by PR #353's merge) — re-verify both before pasting this in.** `DetectImplicit`'s existing signature takes `(IReadOnlyList<QueryParameter> parameters, SearchOptions options)` — since this entry point has no raw `QueryParameter` list (that's the whole point), either add an overload of `DetectImplicit` that only reads `options` (its `parameters`-derived `supplied` set exists solely to detect *_count/_total were explicitly supplied*, information not available or needed here — a pre-built `SearchOptions` has no notion of "was this explicitly supplied" the trace can recover, so the simplest correct fix is skipping implicit-detection for this entry point and returning `Implicit = []` on this trace) — re-read `DetectImplicit`'s real current body (Task 1 may have changed it) before deciding; the sketch above assumes a `DetectImplicit(SearchOptions)` overload exists or is trivial to add, but confirm this doesn't silently misreport `_count`/`_total` as always-implicit when they were genuinely user-supplied. If in doubt, return `Implicit = []` explicitly with a one-line comment explaining pre-built `SearchOptions` doesn't carry supplied-ness, rather than guessing.
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 5a: Add `CompiledPlan` to `SearchTrace`**
+
+`SearchTrace`'s own doc comment already explains why `Failure`/`Implicit` sit outside its positional constructor: "the constructor stays the four always-meaningful fields, so a further optional field can be added without touching every construction site." Add `CompiledPlan` the same way — an init-only property, not a fifth positional parameter, so no existing construction site (in `Ignixa.Search.Sql.Tests`) needs to change:
+
+```csharp
+using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql.Ast;
+
+namespace Ignixa.Search.Sql.Tracing;
+
+public sealed record SearchTrace(
+    string ResourceType,
+    IReadOnlyList<ParameterTrace> Parameters,
+    QueryPlanTrace? Plan,
+    EmittedSqlTrace? Sql)
+{
+    public TraceFailure? Failure { get; init; }
+
+    public IReadOnlyList<ImplicitParameter> Implicit { get; init; } = [];
+
+    /// <summary>
+    /// The real <see cref="QueryPlan"/> Lower produced, or null when compilation stopped before Lower ran.
+    /// Declared outside the positional list for the same reason as <see cref="Failure"/>/<see cref="Implicit"/>.
+    /// A production caller that needs to branch on the plan's own structure (e.g. whether <c>Includes</c> or
+    /// <c>Sort</c> is populated, to pick the right result-row shape) reads this directly, rather than
+    /// re-deriving it from the caller's own <c>SearchOptions</c> — <c>Lower.BuildIncludeStages</c> can drop a
+    /// degenerate stage and return null even when the caller's <c>options.Include</c> is non-empty, so the
+    /// two can diverge; <see cref="QueryPlanTrace"/> (<see cref="Plan"/>) is a display-only projection with
+    /// no <c>Includes</c>/<c>Sort</c> structure of its own and cannot substitute for this.
+    /// </summary>
+    public QueryPlan? CompiledPlan { get; init; }
+}
+```
+
+Add the `Ignixa.Search.Sql.Ast` `using` if not already present (needed for the `QueryPlan` type). Leave `CompileWithTimeProviderAsync`'s own construction site unchanged for now — this field is genuinely optional and only `CompileFromOptionsAsync` needs to populate it for this sub-project's purposes; retrofitting `CompileWithTimeProviderAsync` to also set it is a one-line, zero-risk addition but not required by anything in this plan, so leave it out unless it's free to add while you're already in this file (if you do add it, it's simply `CompiledPlan = lowered?.Plan` on that method's own `return new SearchTrace(...)` too, for consistency — your call, either is correct).
+
+- [ ] **Step 6: Write a direct test for `CompileFromOptionsAsync`**
+
+The design doc requires this entry point to be provably correct standalone, before Task 8 becomes its first production caller two tasks later. Create `test/Ignixa.Search.Sql.Tests/Tracing/SearchCompilerCompileFromOptionsTests.cs`:
+
+```csharp
+using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Tracing;
+using Shouldly;
+using Xunit;
+
+namespace Ignixa.Search.Sql.Tests.Tracing;
+
+public class SearchCompilerCompileFromOptionsTests
+{
+    [Fact]
+    public async Task GivenAnAlreadyBuiltSearchOptions_WhenCompiledFromOptions_ThenTheTraceHasSqlParametersAndCompiledPlan()
+    {
+        // Arrange -- reuse this test file's sibling SearchTraceFixtures.cs helpers (the same fake
+        // ISymbolResolver/ICompartmentDefinitionManager/ISearchParameterDefinitionManager this project's
+        // other tracing tests already use) to build a SearchOptions equivalent to Patient?_id=abc by hand
+        // -- i.e. skip SearchOptionsBuilder.Build entirely and construct the SearchOptions object directly,
+        // proving this entry point genuinely does not need a QueryParameter list or an ISearchOptionsBuilder.
+        var resolver = /* existing fixture's fake ISymbolResolver, resolving "_id" and "Patient" */;
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Expression = /* the same _id=abc SearchParameterExpression shape EmittedSqlTraceParametersTests.cs's fixture builds */,
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Patient",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            CancellationToken.None);
+
+        // Assert
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain("@p0");
+        trace.Sql.Parameters.ShouldNotBeEmpty();
+        trace.CompiledPlan.ShouldNotBeNull();
+        trace.CompiledPlan!.Match.ShouldNotBeNull();
+    }
+}
+```
+
+Fill in the two placeholder lines with the real fixture-construction calls from `SearchTraceFixtures.cs` / `EmittedSqlTraceParametersTests.cs` (Step 3) — both tests need the same resolved `_id`/`Patient` symbols, so the fake resolver setup should be identical or trivially shared.
+
+- [ ] **Step 7: Run tests to verify they pass**
 
 ```bash
 dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj
 ```
 
-Expected: PASS on both net9.0 and net10.0, including the new test, zero regressions to the existing tracing suite.
+Expected: PASS on both net9.0 and net10.0, including both new tests (`EmittedSqlTraceParametersTests` and `SearchCompilerCompileFromOptionsTests`), zero regressions to the existing tracing suite.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs src/Core/Ignixa.Search.Sql/Tracing/EmittedSqlTrace.cs test/Ignixa.Search.Sql.Tests/Tracing/EmittedSqlTraceParametersTests.cs
-git commit -m "feat(search-sql): add SearchCompiler.CompileFromOptionsAsync, carry EmittedSqlTrace.Parameters"
+git add src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs src/Core/Ignixa.Search.Sql/Tracing/EmittedSqlTrace.cs src/Core/Ignixa.Search.Sql/Tracing/SearchTrace.cs test/Ignixa.Search.Sql.Tests/Tracing/EmittedSqlTraceParametersTests.cs test/Ignixa.Search.Sql.Tests/Tracing/SearchCompilerCompileFromOptionsTests.cs
+git commit -m "feat(search-sql): add SearchCompiler.CompileFromOptionsAsync, carry EmittedSqlTrace.Parameters and SearchTrace.CompiledPlan"
 ```
 
 ---
@@ -424,14 +516,14 @@ git commit -m "feat(search-sql): add SearchCompiler.CompileFromOptionsAsync, car
 
 **Files:**
 - Modify: `src/Core/Ignixa.Search.Sql/Ast/SortSpec.cs` (or wherever `PageSpec` ends up living post-Task-1 — re-verify) — add an `OffsetSpec` type.
-- Modify: `src/Core/Ignixa.Search.Sql/Ast/QueryPlan.cs` — add an `OffsetPage` field.
-- Modify: `src/Core/Ignixa.Search.Sql/Lowering/Lower.cs` — add the new parameter, pairwise-exclusion guard.
-- Modify: `src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs` — render `OFFSET ... FETCH NEXT`.
-- Test: `test/Ignixa.Search.Sql.Tests/Builders/SqlBuilderOffsetPagingTests.cs` (new file), `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs` (add cases).
+- Modify: `src/Core/Ignixa.Search.Sql/Ast/QueryPlan.cs` — add an `OffsetPage` field **and a `CountPhaseScoped` field (Step 8a)**.
+- Modify: `src/Core/Ignixa.Search.Sql/Lowering/Lower.cs` — add the new `offsetPage` parameter, its pairwise-exclusion guard, **and a new `countPhaseScoped` parameter with its own guard (Step 8a)**.
+- Modify: `src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs` — render `OFFSET ... FETCH NEXT`, **and extend the `CountOnly` branch to respect `CountPhaseScoped` (Step 8a)**.
+- Test: `test/Ignixa.Search.Sql.Tests/Lowering/OffsetPagingGuardTests.cs` (new file — **corrected from an earlier draft of this brief, which named `Builders/SqlBuilderOffsetPagingTests.cs` here; Step 4 below actually creates the file at this corrected path**), `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs` (add cases), `test/Ignixa.Search.Sql.Tests/Builders/SqlBuilderCountPhaseScopedTests.cs` (new file, Step 8a).
 
 **Interfaces:**
 - Consumes: Task 1's reconciled `Lower.Run`/`SqlBuilder.Run`.
-- Produces: `OffsetSpec(int Offset, int Limit)` record; `Lower.Run`'s new `offsetPage: OffsetSpec? = null` parameter; `QueryPlan.OffsetPage`. Task 8's `SqlServerCompiledSearchService` constructs an `OffsetSpec` from the decoded `Ignixa.Search.Models.ContinuationToken` and drives the two-phase sort executor loop described below.
+- Produces: `OffsetSpec(int Offset, int Limit)` record; `Lower.Run`'s new `offsetPage: OffsetSpec? = null` parameter; `QueryPlan.OffsetPage`. Task 8's `SqlServerCompiledSearchService` constructs an `OffsetSpec` from the decoded `Ignixa.Search.Models.ContinuationToken` and drives the two-phase sort executor loop described below. **Also produces: `Lower.Run`'s new `countPhaseScoped: bool = false` parameter and `QueryPlan.CountPhaseScoped` — Task 10's two-phase sort executor loop uses `countPhaseScoped: true` to learn exactly how many rows the `Valued` phase's own join produces (a materially different question than the existing unscoped `countOnly`, which intentionally counts the WHOLE match set regardless of sort — see Step 8a for why these cannot be the same flag).**
 
 - [ ] **Step 1: Re-read current `PageSpec`/`QueryPlan`/`SqlBuilder` state post-Task-1**
 
@@ -611,7 +703,118 @@ if (plan.OffsetPage is { } matchOffsetPage)
 }
 ```
 
-The `CountOnly` shape needs no change — `OffsetPage` is meaningless for a count query (the design doc's adapter never sets both `countOnly: true` and an `offsetPage` in the same compile call; add a defensive guard in `Lower.Run` too if one doesn't already exist for the analogous `page`/`countOnly` combination — check first, this may already be guarded).
+The `CountOnly` shape needs no change for `OffsetPage` — `OffsetPage` is meaningless for a count query (the design doc's adapter never sets both `countOnly: true` and an `offsetPage` in the same compile call; add a defensive guard in `Lower.Run` too if one doesn't already exist for the analogous `page`/`countOnly` combination — check first, this may already be guarded). It DOES need a change for `CountPhaseScoped` — see Step 8a.
+
+- [ ] **Step 8a: Add `countPhaseScoped` — a distinct, narrower capability `CountOnly` alone cannot provide**
+
+**Why this can't just be the existing `CountOnly` flag:** `SqlBuilder`'s `CountOnly` branch deliberately ignores `plan.Sort`/`plan.Page` entirely — this is not an oversight, it's how `_total=accurate` combined with `_sort=X` correctly reports the TRUE total match count (the whole match set), not a sort-phase subset. Task 10's two-phase sort executor loop needs a genuinely different number: "how many rows would the `Valued` phase's own join produce" (a subset — only rows where the primary sort key is present), used to disambiguate the `MissingPrimary` phase's correct offset when the `Valued` phase's own page comes back short. Changing `CountOnly` to always respect sort would silently break the existing, tested `_total=accurate&_sort=X` composition (a real regression, not this task's to make). So this needs a new, separate, explicitly opt-in flag — `countPhaseScoped` — defaulting to `false`, preserving every existing caller's behavior byte-for-byte.
+
+Add `countPhaseScoped: bool = false` as a new trailing optional parameter on `Lower.Run` (after `offsetPage`, append-only). Guard it — it is only meaningful paired with `countOnly: true` and a non-empty `sort`, since "which phase" has no meaning without both:
+
+```csharp
+if (countPhaseScoped && !(countOnly && sort.Count > 0))
+{
+    throw new ArgumentException(
+        "countPhaseScoped is only meaningful combined with countOnly: true and a non-empty sort -- it asks " +
+        "'how many rows would this specific sort phase's own join produce', not the whole match set's count " +
+        "(that's what countOnly alone already does, unconditionally). Without both, there is no phase to " +
+        "scope the count to.",
+        nameof(countPhaseScoped));
+}
+```
+
+Thread `countPhaseScoped` through to `new QueryPlan(..., CountPhaseScoped: countPhaseScoped)`. Add `bool CountPhaseScoped = false` as a new trailing optional field on `QueryPlan`'s record declaration (append-only, same pattern as every other additive field).
+
+In `SqlBuilder.cs`'s `plan.CountOnly` branch, apply the sort-phase's own join/filter construction (the SAME construction the non-count paths already use — `EmitSortJoins`, `EmitMissingPrimaryFilter`) when `plan.CountPhaseScoped` is also true, but skip `ORDER BY`/paging entirely (a count query never orders or pages). Replace the branch's body with:
+
+```csharp
+if (plan.CountOnly)
+{
+    writer.Append(";WITH ");
+    writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
+    writer.Append("\n");
+
+    var countSortJoins = plan.CountPhaseScoped ? EmitSortJoins(plan.Sort) : string.Empty;
+    writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
+
+    var countWhereClauses = new List<string>();
+    if (plan.OuterPredicate is not null)
+    {
+        countWhereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+    }
+
+    if (plan.CountPhaseScoped && plan.Sort is { Phase: SortPhase.MissingPrimary })
+    {
+        countWhereClauses.Add(EmitMissingPrimaryFilter(plan.Sort));
+    }
+
+    if (countWhereClauses.Count > 0)
+    {
+        var resourceJoin = plan.OuterPredicate is null
+            ? string.Empty
+            : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
+        writer.Append(resourceJoin);
+        writer.Append("\nWHERE ");
+        using (writer.Section(Where, SqlRangeKind.Where))
+        {
+            writer.Append(string.Join(" AND ", countWhereClauses));
+        }
+    }
+
+    return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
+}
+```
+
+**When `CountPhaseScoped` is `false` (the default, every existing caller), this is byte-for-byte identical to today's rendering** — `countSortJoins` is empty and `countWhereClauses` only ever gets `OuterPredicate` when present, exactly as before. Write two tests in a new file, `test/Ignixa.Search.Sql.Tests/Builders/SqlBuilderCountPhaseScopedTests.cs` (read `EndToEndCompilationTests.cs`'s existing `_summary=count`/`_total=accurate` combined-with-`_sort` test — from sub-project 1's Phase 9 completeness work — for the exact fixture shape to mirror):
+
+```csharp
+using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
+using Ignixa.Search.Sql.Lowering;
+using Shouldly;
+using Xunit;
+
+namespace Ignixa.Search.Sql.Tests.Builders;
+
+public class SqlBuilderCountPhaseScopedTests
+{
+    [Fact]
+    public void GivenCountPhaseScopedTrueOnAValuedPhasePlan_WhenEmitted_ThenTheCountQueryJoinsTheSortKey()
+    {
+        // Arrange -- mirror an existing sorted end-to-end test's expression/symbols/SortSpec construction
+        // (a single-key ascending sort, SortPhase.Valued), then lower with countOnly: true, countPhaseScoped: true.
+
+        // Act
+        var emitted = SqlBuilder.Run(/* the lowered plan */);
+
+        // Assert -- the count query must join the sort key's table (proving it's phase-scoped, not the
+        // whole match set), matching the same join shape EmitSortJoins renders for the non-count path.
+        emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1)");
+        emitted.Sql.ShouldContain("JOIN");
+        emitted.Sql.ShouldNotContain("ORDER BY");
+        emitted.Sql.ShouldNotContain("OFFSET");
+    }
+
+    [Fact]
+    public void GivenCountPhaseScopedFalse_WhenEmittedAlongsideASort_ThenTheCountQueryIsUnaffectedByTheSort()
+    {
+        // Regression guard: proves this task did NOT change unscoped CountOnly's existing behavior --
+        // _total=accurate & _sort=X (Phase 9's own tested composition) must still report the TRUE total
+        // match count, ignoring sort entirely, exactly as before this task.
+
+        // Arrange -- same sorted plan as above, but countPhaseScoped left at its default (false).
+
+        // Act
+        var emitted = SqlBuilder.Run(/* the lowered plan, countPhaseScoped: false (default) */);
+
+        // Assert -- no sort-key join appears; this is the exact rendering CountOnly has always produced.
+        emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1)");
+        emitted.Sql.ShouldNotContain("JOIN");
+    }
+}
+```
+
+Run `dotnet test test/Ignixa.Search.Sql.Tests/Ignixa.Search.Sql.Tests.csproj --filter "FullyQualifiedName~SqlBuilderCountPhaseScopedTests"` — expect both to fail first (compile error, `countPhaseScoped`/`CountPhaseScoped` don't exist yet), then pass once the guard/field/branch changes above are in place. Also re-run the existing Phase 9 `_total=accurate&_sort` combined-proof test (find it via `dotnet test ... --filter "FullyQualifiedName~CountOnly"` or similar — it exists somewhere in `EndToEndCompilationTests.cs` per the Phase 9 completeness work) and confirm it still passes unmodified — this is the real regression check, not the two new tests above.
 
 - [ ] **Step 9: Write and run an end-to-end offset-paging compilation test**
 
@@ -649,8 +852,8 @@ Expected: PASS on both net9.0 and net10.0, zero regressions.
 - [ ] **Step 11: Commit**
 
 ```bash
-git add src/Core/Ignixa.Search.Sql/Ast/SortSpec.cs src/Core/Ignixa.Search.Sql/Ast/QueryPlan.cs src/Core/Ignixa.Search.Sql/Lowering/Lower.cs src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs test/Ignixa.Search.Sql.Tests/Lowering/OffsetPagingGuardTests.cs test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs
-git commit -m "feat(search-sql): add offset-based paging (OFFSET/FETCH NEXT) alongside keyset PageSpec"
+git add src/Core/Ignixa.Search.Sql/Ast/SortSpec.cs src/Core/Ignixa.Search.Sql/Ast/QueryPlan.cs src/Core/Ignixa.Search.Sql/Lowering/Lower.cs src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs test/Ignixa.Search.Sql.Tests/Lowering/OffsetPagingGuardTests.cs test/Ignixa.Search.Sql.Tests/Builders/SqlBuilderCountPhaseScopedTests.cs test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs
+git commit -m "feat(search-sql): add offset-based paging and phase-scoped CountOnly alongside keyset PageSpec"
 ```
 
 ---
@@ -775,7 +978,7 @@ git commit -m "feat(search-sql): extend OuterPredicate with an optional surrogat
 - Modify: `src/Core/Ignixa.Search.Sql/Ast/SortSpec.cs` — add `SortKeyKind.ResourceId`.
 - Modify: `src/Core/Ignixa.Search.Sql/Lowering/Lower.cs` — add the `_id` case to `BuildSortKey`.
 - Modify: `src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs` — teach `EmitSortJoins`/`SortValueExpr` about the new kind (it needs a join to `dbo.Resource` for `ResourceId`, since the CTE graph's own `(T1, Sid1)` projection doesn't carry it).
-- Test: `test/Ignixa.Search.Sql.Tests/Lowering/LowerTests.cs`, `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs`.
+- Test: `test/Ignixa.Search.Sql.Tests/Lowering/LowerSortKeyTests.cs` (**corrected from an earlier draft's `LowerTests.cs` citation — the real `BuildSortKey` tests for `_lastUpdated`/String/Date live in `LowerSortKeyTests.cs`, with shared fixtures in `LowerTestFixtures.cs`; confirmed by direct inspection**), `test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs`.
 
 **Interfaces:**
 - Consumes: Task 1's reconciled `Lower.cs`/`SqlBuilder.cs`.
@@ -826,7 +1029,7 @@ public void GivenSortByResourceId_WhenBuildingSortKey_ThenReturnsResourceIdKindW
 }
 ```
 
-Read `LowerTests.cs`'s existing `BuildSortKey` tests (for `_lastUpdated`, String, Date) first and match their exact fixture-construction style.
+Read `LowerSortKeyTests.cs`'s existing `BuildSortKey` tests (for `_lastUpdated`, String, Date) and `LowerTestFixtures.cs`'s shared fixture helpers first and match their exact construction style.
 
 - [ ] **Step 4: Run test to verify it fails**
 
@@ -888,16 +1091,17 @@ if (key.Kind == SortKeyKind.ResourceId)
 }
 ```
 
-In `EmitMissingPrimaryFilter`, add a guard clause analogous to the existing `LastUpdated`/null-`SearchParamId` guard — `_id` is NEVER missing (every resource has a `ResourceId` by definition), so a `MissingPrimary` phase on `_id` is exactly as invalid as one on `_lastUpdated`:
+**No new logic is needed in `EmitMissingPrimaryFilter` — only its message.** `_id` is NEVER missing (every resource has a `ResourceId` by definition), exactly like `_lastUpdated` — but the existing guard already catches it for free: `SortKeyKind.ResourceId` keys have `SearchParamId == null` (per Step 5's `BuildSortKey` case above), and the guard's existing `key.SearchParamId is null` arm already fires for any `SearchParamId`-less key, `ResourceId` included. Adding `key.Kind == SortKeyKind.ResourceId` as a THIRD explicit condition would be redundant — it can never trigger on a code path the `SearchParamId is null` arm doesn't already cover. Only update the message text to name the new case, so a future reader hitting this guard for `_id` isn't confused by a message that only mentions `LastUpdated`:
 
 ```csharp
-if (key.Kind == SortKeyKind.LastUpdated || key.Kind == SortKeyKind.ResourceId || key.SearchParamId is null)
+if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
 {
     throw new InvalidOperationException(
-        "SortSpec.Phase == MissingPrimary with a LastUpdated or ResourceId (or otherwise SearchParamId-less) " +
-        "primary key reached Emit -- neither is ever \"missing\" (both are non-nullable resource columns), " +
-        "so neither has a MissingPrimary segment. Lower.BuildSortSpec should reject this combination the same " +
-        "way it already does for LastUpdated -- extend that guard to cover ResourceId too if it doesn't yet.");
+        "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceId, or otherwise SearchParamId-less " +
+        "primary key reached Emit -- none of these are ever \"missing\" (all are non-nullable resource " +
+        "columns), so none has a MissingPrimary segment. Lower.BuildSortSpec should reject this combination " +
+        "the same way it already does for LastUpdated -- extend that guard to cover ResourceId too if it " +
+        "doesn't yet.");
 }
 ```
 
@@ -935,7 +1139,7 @@ Expected: PASS on both net9.0 and net10.0, zero regressions.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add src/Core/Ignixa.Search.Sql/Ast/SortSpec.cs src/Core/Ignixa.Search.Sql/Lowering/Lower.cs src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs test/Ignixa.Search.Sql.Tests/Lowering/LowerTests.cs test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs
+git add src/Core/Ignixa.Search.Sql/Ast/SortSpec.cs src/Core/Ignixa.Search.Sql/Lowering/Lower.cs src/Core/Ignixa.Search.Sql/Builders/SqlBuilder.cs test/Ignixa.Search.Sql.Tests/Lowering/LowerSortKeyTests.cs test/Ignixa.Search.Sql.Tests/EndToEndCompilationTests.cs
 git commit -m "fix(search-sql): add SortKeyKind.ResourceId so _sort=_id compiles correctly instead of silently matching nothing"
 ```
 
@@ -1232,24 +1436,28 @@ cat src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerHistoryQueryExecutor.cs
 
 Confirm `CompileFromOptionsAsync`'s exact current parameter list (Task 3 built it without offset/surrogate-range support, since Tasks 4/5 landed after — extend it now per this task's Interfaces note above) and `SqlServerHistoryQueryExecutor`'s constructor/field pattern (this task's constructor should mirror it exactly: plain non-generic `ILogger` if `SqlServerFhirRepository`'s own `ILogger<SqlServerFhirRepository>` needs to pass through unchanged when this service is constructed alongside the repository — re-verify whether `SqlServerCompiledSearchService` is constructed by the SAME factory method that builds `SqlServerFhirRepository`, in which case the plain-`ILogger` pattern applies identically, or by a separate one with its own generic `ILogger<SqlServerCompiledSearchService>` — Task 14 decides this, but design this constructor flexibly enough to accept either without rework: accept `ILogger` (plain), matching the established `SqlServerHistoryQueryExecutor` precedent, since it's this project's most recent and most-reviewed sibling-collaborator pattern).
 
-- [ ] **Step 2: Extend `SearchCompiler.CompileFromOptionsAsync` with offset/surrogate-range parameters**
+- [ ] **Step 2: Extend `SearchCompiler.CompileFromOptionsAsync` with offset/surrogate-range/count/include-limit parameters**
 
-Add two more trailing optional parameters to the method Task 3 created:
+Add four more trailing optional parameters to the method Task 3 created:
 
 ```csharp
 public static async Task<SearchTrace> CompileFromOptionsAsync(
     SearchOptions options,
-    string resourceType,
+    string? resourceType,
     ISymbolResolver resolver,
     ICompartmentDefinitionManager? compartmentDefinitionManager,
     ISearchParameterDefinitionManager? searchParameterDefinitionManager,
     TimeProvider? timeProvider,
     OffsetSpec? offsetPage = null,
     (long Start, long End)? surrogateIdRange = null,
+    bool countOnly = false,
+    int includeLimit = 0,
     CancellationToken cancellationToken = default)
 ```
 
-Thread both straight through to the internal `Lower.Run(...)` call's `offsetPage:`/`surrogateIdRange:` arguments.
+Thread all four straight through to the internal `Lower.Run(...)` call's `offsetPage:`/`surrogateIdRange:`/`countOnly:`/`includeLimit:` arguments — Task 3's original sketch hardcoded `includeLimit: 0` and had no `countOnly:`/`offsetPage:`/`surrogateIdRange:` arguments at all (those parameters didn't exist on `Lower.Run` yet when Task 3 was written); replace the hardcoded `includeLimit: 0` literal with the new `includeLimit` parameter, and add the other three as named arguments to the same `Lower.Run(...)` call.
+
+**Why all four land here instead of staying scattered:** they're all the same kind of gap — Task 3 built this entry point before Tasks 4/5 (which added `offsetPage`/`surrogateIdRange` to `Lower.Run`) existed, and before this task's own adapter logic surfaced the `countOnly`/`includeLimit` needs. Consolidating them into one Step 2 edit (rather than patching `CompileFromOptionsAsync` bit by bit across several steps) keeps the method's real final shape visible in one place.
 
 - [ ] **Step 3: Write the failing integration test for a basic search**
 
@@ -1397,7 +1605,9 @@ public sealed class SqlServerCompiledSearchService(
             throw new RequestNotValidException(trace.Failure?.Message ?? "The search could not be compiled.");
         }
 
-        await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.Plan!, cancellationToken))
+        // trace.CompiledPlan, not trace.Plan (the latter is QueryPlanTrace, a display-only projection with
+        // no Includes/Sort structure of its own -- see Task 3's SearchTrace.CompiledPlan addition).
+        await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.CompiledPlan!, cancellationToken))
         {
             yield return result;
         }
@@ -1428,23 +1638,52 @@ public sealed class SqlServerCompiledSearchService(
 
     private async Task<SearchTrace> CompileAsync(SearchOptions options, CancellationToken cancellationToken, bool countOnly = false)
     {
-        var resourceType = options.ResourceType ?? throw new NotSupportedException(
-            "SqlServerCompiledSearchService requires a single ResourceType -- multi-type/system-level search " +
-            "is not yet wired through this adapter (see the design doc's scope).");
+        // resourceType may legitimately be null/empty (a multi-type/system-level search) -- both
+        // CompileFromOptionsAsync (Task 3, widened to accept string? resourceType) and the underlying
+        // Lower.Run already support this via systemLevelSearch. An earlier draft of this method rejected
+        // a null/empty ResourceType with NotSupportedException, which was both wrong (the compiler already
+        // supports this case) and made it impossible to exercise multi-type search through this adapter at
+        // all -- removed.
+        var resourceType = options.ResourceType;
 
         OffsetSpec? offsetPage = null;
-        if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
-            && Ignixa.Search.Models.ContinuationToken.TryDecode(options.ContinuationToken, out var offset, out var count))
+        if (!countOnly)
         {
-            offsetPage = new OffsetSpec(offset, count);
+            // Must match SqlEntityFrameworkSearchService.BuildQueryAsync's exact pagination convention:
+            // options.MaxItemCount arrives from the caller ALREADY "+1'd" for hasMore detection when there is
+            // no continuation token (the handler layer adds that +1 before building SearchOptions at all) --
+            // so the no-token branch uses it as-is. A decoded continuation token, by contrast, stores the
+            // caller's ORIGINAL (non-+1'd) count ("Token stores original user-requested count (without +1),
+            // but handler adds +1 for hasMore detection - so we add it back here"), so THIS branch must add
+            // the +1 back explicitly, or every page after the first would come back one row short and the
+            // Application layer's hasMore detection would misfire.
+            if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
+                && Ignixa.Search.Models.ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount))
+            {
+                offsetPage = new OffsetSpec(tokenOffset, tokenCount + 1);
+            }
+            else
+            {
+                offsetPage = new OffsetSpec(0, options.MaxItemCount);
+            }
         }
+        // else: countOnly (CountAsync) never pages -- SqlEntityFrameworkSearchService.CountAsync ignores
+        // ContinuationToken/MaxItemCount entirely (confirmed by direct inspection: it ends every code path
+        // in a bare .CountAsync() call with no Skip/Take), so this adapter matches that by leaving
+        // offsetPage null whenever countOnly is true, never by constructing one and hoping Lower.Run
+        // tolerates the combination.
 
         (long Start, long End)? surrogateIdRange = options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue
             ? (options.StartSurrogateId.Value, options.EndSurrogateId.Value)
             : null;
 
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
-            options with { }, // countOnly is not a SearchOptions field -- see note below
+        // Legacy has no hard cap on include results at all -- BuildIncludeQuery has no .Take/TOP of its own,
+        // so there is no legacy default to literally mirror. Fall back to the primary page size when the
+        // caller didn't specify one explicitly, rather than inventing an unrelated magic number.
+        var includeLimit = options.IncludesMaxItemCount ?? options.MaxItemCount;
+
+        return await SearchCompiler.CompileFromOptionsAsync(
+            options,
             resourceType,
             _symbolResolver,
             _compartmentDefinitionManager,
@@ -1452,16 +1691,16 @@ public sealed class SqlServerCompiledSearchService(
             timeProvider: null,
             offsetPage,
             surrogateIdRange,
+            countOnly,
+            includeLimit,
             cancellationToken);
-
-        return trace;
     }
 
     // ... ExecuteAndMaterializeAsync, BindParameters, row-shape branching, decompress -- see Step 6 below.
 }
 ```
 
-**`countOnly` is a real gap in the sketch above, not a placeholder to leave for later — resolve it now.** `SearchCompiler.CompileFromOptionsAsync` (as designed by Task 3/extended by this task's Step 2) has no `countOnly` parameter, but `Lower.Run`'s own `countOnly: bool = false` parameter is exactly what `CountAsync` needs (renders `SELECT COUNT_BIG(...)` instead of row-returning SQL). Add one more trailing parameter to `CompileFromOptionsAsync`, `bool countOnly = false`, threaded straight to the internal `Lower.Run(..., countOnly: countOnly, ...)` call — go back and amend Task 3's/Step 2's method rather than leaving this sketch's `options with { }` no-op in place; that expression does nothing useful and must not survive into the real implementation.
+**Every value threaded into this method must be re-verified against Task 3's/Step 2's actual landed `CompileFromOptionsAsync` signature before pasting this in** — in particular, confirm the parameter order matches exactly (positional arguments above rely on it).
 
 - [ ] **Step 6: Implement execution, row-shape branching, and the corrected `IsMatch`/`IsPartial` mapping**
 
@@ -1700,14 +1939,19 @@ git commit -m "feat(datalayer-sqlserver): add SqlServerCompiledSearchService.Get
 - Test: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/SqlServerCompiledSearchServiceSortTests.cs` (new file).
 
 **Interfaces:**
-- Consumes: Task 8's `SqlServerCompiledSearchService`, `SortPhase.Valued`/`SortPhase.MissingPrimary`, Task 3's `CompileFromOptionsAsync`'s implicit use of `SortPhase.Valued` (hard-coded in Task 3's sketch — this task must make it a real, driven loop, not a hard-coded constant).
+- Consumes: Task 8's `SqlServerCompiledSearchService`, `SortPhase.Valued`/`SortPhase.MissingPrimary`, Task 3's `CompileFromOptionsAsync`'s implicit use of `SortPhase.Valued` (hard-coded in Task 3's sketch — this task must make it a real, driven loop, not a hard-coded constant), Task 4's `countPhaseScoped` mechanism (used to disambiguate the `MissingPrimary` phase's offset when `Valued` returns zero rows).
 - Produces: `SearchStreamAsync` correctly returns a full page even when the requested offset straddles the Valued/MissingPrimary boundary.
 
 - [ ] **Step 1: Re-read Task 8's current `CompileAsync`/`ExecuteAndMaterializeAsync` and the design doc's exact corrected formula**
 
-The design doc's final, corrected algorithm (transcribe exactly): run the `Valued` phase at the requested offset first. If it returns at least one row, the phase boundary is inside or past this page and `MissingPrimary`'s offset for this page is `0` — no further work needed. Only when `Valued` returns **zero rows** does the adapter run a `CountOnly` compile of the `Valued` phase to learn the exact `Valued` total, then compute `MissingPrimary`'s offset as `max(0, requestedOffset - valuedTotal)`. Either way, `MissingPrimary`'s fetch limit is `Limit - (rows already returned by Valued)`, not the full requested `Limit`.
+**The design doc's prose (§3's "Fix:" paragraph) reads, taken literally, as if `MissingPrimary` never runs when `Valued` returns at least one row ("no further work needed") — but the SAME paragraph also says "Either way, `MissingPrimary`'s fetch limit is `Limit - (rows already returned by Valued)`", which only makes sense if `MissingPrimary` DOES still run in that case, just with a reduced limit. This plan resolves the apparent contradiction the way the "either way" clause requires — do not transcribe the "no further work needed" sentence as "skip `MissingPrimary` whenever `Valued` returned any rows"; that reading was tried in an earlier draft of this task and is wrong (see the straddling-page test in Step 2, which it fails).** The correct algorithm:
 
-This loop only applies when `options.Sort` is non-empty AND the compiled plan's paging is offset-mode (this loop has no meaning for keyset paging, which the compiler already handles correctly in one compile via its own boundary mechanism — do not apply this loop when `options.ContinuationToken` decodes to a keyset token or when there's no sort at all).
+1. Run the `Valued` phase at the requested offset, with the requested limit.
+2. If `Valued` alone returned **the full requested count** (the page is already full), stop — genuinely no further work needed, `MissingPrimary` never runs.
+3. If `Valued` returned **at least one row but fewer than the requested count** (a short, non-empty page), the phase boundary is unambiguously *inside* this page — run `MissingPrimary` at offset `0`, limit `requestedCount - valuedCount`, to fill out the rest of the page.
+4. If `Valued` returned **zero rows**, the offset landed at-or-past the `Valued` total and the boundary's exact location is ambiguous without asking — run a `CountOnly` (`countPhaseScoped: true`, Task 4) compile of the `Valued` phase to learn the exact `Valued` total, then run `MissingPrimary` at offset `max(0, requestedOffset - valuedTotal)`, limit `requestedCount` (all of it, since `Valued` contributed nothing).
+
+This loop only applies when `options.Sort` is non-empty (this loop has no meaning for keyset paging, which the compiler already handles correctly in one compile via its own boundary mechanism — the adapter never uses keyset paging at all, per the design doc's decision to bridge exclusively via offset-mode paging, so this distinction doesn't need a runtime check). **Corrected from an earlier draft: this loop must run on EVERY sorted search, including the first page with no continuation token at all — offset `0` is not a special case, it is just `OffsetSpec(0, Limit)`.** A token-less sorted search that skipped this loop would compile Valued-only and silently omit every missing-value resource from page 1.
 
 - [ ] **Step 2: Write the failing test for a page straddling the phase boundary**
 
@@ -1774,19 +2018,92 @@ dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.Sq
 
 Expected: FAIL — today's implementation hard-codes `SortPhase.Valued` and never runs a `MissingPrimary` phase at all, so the straddling test returns only 2 rows (Valued's tail) instead of 5, and the entirely-past test returns 0 rows instead of 3.
 
-- [ ] **Step 4: Implement the two-phase loop**
+- [ ] **Step 4: Extend `CompileFromOptionsAsync` and `CompileAsync` with `sortPhase`/`countPhaseScoped`, add an explicit-offset override, then implement the two-phase loop**
 
-Replace `CompileAsync`'s single hard-coded-`SortPhase.Valued` call (inside `SearchStreamAsync`, not `CountAsync` — `CountAsync` never pages, so it has no phase-boundary concern at all) with a loop:
+**4a. Extend `SearchCompiler.CompileFromOptionsAsync` (Task 3) with two more trailing parameters:**
+
+```csharp
+public static async Task<SearchTrace> CompileFromOptionsAsync(
+    SearchOptions options,
+    string? resourceType,
+    ISymbolResolver resolver,
+    ICompartmentDefinitionManager? compartmentDefinitionManager,
+    ISearchParameterDefinitionManager? searchParameterDefinitionManager,
+    TimeProvider? timeProvider,
+    OffsetSpec? offsetPage = null,
+    (long Start, long End)? surrogateIdRange = null,
+    bool countOnly = false,
+    int includeLimit = 0,
+    bool countPhaseScoped = false,
+    SortPhase sortPhase = SortPhase.Valued,
+    CancellationToken cancellationToken = default)
+```
+
+Thread `countPhaseScoped`/`sortPhase` to the internal `Lower.Run(...)` call's own `countPhaseScoped:`/`sortPhase:` arguments — Task 3's original sketch hard-coded `SortPhase.Valued` directly in that call; replace the hard-coded literal with the new `sortPhase` parameter.
+
+**4b. Extend Task 8's private `CompileAsync` helper with the same two parameters, plus an explicit-offset override that bypasses token decoding entirely** (needed because this loop must drive `Valued`/`MissingPrimary` with phase-specific offsets/limits that have no correct representation as a real `Ignixa.Search.Models.ContinuationToken` — round-tripping through `Encode`/`Decode` for an internal, adapter-only value is indirection with no purpose):
+
+```csharp
+private async Task<SearchTrace> CompileAsync(
+    SearchOptions options,
+    CancellationToken cancellationToken,
+    bool countOnly = false,
+    bool countPhaseScoped = false,
+    SortPhase sortPhase = SortPhase.Valued,
+    OffsetSpec? offsetPageOverride = null)
+{
+    var resourceType = options.ResourceType;
+
+    OffsetSpec? offsetPage = offsetPageOverride;
+    if (offsetPage is null && !countOnly)
+    {
+        // Same +1-for-hasMore convention as before -- see the comment in the original version of this
+        // method (Task 8, Step 5) for the full rationale; unchanged by this task except for gaining the
+        // offsetPageOverride bypass above it.
+        if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
+            && Ignixa.Search.Models.ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount))
+        {
+            offsetPage = new OffsetSpec(tokenOffset, tokenCount + 1);
+        }
+        else
+        {
+            offsetPage = new OffsetSpec(0, options.MaxItemCount);
+        }
+    }
+
+    (long Start, long End)? surrogateIdRange = options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue
+        ? (options.StartSurrogateId.Value, options.EndSurrogateId.Value)
+        : null;
+
+    var includeLimit = options.IncludesMaxItemCount ?? options.MaxItemCount;
+
+    return await SearchCompiler.CompileFromOptionsAsync(
+        options,
+        resourceType,
+        _symbolResolver,
+        _compartmentDefinitionManager,
+        _searchParameterDefinitionManager,
+        timeProvider: null,
+        offsetPage,
+        surrogateIdRange,
+        countOnly,
+        includeLimit,
+        countPhaseScoped,
+        sortPhase,
+        cancellationToken);
+}
+```
+
+**Go back and update Task 8's own `CompileAsync` (written in that task's Step 5) to this exact shape** — this is the same method, extended, not a duplicate.
+
+**4c. Implement the two-phase loop**, replacing `SearchStreamAsync`'s single Valued-only compile-and-execute call (`CountAsync` is untouched — it never pages, so it has no phase-boundary concern at all):
 
 ```csharp
 private async IAsyncEnumerable<SearchEntryResult> SearchStreamWithPhaseHandlingAsync(
     SearchOptions options,
     [EnumeratorCancellation] CancellationToken cancellationToken)
 {
-    var resourceType = options.ResourceType ?? throw new NotSupportedException(/* same message as Task 8's CompileAsync */);
-    var appliesTwoPhaseSort = options.Sort.Count > 0 && !string.IsNullOrWhiteSpace(options.ContinuationToken);
-
-    if (!appliesTwoPhaseSort)
+    if (options.Sort.Count == 0)
     {
         var trace = await CompileAsync(options, cancellationToken);
         if (trace.Sql is not { } sql)
@@ -1794,7 +2111,7 @@ private async IAsyncEnumerable<SearchEntryResult> SearchStreamWithPhaseHandlingA
             throw new RequestNotValidException(trace.Failure?.Message ?? "The search could not be compiled.");
         }
 
-        await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.Plan!, cancellationToken))
+        await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.CompiledPlan!, cancellationToken))
         {
             yield return result;
         }
@@ -1802,53 +2119,88 @@ private async IAsyncEnumerable<SearchEntryResult> SearchStreamWithPhaseHandlingA
         yield break;
     }
 
-    Ignixa.Search.Models.ContinuationToken.TryDecode(options.ContinuationToken!, out var requestedOffset, out var requestedCount);
+    // Sort is active -- the two-phase loop applies to EVERY sorted search, including a token-less first
+    // page (offset 0 is just OffsetSpec(0, Limit), not a special case that can skip this loop).
+    int requestedOffset;
+    int requestedCount;
+    if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
+        && Ignixa.Search.Models.ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount))
+    {
+        requestedOffset = tokenOffset;
+        requestedCount = tokenCount + 1; // same +1-for-hasMore convention CompileAsync itself uses
+    }
+    else
+    {
+        requestedOffset = 0;
+        requestedCount = options.MaxItemCount;
+    }
 
-    var valuedTrace = await CompileAsync(options, cancellationToken, sortPhase: SortPhase.Valued);
+    var valuedTrace = await CompileAsync(
+        options, cancellationToken, sortPhase: SortPhase.Valued,
+        offsetPageOverride: new OffsetSpec(requestedOffset, requestedCount));
     if (valuedTrace.Sql is not { } valuedSql)
     {
         throw new RequestNotValidException(valuedTrace.Failure?.Message ?? "The search could not be compiled.");
     }
 
-    var valuedResults = new List<SearchEntryResult>();
-    await foreach (var result in ExecuteAndMaterializeAsync(valuedSql, valuedTrace.Plan!, cancellationToken))
+    var valuedCount = 0;
+    await foreach (var result in ExecuteAndMaterializeAsync(valuedSql, valuedTrace.CompiledPlan!, cancellationToken))
     {
-        valuedResults.Add(result);
+        valuedCount++;
         yield return result;
     }
 
-    if (valuedResults.Count > 0)
+    if (valuedCount >= requestedCount)
     {
-        yield break; // Boundary is inside or past this page; MissingPrimary offset for THIS page is 0 -- nothing further to fetch.
+        yield break; // Valued alone filled the whole page -- no room left for MissingPrimary rows.
     }
 
-    var valuedCountOptions = options with { ContinuationToken = null };
-    var valuedCountTrace = await CompileAsync(valuedCountOptions, cancellationToken, countOnly: true, sortPhase: SortPhase.Valued);
-    var valuedTotal = /* execute valuedCountTrace.Sql the same way CountAsync does, extract the scalar */;
-
-    var missingPrimaryOffset = Math.Max(0, requestedOffset - valuedTotal);
-    var missingPrimaryLimit = requestedCount; // Valued contributed 0 rows to this page, so the full requested count is still needed.
-    var missingPrimaryOptions = options with
+    int missingPrimaryOffset;
+    if (valuedCount > 0)
     {
-        ContinuationToken = Ignixa.Search.Models.ContinuationToken.Encode(missingPrimaryOffset, missingPrimaryLimit),
-    };
+        // A short, non-empty Valued page: the phase boundary is unambiguously inside this page.
+        missingPrimaryOffset = 0;
+    }
+    else
+    {
+        // Valued returned ZERO rows: the offset landed at-or-past the Valued total, and the boundary's
+        // exact location is ambiguous without asking -- learn it via a countPhaseScoped CountOnly compile
+        // (Task 4/§3's mechanism, purpose-built for exactly this disambiguation).
+        var valuedCountTrace = await CompileAsync(
+            options, cancellationToken, countOnly: true, countPhaseScoped: true, sortPhase: SortPhase.Valued);
+        if (valuedCountTrace.Sql is not { } valuedCountSql)
+        {
+            throw new RequestNotValidException(valuedCountTrace.Failure?.Message ?? "The search could not be compiled.");
+        }
 
-    var missingTrace = await CompileAsync(missingPrimaryOptions, cancellationToken, sortPhase: SortPhase.MissingPrimary);
+        using var countCommand = new SqlCommand(valuedCountSql.Sql);
+        BindParameters(countCommand, valuedCountSql.Parameters);
+        var countRows = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId, countCommand, reader => reader.GetInt64(0), cancellationToken);
+        var valuedTotal = checked((int)(countRows.Count > 0 ? countRows[0] : 0L));
+
+        missingPrimaryOffset = Math.Max(0, requestedOffset - valuedTotal);
+    }
+
+    var missingPrimaryLimit = requestedCount - valuedCount;
+    var missingTrace = await CompileAsync(
+        options, cancellationToken, sortPhase: SortPhase.MissingPrimary,
+        offsetPageOverride: new OffsetSpec(missingPrimaryOffset, missingPrimaryLimit));
     if (missingTrace.Sql is not { } missingSql)
     {
         throw new RequestNotValidException(missingTrace.Failure?.Message ?? "The search could not be compiled.");
     }
 
-    await foreach (var result in ExecuteAndMaterializeAsync(missingSql, missingTrace.Plan!, cancellationToken))
+    await foreach (var result in ExecuteAndMaterializeAsync(missingSql, missingTrace.CompiledPlan!, cancellationToken))
     {
         yield return result;
     }
 }
 ```
 
-This requires `CompileAsync` (Task 8) to gain a `sortPhase: SortPhase = SortPhase.Valued` parameter, threaded to `SearchCompiler.CompileFromOptionsAsync`'s own `sortPhase` argument (which Task 3's original sketch also hard-coded to `SortPhase.Valued` — fix that hard-coding now, since this is the first task that actually needs to vary it). `SearchStreamAsync` (Task 8) should now call `SearchStreamWithPhaseHandlingAsync` instead of its own inline compile-and-execute logic.
+`SearchStreamAsync` (Task 8) should now call `SearchStreamWithPhaseHandlingAsync` instead of its own inline compile-and-execute logic. Note this method never constructs a `SearchOptions` copy with a different `ContinuationToken` — every phase-specific offset/limit goes through `offsetPageOverride` instead, avoiding the `SearchOptions with { ... }` pattern entirely (`SearchOptions` is a mutable class, not a record — `with` expressions do not compile against it; an earlier draft of this task used them and would not have built).
 
-**The `results.Count.ShouldBe(3)` assertion in Step 2's second test encodes a specific, worked-out arithmetic example — verify it by hand-tracing the algorithm above against that test's exact Arrange data before trusting it; if the real numbers don't match, fix the test's Arrange/Assert, not the algorithm (which is the design doc's own twice-reviewed formula).**
+**Re-verify the `results.Count.ShouldBe(3)`/`ShouldBe(5)` assertions in Step 2's two tests by hand-tracing the algorithm above against each test's exact Arrange data** — both were hand-traced against this corrected algorithm while writing this fix and both check out (straddling: Valued returns 2 of the requested 5 at offset 8, `MissingPrimary` fills the remaining 3 at offset 0 = 5 total; entirely-past: Valued returns 0 at offset 12, `CountOnly` reports 10, `MissingPrimary` runs at offset 2 with limit 5 against 5 total `MissingPrimary` rows = 3 remaining = 3 total) — but re-verify once more against whatever Step 2's test data actually ends up being if it changes.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -2097,6 +2449,11 @@ public async Task GivenAnAscendingSortWithSomeResourcesMissingTheSortKey_WhenSea
     await using var harness = await DifferentialTestHarness.CreateAsync(CancellationToken.None);
 
     // Arrange -- 2 resources WITH the sort parameter set, 2 WITHOUT, ascending sort.
+    var options = new SearchOptions
+    {
+        ResourceType = "Patient",
+        Sort = [/* the shared sort parameter, ascending */],
+    };
 
     // Act
     var legacyResults = await CollectAsync(harness.LegacySearchService.SearchStreamAsync(options, CancellationToken.None));
