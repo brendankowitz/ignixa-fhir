@@ -111,12 +111,30 @@ class RuntimeLifecycleTests(unittest.TestCase):
     # Action dispatcher scaffold
     # ------------------------------------------------------------------
 
-    def test_execute_action_default_dispatch_raises_for_operation(self):
-        context = self.runtime._new_context(_document(), {"iteration": 0, "ordinal": 0})
-        with self.assertRaises(RuntimeError):
-            self.runtime._execute_action(
-                _document(), fakes.FakeUser(client=None), context, _action("op-1", kind="operation")
-            )
+    def test_execute_action_dispatches_operation_kind_to_execute_operation(self):
+        # Task 8 replaces the placeholder operation executor with a real one.
+        # The dispatcher's job is only to route "operation" actions to
+        # whatever ``_execute_operation`` currently is - this test locks that
+        # wiring by monkeypatching ``_execute_operation`` directly, rather
+        # than asserting anything about the placeholder's behavior.
+        calls = []
+
+        def fake_execute_operation(document, user, context, action):
+            calls.append((document, user, context, action))
+            return {"applicable": True, "failed": False}
+
+        self.runtime._execute_operation = fake_execute_operation
+
+        document = _document()
+        context = self.runtime._new_context(document, {"iteration": 0, "ordinal": 0})
+        user = fakes.FakeUser(client=None)
+        action = _action("op-1", kind="operation")
+
+        result = self.runtime._execute_action(document, user, context, action)
+
+        self.assertEqual(1, len(calls))
+        self.assertEqual((document, user, context, action), calls[0])
+        self.assertEqual({"applicable": True, "failed": False}, result)
 
     def test_execute_action_default_dispatch_raises_for_assertion(self):
         context = self.runtime._new_context(_document(), {"iteration": 0, "ordinal": 0})
