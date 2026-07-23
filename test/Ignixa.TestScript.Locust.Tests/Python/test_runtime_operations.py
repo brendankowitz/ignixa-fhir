@@ -6,7 +6,7 @@ monkeypatched dispatch functions) never leaks between tests.
 
 Calls that exercise the still-placeholder ``_execute_operation`` (or a
 not-yet-existing helper such as ``_derive_url``/``_resolve``/``_metric_name``/
-``_parse_auth_header``) are centralized through the helpers below so a
+``_perform_request``) are centralized through the helpers below so a
 "feature not implemented yet" state always surfaces as a clean assertion
 *failure* (``self.fail(...)``) rather than an unhandled-exception *error*.
 Only tests that specifically assert on unexpected-exception propagation
@@ -16,7 +16,7 @@ try/except instead of ``assertRaises`` for the same reason.
 
 import ast
 import copy
-import os
+import traceback
 import unittest
 from unittest.mock import patch
 
@@ -174,6 +174,64 @@ def new_context(runtime, document=None, ordinal=0, iteration=0):
 def make_user():
     client = fakes.FakeClient()
     return fakes.FakeUser(client=client), client
+
+
+class _FakeAccessToken:
+    def __init__(self, token, expires_on):
+        self.token = token
+        self.expires_on = expires_on
+
+
+class _DeterministicManagedIdentityCredential:
+    def __init__(self, tokens=None, error=None):
+        self._tokens = list(tokens or [])
+        self._error = error
+        self.calls = []
+
+    def get_token(self, scope):
+        self.calls.append(scope)
+        if self._error is not None:
+            raise self._error
+        if not self._tokens:
+            raise AssertionError("Unexpected get_token call")
+        return self._tokens.pop(0)
+
+
+class _InvalidateCountingProvider:
+    def __init__(self, inner):
+        self._inner = inner
+        self.invalidate_calls = 0
+
+    def initialize(self):
+        return self._inner.initialize()
+
+    def authorization_value(self):
+        return self._inner.authorization_value()
+
+    def invalidate(self):
+        self.invalidate_calls += 1
+        return self._inner.invalidate()
+
+    def close(self):
+        return self._inner.close()
+
+
+def _header_value_case_insensitive(headers, name):
+    for key, value in dict(headers or {}).items():
+        if key.lower() == name.lower():
+            return value
+    return None
+
+
+def _install_managed_identity_provider(runtime, tokens, clock=None, error=None):
+    credential = _DeterministicManagedIdentityCredential(tokens=tokens, error=error)
+    provider = runtime._ManagedIdentityAuthProvider(
+        "https://fhir.example/.default",
+        credential,
+        clock=clock or (lambda: 1000),
+    )
+    runtime._AUTH_PROVIDER = provider
+    return provider, credential
 
 
 class RuntimeOperationsTestCase(unittest.TestCase):
@@ -489,119 +547,408 @@ class PostSearchFormBodyTests(RuntimeOperationsTestCase):
 
 
 # ---------------------------------------------------------------------------
-# Item 3: _parse_auth_header exact parsing rules.
+# Managed identity auth on every runtime FHIR path.
 # ---------------------------------------------------------------------------
 
 
-class AuthHeaderParsingTests(RuntimeOperationsTestCase):
-    def test_unset_env_var_returns_none(self):
-        parse = get_fn(self, self.runtime, "_parse_auth_header")
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("IGNIXA_AUTH_HEADER", None)
-            self.assertIsNone(parse())
-
-    def test_valid_header_uses_first_colon_and_allows_colons_in_value(self):
-        parse = get_fn(self, self.runtime, "_parse_auth_header")
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "Authorization: Bearer abc:def:ghi"}):
-            self.assertEqual(("Authorization", "Bearer abc:def:ghi"), parse())
-
-    def test_missing_colon_raises(self):
-        parse = get_fn(self, self.runtime, "_parse_auth_header")
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "NoColonHere"}):
-            with self.assertRaises(RuntimeError):
-                parse()
-
-    def test_empty_name_raises(self):
-        parse = get_fn(self, self.runtime, "_parse_auth_header")
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": ": value"}):
-            with self.assertRaises(RuntimeError):
-                parse()
-
-    def test_empty_value_raises(self):
-        parse = get_fn(self, self.runtime, "_parse_auth_header")
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "Name:"}):
-            with self.assertRaises(RuntimeError):
-                parse()
-
-    def test_explicit_empty_string_raises_as_malformed_not_unset(self):
-        parse = get_fn(self, self.runtime, "_parse_auth_header")
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": ""}):
-            with self.assertRaises(RuntimeError):
-                parse()
-
-
-# ---------------------------------------------------------------------------
-# Item 4: IGNIXA_AUTH_HEADER applied to every FHIR request; explicit
-# TestScript header overrides it case-insensitively.
-# ---------------------------------------------------------------------------
-
-
-class AuthHeaderApplicationTests(RuntimeOperationsTestCase):
-    def test_auth_header_is_applied_to_an_ordinary_operation_request(self):
+class ManagedIdentityRequestAuthenticationTests(RuntimeOperationsTestCase):
+    def test_operation_request_carries_managed_identity_authorization_header(self):
         document = _document()
         user, client = make_user()
         context = new_context(self.runtime, document)
         client.queue_response(fakes.FakeResponse(status_code=200, json_data={}))
-        action = _operation("op-1", type="read", resource="Patient", request_id="op-1", response_id="op-1")
 
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "Authorization: Bearer secret"}):
-            run_operation(self, self.runtime, document, user, context, action)
-
-        headers = client.calls[-1]["headers"]
-        self.assertEqual("Bearer secret", headers.get("Authorization") or headers.get("authorization"))
-
-    def test_explicit_script_header_overrides_auth_header_case_insensitively(self):
-        # Distinct env vs. script values so this test can actually distinguish
-        # the script header winning from the auth header merely matching -
-        # a RED-phase authoring bug (both values were identical) is fixed here.
-        document = _document()
-        user, client = make_user()
-        context = new_context(self.runtime, document)
-        client.queue_response(fakes.FakeResponse(status_code=200, json_data={}))
-        action = _operation(
-            "op-1", type="read", resource="Patient", request_id="op-1", response_id="op-1",
-            headers=[_header("AUTHORIZATION", "script-override-token")],
+        _install_managed_identity_provider(
+            self.runtime,
+            [_FakeAccessToken("token-one-operation", 10_000_000_000)],
         )
 
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "Authorization: env-secret-token"}):
-            run_operation(self, self.runtime, document, user, context, action)
+        action = _operation("op-1", type="read", resource="Patient", request_id="op-1", response_id="op-1")
+        run_operation(self, self.runtime, document, user, context, action)
 
-        headers = client.calls[-1]["headers"]
-        value = headers.get("Authorization") or headers.get("AUTHORIZATION") or headers.get("authorization")
-        self.assertEqual("script-override-token", value)
+        self.assertEqual("Bearer token-one-operation", _header_value_case_insensitive(client.calls[-1]["headers"], "authorization"))
 
-    def test_auth_header_is_applied_to_fixture_autocreate_request(self):
+    def test_custom_authorization_header_cannot_override_managed_identity(self):
+        document = _document()
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        client.queue_response(fakes.FakeResponse(status_code=200, json_data={}))
+
+        _install_managed_identity_provider(
+            self.runtime,
+            [_FakeAccessToken("token-two-provider-wins", 10_000_000_000)],
+        )
+
+        action = _operation(
+            "op-1",
+            type="read",
+            resource="Patient",
+            request_id="op-1",
+            response_id="op-1",
+            headers=[_header("AUTHORIZATION", "script-must-not-win")],
+        )
+
+        run_operation(self, self.runtime, document, user, context, action)
+
+        self.assertEqual(
+            "Bearer token-two-provider-wins",
+            _header_value_case_insensitive(client.calls[-1]["headers"], "authorization"),
+        )
+
+    def test_fixture_autocreate_request_carries_managed_identity_authorization(self):
         self.runtime._execute_action = lambda *a, **k: {"applicable": True, "failed": False}
         document = _document(
+            metadata={"name": "n", "source": "s/fixtures.xml", "fhirVersion": None},
             fixtures=[_fixture("patient", [{"resourceType": "Patient"}], autocreate=True)],
         )
         user, client = make_user()
-        client.queue_response(fakes.FakeResponse(status_code=201, json_data={"resourceType": "Patient", "id": "1"}))
-        state = self.runtime.initialize_user(document, user)
+        client.queue_response(
+            fakes.FakeResponse(
+                status_code=201,
+                json_data={"resourceType": "Patient", "id": "fixture-created"},
+            )
+        )
 
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "Authorization: Bearer secret"}):
-            run_execute(self, self.runtime, document, user, state)
+        _install_managed_identity_provider(
+            self.runtime,
+            [_FakeAccessToken("token-three-fixture-create", 10_000_000_000)],
+        )
 
+        outcome = run_execute(self, self.runtime, document, user, self.runtime.initialize_user(document, user))
+
+        self.assertFalse(outcome["failed"])
         self.assertEqual(1, len(client.calls))
-        headers = client.calls[0]["headers"]
-        self.assertEqual("Bearer secret", headers.get("Authorization") or headers.get("authorization"))
+        self.assertEqual(
+            "Bearer token-three-fixture-create",
+            _header_value_case_insensitive(client.calls[0]["headers"], "authorization"),
+        )
 
-    def test_auth_header_is_applied_to_fixture_autodelete_request(self):
+    def test_fixture_autodelete_request_carries_managed_identity_authorization(self):
         self.runtime._execute_action = lambda *a, **k: {"applicable": True, "failed": False}
         document = _document(
-            fixtures=[_fixture("patient", [{"resourceType": "Patient", "id": "server-1"}], autodelete=True)],
+            metadata={"name": "n", "source": "s/fixtures.xml", "fhirVersion": None},
+            fixtures=[
+                _fixture(
+                    "patient",
+                    [{"resourceType": "Patient", "id": "fixture-server-id"}],
+                    autodelete=True,
+                )
+            ],
         )
         user, client = make_user()
         client.queue_response(fakes.FakeResponse(status_code=204))
-        state = self.runtime.initialize_user(document, user)
 
-        with patch.dict(os.environ, {"IGNIXA_AUTH_HEADER": "Authorization: Bearer secret"}):
-            run_execute(self, self.runtime, document, user, state)
+        _install_managed_identity_provider(
+            self.runtime,
+            [_FakeAccessToken("token-four-fixture-delete", 10_000_000_000)],
+        )
+
+        outcome = run_execute(self, self.runtime, document, user, self.runtime.initialize_user(document, user))
+
+        self.assertFalse(outcome["setup_failed"])
+        self.assertFalse(outcome["tests"])
+        self.assertFalse(outcome["failed"])
+        self.assertEqual(1, len(client.calls))
+        self.assertEqual(
+            "Bearer token-four-fixture-delete",
+            _header_value_case_insensitive(client.calls[0]["headers"], "authorization"),
+        )
+
+    def test_waitfor_polling_refreshes_token_after_fake_clock_advance(self):
+        document = _document(metadata={"name": "n", "source": "s/poll.xml", "fhirVersion": None})
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        client.queue_response(fakes.FakeResponse(status_code=202))
+        client.queue_response(fakes.FakeResponse(status_code=200, json_data={"resourceType": "Bundle"}))
+
+        fake_now = [1000]
+        provider, credential = _install_managed_identity_provider(
+            self.runtime,
+            [
+                _FakeAccessToken("token-five-poll-one", 1301),
+                _FakeAccessToken("token-six-poll-two", 2000),
+            ],
+            clock=lambda: fake_now[0],
+        )
+        self.runtime._AUTH_PROVIDER = provider
+
+        action = _operation(
+            "op-1",
+            type="read",
+            resource="Patient/_history/1",
+            request_id="op-1",
+            response_id="op-1",
+            wait_for=_wait_for(202, 2, 10),
+        )
+
+        def _advance_clock(_seconds):
+            fake_now[0] += 1
+
+        with patch("gevent.sleep", side_effect=_advance_clock):
+            result = run_operation(self, self.runtime, document, user, context, action)
+
+        self.assertFalse(result["failed"])
+        self.assertEqual(2, len(client.calls))
+        self.assertEqual(
+            "Bearer token-five-poll-one",
+            _header_value_case_insensitive(client.calls[0]["headers"], "authorization"),
+        )
+        self.assertEqual(
+            "Bearer token-six-poll-two",
+            _header_value_case_insensitive(client.calls[1]["headers"], "authorization"),
+        )
+        self.assertEqual(
+            ["https://fhir.example/.default", "https://fhir.example/.default"],
+            credential.calls,
+        )
+
+    def test_received_401_invalidates_provider_once_without_replaying_request(self):
+        document = _document(metadata={"name": "n", "source": "s/auth.xml", "fhirVersion": None})
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        client.queue_response(fakes.FakeResponse(status_code=401, json_data={"resourceType": "OperationOutcome"}))
+
+        provider, _credential = _install_managed_identity_provider(
+            self.runtime,
+            [_FakeAccessToken("token-seven-first", 10_000_000_000)],
+        )
+        tracked_provider = _InvalidateCountingProvider(provider)
+        self.runtime._AUTH_PROVIDER = tracked_provider
+
+        action = _operation("op-1", type="read", resource="Patient", request_id="op-1", response_id="op-1")
+        result = run_operation(self, self.runtime, document, user, context, action)
 
         self.assertEqual(1, len(client.calls))
-        headers = client.calls[0]["headers"]
-        self.assertEqual("Bearer secret", headers.get("Authorization") or headers.get("authorization"))
+        self.assertEqual(1, tracked_provider.invalidate_calls)
+        self.assertFalse(result["failed"])
+        self.assertEqual(0, len(_semantic_events(user)))
+        native = _events_of_type(user, "GET")
+        self.assertEqual(1, len(native))
+        self.assertIsNone(native[0]["exception"])
 
+    def test_request_after_401_uses_a_fresh_token(self):
+        document = _document(metadata={"name": "n", "source": "s/auth.xml", "fhirVersion": None})
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        client.queue_response(fakes.FakeResponse(status_code=401, json_data={"resourceType": "OperationOutcome"}))
+        client.queue_response(fakes.FakeResponse(status_code=200, json_data={"resourceType": "Patient", "id": "1"}))
+
+        provider, credential = _install_managed_identity_provider(
+            self.runtime,
+            [
+                _FakeAccessToken("token-eight-before-401", 10_000_000_000),
+                _FakeAccessToken("token-nine-after-401", 10_000_000_000),
+            ],
+        )
+        tracked_provider = _InvalidateCountingProvider(provider)
+        self.runtime._AUTH_PROVIDER = tracked_provider
+
+        first = _operation("op-1", type="read", resource="Patient", request_id="op-1", response_id="op-1")
+        second = _operation("op-2", type="read", resource="Patient", request_id="op-2", response_id="op-2")
+
+        first_result = run_operation(self, self.runtime, document, user, context, first)
+        second_result = run_operation(self, self.runtime, document, user, context, second)
+
+        self.assertFalse(first_result["failed"])
+        self.assertFalse(second_result["failed"])
+        self.assertEqual(1, tracked_provider.invalidate_calls)
+        self.assertEqual(2, len(client.calls))
+        self.assertEqual(
+            "Bearer token-eight-before-401",
+            _header_value_case_insensitive(client.calls[0]["headers"], "authorization"),
+        )
+        self.assertEqual(
+            "Bearer token-nine-after-401",
+            _header_value_case_insensitive(client.calls[1]["headers"], "authorization"),
+        )
+        self.assertEqual(
+            ["https://fhir.example/.default", "https://fhir.example/.default"],
+            credential.calls,
+        )
+
+    def test_auth_acquisition_failure_before_operation_emits_one_semantic_failure_and_no_http(self):
+        sensitive_scope = "https://sensitive-scope/.default"
+        sensitive_client = "client-id-secret"
+        sensitive_token = "token-secret-value"
+        sensitive_source_message = "source-message-secret"
+
+        document = _document(metadata={"name": "n", "source": "s/auth-fail.xml", "fhirVersion": None})
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+
+        credential = _DeterministicManagedIdentityCredential(
+            error=ValueError(
+                f"scope={sensitive_scope} client={sensitive_client} token={sensitive_token} {sensitive_source_message}"
+            )
+        )
+        self.runtime._AUTH_PROVIDER = self.runtime._ManagedIdentityAuthProvider(
+            sensitive_scope,
+            credential,
+            clock=lambda: 1000,
+        )
+
+        action = _operation("op-1", type="read", resource="Patient", request_id="op-1", response_id="op-1")
+        result = run_operation(self, self.runtime, document, user, context, action)
+
+        self.assertTrue(result["failed"])
+        self.assertEqual(0, len(client.calls))
+        semantic = _semantic_events(user)
+        self.assertEqual(1, len(semantic))
+        self.assertEqual("s/auth-fail.xml::op-1", semantic[0]["name"])
+
+        semantic_exception = semantic[0]["exception"]
+        self.assertIsInstance(semantic_exception, RuntimeError)
+        self.assertIn("ValueError", str(semantic_exception))
+        self.assertNotIn(sensitive_scope, str(semantic_exception))
+        self.assertNotIn(sensitive_client, str(semantic_exception))
+        self.assertNotIn(sensitive_token, str(semantic_exception))
+        self.assertNotIn(sensitive_source_message, str(semantic_exception))
+
+        trace = "".join(traceback.format_exception(type(semantic_exception), semantic_exception, semantic_exception.__traceback__))
+        self.assertIn("RuntimeError", trace)
+        self.assertNotIn(sensitive_scope, trace)
+        self.assertNotIn(sensitive_client, trace)
+        self.assertNotIn(sensitive_token, trace)
+        self.assertNotIn(sensitive_source_message, trace)
+
+    def test_auth_acquisition_failure_for_fixture_autocreate_emits_one_semantic_failure_and_no_http(self):
+        self.runtime._execute_action = lambda *a, **k: {"applicable": True, "failed": False}
+        sensitive_scope = "https://fixture-scope/.default"
+        secret = "fixture-source-secret"
+
+        document = _document(
+            metadata={"name": "n", "source": "s/fixtures-auth-fail.xml", "fhirVersion": None},
+            fixtures=[_fixture("patient", [{"resourceType": "Patient"}], autocreate=True)],
+        )
+        user, client = make_user()
+
+        credential = _DeterministicManagedIdentityCredential(error=ValueError(f"scope={sensitive_scope} secret={secret}"))
+        self.runtime._AUTH_PROVIDER = self.runtime._ManagedIdentityAuthProvider(
+            sensitive_scope,
+            credential,
+            clock=lambda: 1000,
+        )
+
+        outcome = run_execute(self, self.runtime, document, user, self.runtime.initialize_user(document, user))
+
+        self.assertTrue(outcome["setup_failed"])
+        self.assertTrue(outcome["failed"])
+        self.assertEqual(0, len(client.calls))
+
+        semantic = _semantic_events(user)
+        self.assertEqual(1, len(semantic))
+        self.assertEqual("s/fixtures-auth-fail.xml::fixture.patient.autocreate", semantic[0]["name"])
+        self.assertNotIn(sensitive_scope, str(semantic[0]["exception"]))
+        self.assertNotIn(secret, str(semantic[0]["exception"]))
+
+    def test_auth_acquisition_failure_for_fixture_autodelete_emits_one_semantic_failure_and_no_http(self):
+        self.runtime._execute_action = lambda *a, **k: {"applicable": True, "failed": False}
+        sensitive_scope = "https://fixture-delete-scope/.default"
+        secret = "autodelete-source-secret"
+
+        document = _document(
+            metadata={"name": "n", "source": "s/fixtures-auth-fail.xml", "fhirVersion": None},
+            fixtures=[
+                _fixture(
+                    "patient",
+                    [{"resourceType": "Patient", "id": "server-1"}],
+                    autodelete=True,
+                )
+            ],
+        )
+        user, client = make_user()
+
+        credential = _DeterministicManagedIdentityCredential(error=ValueError(f"scope={sensitive_scope} secret={secret}"))
+        self.runtime._AUTH_PROVIDER = self.runtime._ManagedIdentityAuthProvider(
+            sensitive_scope,
+            credential,
+            clock=lambda: 1000,
+        )
+
+        outcome = run_execute(self, self.runtime, document, user, self.runtime.initialize_user(document, user))
+
+        self.assertTrue(outcome["teardown_failed"])
+        self.assertTrue(outcome["failed"])
+        self.assertEqual(0, len(client.calls))
+
+        semantic = _semantic_events(user)
+        self.assertEqual(1, len(semantic))
+        self.assertEqual("s/fixtures-auth-fail.xml::fixture.patient.autodelete", semantic[0]["name"])
+        self.assertNotIn(sensitive_scope, str(semantic[0]["exception"]))
+        self.assertNotIn(secret, str(semantic[0]["exception"]))
+
+    def test_no_auth_provider_leaves_operation_and_fixture_requests_without_authorization(self):
+        operation_action = _operation(
+            "op-1",
+            type="read",
+            resource="Patient/fixture-created",
+            request_id="op-1",
+            response_id="op-1",
+        )
+        document = _document(
+            metadata={"name": "n", "source": "s/no-auth.xml", "fhirVersion": None},
+            fixtures=[
+                _fixture(
+                    "patient",
+                    [{"resourceType": "Patient", "id": "fixture-created"}],
+                    autocreate=True,
+                    autodelete=True,
+                )
+            ],
+            tests=[_test_phase("test-1", actions=[operation_action])],
+        )
+        user, client = make_user()
+        client.queue_response(
+            fakes.FakeResponse(
+                status_code=201,
+                json_data={"resourceType": "Patient", "id": "fixture-created"},
+            )
+        )
+        client.queue_response(
+            fakes.FakeResponse(
+                status_code=200,
+                json_data={"resourceType": "Patient", "id": "fixture-created"},
+            )
+        )
+        client.queue_response(fakes.FakeResponse(status_code=204))
+
+        self.runtime._AUTH_PROVIDER = self.runtime._NoAuthProvider()
+
+        outcome = run_execute(self, self.runtime, document, user, self.runtime.initialize_user(document, user))
+
+        self.assertFalse(outcome["failed"])
+        self.assertEqual(3, len(client.calls))
+        for call in client.calls:
+            self.assertIsNone(_header_value_case_insensitive(call["headers"], "authorization"))
+
+    def test_request_history_records_the_actual_managed_identity_authorization_sent(self):
+        document = _document()
+        user, client = make_user()
+        context = new_context(self.runtime, document)
+        client.queue_response(fakes.FakeResponse(status_code=200, json_data={"resourceType": "Patient", "id": "1"}))
+
+        _install_managed_identity_provider(
+            self.runtime,
+            [_FakeAccessToken("token-ten-history", 10_000_000_000)],
+        )
+
+        action = _operation(
+            "op-1",
+            type="read",
+            resource="Patient/1",
+            request_id="request-history",
+            response_id="response-history",
+        )
+
+        run_operation(self, self.runtime, document, user, context, action)
+
+        stored = context["requests"]["request-history"]["headers"]
+        sent = client.calls[-1]["headers"]
+        self.assertEqual("Bearer token-ten-history", _header_value_case_insensitive(stored, "authorization"))
+        self.assertEqual(
+            _header_value_case_insensitive(stored, "authorization"),
+            _header_value_case_insensitive(sent, "authorization"),
+        )
 
 # ---------------------------------------------------------------------------
 # Item 5: custom header field/value variable substitution; undefined

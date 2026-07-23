@@ -392,6 +392,7 @@ def _metric_name(document, action_id):
 
 _AUTH_REFRESH_WINDOW_SECONDS = 300
 _AUTHORIZATION_SCHEME = "Bearer"
+_LEGACY_AUTH_HEADER_ENV = "IGNIXA_AUTH" "_HEADER"
 
 
 class _NoAuthProvider:
@@ -488,8 +489,8 @@ def _create_managed_identity_credential(client_id):
 
 
 def _create_auth_provider():
-    if "IGNIXA_AUTH_HEADER" in os.environ:
-        raise RuntimeError("IGNIXA_AUTH_HEADER is no longer supported")
+    if _LEGACY_AUTH_HEADER_ENV in os.environ:
+        raise RuntimeError(f"{_LEGACY_AUTH_HEADER_ENV} is no longer supported")
 
     mode = _non_empty_env("IGNIXA_AUTH_MODE") or "none"
     if mode == "none":
@@ -513,30 +514,6 @@ def _create_auth_provider():
     return _ManagedIdentityAuthProvider(scope, credential)
 
 
-def _parse_auth_header():
-    """Parse ``IGNIXA_AUTH_HEADER`` into a ``(name, value)`` pair.
-
-    The environment key being entirely absent means "no auth header" (returns
-    ``None``). Any other value - including an explicit empty string - is
-    parsed as ``Name: value`` (split on the first colon only, so colons may
-    appear in the value itself); a missing separator or an empty stripped
-    name/value is malformed and raises, rather than being treated as unset.
-    """
-    raw = os.environ.get("IGNIXA_AUTH_HEADER", _MISSING_ENV)
-    if raw is _MISSING_ENV:
-        return None
-
-    name, separator, value = raw.partition(":")
-    name = name.strip()
-    value = value.strip()
-    if not separator or not name or not value:
-        raise RuntimeError(
-            "IGNIXA_AUTH_HEADER must be 'Header-Name: value' with a "
-            f"non-empty name and value, got {raw!r}"
-        )
-    return (name, value)
-
-
 def _new_headers(initial=None):
     """Return an empty (or seeded) case-insensitive header mapping.
 
@@ -551,16 +528,12 @@ def _new_headers(initial=None):
 def _build_headers(action, context):
     """Build request headers in the locked precedence order.
 
-    Order: the parsed auth header first, then the IR's baked
-    ``accept``/``contentType`` fields, then resolved custom script headers -
-    each later step may override an earlier one's key case-insensitively.
+    Order: the IR's baked ``accept``/``contentType`` fields first, then
+    resolved custom script headers, and finally provider authentication.
+    Authentication is applied last so managed identity is authoritative over
+    any script-level ``Authorization`` header (case-insensitively).
     """
     headers = _new_headers()
-
-    auth = _parse_auth_header()
-    if auth is not None:
-        auth_name, auth_value = auth
-        headers[auth_name] = auth_value
 
     if action.get("accept"):
         headers["Accept"] = action["accept"]
@@ -572,6 +545,7 @@ def _build_headers(action, context):
         value = _resolve(header["value"], context)
         headers[field] = value
 
+    _apply_authentication(headers)
     return headers
 
 
@@ -625,7 +599,7 @@ def _resolve_body(action, context, headers):
 
 
 def _build_request(action, context):
-    """Derive the URL, headers, and body bytes for one operation action."""
+    """Derive URL, headers, and body for one operation, including current auth."""
     url = _derive_url(action, context)
     headers = _build_headers(action, context)
     data = _resolve_body(action, context, headers)
@@ -694,6 +668,10 @@ def _fire_semantic_failure(user, metric_name, exc):
 def _perform_request(user, method, url, headers, data, metric_name):
     """Perform one HTTP attempt, firing exactly one native event.
 
+    A fresh case-insensitive copy of ``headers`` is made for this attempt and
+    authentication is applied immediately before the HTTP call, so polling
+    attempts can refresh credentials between retries.
+
     Any received response - success, 4xx, or 5xx - is marked ``success()``
     unless the response itself carries a transport ``.error`` (the "returned
     Locust error response" case), which is left unmarked so it fires its own
@@ -704,17 +682,22 @@ def _perform_request(user, method, url, headers, data, metric_name):
     """
     import requests
 
+    request_headers = _new_headers(headers)
+    _apply_authentication(request_headers)
+
     try:
         with user.client.request(
             method,
             url,
             name=metric_name,
             catch_response=True,
-            headers=dict(headers),
+            headers=dict(request_headers),
             data=data,
         ) as response:
             if getattr(response, "error", None) is None:
                 response.success()
+        if _response_status(response) == 401:
+            _AUTH_PROVIDER.invalidate()
         return response
     except requests.exceptions.RequestException as exc:
         user.environment.events.request.fire(
@@ -954,9 +937,13 @@ def _execute_operation(document, user, context, action):
     _store_request(context, action.get("requestId"), request_wrapper)
 
     wait_for = action.get("waitFor")
-    response, exhausted = _perform_request_with_polling(
-        user, method, url, headers, data, metric_name, wait_for
-    )
+    try:
+        response, exhausted = _perform_request_with_polling(
+            user, method, url, headers, data, metric_name, wait_for
+        )
+    except RuntimeError as exc:
+        _fire_semantic_failure(user, metric_name, exc)
+        return {"applicable": True, "failed": True}
 
     if response is None:
         return {"applicable": True, "failed": True}
@@ -993,9 +980,10 @@ def _run_autocreate(document, user, context, fixture):
     returned JSON (never mutated in place), the response is additionally
     indexed under the fixture's own id (enabling ``sourceId``-pinned
     variable extraction and later operation sourceId lookups), and document-
-    wide variable extraction runs. A non-2xx status is a native success but
-    a semantic (fixture) failure; a missing resourceType or a transport
-    exception fails without/with only a native event, respectively.
+    wide variable extraction runs. A non-2xx status is a native success but a
+    semantic (fixture) failure. A missing resourceType or an authentication
+    acquisition failure fails before any HTTP call; a transport exception
+    fails with only the native event.
     """
     fixture_id = fixture["id"]
     metric_name = _metric_name(document, f"fixture.{fixture_id}.autocreate")
@@ -1010,17 +998,24 @@ def _run_autocreate(document, user, context, fixture):
         )
         return True
 
-    headers = _new_headers()
-    auth = _parse_auth_header()
-    if auth is not None:
-        headers[auth[0]] = auth[1]
-    headers["Content-Type"] = "application/fhir+json; charset=utf-8"
+    headers = _new_headers(
+        {"Content-Type": "application/fhir+json; charset=utf-8"}
+    )
+    try:
+        _apply_authentication(headers)
+    except RuntimeError as exc:
+        _fire_semantic_failure(user, metric_name, exc)
+        return True
     data = json.dumps(resource, separators=(",", ":")).encode("utf-8")
 
     request_wrapper = {"method": "POST", "url": resource_type, "headers": dict(headers), "body": data}
     _store_request(context, None, request_wrapper)
 
-    response = _perform_request(user, "POST", resource_type, headers, data, metric_name)
+    try:
+        response = _perform_request(user, "POST", resource_type, headers, data, metric_name)
+    except RuntimeError as exc:
+        _fire_semantic_failure(user, metric_name, exc)
+        return True
     if response is None:
         return True
 
@@ -1061,7 +1056,8 @@ def _run_autodelete(document, user, context, fixture):
     Uses whatever resource is currently in context (the autocreate-replaced
     server JSON, if autocreate ran), so a missing type/id (fixture never
     created, or created without a server id) is a semantic precondition
-    failure with no HTTP call. No variable extraction runs here (the
+    failure with no HTTP call. Authentication acquisition failures are also
+    semantic pre-request failures. No variable extraction runs here (the
     resource is being torn down).
     """
     fixture_id = fixture["id"]
@@ -1081,15 +1077,21 @@ def _run_autodelete(document, user, context, fixture):
         return True
 
     headers = _new_headers()
-    auth = _parse_auth_header()
-    if auth is not None:
-        headers[auth[0]] = auth[1]
+    try:
+        _apply_authentication(headers)
+    except RuntimeError as exc:
+        _fire_semantic_failure(user, metric_name, exc)
+        return True
 
     url = f"{resource_type}/{resource_ref_id}"
     request_wrapper = {"method": "DELETE", "url": url, "headers": dict(headers), "body": None}
     _store_request(context, None, request_wrapper)
 
-    response = _perform_request(user, "DELETE", url, headers, None, metric_name)
+    try:
+        response = _perform_request(user, "DELETE", url, headers, None, metric_name)
+    except RuntimeError as exc:
+        _fire_semantic_failure(user, metric_name, exc)
+        return True
     if response is None:
         return True
 
