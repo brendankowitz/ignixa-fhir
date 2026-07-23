@@ -29,6 +29,33 @@ public interface ISymbolResolver
     Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Looks up several token/quantity systems at once, so a query naming many systems costs one round
+    /// trip rather than one per system. Every requested system appears in the result, mapped to null
+    /// when it has no row -- the same "not found is data, not an error" contract as
+    /// <see cref="GetSystemIdAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default implementation resolves sequentially through <see cref="GetSystemIdAsync"/>, so an
+    /// implementation with no batching story stays correct without writing anything; implementations
+    /// backed by a real store should override it with a single set-based query.
+    /// </remarks>
+    async Task<IReadOnlyDictionary<string, int?>> GetSystemIdsAsync(IReadOnlyCollection<string> systems, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(systems);
+
+        var results = new Dictionary<string, int?>(StringComparer.Ordinal);
+        foreach (var system in systems)
+        {
+            if (!results.ContainsKey(system))
+            {
+                results[system] = await GetSystemIdAsync(system, cancellationToken);
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// Looks up an existing quantity-code surrogate ID. Returns null when the code is not present
     /// in the lookup table; callers lower a null result to a false predicate (empty match) rather
     /// than throwing.

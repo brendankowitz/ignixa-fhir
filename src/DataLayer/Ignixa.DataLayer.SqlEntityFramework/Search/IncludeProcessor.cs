@@ -104,7 +104,7 @@ public class IncludeProcessor
             includeExpr.TargetResourceType ?? "*");
 
         // Step 1: Get source resource surrogate IDs
-        var sourceResourceTypeId = await _cache.GetResourceTypeIdAsync(includeExpr.SourceResourceType);
+        var sourceResourceTypeId = await _cache.GetResourceTypeIdAsync(includeExpr.SourceResourceType, ct);
         if (!sourceResourceTypeId.HasValue)
         {
             _logger.LogWarning("Source resource type not found: {Type}", includeExpr.SourceResourceType);
@@ -157,7 +157,7 @@ public class IncludeProcessor
             short? targetResourceTypeId = null;
             if (!string.IsNullOrEmpty(includeExpr.TargetResourceType))
             {
-                targetResourceTypeId = await _cache.GetResourceTypeIdAsync(includeExpr.TargetResourceType);
+                targetResourceTypeId = await _cache.GetResourceTypeIdAsync(includeExpr.TargetResourceType, ct);
             }
 
             // Query reference table filtered by target type if specified

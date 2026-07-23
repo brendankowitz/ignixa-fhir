@@ -96,23 +96,28 @@ public static class Resolve
             resourceTypes.Add(targetResourceType);
         }
 
+        // A resource type the resolver cannot find is recorded as unmatchable rather than dropped: dropping
+        // it turns into a KeyNotFoundException the moment Lower looks it up, so the very first search
+        // against an empty catalog throws instead of returning an empty bundle. An unknown system already
+        // lowers to a false predicate; an unknown resource type is the same structurally-unsatisfiable
+        // query and now behaves the same way.
         var resourceTypeIds = new Dictionary<string, short>();
         foreach (var resourceType in resourceTypes)
         {
             var id = await resolver.GetResourceTypeIdAsync(resourceType, cancellationToken);
-            if (id.HasValue)
-            {
-                resourceTypeIds[resourceType] = id.Value;
-            }
+            resourceTypeIds[resourceType] = id ?? SymbolTable.UnmatchableResourceTypeId;
         }
 
-        // Resolve every distinct system (token + quantity) exactly once, storing null for known misses.
         var allSystems = new HashSet<string>(collector.TokenSystems, StringComparer.Ordinal);
         allSystems.UnionWith(collector.QuantitySystems);
-        var systemIds = new Dictionary<string, int?>();
+        // Re-keyed off the requested set rather than trusted verbatim: SymbolTable's three-state contract
+        // needs an entry for every collected system, and a resolver overriding the batch method could
+        // return fewer.
+        var resolvedSystems = await resolver.GetSystemIdsAsync(allSystems, cancellationToken);
+        var systemIds = new Dictionary<string, int?>(StringComparer.Ordinal);
         foreach (var system in allSystems)
         {
-            systemIds[system] = await resolver.GetSystemIdAsync(system, cancellationToken);
+            systemIds[system] = resolvedSystems.GetValueOrDefault(system);
         }
 
         // Resolve every distinct quantity code exactly once, storing null for known misses.

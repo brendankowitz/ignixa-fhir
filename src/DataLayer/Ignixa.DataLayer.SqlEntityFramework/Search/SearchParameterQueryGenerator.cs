@@ -100,7 +100,7 @@ public class SearchParameterQueryGenerator
             short? searchParamId = null;
             if (expression.Parameter != null)
             {
-                searchParamId = await _cache.GetSearchParamIdAsync(expression.Parameter);
+                searchParamId = await _cache.GetSearchParamIdAsync(expression.Parameter, ct);
                 if (!searchParamId.HasValue)
                 {
                     _logger.LogWarning(
@@ -823,7 +823,7 @@ public class SearchParameterQueryGenerator
         // Handle single value StringExpression
         if (expr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
         {
-            var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value);
+            var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value, ct);
 
             if (typeId.HasValue)
             {
@@ -886,7 +886,7 @@ public class SearchParameterQueryGenerator
         {
             if (subExpr is StringExpression stringExpr && stringExpr.FieldName == FieldName.TokenCode)
             {
-                var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value);
+                var typeId = await _cache.GetResourceTypeIdAsync(stringExpr.Value, ct);
                 if (typeId.HasValue)
                 {
                     // Optimization: Skip types that don't match the constrained resourceTypeId
@@ -990,7 +990,7 @@ public class SearchParameterQueryGenerator
         foreach (var resourceTypeName in expression.Values)
         {
             // Try to get the resource type ID for this name using cache (consistent with ProcessResourceTypeMultiaryExpressionAsync)
-            var typeId = await _cache.GetResourceTypeIdAsync(resourceTypeName);
+            var typeId = await _cache.GetResourceTypeIdAsync(resourceTypeName, ct);
 
             if (typeId.HasValue)
             {
@@ -1291,7 +1291,7 @@ public class SearchParameterQueryGenerator
         // Add system filter if specified
         if (!string.IsNullOrEmpty(systemUri))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri);
+            var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri, ct);
             if (!systemId.HasValue)
             {
                 _logger.LogDebug("Quantity system not found: {SystemUri}", systemUri);
@@ -1303,7 +1303,7 @@ public class SearchParameterQueryGenerator
         // Add code filter if specified
         if (!string.IsNullOrEmpty(code))
         {
-            var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code);
+            var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code, ct);
             if (!quantityCodeId.HasValue)
             {
                 _logger.LogDebug("Quantity code not found: {Code}", code);
@@ -1411,7 +1411,7 @@ public class SearchParameterQueryGenerator
         // Add system filter if specified
         if (!string.IsNullOrEmpty(system))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(system);
+            var systemId = await _cache.GetOrCreateSystemIdAsync(system, ct);
             if (!systemId.HasValue)
             {
                 _logger.LogDebug("Token system not found: {System}", system);
@@ -1428,7 +1428,7 @@ public class SearchParameterQueryGenerator
         // Handle identifier type for :of-type modifier
         if (!string.IsNullOrEmpty(identifierTypeSystem))
         {
-            var identifierTypeSystemId = await _cache.GetOrCreateSystemIdAsync(identifierTypeSystem);
+            var identifierTypeSystemId = await _cache.GetOrCreateSystemIdAsync(identifierTypeSystem, ct);
             if (!identifierTypeSystemId.HasValue)
             {
                 _logger.LogDebug("Identifier type system not found: {System}", identifierTypeSystem);
@@ -1655,7 +1655,7 @@ public class SearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(system))
         {
-            systemId = await _cache.GetOrCreateSystemIdAsync(system);
+            systemId = await _cache.GetOrCreateSystemIdAsync(system, ct);
         }
 
         var baseQuery = _context.TokenSearchParams
@@ -1855,7 +1855,7 @@ public class SearchParameterQueryGenerator
     {
         // Look up SystemId from System table via cache
         // Note: GetOrCreateSystemIdAsync will find existing systems first (won't create during search)
-        var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri);
+        var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri, ct);
 
         if (!systemId.HasValue)
         {
@@ -1893,7 +1893,7 @@ public class SearchParameterQueryGenerator
     {
         // Look up QuantityCodeId from QuantityCode table via cache
         // Note: GetOrCreateQuantityCodeIdAsync will find existing codes first (won't create during search)
-        var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code);
+        var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code, ct);
 
         if (!quantityCodeId.HasValue)
         {
@@ -2016,7 +2016,7 @@ public class SearchParameterQueryGenerator
         short? sourceTypeId = null;
         if (expression.SourceResourceType is not null)
         {
-            sourceTypeId = await _cache.GetResourceTypeIdAsync(expression.SourceResourceType);
+            sourceTypeId = await _cache.GetResourceTypeIdAsync(expression.SourceResourceType, ct);
             if (!sourceTypeId.HasValue)
             {
                 _logger.LogWarning("Source resource type not found: {Type}", expression.SourceResourceType);
@@ -2027,7 +2027,7 @@ public class SearchParameterQueryGenerator
         short? searchParamId = null;
         if (searchParamInfo is not null)
         {
-            searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo);
+            searchParamId = await _cache.GetSearchParamIdAsync(searchParamInfo, ct);
             if (!searchParamId.HasValue)
             {
                 _logger.LogDebug("Search parameter not found for {Type}.{Path}, using path-agnostic query",

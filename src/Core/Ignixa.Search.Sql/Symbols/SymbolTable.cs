@@ -53,6 +53,22 @@ public sealed class SymbolTable
             : throw new KeyNotFoundException($"SymbolTable has no SearchParamId for '{url}' -- Resolve should have resolved every parameter Lower will need.");
     }
 
+    /// <summary>
+    /// The id stored for a resource type Resolve collected but the resolver could not find. Every real
+    /// ResourceTypeId is positive, so a predicate built from this one matches no row — which is exactly
+    /// what a query naming a resource type the catalog has never seen should return. Emitting an
+    /// unsatisfiable predicate mirrors <see cref="SystemId"/>'s treatment of an unknown system; the
+    /// alternative, dropping the entry, makes the first search against an empty catalog throw
+    /// <see cref="KeyNotFoundException"/> from Lower instead of returning an empty bundle.
+    /// </summary>
+    public const short UnmatchableResourceTypeId = -1;
+
+    /// <summary>
+    /// Looks up a resource type's ResourceTypeId, returning <see cref="UnmatchableResourceTypeId"/> for a
+    /// type that was collected but not found. Throws <see cref="KeyNotFoundException"/> only when the type
+    /// was never collected at all — a compiler invariant violation, the same three-state contract
+    /// <see cref="SystemId"/> uses.
+    /// </summary>
     public short ResourceTypeId(string resourceType)
         => _resourceTypeIds.TryGetValue(resourceType, out var id)
            ? id
