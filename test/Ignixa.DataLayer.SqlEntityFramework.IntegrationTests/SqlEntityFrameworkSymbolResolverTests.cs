@@ -102,11 +102,10 @@ public class SqlEntityFrameworkSymbolResolverTests
         const string system = "http://loinc.org/resolver-test";
 
         // Phase 1: initialize schema and persist the System row through a seed context.
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
         int seededId;
         await using (var seedContext = new FhirDbContext(options))
         {
-            var seedInitializer = new DatabaseInitializer(seedContext, NullLogger<DatabaseInitializer>.Instance, "Development");
-            await seedInitializer.InitializeAsync();
             // CA2000: seedCache.Dispose() disposes seedContext; seedContext is also disposed
             // by the enclosing await-using block -- double-dispose is benign here.
 #pragma warning disable CA2000
@@ -139,9 +138,8 @@ public class SqlEntityFrameworkSymbolResolverTests
         var options = new DbContextOptionsBuilder<FhirDbContext>()
             .UseSqlServer(connectionString)
             .Options;
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
         await using var context = new FhirDbContext(options);
-        var initializer = new DatabaseInitializer(context, NullLogger<DatabaseInitializer>.Instance, "Development");
-        await initializer.InitializeAsync();
 
 #pragma warning disable CA2000
         var cache = new SearchIndexReferenceDataCache(context, NullLogger<SearchIndexReferenceDataCache>.Instance);
@@ -170,11 +168,10 @@ public class SqlEntityFrameworkSymbolResolverTests
         const string code = "mg-resolver-test";
 
         // Phase 1: initialize schema and persist the QuantityCode row through a seed context.
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
         int seededId;
         await using (var seedContext = new FhirDbContext(options))
         {
-            var seedInitializer = new DatabaseInitializer(seedContext, NullLogger<DatabaseInitializer>.Instance, "Development");
-            await seedInitializer.InitializeAsync();
 #pragma warning disable CA2000
             var seedCache = new SearchIndexReferenceDataCache(seedContext, NullLogger<SearchIndexReferenceDataCache>.Instance);
 #pragma warning restore CA2000
@@ -205,9 +202,8 @@ public class SqlEntityFrameworkSymbolResolverTests
         var options = new DbContextOptionsBuilder<FhirDbContext>()
             .UseSqlServer(connectionString)
             .Options;
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
         await using var context = new FhirDbContext(options);
-        var initializer = new DatabaseInitializer(context, NullLogger<DatabaseInitializer>.Instance, "Development");
-        await initializer.InitializeAsync();
 
 #pragma warning disable CA2000
         var cache = new SearchIndexReferenceDataCache(context, NullLogger<SearchIndexReferenceDataCache>.Instance);
