@@ -541,23 +541,29 @@ public static class Lower
 
         var keys = sort.Select(s => BuildSortKey(s, symbols)).ToList();
 
-        if (phase == SortPhase.MissingPrimary && keys[0].Kind == SortKeyKind.LastUpdated)
+        if (phase == SortPhase.MissingPrimary && keys[0].Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceId)
         {
             throw new NotSupportedException(
-                "_lastUpdated is a resource-column sort key derived directly from ResourceSurrogateId -- " +
-                "it is never \"missing,\" so there is no MissingPrimary segment for it. Only a search-" +
-                "parameter-table primary key (String or Date) has a MissingPrimary phase.");
+                "_lastUpdated and _id are resource-column sort keys derived directly from ResourceSurrogateId " +
+                "and ResourceId -- both are non-nullable resource columns, so a value is never missing for " +
+                "either, and neither has a MissingPrimary segment. Only a search-parameter-table primary key " +
+                "(String or Date) has a MissingPrimary phase.");
         }
 
         return new SortSpec(keys, phase);
     }
 
-    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/Aggregated kind and resolving its id (none for _lastUpdated).</summary>
+    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated or _id).</summary>
     internal static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
         if (sortExpression.Parameter.Code == "_lastUpdated")
         {
             return new SortKey(null, SortKeyKind.LastUpdated, sortExpression.SortOrder);
+        }
+
+        if (sortExpression.Parameter.Code == "_id")
+        {
+            return new SortKey(null, SortKeyKind.ResourceId, sortExpression.SortOrder);
         }
 
         var searchParamId = symbols.SearchParamId(sortExpression.Parameter);

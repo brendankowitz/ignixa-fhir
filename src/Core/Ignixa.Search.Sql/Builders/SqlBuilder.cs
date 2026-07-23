@@ -396,6 +396,13 @@ public static class SqlBuilder
                 continue; // resource-column key, no join needed.
             }
 
+            if (key.Kind == SortKeyKind.ResourceId)
+            {
+                var ridJoinType = i == 0 ? "INNER" : "LEFT";
+                joins.Add($"\n{ridJoinType} JOIN dbo.Resource rid{i} ON rid{i}.ResourceTypeId = m.T1 AND rid{i}.ResourceSurrogateId = m.Sid1");
+                continue;
+            }
+
             if (key.Kind == SortKeyKind.Aggregated)
             {
                 // Key 0 in the Valued phase must gate on the key being present, exactly like
@@ -438,12 +445,11 @@ public static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
         {
             throw new InvalidOperationException(
-                "SortSpec.Phase == MissingPrimary with a LastUpdated (or otherwise SearchParamId-less) " +
-                "primary key reached Emit -- _lastUpdated is a resource-column key derived from " +
-                "ResourceSurrogateId, so it is never \"missing\" and has no MissingPrimary segment. " +
-                "Lower.BuildSortSpec rejects this combination; QueryPlan is a public construction " +
-                "surface, so this guard exists defensively rather than trusting every caller routes " +
-                "through Lower.");
+                "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceId, or otherwise SearchParamId-less " +
+                "primary key reached Emit -- none of these are ever \"missing\" (all are non-nullable resource " +
+                "columns), so none has a MissingPrimary segment. Lower.BuildSortSpec already rejects this " +
+                "combination for LastUpdated and ResourceId; QueryPlan is a public construction surface, so this " +
+                "guard exists defensively rather than trusting every caller routes through Lower.");
         }
 
         if (key.Kind == SortKeyKind.Aggregated)
@@ -474,6 +480,11 @@ public static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated)
         {
             return "m.Sid1";
+        }
+
+        if (key.Kind == SortKeyKind.ResourceId)
+        {
+            return $"rid{index}.ResourceId";
         }
 
         var isGuaranteedNonNull = index == 0 && sort.Phase == SortPhase.Valued;

@@ -1453,6 +1453,35 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
+    public async Task GivenSortByIdAscending_WhenCompiled_ThenJoinsResourceAndOrdersByResourceId()
+    {
+        // Arrange -- Patient?_sort=_id. _id is a resource-column key like _lastUpdated (SearchParamId
+        // is null, no symbol resolution needed), but unlike _lastUpdated it still needs a join -- to
+        // dbo.Resource -- since the CTE graph's own (T1, Sid1) projection doesn't carry the resource's
+        // ResourceId string value.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        // Act
+        var symbols = (await Resolve.RunAsync(
+            expression: null, includes: [], revIncludes: [], sort: [new SortExpression(idParam, SortOrder.Ascending)],
+            resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(idParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
+
+        // Assert
+        plan.Sort!.Keys[0].Kind.ShouldBe(SortKeyKind.ResourceId);
+        plan.Sort.Keys[0].SearchParamId.ShouldBeNull();
+        var emitted = SqlBuilder.Run(plan);
+        emitted.Sql.ShouldContain("JOIN dbo.Resource rid0");
+        emitted.Sql.ShouldContain("rid0.ResourceId");
+        emitted.Sql.ShouldContain("ORDER BY rid0.ResourceId ASC, m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
     public async Task GivenAnObservationSearchSortedByStatus_WhenCompiledEndToEnd_ThenTheMatchGainsAnAggregatingDerivedTableJoin()
     {
         // Arrange -- Observation?status=final&_sort=status, first page. status is a Token parameter, so

@@ -6,7 +6,9 @@ namespace Ignixa.Search.Sql.Ast;
 /// <summary>
 /// The sort-key kinds the compiler can emit joins and value-expressions for. String and Date read from
 /// their search-parameter tables via an IsMin/IsMax-flagged row (no aggregation needed); LastUpdated
-/// needs no join at all because ResourceSurrogateId already encodes it; Aggregated covers every other
+/// needs no join at all because ResourceSurrogateId already encodes it; ResourceId needs a join, but to
+/// dbo.Resource directly rather than a search-param table, since the CTE graph's own (T1, Sid1)
+/// projection doesn't carry the resource's own ResourceId string value; Aggregated covers every other
 /// leaf type (Token/Number/Quantity/Reference/Uri) via a MIN/MAX-aggregating derived-table join, since
 /// none of those tables carry IsMin/IsMax columns.
 /// </summary>
@@ -16,15 +18,18 @@ public enum SortKeyKind
     String,
     Date,
     LastUpdated,
+    ResourceId,
     Aggregated,
 }
 #pragma warning restore CA1720
 
 /// <summary>
-/// One _sort key. SearchParamId is null only for <see cref="SortKeyKind.LastUpdated"/>. Table and Column
+/// One _sort key. SearchParamId is null for both <see cref="SortKeyKind.LastUpdated"/> and
+/// <see cref="SortKeyKind.ResourceId"/> (neither is a search-parameter-table lookup). Table and Column
 /// are non-null only for <see cref="SortKeyKind.Aggregated"/> -- String/Date resolve their table/column
-/// inline in Emit (StringSearchParam.Text / DateTimeSearchParam.StartDateTime, both fixed), and
-/// LastUpdated has no column at all (its sort value is the surrogate id itself).
+/// inline in Emit (StringSearchParam.Text / DateTimeSearchParam.StartDateTime, both fixed), LastUpdated
+/// has no column at all (its sort value is the surrogate id itself), and ResourceId resolves its column
+/// inline in Emit too (dbo.Resource.ResourceId, fixed).
 /// </summary>
 public sealed record SortKey(
     short? SearchParamId,
