@@ -1,6 +1,7 @@
 import os
 
 import threading
+import traceback
 
 import unittest
 
@@ -101,6 +102,13 @@ def _test_phase(test_id):
     return {"id": test_id}
 
 
+def _traceback_text(exception):
+
+    return "".join(
+
+        traceback.format_exception(type(exception), exception, exception.__traceback__)
+
+    )
 
 
 
@@ -592,6 +600,155 @@ class ManagedIdentityAuthenticationTests(unittest.TestCase):
 
 
 
+
+
+    def test_credential_construction_traceback_suppresses_sensitive_values(self):
+
+        scope = "https://example/.default"
+
+        client_id = "client-123"
+
+        secret_body = "body=leak"
+
+        secret_token = "token=leak"
+
+        def fake_factory(_client_id):
+
+            raise ValueError(
+
+                f"scope={scope} client-id={client_id} {secret_body} {secret_token}"
+
+            )
+
+
+
+        with patch.dict(
+
+            os.environ,
+
+            {
+
+                "IGNIXA_AUTH_MODE": "managed-identity",
+
+                "IGNIXA_AUTH_SCOPE": scope,
+
+                "IGNIXA_MANAGED_IDENTITY_CLIENT_ID": client_id,
+
+            },
+
+            clear=True,
+
+        ), patch.object(self.runtime, "_create_managed_identity_credential", side_effect=fake_factory):
+
+            with self.assertRaises(RuntimeError) as context:
+
+                self.runtime._create_auth_provider()
+
+
+
+        traceback_text = _traceback_text(context.exception)
+
+        self.assertIn("RuntimeError", traceback_text)
+
+        self.assertNotIn(scope, traceback_text)
+
+        self.assertNotIn(client_id, traceback_text)
+
+        self.assertNotIn(secret_body, traceback_text)
+
+        self.assertNotIn(secret_token, traceback_text)
+
+
+
+    def test_token_acquisition_traceback_suppresses_sensitive_values(self):
+
+        scope = "https://example/.default"
+
+        client_id = "client-123"
+
+        secret_body = "body=leak"
+
+        secret_token = "token=leak"
+
+        def on_get_token():
+
+            raise ValueError(
+
+                f"scope={scope} client-id={client_id} {secret_body} {secret_token}"
+
+            )
+
+
+
+        credential = FakeManagedIdentityCredential([], on_get_token=on_get_token)
+
+        provider = self.runtime._ManagedIdentityAuthProvider(scope, credential, clock=lambda: 1000)
+
+
+
+        with self.assertRaises(RuntimeError) as context:
+
+            provider.authorization_value()
+
+
+
+        traceback_text = _traceback_text(context.exception)
+
+        self.assertIn("RuntimeError", traceback_text)
+
+        self.assertNotIn(scope, traceback_text)
+
+        self.assertNotIn(client_id, traceback_text)
+
+        self.assertNotIn(secret_body, traceback_text)
+
+        self.assertNotIn(secret_token, traceback_text)
+
+
+
+    def test_close_traceback_suppresses_sensitive_values(self):
+
+        scope = "https://example/.default"
+
+        client_id = "client-123"
+
+        secret_body = "body=leak"
+
+        secret_token = "token=leak"
+
+        failing = FakeManagedIdentityCredential(
+
+            [FakeAccessToken("ignored", 10000000000)],
+
+            close_exception=RuntimeError(
+
+                f"scope={scope} client-id={client_id} {secret_body} {secret_token}"
+
+            ),
+
+        )
+
+        provider = self.runtime._ManagedIdentityAuthProvider(scope, failing, clock=lambda: 1000)
+
+
+
+        with self.assertRaises(RuntimeError) as context:
+
+            provider.close()
+
+
+
+        traceback_text = _traceback_text(context.exception)
+
+        self.assertIn("RuntimeError", traceback_text)
+
+        self.assertNotIn(scope, traceback_text)
+
+        self.assertNotIn(client_id, traceback_text)
+
+        self.assertNotIn(secret_body, traceback_text)
+
+        self.assertNotIn(secret_token, traceback_text)
 
 
 class ManagedIdentityEngineLifecycleTests(unittest.TestCase):

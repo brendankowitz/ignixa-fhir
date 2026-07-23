@@ -427,6 +427,7 @@ class _ManagedIdentityAuthProvider:
         if token is not None and token.expires_on - self._clock() > _AUTH_REFRESH_WINDOW_SECONDS:
             return f"{_AUTHORIZATION_SCHEME} {token.token}"
 
+        error_message = None
         with self._lock:
             token = self._cached_access_token
             if token is not None and token.expires_on - self._clock() > _AUTH_REFRESH_WINDOW_SECONDS:
@@ -435,12 +436,15 @@ class _ManagedIdentityAuthProvider:
             try:
                 token = self._credential.get_token(self._scope)
             except Exception as exc:  # noqa: BLE001 - stable wrapper around credential acquisition failures.
-                raise RuntimeError(
+                error_message = (
                     f"Failed to acquire managed identity token ({type(exc).__name__})"
-                ) from exc
+                )
+            else:
+                self._cached_access_token = token
+                return f"{_AUTHORIZATION_SCHEME} {token.token}"
 
-            self._cached_access_token = token
-            return f"{_AUTHORIZATION_SCHEME} {token.token}"
+        if error_message is not None:
+            raise RuntimeError(error_message) from None
 
     def invalidate(self):
         with self._lock:
@@ -451,12 +455,14 @@ class _ManagedIdentityAuthProvider:
         if close is None:
             return None
 
+        close_error = None
         try:
             close()
         except Exception as exc:  # noqa: BLE001 - stable wrapper around credential disposal failures.
-            raise RuntimeError(
-                f"Failed to close managed identity credential ({type(exc).__name__})"
-            ) from exc
+            close_error = f"Failed to close managed identity credential ({type(exc).__name__})"
+
+        if close_error is not None:
+            raise RuntimeError(close_error) from None
         return None
 
 
@@ -495,12 +501,14 @@ def _create_auth_provider():
     scope = _non_empty_env("IGNIXA_AUTH_SCOPE", required=True)
     client_id = _non_empty_env("IGNIXA_MANAGED_IDENTITY_CLIENT_ID")
 
+    credential_error = None
     try:
         credential = _create_managed_identity_credential(client_id)
     except Exception as exc:  # noqa: BLE001 - stable wrapper around credential creation failures.
-        raise RuntimeError(
-            f"Failed to create managed identity credential ({type(exc).__name__})"
-        ) from exc
+        credential_error = f"Failed to create managed identity credential ({type(exc).__name__})"
+
+    if credential_error is not None:
+        raise RuntimeError(credential_error) from None
 
     return _ManagedIdentityAuthProvider(scope, credential)
 
