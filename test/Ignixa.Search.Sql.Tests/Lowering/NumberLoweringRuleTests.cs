@@ -65,7 +65,7 @@ public class NumberLoweringRuleTests
     }
 
     [Fact]
-    public void GivenGeComparator_WhenLowered_ThenComparesLowValueOnly()
+    public void GivenGeComparator_WhenLowered_ThenComparesHighValue()
     {
         // Arrange
         var parameter = Parameter();
@@ -77,12 +77,12 @@ public class NumberLoweringRuleTests
         // Assert
         cte.ResourceTypeId.ShouldBe((short)103);
         var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        ge.Column.Column.ShouldBe("LowValue");
+        ge.Column.Column.ShouldBe("HighValue");
         ge.Value.Value.ShouldBe(5.4m);
     }
 
     [Fact]
-    public void GivenGtComparator_WhenLowered_ThenComparesLowValueOnly()
+    public void GivenGtComparator_WhenLowered_ThenComparesHighValue()
     {
         // Arrange
         var parameter = Parameter();
@@ -94,12 +94,12 @@ public class NumberLoweringRuleTests
         // Assert
         cte.ResourceTypeId.ShouldBe((short)103);
         var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
-        gt.Column.Column.ShouldBe("LowValue");
+        gt.Column.Column.ShouldBe("HighValue");
         gt.Value.Value.ShouldBe(5.4m);
     }
 
     [Fact]
-    public void GivenSaComparator_WhenLowered_ThenComparesLowValueOnlySameAsGt()
+    public void GivenSaComparator_WhenLowered_ThenComparesLowValueUnlikeGt()
     {
         // Arrange
         var parameter = Parameter();
@@ -116,7 +116,7 @@ public class NumberLoweringRuleTests
     }
 
     [Fact]
-    public void GivenLeComparator_WhenLowered_ThenComparesHighValueOnly()
+    public void GivenLeComparator_WhenLowered_ThenComparesLowValue()
     {
         // Arrange
         var parameter = Parameter();
@@ -128,12 +128,12 @@ public class NumberLoweringRuleTests
         // Assert
         cte.ResourceTypeId.ShouldBe((short)103);
         var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        le.Column.Column.ShouldBe("HighValue");
+        le.Column.Column.ShouldBe("LowValue");
         le.Value.Value.ShouldBe(5.4m);
     }
 
     [Fact]
-    public void GivenLtComparator_WhenLowered_ThenComparesHighValueOnly()
+    public void GivenLtComparator_WhenLowered_ThenComparesLowValue()
     {
         // Arrange
         var parameter = Parameter();
@@ -145,12 +145,12 @@ public class NumberLoweringRuleTests
         // Assert
         cte.ResourceTypeId.ShouldBe((short)103);
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
-        lt.Column.Column.ShouldBe("HighValue");
+        lt.Column.Column.ShouldBe("LowValue");
         lt.Value.Value.ShouldBe(5.4m);
     }
 
     [Fact]
-    public void GivenEbComparator_WhenLowered_ThenComparesHighValueOnlySameAsLt()
+    public void GivenEbComparator_WhenLowered_ThenComparesHighValueUnlikeLt()
     {
         // Arrange
         var parameter = Parameter();
