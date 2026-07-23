@@ -351,23 +351,12 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // (SqlServerFhirRepository). Distinct from the EF-based searchIndexCache above, which
         // remains dedicated to the (still EF-based) read/search path. Preloaded once here, up front,
         // synchronously -- mirroring the schema-deployment calls above -- rather than per-request.
-        // CA2000: this cache is tenant-scoped and captured by the createRepository closure below,
-        // living for the lifetime of this cached TenantServiceFactory -- disposal is out of scope
-        // for this factory method, matching the FhirDbContext instances created elsewhere in this
-        // class (GetRepositoryAsync/GetSearchServiceAsync/GetDbContextAsync), whose disposal is
-        // likewise the calling code's responsibility.
-#pragma warning disable CA2000 // Dispose objects before losing scope
-        var sqlServerSearchIndexCache = new SqlServerSearchIndexReferenceDataCache(
-            _sqlExecutionService,
-            tenantId,
-            _loggerFactory.CreateLogger<SqlServerSearchIndexReferenceDataCache>());
-#pragma warning restore CA2000
-        sqlServerSearchIndexCache.PreloadResourceTypesAsync(CancellationToken.None).GetAwaiter().GetResult();
-        // Eager, uncapped warm-up -- mirrors MultiTenantSearchIndexCache.GetOrCreateCacheForTenant's
-        // InitializeAsync() call for the EF-based searchIndexCache above: guarantees no caller of
-        // this factory's createRepository delegate ever observes a partially-populated cache. See
-        // docs/superpowers/specs/2026-07-20-sqlserver-search-param-cache-race-fix-design.md.
-        sqlServerSearchIndexCache.PreloadSearchParamsAsync(maxRows: null, CancellationToken.None).GetAwaiter().GetResult();
+        // Construction and preloading are relocated to SqlServerRepositoryFactory
+        // (Ignixa.DataLayer.SqlServer), which preserves the same once-per-tenant scope: this call
+        // happens exactly once here, outside the createRepository closure below.
+        var sqlServerSearchIndexCache = SqlServerRepositoryFactory
+            .CreateReferenceDataCacheAsync(_sqlExecutionService, tenantId, _loggerFactory, CancellationToken.None)
+            .GetAwaiter().GetResult();
 
         // Create factory delegate for Repository (accepts DbContext parameter, retained for
         // GetSearchServiceAsync's benefit -- see createSearchService below -- but unused here since
@@ -378,30 +367,8 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // on the EF-based search path; it receives whatever IFhirRepository it's handed purely
         // through the IFhirRepository interface, with no downcast, so it is unaffected by this swap.
         Func<FhirDbContext, IFhirRepository> createRepository = (_) =>
-        {
-            var compressor = new Ignixa.DataLayer.SqlServer.Compression.GzipResourceCompressor(_memoryStreamManager);
-
-            var extensionUpdater = new SqlServerPostMergeExtensionUpdater(
-                _sqlExecutionService,
-                tenantId,
-                _loggerFactory.CreateLogger<SqlServerPostMergeExtensionUpdater>());
-
-            var sqlServerMergeRepository = new SqlServerMergeRepository(
-                _sqlExecutionService,
-                tenantId,
-                compressor,
-                sqlServerSearchIndexCache,
-                extensionUpdater,
-                _loggerFactory.CreateLogger<SqlServerMergeRepository>());
-
-            return new SqlServerFhirRepository(
-                _sqlExecutionService,
-                tenantId,
-                compressor,
-                sqlServerSearchIndexCache,
-                sqlServerMergeRepository,
-                _loggerFactory.CreateLogger<SqlServerFhirRepository>());
-        };
+            SqlServerRepositoryFactory.CreateRepository(
+                _sqlExecutionService, tenantId, sqlServerSearchIndexCache, _memoryStreamManager, _loggerFactory);
 
         // Create factory delegate for SearchService (accepts DbContext and Repository parameters)
         Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (dbContext, repository) =>
