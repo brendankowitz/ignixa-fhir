@@ -259,8 +259,8 @@ public class TokenLoweringRuleTests
         cte.Predicate.ShouldBeOfType<Predicate.Equal>().Value.Value.ShouldBe("12345");
     }
 
-    public static TheoryData<SearchModifierCode> UnimplementedModifiers() =>
-    [
+    public static TheoryData<SearchModifierCode> UnimplementedModifiers() => new()
+    {
         SearchModifierCode.Text,
         SearchModifierCode.In,
         SearchModifierCode.NotIn,
@@ -268,7 +268,7 @@ public class TokenLoweringRuleTests
         SearchModifierCode.Above,
         SearchModifierCode.Below,
         SearchModifierCode.Identifier,
-    ];
+    };
 
     [Theory]
     [MemberData(nameof(UnimplementedModifiers))]
