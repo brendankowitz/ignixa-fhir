@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Testing;
 using Microsoft.CodeAnalysis.Testing;
-using Microsoft.CodeAnalysis.Testing.Verifiers;
 
 namespace Ignixa.Analyzers.Tests;
 
@@ -25,7 +24,7 @@ public class ResourceJsonNodeDeserializeAnalyzerTests
             """;
 
         var expected = new DiagnosticResult(ResourceJsonNodeDeserializeAnalyzer.DiagnosticId, DiagnosticSeverity.Error)
-            .WithSpan(9, 24, 9, 79)
+            .WithSpan(9, 24, 9, 74)
             .WithArguments("ResourceJsonNode");
 
         await VerifyAnalyzerAsync(testCode, expected);
@@ -58,7 +57,7 @@ public class ResourceJsonNodeDeserializeAnalyzerTests
             """;
 
         var expected = new DiagnosticResult(ResourceJsonNodeDeserializeAnalyzer.DiagnosticId, DiagnosticSeverity.Error)
-            .WithSpan(18, 24, 18, 77)
+            .WithSpan(18, 24, 18, 73)
             .WithArguments("PatientJsonNode");
 
         await VerifyAnalyzerAsync(testCode, expected);
@@ -106,14 +105,15 @@ public class ResourceJsonNodeDeserializeAnalyzerTests
 
     private static async Task VerifyAnalyzerAsync(string source, params DiagnosticResult[] expected)
     {
-        var test = new CSharpAnalyzerTest<ResourceJsonNodeDeserializeAnalyzer, XUnitVerifier>
+        var test = new CSharpAnalyzerTest<ResourceJsonNodeDeserializeAnalyzer, DefaultVerifier>
         {
             TestCode = source,
-            ReferenceAssemblies = ReferenceAssemblies.Net.Net90,
+            ReferenceAssemblies = ReferenceAssembliesProvider.Net100,
         };
 
         // Add reference to Ignixa.Serialization
         test.TestState.AdditionalReferences.Add(typeof(Ignixa.Serialization.SourceNodes.ResourceJsonNode).Assembly);
+        test.TestState.AdditionalReferences.Add(typeof(Ignixa.Abstractions.FhirVersion).Assembly);
 
         test.ExpectedDiagnostics.AddRange(expected);
 
