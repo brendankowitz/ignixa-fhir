@@ -37,8 +37,8 @@ The compiler supports the load-test subset:
   expression subset
 
 Profile validation, cross-source comparison, multi-party origin/destination behavior, warning-only
-reporting, and other assertions without a faithful Locust equivalent should fail compilation
-explicitly rather than disappear. Generated code marks supported assertion failures through
+reporting, and other assertions without a faithful Locust equivalent fail compilation explicitly
+rather than disappear. Generated code marks supported assertion failures through
 Locust's response failure API so Azure's aggregate error-rate criteria can gate the run.
 
 ## Azure Load Testing Fit

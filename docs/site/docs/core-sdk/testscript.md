@@ -364,8 +364,8 @@ intentionally unsupported.
 Azure Load Testing disables multi-region load distribution when managed identity authentication is
 selected.
 
-- [Authenticate with a managed identity — Azure Load Testing](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-test-secured-endpoints#authenticate-with-a-managed-identity)
-- [Use a managed identity — Azure Load Testing](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-use-a-managed-identity)
+- [Authenticate with a managed identity — Azure Load Testing](https://learn.microsoft.com/en-us/azure/app-testing/load-testing/how-to-test-secured-endpoints#authenticate-with-a-managed-identity)
+- [Use a managed identity — Azure Load Testing](https://learn.microsoft.com/en-us/azure/app-testing/load-testing/how-to-use-a-managed-identity)
 
 ## Published FHIR Conformance Report
 

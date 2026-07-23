@@ -889,8 +889,8 @@ FHIRPath expressions accepted by the compatibility analyzer. `fhir.resources` is
 runtime dependency or profile validator.
 
 Azure Load Testing currently provides Python 3.9.19 and Locust 2.33.2. Generated
-requirements pin `fhirpathpy==2.1.0` and `azure-identity==1.25.3`. Run the original
-.NET evaluator first when an authoritative FHIR `TestReport` is required.
+requirements pin `fhirpathpy==2.1.0`, `requests==2.32.3`, and `azure-identity==1.25.3`.
+Run the original .NET evaluator first when an authoritative FHIR `TestReport` is required.
 
 Set the target with `IGNIXA_BASE_URL` or Locust `--host`. Use `IGNIXA_FIXTURE_SEED`
 for repeatable fixture selection and `IGNIXA_WAIT_MIN_SECONDS` /
@@ -995,11 +995,11 @@ git commit -m "Document TestScript Locust managed identity" `
 - [ ] **Step 1: Confirm the legacy authentication surface is gone**
 
 ```powershell
-rg "IGNIXA_AUTH_HEADER|DefaultAzureCredential" src\Core\Ignixa.TestScript.Locust docs\site\docs\core-sdk\testscript.md
-rg "IGNIXA_AUTH_HEADER" test\Ignixa.TestScript.Locust.Tests
+rg "_parse_auth_header|DefaultAzureCredential" src\Core\Ignixa.TestScript.Locust docs\site\docs\core-sdk\testscript.md
+rg "IGNIXA_AUTH_HEADER" src\Core\Ignixa.TestScript.Locust test\Ignixa.TestScript.Locust.Tests docs\site\docs\core-sdk\testscript.md
 ```
 
-Expected: `_parse_auth_header` has no matches in either search. `IGNIXA_AUTH_HEADER` appears only in the runtime rejection constant (`_LEGACY_AUTH_HEADER_ENV`) and its single use in `_create_auth_provider`, never as an accepted configuration path or user-visible example. The test search contains only the regression proving the legacy setting is rejected without exposing its value.
+Expected: the first search has no matches — `_parse_auth_header` and `DefaultAzureCredential` do not appear in production runtime or user documentation. The second search matches only the runtime rejection constant (`_LEGACY_AUTH_HEADER_ENV = "IGNIXA_AUTH_HEADER"`) and its single use in `_create_auth_provider`, plus the regression test that proves the legacy setting is rejected without exposing its value; `IGNIXA_AUTH_HEADER` never appears as an accepted configuration path or user-visible example.
 
 - [ ] **Step 2: Run focused Locust verification**
 
