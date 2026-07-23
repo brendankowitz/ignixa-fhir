@@ -1605,6 +1605,3 @@ class WaitForPollingTests(RuntimeOperationsTestCase):
         self.assertEqual(0, len(_semantic_events(user)), "no semantic duplicate for a native transport failure")
         native = _events_of_type(user, "GET")
         self.assertEqual(1, len([e for e in native if e["exception"] is not None]))
-
-
-
