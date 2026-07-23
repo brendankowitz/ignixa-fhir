@@ -36,6 +36,7 @@ public sealed class LocustArtifactWriter
     };
 
     private readonly Func<string, Stream> _openEmbeddedAsset;
+    private readonly Action<string, string> _moveDirectory;
 
     /// <summary>
     /// Validates, once per process, that the writer's hardcoded set of planned output file names
@@ -48,16 +49,18 @@ public sealed class LocustArtifactWriter
 
     /// <summary>
     /// Creates a writer that resolves the Locust loader, runtime stub, and pinned requirements
-    /// from the embedded resources of this assembly.
+    /// from the embedded resources of this assembly, and moves directories with
+    /// <see cref="Directory.Move(string, string)"/>.
     /// </summary>
     public LocustArtifactWriter()
-        : this(OpenEmbeddedAssetFromAssembly)
+        : this(OpenEmbeddedAssetFromAssembly, MoveDirectory)
     {
     }
 
     /// <summary>
-    /// Creates a writer that resolves embedded assets through <paramref name="openEmbeddedAsset"/>.
-    /// Used by tests to inject asset content or simulate asset-resolution failures.
+    /// Creates a writer that resolves embedded assets through <paramref name="openEmbeddedAsset"/>
+    /// and moves directories with <see cref="Directory.Move(string, string)"/>. Used by tests to
+    /// inject asset content or simulate asset-resolution failures.
     /// </summary>
     /// <param name="openEmbeddedAsset">
     /// A delegate invoked with each logical asset file name (e.g. <c>locustfile.py</c>) that
@@ -65,9 +68,27 @@ public sealed class LocustArtifactWriter
     /// the returned stream after use.
     /// </param>
     internal LocustArtifactWriter(Func<string, Stream> openEmbeddedAsset)
+        : this(openEmbeddedAsset, MoveDirectory)
+    {
+    }
+
+    /// <summary>
+    /// Creates a writer that resolves embedded assets through <paramref name="openEmbeddedAsset"/>
+    /// and moves directories through <paramref name="moveDirectory"/>. Used by tests to
+    /// deterministically simulate directory-move failures during the atomic swap.
+    /// </summary>
+    /// <param name="openEmbeddedAsset">See <see cref="LocustArtifactWriter(Func{string, Stream})"/>.</param>
+    /// <param name="moveDirectory">
+    /// A delegate invoked as <c>moveDirectory(sourceDirName, destDirName)</c> in place of
+    /// <see cref="Directory.Move(string, string)"/> for every directory move performed by the
+    /// atomic swap.
+    /// </param>
+    internal LocustArtifactWriter(Func<string, Stream> openEmbeddedAsset, Action<string, string> moveDirectory)
     {
         ArgumentNullException.ThrowIfNull(openEmbeddedAsset);
+        ArgumentNullException.ThrowIfNull(moveDirectory);
         _openEmbeddedAsset = openEmbeddedAsset;
+        _moveDirectory = moveDirectory;
     }
 
     /// <summary>
@@ -80,8 +101,13 @@ public sealed class LocustArtifactWriter
     /// <param name="outputDirectory">The target directory. Created if missing; replaced atomically if it exists.</param>
     /// <param name="cancellationToken">A token used to observe cancellation requests.</param>
     /// <exception cref="ArgumentNullException"><paramref name="document"/> or <paramref name="diagnostics"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="outputDirectory"/> is <see langword="null"/> or blank.</exception>
-    /// <exception cref="IOException"><paramref name="outputDirectory"/> already exists as a file, or an underlying I/O operation fails.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="outputDirectory"/> is <see langword="null"/> or blank, or resolves to a filesystem root.
+    /// </exception>
+    /// <exception cref="IOException">
+    /// <paramref name="outputDirectory"/> already exists as a file, an underlying I/O operation fails, or the
+    /// atomic swap could not complete (see the exception message for recovery details).
+    /// </exception>
     public async Task WriteAsync(
         LocustIrDocument document,
         IReadOnlyList<LocustDiagnostic> diagnostics,
@@ -94,7 +120,7 @@ public sealed class LocustArtifactWriter
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        string fullOutputDirectory = Path.GetFullPath(outputDirectory);
+        string fullOutputDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(outputDirectory));
 
         if (File.Exists(fullOutputDirectory))
         {
@@ -102,13 +128,19 @@ public sealed class LocustArtifactWriter
                 $"Cannot write Locust artifact to '{fullOutputDirectory}': the path already exists as a file.");
         }
 
-        string parentDirectory = Path.GetDirectoryName(fullOutputDirectory) is { Length: > 0 } directoryName
-            ? directoryName
-            : Directory.GetCurrentDirectory();
+        string outputLeafName = Path.GetFileName(fullOutputDirectory);
+        string? parentDirectory = Path.GetDirectoryName(fullOutputDirectory);
+
+        if (string.IsNullOrEmpty(outputLeafName) || string.IsNullOrEmpty(parentDirectory))
+        {
+            throw new ArgumentException(
+                $"Output directory '{fullOutputDirectory}' must not be a filesystem root.",
+                nameof(outputDirectory));
+        }
+
         Directory.CreateDirectory(parentDirectory);
 
         string invocationId = Guid.NewGuid().ToString("N");
-        string outputLeafName = Path.GetFileName(fullOutputDirectory);
         string stagingDirectory = Path.Combine(parentDirectory, $"{outputLeafName}.staging-{invocationId}");
         string backupDirectory = Path.Combine(parentDirectory, $"{outputLeafName}.backup-{invocationId}");
 
@@ -118,43 +150,116 @@ public sealed class LocustArtifactWriter
         {
             await WriteStagingFilesAsync(stagingDirectory, document, diagnostics, cancellationToken)
                 .ConfigureAwait(false);
-
-            SwapIntoPlace(fullOutputDirectory, stagingDirectory, backupDirectory);
         }
         catch
         {
             TryDeleteDirectory(stagingDirectory);
-            TryDeleteDirectory(backupDirectory);
             throw;
         }
+
+        SwapIntoPlace(fullOutputDirectory, stagingDirectory, backupDirectory);
     }
 
-    private static void SwapIntoPlace(string fullOutputDirectory, string stagingDirectory, string backupDirectory)
+    /// <summary>
+    /// Replaces <paramref name="fullOutputDirectory"/> with the completed
+    /// <paramref name="stagingDirectory"/>, using <paramref name="backupDirectory"/> as a sibling
+    /// holding area for any pre-existing output directory during the swap.
+    /// </summary>
+    /// <remarks>
+    /// If the output directory does not yet exist, the swap is a single move with no backup
+    /// involved. If it exists, the original is first moved to <paramref name="backupDirectory"/>;
+    /// the backup is only deleted once the new content is confirmed in place. If moving the
+    /// staging directory into place fails, the writer attempts to restore the backup: on
+    /// successful restore, the original swap failure is rethrown; on a double fault (restore also
+    /// fails), the backup is deliberately left in place for manual recovery and both failures are
+    /// reported together.
+    /// </remarks>
+    private void SwapIntoPlace(string fullOutputDirectory, string stagingDirectory, string backupDirectory)
     {
         bool outputExisted = Directory.Exists(fullOutputDirectory);
-        if (outputExisted)
+
+        if (!outputExisted)
         {
-            Directory.Move(fullOutputDirectory, backupDirectory);
+            try
+            {
+                _moveDirectory(stagingDirectory, fullOutputDirectory);
+            }
+            catch
+            {
+                TryDeleteDirectory(fullOutputDirectory);
+                TryDeleteDirectory(stagingDirectory);
+                throw;
+            }
+
+            return;
         }
 
         try
         {
-            Directory.Move(stagingDirectory, fullOutputDirectory);
+            _moveDirectory(fullOutputDirectory, backupDirectory);
         }
         catch
         {
-            TryDeleteDirectory(fullOutputDirectory);
-            if (outputExisted && Directory.Exists(backupDirectory))
-            {
-                Directory.Move(backupDirectory, fullOutputDirectory);
-            }
-
+            // The original output was not (or only partially) moved away, so there is nothing to
+            // restore; the staging attempt is simply abandoned and the original is left as-is.
+            TryDeleteDirectory(stagingDirectory);
             throw;
         }
 
-        if (outputExisted)
+        try
         {
-            TryDeleteDirectory(backupDirectory);
+            _moveDirectory(stagingDirectory, fullOutputDirectory);
+        }
+        catch (Exception swapException)
+        {
+            TryDeleteDirectory(fullOutputDirectory);
+
+            try
+            {
+                _moveDirectory(backupDirectory, fullOutputDirectory);
+            }
+            catch (Exception restoreException)
+            {
+                // Double fault: neither the new artifact nor the restored original could be placed
+                // at the output path. Preserve the backup untouched for manual recovery -- never
+                // delete a backup we could not prove was safely restored -- and report both
+                // failures together.
+                TryDeleteDirectory(stagingDirectory);
+                throw new IOException(
+                    $"Failed to write the Locust artifact to '{fullOutputDirectory}' and failed to " +
+                    "restore the original content from backup afterward. The original content is " +
+                    $"preserved, untouched, at '{backupDirectory}' and must be recovered manually.",
+                    new AggregateException(swapException, restoreException));
+            }
+
+            TryDeleteDirectory(stagingDirectory);
+            throw;
+        }
+
+        DeleteBackupAfterSuccessfulSwap(backupDirectory);
+    }
+
+    /// <summary>
+    /// Deletes <paramref name="backupDirectory"/> now that the new output has been placed
+    /// successfully. Unlike <see cref="TryDeleteDirectory"/>, this does not swallow failures: if
+    /// the backup cannot be removed, an explicit exception is thrown naming the leftover path
+    /// rather than silently reporting success.
+    /// </summary>
+    private static void DeleteBackupAfterSuccessfulSwap(string backupDirectory)
+    {
+        try
+        {
+            if (Directory.Exists(backupDirectory))
+            {
+                Directory.Delete(backupDirectory, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new IOException(
+                "The Locust artifact was written successfully, but the backup directory " +
+                $"'{backupDirectory}' could not be removed and must be deleted manually.",
+                ex);
         }
     }
 
@@ -226,6 +331,9 @@ public sealed class LocustArtifactWriter
                 "The Locust artifact writer has a duplicate planned output file name.");
         }
     }
+
+    private static void MoveDirectory(string sourceDirName, string destDirName) =>
+        Directory.Move(sourceDirName, destDirName);
 
     private static void TryDeleteDirectory(string path)
     {

@@ -3,3 +3,9 @@
 
 # Mark generated files so GitHub recognizes them
 src/Sparky.Specification/Generated/*.g.cs linguist-generated=true
+
+# Locust artifact Python assets must stay LF-only: they are embedded as build resources and copied
+# byte-for-byte into generated artifacts, so a CRLF checkout would leak platform-dependent line
+# endings into every generated Locust artifact.
+src/Core/Ignixa.TestScript.Locust/Python/*.py text eol=lf
+src/Core/Ignixa.TestScript.Locust/Python/requirements.txt text eol=lf

@@ -106,7 +106,7 @@ public class LocustArtifactWriterTests
     }
 
     [Fact]
-    public async Task GivenProductionWriter_WhenWritten_ThenEmbeddedAssetsMatchPinnedContent()
+    public async Task GivenProductionWriter_WhenWritten_ThenEmbeddedAssetsMatchPinnedLfContentWithNoCarriageReturns()
     {
         string root = CreateTestRoot();
         string output = Path.Combine(root, "output");
@@ -114,16 +114,24 @@ public class LocustArtifactWriterTests
         {
             await new LocustArtifactWriter().WriteAsync(CreateDocument(), [], output, CancellationToken.None);
 
-            string requirements = Normalize(await File.ReadAllTextAsync(Path.Combine(output, "requirements.txt")));
+            string requirementsPath = Path.Combine(output, "requirements.txt");
+            string locustfilePath = Path.Combine(output, "locustfile.py");
+            string runtimePath = Path.Combine(output, "ignixa_testscript_runtime.py");
+
+            AssertNoCarriageReturn(requirementsPath);
+            AssertNoCarriageReturn(locustfilePath);
+            AssertNoCarriageReturn(runtimePath);
+
+            string requirements = await File.ReadAllTextAsync(requirementsPath);
             requirements.ShouldBe(ExpectedRequirementsText);
 
-            string locustfile = Normalize(await File.ReadAllTextAsync(Path.Combine(output, "locustfile.py")));
+            string locustfile = await File.ReadAllTextAsync(locustfilePath);
             locustfile.ShouldContain("import ignixa_testscript_runtime as runtime");
             locustfile.ShouldContain("class IgnixaTestScriptUser(HttpUser):");
             locustfile.ShouldContain("_IR_PATH = Path(__file__).with_name(\"testscript.ir.json\")");
             locustfile.ShouldContain("self.ignixa_state = runtime.initialize_user(_DOCUMENT, self)");
 
-            string runtime = Normalize(await File.ReadAllTextAsync(Path.Combine(output, "ignixa_testscript_runtime.py")));
+            string runtime = await File.ReadAllTextAsync(runtimePath);
             runtime.ShouldContain("SUPPORTED_SCHEMA_MAJOR = 1");
             runtime.ShouldContain("def initialize_user(document, user):");
             runtime.ShouldContain("raise RuntimeError(\"Runtime execution is not implemented\")");
@@ -287,6 +295,159 @@ public class LocustArtifactWriterTests
         Should.Throw<ArgumentNullException>(() => new LocustArtifactWriter(null!));
     }
 
+    [Fact]
+    public void GivenNullMoveDirectoryDelegate_WhenConstructed_ThenThrowsArgumentNullException()
+    {
+        Should.Throw<ArgumentNullException>(() => new LocustArtifactWriter(CreateSucceedingOpener(), null!));
+    }
+
+    [Fact]
+    public async Task GivenOutputDirectoryWithTrailingSeparator_WhenWritten_ThenArtifactIsFlatWithNoLeftoverSiblings()
+    {
+        string root = CreateTestRoot();
+        string trimmedOutput = Path.Combine(root, "output");
+        string outputWithTrailingSeparator = trimmedOutput + Path.DirectorySeparatorChar;
+        try
+        {
+            await new LocustArtifactWriter().WriteAsync(
+                CreateDocument(), [], outputWithTrailingSeparator, CancellationToken.None);
+
+            Directory.GetDirectories(trimmedOutput).ShouldBeEmpty();
+            Directory.GetFiles(trimmedOutput).Select(Path.GetFileName).Order()
+                .ShouldBe(ExpectedFileNames.Order());
+
+            AssertNoLeftoverSiblings(root, "output");
+        }
+        finally
+        {
+            SafeDelete(root);
+        }
+    }
+
+    [Theory]
+    [InlineData(@"C:\")]
+    [InlineData(@"C:/")]
+    public void GivenFilesystemRootOutputDirectory_WhenWriteAttempted_ThenThrowsArgumentException(string root)
+    {
+        Should.Throw<ArgumentException>(() =>
+            new LocustArtifactWriter().WriteAsync(CreateDocument(), [], root, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenSwapFailureFollowedBySuccessfulRestore_WhenWriteAttempted_ThenOriginalRestoredAndSwapExceptionRethrown()
+    {
+        string root = CreateTestRoot();
+        string output = Path.Combine(root, "output");
+        Directory.CreateDirectory(output);
+        string sentinelPath = Path.Combine(output, "sentinel.txt");
+        await File.WriteAllTextAsync(sentinelPath, "keep-me");
+        try
+        {
+            var move = new SequencedMoveDirectory(
+                SequencedMoveDirectory.RealMove,
+                SequencedMoveDirectory.Throwing("simulated swap failure"),
+                SequencedMoveDirectory.RealMove);
+            var writer = new LocustArtifactWriter(CreateSucceedingOpener(), move.Move);
+
+            IOException thrown = await Should.ThrowAsync<IOException>(() =>
+                writer.WriteAsync(CreateDocument(), [], output, CancellationToken.None));
+
+            thrown.Message.ShouldBe("simulated swap failure");
+
+            Directory.GetFiles(output).Select(Path.GetFileName).ShouldBe(["sentinel.txt"]);
+            (await File.ReadAllTextAsync(sentinelPath)).ShouldBe("keep-me");
+
+            AssertNoLeftoverSiblings(root, "output");
+        }
+        finally
+        {
+            SafeDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task GivenSwapFailureAndRestoreFailure_WhenWriteAttempted_ThenBackupPreservedAndExceptionNamesBothFailures()
+    {
+        string root = CreateTestRoot();
+        string output = Path.Combine(root, "output");
+        Directory.CreateDirectory(output);
+        string sentinelPath = Path.Combine(output, "sentinel.txt");
+        await File.WriteAllTextAsync(sentinelPath, "keep-me");
+        try
+        {
+            var move = new SequencedMoveDirectory(
+                SequencedMoveDirectory.RealMove,
+                SequencedMoveDirectory.Throwing("simulated swap failure"),
+                SequencedMoveDirectory.Throwing("simulated restore failure"));
+            var writer = new LocustArtifactWriter(CreateSucceedingOpener(), move.Move);
+
+            IOException thrown = await Should.ThrowAsync<IOException>(() =>
+                writer.WriteAsync(CreateDocument(), [], output, CancellationToken.None));
+
+            Directory.Exists(output).ShouldBeFalse();
+
+            string[] siblingEntries = [.. Directory.GetFileSystemEntries(root).Select(entry => Path.GetFileName(entry)!)];
+            siblingEntries.Length.ShouldBe(1);
+            siblingEntries[0].ShouldStartWith("output.backup-");
+
+            string backupDirectory = Path.Combine(root, siblingEntries[0]);
+            thrown.Message.ShouldContain(backupDirectory);
+
+            AggregateException aggregate = thrown.InnerException.ShouldBeOfType<AggregateException>();
+            aggregate.InnerExceptions.Count.ShouldBe(2);
+            aggregate.InnerExceptions[0].Message.ShouldBe("simulated swap failure");
+            aggregate.InnerExceptions[1].Message.ShouldBe("simulated restore failure");
+
+            Directory.GetFiles(backupDirectory).Select(Path.GetFileName).ShouldBe(["sentinel.txt"]);
+            (await File.ReadAllTextAsync(Path.Combine(backupDirectory, "sentinel.txt"))).ShouldBe("keep-me");
+        }
+        finally
+        {
+            SafeDelete(root);
+        }
+    }
+
+    [Fact]
+    public async Task GivenCancellationDuringAssetCopy_WhenWriteAttempted_ThenOriginalUnchangedAndStagingCleaned()
+    {
+        string root = CreateTestRoot();
+        string output = Path.Combine(root, "output");
+        Directory.CreateDirectory(output);
+        string sentinelPath = Path.Combine(output, "sentinel.txt");
+        await File.WriteAllTextAsync(sentinelPath, "keep-me");
+        try
+        {
+            using var cts = new CancellationTokenSource();
+            var callCount = 0;
+
+            Stream OpenAndCancelAfterFirstAsset(string assetFileName)
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    cts.Cancel();
+                }
+
+                return new MemoryStream(Encoding.UTF8.GetBytes($"# {assetFileName}\n"));
+            }
+
+            var writer = new LocustArtifactWriter(OpenAndCancelAfterFirstAsset);
+
+            await Should.ThrowAsync<OperationCanceledException>(() =>
+                writer.WriteAsync(CreateDocument(), [], output, cts.Token));
+
+            Directory.GetFiles(output).Select(Path.GetFileName).ShouldBe(["sentinel.txt"]);
+            (await File.ReadAllTextAsync(sentinelPath)).ShouldBe("keep-me");
+
+            AssertNoLeftoverSiblings(root, "output");
+            callCount.ShouldBe(1);
+        }
+        finally
+        {
+            SafeDelete(root);
+        }
+    }
+
     private static LocustIrDocument CreateDocument() => new()
     {
         Metadata = new LocustIrMetadata("Basic", "basic.json", "4.0")
@@ -295,13 +456,20 @@ public class LocustArtifactWriterTests
     private static string CreateTestRoot() =>
         Path.Combine(Path.GetTempPath(), $"ignixa-locust-artifact-tests-{Guid.NewGuid():N}");
 
-    private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal);
+    private static Func<string, Stream> CreateSucceedingOpener() =>
+        assetFileName => new MemoryStream(Encoding.UTF8.GetBytes($"# {assetFileName}\n"));
 
     private static void AssertNoBom(string path)
     {
         byte[] bytes = File.ReadAllBytes(path);
         bool hasBom = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
         hasBom.ShouldBeFalse();
+    }
+
+    private static void AssertNoCarriageReturn(string path)
+    {
+        byte[] bytes = File.ReadAllBytes(path);
+        bytes.ShouldNotContain((byte)0x0D);
     }
 
     private static void AssertNoLeftoverSiblings(string root, string expectedEntryName)
@@ -347,6 +515,33 @@ public class LocustArtifactWriterTests
         {
             IsDisposed = true;
             base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>
+    /// A test double for the writer's <c>Action&lt;string, string&gt; moveDirectory</c> seam that
+    /// applies a distinct behavior per call index (real move, or a thrown exception), falling back
+    /// to a real <see cref="Directory.Move(string, string)"/> for any call beyond the configured
+    /// sequence.
+    /// </summary>
+    private sealed class SequencedMoveDirectory(params Action<string, string>[] behaviors)
+    {
+        private readonly List<Action<string, string>> _behaviors = [.. behaviors];
+        private int _callIndex;
+
+        public static void RealMove(string sourceDirName, string destDirName) =>
+            Directory.Move(sourceDirName, destDirName);
+
+        public static Action<string, string> Throwing(string message) =>
+            (_, _) => throw new IOException(message);
+
+        public void Move(string sourceDirName, string destDirName)
+        {
+            Action<string, string> behavior = _callIndex < _behaviors.Count
+                ? _behaviors[_callIndex]
+                : RealMove;
+            _callIndex++;
+            behavior(sourceDirName, destDirName);
         }
     }
 }
