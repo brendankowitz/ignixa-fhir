@@ -213,6 +213,22 @@ public sealed class SqlServerCompiledSearchService(
             yield break; // Valued alone filled the whole page -- no room left for MissingPrimary rows.
         }
 
+        // _id/_lastUpdated are resource-column sort keys (ResourceId/ResourceSurrogateId) -- both are
+        // non-nullable resource columns, so a value is never "missing" for either, and
+        // Lower.BuildSortSpec deliberately throws NotSupportedException if ever asked to compile a
+        // MissingPrimary-phase plan for one of these two kinds (see its own doc comment: "neither has a
+        // MissingPrimary segment"). A short Valued page for one of these keys means the data has simply
+        // run out -- e.g. the last page of an offset-paged _sort=_id search landing exactly at the tail
+        // of the result set -- not that a genuine MissingPrimary segment exists to look at. Without this
+        // guard, that completely ordinary paging shape would attempt the MissingPrimary compile below,
+        // which throws, surfacing as a 400 RequestNotValidException on a request that should just return
+        // however many rows remain.
+        var primarySortCode = options.Sort[0].Parameter.Code;
+        if (primarySortCode is "_id" or "_lastUpdated")
+        {
+            yield break;
+        }
+
         int missingPrimaryOffset;
         if (valuedCount > 0)
         {
