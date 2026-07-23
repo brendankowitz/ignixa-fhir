@@ -37,6 +37,18 @@ jobs:
           fetch-depth: 0  # Full history for GitVersion
           submodules: recursive
 
+      - name: Setup Python for TestScript Locust runtime
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.9.19'
+          cache: 'pip'
+          cache-dependency-path: 'src/Core/Ignixa.TestScript.Locust/Python/requirements.txt'
+
+      - name: Install TestScript Locust runtime dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            -r src/Core/Ignixa.TestScript.Locust/Python/requirements.txt
+
       - name: Build and run unit tests (exclude E2E)
         id: build
         uses: ./.github/actions/dotnet-build-and-test
@@ -45,6 +57,12 @@ jobs:
           solution-file: 'All.sln'
           build-configuration: 'Release'
           test-filter: 'FullyQualifiedName!~E2ETests'
+
+      - name: Test TestScript Locust runtime
+        run: |
+          python -m unittest discover \
+            -s test/Ignixa.TestScript.Locust.Tests/Python \
+            -p 'test_*.py' -v
 
       - name: Store version for later jobs
         run: |
