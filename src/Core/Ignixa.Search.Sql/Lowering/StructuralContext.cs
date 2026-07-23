@@ -192,7 +192,10 @@ public sealed class StructuralContext
                 "Lower.Run's top-level extraction pass (via ResourceColumnLoweringRule) handles these. Guarding here, " +
                 "at the dispatch choke point, covers every caller of Lower/LowerComposite structurally. Throwing " +
                 "rather than routing a resource column into an unrelated table, which would silently produce a " +
-                "wrong-scope or always-empty match.");
+                "wrong-scope or always-empty match. This commonly happens when a resource-column predicate arrives " +
+                "nested inside an And/Or that wasn't flattened before reaching Lower.Run -- e.g. a caller composing " +
+                "And(otherExpression, existingAnd) instead of splicing into existingAnd's own children. Flatten the " +
+                "composed expression before calling Lower.");
         }
     }
 
