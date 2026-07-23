@@ -128,11 +128,12 @@ public class LocustIrCompilerTests
     }
 
     [Fact]
-    public async Task GivenActionsWithAnyOfGroup_WhenCompiled_ThenMetricInfoDiagnosticsCoverOnlyFirstGroupMember()
+    public async Task GivenSetupTestAndTeardownActions_WhenCompiled_ThenMetricInfoDiagnosticsCoverLifecycleAndOnlyFirstGroupMember()
     {
         TestScriptDefinition definition = new()
         {
             Metadata = new TestScriptMetadata { Name = "Suite" },
+            Setup = [new OperationExpression { Type = "create", Resource = "Patient" }],
             Tests =
             [
                 new TestPhaseDefinition
@@ -146,7 +147,8 @@ public class LocustIrCompilerTests
                         new AssertExpression { Criteria = new ResponseCodeCriteria("ok") }
                     ]
                 }
-            ]
+            ],
+            Teardown = [new OperationExpression { Type = "delete", Resource = "Patient" }]
         };
 
         LocustCompilationResult result = await s_compiler.CompileAsync(definition, Options("metrics.json"), CancellationToken.None);
@@ -155,16 +157,25 @@ public class LocustIrCompilerTests
 
         List<LocustDiagnostic> metrics = [.. result.Diagnostics.Where(d => d.Code == "LOCUST_METRIC")];
 
-        metrics.Count.ShouldBe(3);
-        metrics[0].Source.ShouldBe("metrics.json:test:case:action:0");
-        metrics[0].Message.ShouldBe("Metric 'metrics.json::test.0.action.0'");
+        metrics.Count.ShouldBe(5);
+
+        metrics[0].Source.ShouldBe("metrics.json:setup:action:0");
+        metrics[0].Message.ShouldBe("Metric 'metrics.json::setup.0'");
         metrics[0].Severity.ShouldBe(LocustDiagnosticSeverity.Info);
 
-        metrics[1].Source.ShouldBe("metrics.json:test:case:action:1");
-        metrics[1].Message.ShouldBe("Metric 'metrics.json::test.0.action.1'");
+        metrics[1].Source.ShouldBe("metrics.json:test:case:action:0");
+        metrics[1].Message.ShouldBe("Metric 'metrics.json::test.0.action.0'");
+        metrics[1].Severity.ShouldBe(LocustDiagnosticSeverity.Info);
 
-        metrics[2].Source.ShouldBe("metrics.json:test:case:action:3");
-        metrics[2].Message.ShouldBe("Metric 'metrics.json::test.0.action.3'");
+        metrics[2].Source.ShouldBe("metrics.json:test:case:action:1");
+        metrics[2].Message.ShouldBe("Metric 'metrics.json::test.0.action.1'");
+
+        metrics[3].Source.ShouldBe("metrics.json:test:case:action:3");
+        metrics[3].Message.ShouldBe("Metric 'metrics.json::test.0.action.3'");
+
+        metrics[4].Source.ShouldBe("metrics.json:teardown:action:0");
+        metrics[4].Message.ShouldBe("Metric 'metrics.json::teardown.0'");
+        metrics[4].Severity.ShouldBe(LocustDiagnosticSeverity.Info);
     }
 
     [Theory]
