@@ -1,4 +1,4 @@
-"""The Python half of the cross-language runtime contract (Task 10).
+"""The Python half of the cross-language runtime contract.
 
 Loads the exact same reviewed, immutable ``Contracts/runtime-cases.json`` the C#
 ``RuntimeContractTests`` drives through the real .NET engines, then drives every case

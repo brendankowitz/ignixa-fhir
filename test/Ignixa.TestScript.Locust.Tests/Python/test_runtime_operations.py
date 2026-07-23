@@ -1,17 +1,13 @@
-"""Task 8 RED-phase tests: operation execution, fixtures, variables, polling.
+"""Runtime operation, fixture, variable, and polling tests.
 
 Every test in this module reloads the runtime fresh via ``fakes.load_runtime()``
 in ``setUp`` so module-local state (user ordinals, capability decisions, and
 monkeypatched dispatch functions) never leaks between tests.
 
-Calls that exercise the still-placeholder ``_execute_operation`` (or a
-not-yet-existing helper such as ``_derive_url``/``_resolve``/``_metric_name``/
-``_perform_request``) are centralized through the helpers below so a
-"feature not implemented yet" state always surfaces as a clean assertion
-*failure* (``self.fail(...)``) rather than an unhandled-exception *error*.
-Only tests that specifically assert on unexpected-exception propagation
-(exceptions distinct from the known placeholder shape) use a manual
-try/except instead of ``assertRaises`` for the same reason.
+Calls through required runtime entry points are centralized through the helpers
+below so a missing API produces a precise assertion failure. Tests that assert
+unexpected-exception propagation use a manual try/except to distinguish the
+programmer-error path from expected transport failures.
 """
 
 import ast
@@ -128,22 +124,22 @@ def _semantic_events(user):
 
 
 # ---------------------------------------------------------------------------
-# RED-safe invocation helpers
+# Runtime invocation helpers
 # ---------------------------------------------------------------------------
 
 _PLACEHOLDER_MARKERS = ("is not implemented yet", "not implemented")
 
 
 def get_fn(testcase, runtime, name):
-    """Fetch ``runtime.<name>``, failing (not erroring) if it doesn't exist yet."""
+    """Fetch a required ``runtime.<name>`` function."""
     fn = getattr(runtime, name, None)
     if fn is None:
-        testcase.fail(f"runtime.{name} is not implemented yet (Task 8 feature missing)")
+        testcase.fail(f"runtime.{name} is missing")
     return fn
 
 
 def call_or_fail(testcase, fn, *args, **kwargs):
-    """Call ``fn``, converting the known Task 7 placeholder RuntimeError into a failure."""
+    """Call ``fn``, converting obsolete placeholder failures into assertions."""
     try:
         return fn(*args, **kwargs)
     except RuntimeError as exc:
@@ -154,15 +150,12 @@ def call_or_fail(testcase, fn, *args, **kwargs):
 
 
 def run_operation(testcase, runtime, document, user, context, action):
-    """Execute one operation action, converting placeholder failure into a clean fail()."""
+    """Execute one operation action through the production dispatcher."""
     return call_or_fail(testcase, runtime._execute_operation, document, user, context, action)
 
 
 def run_execute(testcase, runtime, document, user, state):
-    """Run a full document via ``runtime.execute``, converting the known Task 7
-    placeholder RuntimeError (raised from inside ``_execute_operation`` while
-    running setup/test/teardown actions) into a clean fail() instead of an
-    unhandled-exception error."""
+    """Run a full document through the production runtime entry point."""
     return call_or_fail(testcase, runtime.execute, document, user, state)
 
 
@@ -240,17 +233,12 @@ class RuntimeOperationsTestCase(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Enforce genuine RED: minimal smoke test
+# Minimal operation smoke test
 # ---------------------------------------------------------------------------
 
 
 class SmokeOperationExecutionTests(RuntimeOperationsTestCase):
-    """A single, minimal test proving the placeholder produces a clean RED.
-
-    This must be run in isolation first (see the RED report) to confirm the
-    failure is a genuine "feature missing" assertion failure, not an import,
-    fixture, or setup typo.
-    """
+    """Minimal proof that an ordinary read reaches the HTTP client."""
 
     def test_ordinary_read_operation_executes_a_real_http_request(self):
         document = _document()
@@ -387,13 +375,11 @@ class BareImportStaticAnalysisTests(unittest.TestCase):
     """Structural guard: the runtime must defer third-party imports.
 
     The authoritative proof that the module is importable with zero
-    third-party dependencies is the Task 7 lifecycle suite running via
-    ``uv run --python 3.9 python -m unittest ... test_runtime_lifecycle.py``
-    with no ``--with`` packages at all (see the RED report). This test adds
-    a fast, always-runnable structural guard against regressions: no
+    third-party dependencies is the lifecycle suite running without optional
+    packages. This test adds a fast structural guard against regressions: no
     module-level (unindented) import of ``requests``, ``locust``, or
-    ``fhirpathpy`` may appear in the runtime source, even after Task 8 adds
-    code that uses them lazily inside functions.
+    ``fhirpathpy`` may appear in the runtime source; runtime functions import
+    them lazily.
     """
 
     _THIRD_PARTY = ("requests", "locust", "fhirpathpy", "gevent")
@@ -1115,8 +1101,7 @@ class RequestResponseHistoryTests(RuntimeOperationsTestCase):
         self.assertEqual("Patient/1", context["requests"]["req-1"]["url"])
 
         # The stored response must be the actual queued FakeResponse object,
-        # not a dict snapshot copy - this is what gives Task 9 parse-error
-        # access to the real response.
+        # not a dict snapshot, so extraction and assertions retain parse-error access.
         self.assertIs(queued, context["responses"]["resp-1"])
         self.assertIs(queued, context["last_response"])
         self.assertEqual("Patient/1", context["last_request"]["url"])
@@ -1510,8 +1495,8 @@ class VariableSourceIdSelectionTests(RuntimeOperationsTestCase):
 
 
 # ---------------------------------------------------------------------------
-# Item 20: header/body dictionaries are replaced by assignment, not nested
-# mutation, preserving the Task 7 shallow-clone assumption.
+# Header/body dictionaries are replaced by assignment rather than nested
+# mutation, preserving shallow-clone isolation.
 # ---------------------------------------------------------------------------
 
 

@@ -569,6 +569,13 @@ public class LocustIrCompilerTests
         LocustIrTest test = document.Tests.ShouldHaveSingleItem();
         test.Id.ShouldBe("test.1");
         test.Name.ShouldBe("r4-only");
+        LocustDiagnostic diagnostic = result.Diagnostics
+            .Where(d => d.Code == "LOCUST011")
+            .ShouldHaveSingleItem();
+        diagnostic.Severity.ShouldBe(LocustDiagnosticSeverity.Info);
+        diagnostic.Source.ShouldBe("read.json:test:r5-only");
+        diagnostic.Message.ShouldBe(
+            "Excluded test 'r5-only' because target FHIR version '4.0' does not match declared versions: 5.0.");
     }
 
     [Theory]
@@ -786,6 +793,12 @@ public class LocustIrCompilerTests
         LocustIrFixture fixture = result.Document.ShouldNotBeNull().Fixtures.ShouldHaveSingleItem();
         fixture.Variants.Count.ShouldBe(3);
         fixture.Variants.ShouldAllBe(resource => resource["resourceType"]!.GetValue<string>() == "Patient");
+        LocustDiagnostic diagnostic = result.Diagnostics
+            .Where(d => d.Code == "LOCUST_FIXTURE_POOL")
+            .ShouldHaveSingleItem();
+        diagnostic.Severity.ShouldBe(LocustDiagnosticSeverity.Info);
+        diagnostic.Source.ShouldBe("read.json:fixture:fakes-fixture");
+        diagnostic.Message.ShouldBe("Fixture pool 'fakes-fixture' contains 3 variants.");
     }
 
     [Fact]

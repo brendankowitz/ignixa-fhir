@@ -56,8 +56,8 @@ class _CaseInsensitiveDict:
 
     Deliberately reimplemented rather than importing
     ``requests.structures.CaseInsensitiveDict``: this module must stay
-    dependency-free at import time so a bare Task 7 lifecycle run (no
-    ``requests``/``locust``/``fhirpathpy`` installed) still succeeds. Only
+    dependency-free at import time so lifecycle tests without
+    ``requests``/``locust``/``fhirpathpy`` installed still succeed. Only
     *constructing*/*using* an instance ever executes this code, and it needs
     no third-party import at all.
     """
@@ -280,7 +280,7 @@ class FakeMetadataResponse:
     raises an ``HTTPError`` for a >= 400 status, exactly like ``requests``), and
     ``json`` (which returns the configured payload, or raises ``ValueError`` when a
     body was marked unparseable). It is deliberately dependency-free at import so a
-    bare Task 7 lifecycle run still imports this module without ``requests`` present.
+    lifecycle tests still import this module without ``requests`` present.
     """
 
     def __init__(self, status_code=200, json_data=_NO_JSON, json_error=None):

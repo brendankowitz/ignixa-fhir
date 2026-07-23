@@ -17,9 +17,9 @@ _USER_ORDINALS = itertools.count()
 
 _logger = logging.getLogger("ignixa.testscript")
 
-# Lazily-loaded FHIRPath R4 model (used by the assertion/capability adapter so choice-type
-# element navigation matches Ignixa's schema-aware FhirPath engine). This is the *model*, never
-# a fetched CapabilityStatement, so caching it retains no per-run capability state.
+# Lazily-loaded FHIRPath R4 model used by variable extraction, assertions, and capability gates
+# so choice-type navigation matches Ignixa's schema-aware FhirPath engine. This is the model,
+# never a fetched CapabilityStatement, so caching it retains no per-run capability state.
 _FHIRPATH_MODEL = None
 
 _VARIABLE_PATTERN = re.compile(r"\$\{([^}]+)\}")
@@ -40,11 +40,9 @@ _METHOD_BY_TYPE = {
     "delete": "DELETE",
 }
 
-# Immutable capability-gate decision scaffold. Task 9 replaces these defaults
-# with real CapabilityStatement-derived state and adds explicit
-# initialize/clear APIs. Until then the runtime fails open: with no decisions
-# recorded, the suite and every test are allowed to run. Tests may assign to
-# these module attributes directly after calling ``load_runtime()``.
+# Immutable capability-gate decisions. Engine initialization replaces these
+# defaults with CapabilityStatement-derived state; clearing the engine restores
+# the permissive defaults without retaining the fetched capability document.
 _SUITE_ALLOWED = True
 _TEST_DECISIONS = {}
 
@@ -611,8 +609,8 @@ def _store_request(context, request_id, wrapper):
 
     ``context["requests"]`` is replaced with a new dict rather than mutated
     in place, and ``wrapper`` is always a brand-new dict, so no existing
-    nested object is ever mutated - preserving Task 7's shallow-clone
-    assumption for discardable test contexts.
+    nested object is ever mutated, preserving shallow-clone isolation for
+    discardable test contexts.
     """
     if request_id is not None:
         context["requests"] = dict(context["requests"])
@@ -624,7 +622,7 @@ def _store_response(context, response_id, response):
     """Record the actual response object under ``response_id`` and as last.
 
     The real received response object is stored directly (never a dict
-    snapshot), so later code - including Task 9 - can inspect parse errors,
+    snapshot), so later extraction and assertion code can inspect parse errors,
     headers, and status through it.
     """
     if response_id is not None:
@@ -644,8 +642,8 @@ def _response_headers(response):
 def _response_json_or_none(response):
     """Return the response's parsed JSON body, or ``None`` if unparseable.
 
-    Malformed/absent JSON is treated as "no body" for Task 8's sourceId and
-    extraction purposes; Task 9 will surface the parse failure itself.
+    Malformed or absent JSON is treated as no body. Callers that require valid
+    JSON surface the resulting extraction or assertion failure.
     """
     try:
         return response.json()
@@ -787,28 +785,12 @@ def _extract_by_fhirpath(response, expression):
     if body is None:
         return None
 
-    import fhirpathpy
-
     try:
-        results = fhirpathpy.evaluate(body, expression)
+        return _evaluate_fhirpath(expression, body, "scalar")
     except Exception as exc:
         raise RuntimeError(
             f"FHIRPath expression '{expression}' failed to evaluate: {exc}"
         )
-
-    if len(results) != 1:
-        return None
-
-    value = results[0]
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (dict, list)):
-        return None
-    if isinstance(value, str):
-        return value
-    return str(value)
 
 
 def _fhirpath_model():

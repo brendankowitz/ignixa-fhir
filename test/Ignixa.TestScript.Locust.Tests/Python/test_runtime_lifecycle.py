@@ -112,11 +112,9 @@ class RuntimeLifecycleTests(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_execute_action_dispatches_operation_kind_to_execute_operation(self):
-        # Task 8 replaces the placeholder operation executor with a real one.
-        # The dispatcher's job is only to route "operation" actions to
-        # whatever ``_execute_operation`` currently is - this test locks that
-        # wiring by monkeypatching ``_execute_operation`` directly, rather
-        # than asserting anything about the placeholder's behavior.
+        # The dispatcher's job is only to route operation actions to
+        # ``_execute_operation``. This test locks that wiring by replacing the
+        # executor directly.
         calls = []
 
         def fake_execute_operation(document, user, context, action):

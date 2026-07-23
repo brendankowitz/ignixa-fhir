@@ -1,36 +1,20 @@
-"""Runtime assertion execution + capability-gate engine tests.
+"""Runtime assertion execution and capability-gate engine tests.
 
 These tests cover the assertion executor, capability decisions, and engine
-reset behavior that already exist in the runtime:
+reset behavior:
 
-
-* ``_execute_assertion(document, user, context, action)`` - currently a placeholder that
-
-  raises "is not implemented yet". Task 9 fills it in to evaluate every
-
-  ``LocustIrAssertionKind`` with the exact semantics of
-
+* ``_execute_assertion(document, user, context, action)`` evaluates every
+  ``LocustIrAssertionKind`` with the semantics of
   ``src/Core/Ignixa.TestScript/Evaluation/TestScriptEvaluator.cs`` (response-category
-
   mapping, media-type comparison, all ten operators with invariant-decimal-before-ordinal
-
   comparison, request/response/body resolution, warningOnly, status applicability, and
-
   buffered any-of aggregation) and fire the ``TESTSCRIPT_ASSERT`` semantic event.
-
 * ``initialize_engine(document, environment)`` / ``clear_engine()`` - fetch the target
   CapabilityStatement, derive the immutable suite/test capability decisions, validate
   the IR schema, and reset per-run state.
 
-
-Every test converts the known placeholder ("is not implemented yet") RuntimeError, or a
-
-missing wished-for symbol, into a clean ``self.fail(...)`` so the RED failures are
-
-attributable "feature missing" assertion failures - never malformed-test errors. Assertions
-
-target observable runtime events/outcomes/state, never mock internals.
-
+Assertions target observable runtime events, outcomes, and state rather than
+mock internals.
 """
 
 
@@ -291,7 +275,7 @@ def _assert_events(user):
 
 # ---------------------------------------------------------------------------
 
-# RED-safe invocation helpers (mirror the Task 8 operation-test pattern)
+# Runtime invocation helpers
 
 # ---------------------------------------------------------------------------
 
@@ -309,7 +293,7 @@ def get_fn(testcase, runtime, name):
 
     if fn is None:
 
-        testcase.fail(f"runtime.{name} is not implemented yet (Task 9 feature missing)")
+        testcase.fail(f"runtime.{name} is missing")
 
     return fn
 
@@ -339,7 +323,7 @@ def call_or_fail(testcase, fn, *args, **kwargs):
 
 def run_assertion(testcase, runtime, document, user, context, action):
 
-    """Execute one assertion action, converting the placeholder RuntimeError to a clean fail()."""
+    """Execute one assertion action through the production dispatcher."""
 
     return call_or_fail(testcase, runtime._execute_assertion, document, user, context, action)
 
@@ -953,7 +937,7 @@ class WarningOnlyAndApplicabilityTests(AssertionsTestCase):
 
 
 
-        # get_fn ensures the executor exists before assertLogs traps the placeholder path.
+        # Confirm the executor exists before assertLogs captures runtime warnings.
 
         get_fn(self, self.runtime, "_execute_assertion")
 

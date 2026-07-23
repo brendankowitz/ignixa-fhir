@@ -1,15 +1,12 @@
-"""Task 9 RED-phase tests: the Python half of the shared FHIRPath contract.
+"""Python half of the shared FHIRPath contract.
 
 Loads the exact same ``Contracts/fhirpath-cases.json`` the C# ``FhirPathContractTests``
-pins against Ignixa's real FhirPath engine, then holds the *wished-for* Task 9 runtime
-adapter ``_evaluate_fhirpath(expression, resource, shape)`` to the identical expected
-values. Because the adapter does not exist yet (Task 9 introduces it), every case here
-fails cleanly as a missing-API assertion failure rather than an error - proving the gap
-is the absent production adapter, not a broken test.
+pins against Ignixa's real FhirPath engine, then holds the runtime adapter
+``_evaluate_fhirpath(expression, resource, shape)`` to the identical expected values.
 
 The contract's expected values encode Ignixa semantics only; they are never adjusted to
 match fhirpathpy. Where fhirpathpy diverges from Ignixa, bridging that divergence is
-exactly the Task 9 adapter's job, and these cases are what will hold it accountable.
+the runtime adapter's job, and these cases hold it accountable.
 """
 
 import json
@@ -39,18 +36,17 @@ class FhirPathContractTests(unittest.TestCase):
         self.cases = _load_cases()
 
     def _evaluator(self):
-        """Return ``runtime._evaluate_fhirpath`` or fail cleanly if Task 9 has not added it."""
+        """Return the required runtime FHIRPath adapter."""
         fn = getattr(self.runtime, "_evaluate_fhirpath", None)
         if fn is None:
             self.fail(
-                "runtime._evaluate_fhirpath(expression, resource, shape) is not implemented "
-                "yet (Task 9 FHIRPath adapter missing)"
+                "runtime._evaluate_fhirpath(expression, resource, shape) is missing"
             )
         return fn
 
     # ------------------------------------------------------------------
     # The three explicitly required seed cases, asserted individually so
-    # each shows up as its own named RED failure.
+    # each shows up as its own named contract failure.
     # ------------------------------------------------------------------
 
     def test_seed_id_exists_boolean_true(self):

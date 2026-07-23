@@ -15,7 +15,9 @@ namespace Ignixa.TestScript.Locust.Compilation;
 /// </summary>
 public sealed class LocustIrCompiler
 {
+    private const string FixturePoolDiagnosticCode = "LOCUST_FIXTURE_POOL";
     private const string MetricDiagnosticCode = "LOCUST_METRIC";
+    private const string VersionExclusionDiagnosticCode = "LOCUST011";
 
     // A single shared, thread-safe parser is sufficient: FhirPathParser.Parse is stateless per call
     // and the compiler only uses it to probe whether an expression parses at all (LOCUST010).
@@ -124,6 +126,12 @@ public sealed class LocustIrCompiler
             if (test.FhirVersions.Count > 0
                 && !TestScriptVersionCompatibility.IsCompatible(test.FhirVersions, options.FhirVersion))
             {
+                diagnostics.Add(new LocustDiagnostic(
+                    VersionExclusionDiagnosticCode,
+                    LocustDiagnosticSeverity.Info,
+                    $"{options.Source}:test:{test.Name}",
+                    $"Excluded test '{test.Name}' because target FHIR version '{options.FhirVersion}' " +
+                    $"does not match declared versions: {string.Join(", ", test.FhirVersions)}."));
                 continue;
             }
 
@@ -187,7 +195,7 @@ public sealed class LocustIrCompiler
             Teardown = teardown
         };
 
-        AppendFixtureMetricDiagnostics(fixtures, options.Source, diagnostics);
+        AppendFixtureDiagnostics(fixtures, options.Source, diagnostics);
 
         AppendMetricDiagnostics(
             definition.Setup,
@@ -339,19 +347,24 @@ public sealed class LocustIrCompiler
     }
 
     /// <summary>
-    /// Appends a <see cref="LocustDiagnosticSeverity.Info"/> metric-mapping diagnostic for every
-    /// enabled fixture lifecycle operation (<see cref="LocustIrFixture.Autocreate"/> and
-    /// <see cref="LocustIrFixture.Autodelete"/>), in fixture-definition order. Only successfully
+    /// Appends <see cref="LocustDiagnosticSeverity.Info"/> diagnostics for each fixture's bounded
+    /// variant pool and enabled lifecycle operations, in fixture-definition order. Only successfully
     /// compiled fixtures reach this point, since any fixture-compilation failure short-circuits the
     /// whole compilation before this method is ever called.
     /// </summary>
-    private static void AppendFixtureMetricDiagnostics(
+    private static void AppendFixtureDiagnostics(
         IReadOnlyList<LocustIrFixture> fixtures,
         string metricSource,
         List<LocustDiagnostic> diagnostics)
     {
         foreach (LocustIrFixture fixture in fixtures)
         {
+            diagnostics.Add(new LocustDiagnostic(
+                FixturePoolDiagnosticCode,
+                LocustDiagnosticSeverity.Info,
+                $"{metricSource}:fixture:{fixture.Id}",
+                $"Fixture pool '{fixture.Id}' contains {fixture.Variants.Count} variants."));
+
             if (fixture.Autocreate)
             {
                 string id = $"fixture.{fixture.Id}.autocreate";

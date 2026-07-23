@@ -34,6 +34,11 @@
             "name": "id",
             "sourceId": "createResp",
             "path": "id"
+          },
+          {
+            "name": "deceased",
+            "sourceId": "createResp",
+            "expression": "Patient.deceased"
           }
         ],
         "test": [
@@ -97,7 +102,8 @@
           },
           "body": {
             "resourceType": "Patient",
-            "id": "123"
+            "id": "123",
+            "deceasedBoolean": true
           }
         },
         {
@@ -161,6 +167,12 @@
             "sourceId": "createResp",
             "extractionKind": "path",
             "selector": "id"
+          },
+          {
+            "name": "deceased",
+            "sourceId": "createResp",
+            "extractionKind": "fhirPath",
+            "selector": "Patient.deceased"
           }
         ],
         "setup": [],
@@ -322,7 +334,8 @@
         "teardown": null
       },
       "expectedVariables": {
-        "id": "123"
+        "id": "123",
+        "deceased": "true"
       },
       "expectedEvents": [
         {
