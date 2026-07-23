@@ -18,8 +18,8 @@ namespace Ignixa.DataLayer.SqlServer.Search;
 /// ISearchService implementation driving Ignixa.Search.Sql's compiler (Resolve->Lower->Emit) directly
 /// against the SqlServer-native schema. Mirrors SqlEntityFrameworkSearchService's public contract exactly
 /// (both cast TSearchOptions to Ignixa.Search.Models.SearchOptions), but executes the compiled T-SQL via
-/// ISqlExecutionService instead of EF Core LINQ. GetExportRangesAsync is Task 9's responsibility -- not
-/// implemented here.
+/// ISqlExecutionService instead of EF Core LINQ. GetExportRangesAsync does not go through the compiler at
+/// all -- it is a direct MIN/MAX/COUNT aggregation over dbo.Resource.
 /// </summary>
 public sealed class SqlServerCompiledSearchService(
     ISqlExecutionService sqlExecutionService,
@@ -96,15 +96,55 @@ public sealed class SqlServerCompiledSearchService(
     }
 
     /// <summary>
-    /// Not implemented here -- ISearchService requires it for the interface to compile, but the
-    /// SqlServer-native implementation is Task 9's own deliverable, not this task's. Task 8's Interfaces
-    /// note is explicit: "SearchStreamAsync/CountAsync only -- GetExportRangesAsync is Task 9".
+    /// Partitions a resource type's ResourceSurrogateId span into <paramref name="numberOfRanges"/>
+    /// contiguous, exhaustive, non-overlapping ranges for parallel export workers. Mirrors
+    /// SqlEntityFrameworkSearchService.GetExportRangesAsync's exact range-generation algorithm (single
+    /// min/max/count aggregation, same loop shape), executed as raw T-SQL instead of EF Core LINQ.
     /// </summary>
-    public Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
+    public async Task<IReadOnlyList<(long StartId, long EndId)>> GetExportRangesAsync(
         string resourceType,
         int numberOfRanges,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException($"{nameof(GetExportRangesAsync)} is implemented by Task 9, not Task 8.");
+    {
+        var resourceTypeId = await _symbolResolver.GetResourceTypeIdAsync(resourceType, cancellationToken);
+        if (resourceTypeId is null)
+        {
+            _logger.LogWarning("ResourceType not found: {ResourceType}", resourceType);
+            return [];
+        }
+
+        using var command = new SqlCommand(
+            "SELECT MIN(ResourceSurrogateId), MAX(ResourceSurrogateId), COUNT(*) " +
+            "FROM dbo.Resource WHERE ResourceTypeId = @ResourceTypeId AND IsHistory = 0 AND IsDeleted = 0");
+        command.Parameters.Add("@ResourceTypeId", SqlDbType.SmallInt).Value = resourceTypeId.Value;
+
+        var rows = await _sqlExecutionService.ExecuteReaderAsync(
+            _tenantId,
+            command,
+            reader => (MinId: reader.IsDBNull(0) ? (long?)null : reader.GetInt64(0),
+                       MaxId: reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1),
+                       Count: reader.GetInt32(2)),
+            cancellationToken);
+
+        var stats = rows.Count > 0 ? rows[0] : (MinId: null, MaxId: null, Count: 0);
+        if (stats.Count == 0 || stats.MinId is not { } minId || stats.MaxId is not { } maxId)
+        {
+            return [];
+        }
+
+        var rangeSize = (long)Math.Ceiling((double)(maxId - minId + 1) / numberOfRanges);
+        var ranges = new List<(long, long)>();
+        var currentStart = minId;
+
+        for (var i = 0; i < numberOfRanges && currentStart <= maxId; i++)
+        {
+            var currentEnd = i == numberOfRanges - 1 ? maxId : Math.Min(currentStart + rangeSize - 1, maxId);
+            ranges.Add((currentStart, currentEnd));
+            currentStart = currentEnd + 1;
+        }
+
+        return ranges;
+    }
 
     private async Task<SearchTrace> CompileAsync(SearchOptions options, CancellationToken cancellationToken, bool countOnly = false)
     {

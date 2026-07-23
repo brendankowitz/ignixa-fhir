@@ -154,4 +154,32 @@ public class SqlServerCompiledSearchServiceTests : IAsyncLifetime
         // Assert
         count.ShouldBe(2);
     }
+
+    [Fact]
+    public async Task GivenResourcesAcrossASurrogateIdSpan_WhenGetExportRangesAsyncCalled_ThenReturnsNonOverlappingExhaustiveRanges()
+    {
+        // Arrange -- create 3 Patients (distinct surrogate ids by construction).
+        await CreatePatientAsync($"export-range-{Guid.NewGuid():N}");
+        await CreatePatientAsync($"export-range-{Guid.NewGuid():N}");
+        await CreatePatientAsync($"export-range-{Guid.NewGuid():N}");
+
+        // Act
+        var ranges = await _service.GetExportRangesAsync("Patient", numberOfRanges: 2, CancellationToken.None);
+
+        // Assert
+        ranges.Count.ShouldBeGreaterThan(0);
+        ranges.ShouldAllBe(r => r.StartId <= r.EndId);
+        // Ranges are contiguous and exhaustive: each range's start is the previous range's end + 1.
+        for (var i = 1; i < ranges.Count; i++)
+        {
+            ranges[i].StartId.ShouldBe(ranges[i - 1].EndId + 1);
+        }
+    }
+
+    [Fact]
+    public async Task GivenAResourceTypeWithNoResources_WhenGetExportRangesAsyncCalled_ThenReturnsEmpty()
+    {
+        var ranges = await _service.GetExportRangesAsync("Observation", numberOfRanges: 4, CancellationToken.None);
+        ranges.ShouldBeEmpty();
+    }
 }
