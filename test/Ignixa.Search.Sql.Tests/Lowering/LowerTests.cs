@@ -817,4 +817,31 @@ public class LowerTests
         // Assert
         plan.Ctes.Count.ShouldBe(1);
     }
+
+    [Fact]
+    public void GivenAMultiValuedIdParameter_WhenLowered_ThenLiftsTheWholeOrIntoTheOuterWhere()
+    {
+        // Arrange -- Patient?_id=a,b,c. A comma list binds to one SearchParameterExpression wrapping an
+        // Or of predicates, not a bare predicate, so the single-predicate shape the extraction pass
+        // recognised let it fall through to CTE lowering -- where the leaf dispatcher throws on purpose
+        // rather than route a resource column into an unrelated search-param table.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var alternatives = Expression.Or(
+        [
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null)),
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "b", text: null)),
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "c", text: null)),
+        ]);
+        var tree = new SearchParameterExpression(idParam, alternatives);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- no search-param CTE is needed for a query that only filters resource columns
+        plan.OuterPredicate.ShouldNotBeNull();
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+    }
 }

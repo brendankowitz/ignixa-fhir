@@ -232,9 +232,42 @@ public static class Lower
 
     /// <summary>Returns the resource-column predicate for a single wrapped leaf, or null if it is not one.</summary>
     private static Predicate? TryExtractResourceColumnPredicate(Expression expression, LeafContext leafContext)
-        => expression is SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate }
-            ? ResourceColumnLoweringRule.TryLower(predicate, leafContext)
+        => expression is SearchParameterExpression wrapped
+            ? TryLowerResourceColumn(wrapped.Expression, leafContext)
             : null;
+
+    /// <summary>
+    /// Lowers a resource-column leaf, or a comma list of them (`_id=a,b,c` binds to an Or of predicates
+    /// under one SearchParameterExpression). The Or is all-or-nothing: a branch that is not a resource
+    /// column leaves the whole expression to CTE lowering, because half an Or in the outer WHERE would
+    /// widen the match rather than narrow it.
+    /// </summary>
+    private static Predicate? TryLowerResourceColumn(Expression expression, LeafContext leafContext)
+    {
+        if (expression is SearchParameterPredicateExpression predicate)
+        {
+            return ResourceColumnLoweringRule.TryLower(predicate, leafContext);
+        }
+
+        if (expression is not MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or)
+        {
+            return null;
+        }
+
+        Predicate? combined = null;
+        foreach (var branch in or.Expressions)
+        {
+            var lowered = TryLowerResourceColumn(branch, leafContext);
+            if (lowered is null)
+            {
+                return null;
+            }
+
+            combined = combined is null ? lowered : new Predicate.Or(combined, lowered);
+        }
+
+        return combined;
+    }
 
     /// <summary>
     /// Lowers a chain's target expression within its own scope, folding any resource-column predicates into
