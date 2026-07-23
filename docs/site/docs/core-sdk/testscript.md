@@ -297,6 +297,76 @@ aborting the run. `--fhir-version` sets the `fhirVersion` parameter on the `Acce
 version-gated suites. `merge` replaces an existing run with the same id rather than duplicating it,
 and refuses to proceed when a report file is unreadable.
 
+## Compile TestScript for Azure Load Testing
+
+Compile a parsed TestScript into the flat five-file Locust artifact accepted by Azure Load Testing:
+
+```bash
+ignixa-matrix compile-locust \
+  --test path/to/TestScript.json \
+  --out artifacts/testscript-load \
+  --fhir-version 4.0 \
+  --fixture-variants 100
+```
+
+The command writes five files to the output directory: `testscript.ir.json`, `diagnostics.json`,
+`locustfile.py`, `ignixa_testscript_runtime.py`, and `requirements.txt`. Upload all five together
+as a Locust test in Azure Load Testing.
+
+### Execution model
+
+Each virtual-user iteration executes one complete setup/test/teardown flow with isolated variables
+and fixtures. The generated workload targets current Ignixa evaluator parity, not every behavior in
+the HL7 TestScript specification. Shared cross-language contracts cover the runtime and 74 FHIRPath
+expressions; the original .NET execution remains authoritative for producing a FHIR `TestReport`.
+
+Supported operations, assertions, Ignixa extensions, and capability gates are checked at compile
+time. Incompatible or malformed FHIRPath expressions produce explicit diagnostics in
+`diagnostics.json`. `fhir.resources` is not a runtime dependency and the generated workload performs
+no FHIR profile validation.
+
+### Fixtures and target configuration
+
+Fixture pools are bounded. Set `IGNIXA_FIXTURE_SEED` for deterministic fixture selection across
+runs. Set the FHIR server target with `IGNIXA_BASE_URL` or Locust `--host`. Control per-iteration
+pacing with `IGNIXA_WAIT_MIN_SECONDS` and `IGNIXA_WAIT_MAX_SECONDS`.
+
+### Metrics and diagnostics
+
+Each request contributes native source-qualified HTTP metrics. Assertion results are emitted as
+synthetic `TESTSCRIPT_ASSERT` events; operation failures are emitted as `TESTSCRIPT_OPERATION`
+events. `diagnostics.json` maps source-qualified names back to TestScript source paths.
+
+### Runtime dependencies
+
+Azure Load Testing provides Python 3.9.19 and Locust 2.33.2. Generated `requirements.txt` pins
+`fhirpathpy==2.1.0`, `requests==2.32.3`, and `azure-identity==1.25.3`.
+
+### Managed identity
+
+| Variable | Description |
+| --- | --- |
+| `IGNIXA_AUTH_MODE` | `none` (default) or `managed-identity` |
+| `IGNIXA_AUTH_SCOPE` | Target API application ID URI with `/.default`; required when using managed identity |
+| `IGNIXA_MANAGED_IDENTITY_CLIENT_ID` | User-assigned identity client ID; omit to use system-assigned identity |
+
+Assign the system-assigned or user-assigned identity to the Azure Load Testing resource and select
+it as the engine reference identity (`referenceIdentities` with `kind: Engine` when the test is
+configured as code). The target must trust Microsoft Entra tokens for the configured scope and
+authorize that identity.
+
+The runtime uses only `ManagedIdentityCredential`, starts fail-closed, caches and refreshes tokens
+before expiry, and applies authentication to every FHIR HTTP request including capability checks,
+operations, polling, and fixture management. HTTP 401 responses invalidate the cached token without
+replaying the request. Static authorization headers and service-principal client secrets are
+intentionally unsupported.
+
+Azure Load Testing disables multi-region load distribution when managed identity authentication is
+selected.
+
+- [Authenticate with a managed identity — Azure Load Testing](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-test-secured-endpoints#authenticate-with-a-managed-identity)
+- [Use a managed identity — Azure Load Testing](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-use-a-managed-identity)
+
 ## Published FHIR Conformance Report
 
 Ignixa publishes the latest R4 TestScript conformance run to the documentation site:

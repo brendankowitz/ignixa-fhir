@@ -10,24 +10,24 @@ Use Ignixa's existing TestScript parser and expression model as a compiler front
 Locust workload for Azure Load Testing. The generated workload is a performance-test derivative of
 the TestScript, not a second conformance runner.
 
-The proposed flow is:
+The implemented flow is:
 
 1. Run the TestScript once with `Ignixa.TestScript` as a conformance preflight.
 2. Parse the same resource with `TestScriptParser` and compile supported actions into a generated
    `locustfile.py`.
-3. Upload the generated script, fixture JSON, supporting Python modules, and `requirements.txt` to
-   Azure Load Testing.
+3. Upload the five generated files — `testscript.ir.json`, `diagnostics.json`, `locustfile.py`,
+   `ignixa_testscript_runtime.py`, and `requirements.txt` — to Azure Load Testing.
 4. Keep virtual users, spawn rate, duration, engine count, secrets, and performance failure criteria
    in Azure Load Testing configuration. TestScript has no load-profile model, and adding one would
    mix conformance semantics with deployment-specific performance policy.
 
-A generated user flow would use Locust's HTTP client so every operation contributes native request
-latency, throughput, and failure metrics. TestScript setup, test, and teardown actions would become
-per-user sequential flows with isolated fixture and variable state. The compiler must require the
-author to select the execution scope for setup and teardown because TestScript's once-per-suite
+The generated Locust user flow uses Locust's HTTP client so every operation contributes native
+request latency, throughput, and failure metrics. TestScript setup, test, and teardown actions are
+executed as per-user sequential flows with isolated fixture and variable state. The compiler requires
+the author to select the execution scope for setup and teardown because TestScript's once-per-suite
 semantics do not automatically map to many virtual users.
 
-The initial compiler should support the useful load-test subset:
+The compiler supports the load-test subset:
 
 - HTTP operations, headers, fixtures, variables, and sequential action ordering
 - Status code, response code, content type, header, and basic expression assertions
@@ -38,7 +38,7 @@ The initial compiler should support the useful load-test subset:
 
 Profile validation, cross-source comparison, multi-party origin/destination behavior, warning-only
 reporting, and other assertions without a faithful Locust equivalent should fail compilation
-explicitly rather than disappear. Generated code should mark supported assertion failures through
+explicitly rather than disappear. Generated code marks supported assertion failures through
 Locust's response failure API so Azure's aggregate error-rate criteria can gate the run.
 
 ## Azure Load Testing Fit
@@ -160,6 +160,31 @@ the simplest managed Azure Load Testing path.
 - [.NET Native AOT libraries](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/libraries)
   can expose unmanaged entry points from a self-contained native shared library.
 - No maintained TestScript-to-Locust converter or Python TestScript execution library was found.
+
+## Implementation Evidence
+
+The viable compiler path is implemented:
+
+- `src/Core/Ignixa.TestScript.Locust/` contains the IR compiler, compatibility analyzer,
+  artifact writer, Locust loader, and shared Python runtime.
+- `tools/Ignixa.ConformanceMatrix.Cli/` exposes `compile-locust`.
+- `test/Ignixa.TestScript.Locust.Tests/Contracts/` holds shared FHIRPath and runtime
+  parity contracts consumed by .NET and Python.
+- `test/Ignixa.TestScript.Locust.Tests/Python/test_generated_artifact.py` compiles the
+  shipped CRUD TestScript and runs the generated five-file artifact against a deterministic
+  loopback FHIR server.
+- `.github/workflows/pr-build.yml` and `.github/workflows/ci.yml` install the generated
+  Python 3.9 requirements and run the complete runtime contract suite.
+
+Generated artifacts support unauthenticated targets by default and Microsoft Entra managed
+identity authentication through the Azure Load Testing engine identity. Static authorization
+headers and service-principal client secrets are intentionally unsupported.
+
+The local generated-artifact smoke passes. Live Azure validation is deferred because the
+current non-production target, `ignixa-alt-e2e-ecow`, trusts its custom OpenIddict issuer
+rather than Microsoft Entra tokens. Validation can proceed after a non-production target
+trusts an Entra application ID URI and authorizes the selected load-test managed identity.
+No Azure run ID is recorded because no compatible live run has occurred.
 
 ## Alternatives Worth Investigating
 
