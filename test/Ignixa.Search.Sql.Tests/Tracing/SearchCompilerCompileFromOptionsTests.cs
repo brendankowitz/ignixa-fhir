@@ -22,7 +22,7 @@ public class SearchCompilerCompileFromOptionsTests
             compartmentDefinitionManager: null,
             searchParameterDefinitionManager: null,
             timeProvider: null,
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         // Assert
         trace.Failure.ShouldBeNull();
@@ -54,7 +54,7 @@ public class SearchCompilerCompileFromOptionsTests
             compartmentDefinitionManager: null,
             searchParameterDefinitionManager: null,
             timeProvider: null,
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         var emptyTrace = await SearchCompiler.CompileFromOptionsAsync(
             emptyOptions,
@@ -63,7 +63,7 @@ public class SearchCompilerCompileFromOptionsTests
             compartmentDefinitionManager: null,
             searchParameterDefinitionManager: null,
             timeProvider: null,
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         // Assert
         nullTrace.Failure.ShouldBeNull();

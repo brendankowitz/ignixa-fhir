@@ -148,6 +148,10 @@ public static class SearchCompiler
         ICompartmentDefinitionManager? compartmentDefinitionManager,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager,
         TimeProvider? timeProvider,
+        OffsetSpec? offsetPage = null,
+        (long Start, long End)? surrogateIdRange = null,
+        bool countOnly = false,
+        int includeLimit = 0,
         CancellationToken cancellationToken = default)
     {
         // resourceType is deliberately NOT null-checked here -- null/empty means a multi-type/system-level
@@ -196,12 +200,15 @@ public static class SearchCompiler
                     resourceType,
                     options.Include,
                     options.RevInclude,
-                    includeLimit: 0,
+                    includeLimit,
                     options.Sort,
                     SortPhase.Valued,
                     page: null,
+                    countOnly: countOnly,
                     systemLevelSearch: resourceType is null,
-                    approximationReferenceTime: approximationReferenceTime);
+                    approximationReferenceTime: approximationReferenceTime,
+                    offsetPage: offsetPage,
+                    surrogateIdRange: surrogateIdRange);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
                 MarkKnownMisses(outcomes, lowered);
