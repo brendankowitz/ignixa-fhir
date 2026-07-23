@@ -340,7 +340,7 @@ events. `diagnostics.json` maps source-qualified names back to TestScript source
 ### Runtime dependencies
 
 Azure Load Testing provides Python 3.9.19 and Locust 2.33.2. Generated `requirements.txt` pins
-`fhirpathpy==2.1.0`, `requests==2.32.3`, and `azure-identity==1.25.3`.
+`locust==2.33.2`, `fhirpathpy==2.1.0`, `requests==2.32.3`, and `azure-identity==1.25.3`.
 
 ### Managed identity
 

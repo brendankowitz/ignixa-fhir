@@ -889,7 +889,7 @@ FHIRPath expressions accepted by the compatibility analyzer. `fhir.resources` is
 runtime dependency or profile validator.
 
 Azure Load Testing currently provides Python 3.9.19 and Locust 2.33.2. Generated
-requirements pin `fhirpathpy==2.1.0`, `requests==2.32.3`, and `azure-identity==1.25.3`.
+requirements pin `locust==2.33.2`, `fhirpathpy==2.1.0`, `requests==2.32.3`, and `azure-identity==1.25.3`.
 Run the original .NET evaluator first when an authoritative FHIR `TestReport` is required.
 
 Set the target with `IGNIXA_BASE_URL` or Locust `--host`. Use `IGNIXA_FIXTURE_SEED`
@@ -999,7 +999,7 @@ rg "_parse_auth_header|DefaultAzureCredential" src\Core\Ignixa.TestScript.Locust
 rg "IGNIXA_AUTH_HEADER" src\Core\Ignixa.TestScript.Locust test\Ignixa.TestScript.Locust.Tests docs\site\docs\core-sdk\testscript.md
 ```
 
-Expected: the first search has no matches — `_parse_auth_header` and `DefaultAzureCredential` do not appear in production runtime or user documentation. The second search matches only the runtime rejection constant (`_LEGACY_AUTH_HEADER_ENV = "IGNIXA_AUTH_HEADER"`) and its single use in `_create_auth_provider`, plus the regression test that proves the legacy setting is rejected without exposing its value; `IGNIXA_AUTH_HEADER` never appears as an accepted configuration path or user-visible example.
+Expected: the first search has no matches — `_parse_auth_header` and `DefaultAzureCredential` do not appear in production runtime or user documentation. The second search produces two literal matches: the runtime constant definition (`_LEGACY_AUTH_HEADER_ENV = "IGNIXA_AUTH_HEADER"`) and the regression test. `_create_auth_provider` consumes the constant through `_LEGACY_AUTH_HEADER_ENV` and is not a direct rg match. `IGNIXA_AUTH_HEADER` never appears as an accepted configuration path or user-visible example.
 
 - [ ] **Step 2: Run focused Locust verification**
 

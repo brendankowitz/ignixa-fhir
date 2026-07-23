@@ -156,6 +156,6 @@ Deferral is an environment limitation, not a fallback requirement. The compiler 
 
 ## References
 
-- [Authenticate Azure Load Testing endpoints with managed identity](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-test-secured-endpoints#authenticate-with-a-managed-identity)
-- [Use managed identities for Azure Load Testing](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-use-a-managed-identity)
-- [Parameterize Azure load tests](https://learn.microsoft.com/azure/app-testing/load-testing/how-to-parameterize-load-tests)
+- [Authenticate Azure Load Testing endpoints with managed identity](https://learn.microsoft.com/en-us/azure/app-testing/load-testing/how-to-test-secured-endpoints#authenticate-with-a-managed-identity)
+- [Use managed identities for Azure Load Testing](https://learn.microsoft.com/en-us/azure/app-testing/load-testing/how-to-use-a-managed-identity)
+- [Parameterize Azure load tests](https://learn.microsoft.com/en-us/azure/app-testing/load-testing/how-to-parameterize-load-tests)
