@@ -18,7 +18,7 @@ public class LocustArtifactWriterTests
     ];
 
     private const string ExpectedRequirementsText =
-        "locust==2.33.2\nfhirpathpy==2.1.0\nrequests==2.32.3\n";
+        "locust==2.33.2\nfhirpathpy==2.1.0\nrequests==2.32.3\nazure-identity==1.25.3\n";
 
     [Fact]
     public async Task GivenDocument_WhenWritten_ThenArtifactIsFlatAndComplete()
