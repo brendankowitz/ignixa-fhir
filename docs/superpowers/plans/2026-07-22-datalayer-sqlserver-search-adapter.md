@@ -771,7 +771,7 @@ if (plan.CountOnly)
 }
 ```
 
-**When `CountPhaseScoped` is `false` (the default, every existing caller), this is byte-for-byte identical to today's rendering** — `countSortJoins` is empty and `countWhereClauses` only ever gets `OuterPredicate` when present, exactly as before. Write two tests in a new file, `test/Ignixa.Search.Sql.Tests/Builders/SqlBuilderCountPhaseScopedTests.cs` (read `EndToEndCompilationTests.cs`'s existing `_summary=count`/`_total=accurate` combined-with-`_sort` test — from sub-project 1's Phase 9 completeness work — for the exact fixture shape to mirror):
+**When `CountPhaseScoped` is `false` (the default, every existing caller), this is byte-for-byte identical to today's rendering** — `countSortJoins` is empty and `countWhereClauses` only ever gets `OuterPredicate` when present, exactly as before. Write two tests in a new file, `test/Ignixa.Search.Sql.Tests/Builders/SqlBuilderCountPhaseScopedTests.cs`. No existing test combines `countOnly` with `sort` in one fixture — `test/Ignixa.Search.Sql.Tests/Ast/EmitTests.cs`'s `GivenACountOnlyPlanWithSortAndTopAndIncludesAllSet_WhenEmitted_ThenTheyAreAllIgnored` (the exact regression test Step 8a's non-regression proof, above, points at) has `Sort` set but is the closest existing reference for how a `QueryPlan` with both `CountOnly` and a non-null `Sort` is constructed — read it for the construction pattern, then build your own fixture combining a real `SortSpec` (mirroring any of this file's own sorted, non-count tests for what a realistic `SortSpec`/`SortKey` looks like) with `CountOnly: true` and, for the second test, `CountPhaseScoped: true`.
 
 ```csharp
 using Ignixa.Search.Sql.Ast;
