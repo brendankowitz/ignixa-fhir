@@ -6,20 +6,13 @@
 
 | Verdict | Count |
 |---|---:|
-| NotCompiled | 8 |
+| NotCompiled | 4 |
 | Match | 69 |
-| CompilerDoesLess | 44 |
+| CompilerDoesLess | 45 |
 | CompilerDoesMore | 14 |
-| Divergent | 50 |
+| Divergent | 53 |
 
 ## Gaps -- queries the compiler cannot express
-
-### build:BadSearchRequestException (4)
-
-- **4x** Only one token separator can be specified.
-  - `/Observation?code-value-quantity=http://loinc.org%7C8310-5$gt38%7Chttp://unitsofmeasure.org%7CCel&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
-  - `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$107%7Chttp://unitsofmeasure.org%7Cmm%5BHg%5D&identifier=http://ignixa.io/testscript/suite/composite%7C`
-  - `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$120%7Chttp://unitsofmeasure.org%7CmmHg&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
 
 ### build:InvalidSearchOperationException (3)
 
@@ -182,6 +175,45 @@ cte2 = <-cte1  [distinct,order-by,top]
 compiler:
 select0 = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join,order-by]
 cte0 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+```
+
+</details>
+
+### CompilerDoesLess: `/Observation?code-value-quantity=http://loinc.org%7C8310-5$gt38%7Chttp://unitsofmeasure.org%7CCel&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
+
+Only the shipping engine does:
+- `table TokenQuantityCompositeSearchParam`
+- `filter Code1 = <v>`
+- `filter QuantityCodeId2 = <v>`
+- `filter ResourceTypeId = <v>`
+- `filter SearchParamId = <v>`
+- `filter SingleValue2 > <v>`
+- `filter SystemId1 = <v>`
+- `filter SystemId2 = <v>`
+- `filter col:SingleValue2 is-not-null`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+- `legacy: op union-all`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte3  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SingleValue2 > @p SystemId1 = @p SystemId2 = @p col:SingleValue2 is-not-null
+cte1 = TokenQuantityCompositeSearchParam  <-cte0  Code1 = @p HighValue2 > @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [union-all]
+cte2 = TokenSearchParam  <-cte1  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
+cte3 = <-cte2  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p HighValue2 > @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [distinct]
+cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
 
 </details>
@@ -2397,6 +2429,98 @@ cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 
 </details>
 
+### Divergent: `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$107%7Chttp://unitsofmeasure.org%7Cmm%5BHg%5D&identifier=http://ignixa.io/testscript/suite/composite%7C`
+
+Only the shipping engine does:
+- `table TokenQuantityCompositeSearchParam`
+- `filter Code1 = <v>`
+- `filter HighValue2 >= <v>`
+- `filter LowValue2 <= <v>`
+- `filter QuantityCodeId2 = <v>`
+- `filter ResourceTypeId = <v>`
+- `filter SearchParamId = <v>`
+- `filter SingleValue2 <= <v>`
+- `filter SingleValue2 >= <v>`
+- `filter SystemId1 = <v>`
+- `filter SystemId2 = <v>`
+- `filter col:SingleValue2 is-not-null (x2)`
+
+Only the compiler does:
+- `filter HighValue2 <= <v>`
+- `filter LowValue2 >= <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+- `legacy: op union-all`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte3  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SingleValue2 <= @p SingleValue2 >= @p SystemId1 = @p SystemId2 = @p col:SingleValue2 is-not-null col:SingleValue2 is-not-null
+cte1 = TokenQuantityCompositeSearchParam  <-cte0  Code1 = @p HighValue2 >= @p LowValue2 <= @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [union-all]
+cte2 = TokenSearchParam  <-cte1  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
+cte3 = <-cte2  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p HighValue2 <= @p LowValue2 >= @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [distinct]
+cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
+```
+
+</details>
+
+### Divergent: `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$120%7Chttp://unitsofmeasure.org%7CmmHg&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
+
+Only the shipping engine does:
+- `table TokenQuantityCompositeSearchParam`
+- `filter Code1 = <v>`
+- `filter HighValue2 >= <v>`
+- `filter LowValue2 <= <v>`
+- `filter QuantityCodeId2 = <v>`
+- `filter ResourceTypeId = <v>`
+- `filter SearchParamId = <v>`
+- `filter SingleValue2 <= <v>`
+- `filter SingleValue2 >= <v>`
+- `filter SystemId1 = <v>`
+- `filter SystemId2 = <v>`
+- `filter col:SingleValue2 is-not-null (x2)`
+
+Only the compiler does:
+- `filter HighValue2 <= <v>`
+- `filter LowValue2 >= <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+- `legacy: op union-all`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte3  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SingleValue2 <= @p SingleValue2 >= @p SystemId1 = @p SystemId2 = @p col:SingleValue2 is-not-null col:SingleValue2 is-not-null
+cte1 = TokenQuantityCompositeSearchParam  <-cte0  Code1 = @p HighValue2 >= @p LowValue2 <= @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [union-all]
+cte2 = TokenSearchParam  <-cte1  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
+cte3 = <-cte2  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p HighValue2 <= @p LowValue2 >= @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [distinct]
+cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
+```
+
+</details>
+
 ### Divergent: `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$60&identifier=http://ignixa.io/testscript/suite/composite%7C`
 
 Only the shipping engine does:
@@ -2436,6 +2560,52 @@ compiler:
 select0 = <-cte2  [order-by]
 cte0 = TokenQuantityCompositeSearchParam  Code1 = @p HighValue2 <= @p LowValue2 >= @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p  [distinct]
 cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
+```
+
+</details>
+
+### Divergent: `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$80%7Chttp://unitsofmeasure.org%7CmmHg&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
+
+Only the shipping engine does:
+- `table TokenQuantityCompositeSearchParam`
+- `filter Code1 = <v>`
+- `filter HighValue2 >= <v>`
+- `filter LowValue2 <= <v>`
+- `filter QuantityCodeId2 = <v>`
+- `filter ResourceTypeId = <v>`
+- `filter SearchParamId = <v>`
+- `filter SingleValue2 <= <v>`
+- `filter SingleValue2 >= <v>`
+- `filter SystemId1 = <v>`
+- `filter SystemId2 = <v>`
+- `filter col:SingleValue2 is-not-null (x2)`
+
+Only the compiler does:
+- `filter HighValue2 <= <v>`
+- `filter LowValue2 >= <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+- `legacy: op union-all`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte3  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SingleValue2 <= @p SingleValue2 >= @p SystemId1 = @p SystemId2 = @p col:SingleValue2 is-not-null col:SingleValue2 is-not-null
+cte1 = TokenQuantityCompositeSearchParam  <-cte0  Code1 = @p HighValue2 >= @p LowValue2 <= @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [union-all]
+cte2 = TokenSearchParam  <-cte1  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
+cte3 = <-cte2  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = TokenQuantityCompositeSearchParam  Code1 = @p HighValue2 <= @p LowValue2 >= @p QuantityCodeId2 = @p ResourceTypeId = <n> SearchParamId = <n> SystemId1 = @p SystemId2 = @p  [distinct]
+cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
 
