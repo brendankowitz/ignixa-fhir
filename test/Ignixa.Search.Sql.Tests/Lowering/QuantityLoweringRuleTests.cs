@@ -72,7 +72,9 @@ public class QuantityLoweringRuleTests
     [Fact]
     public void GivenACodeOnlyQuantity_WhenLowered_ThenConjoinsNumericAndQuantityCodeIdPredicateWithNoSystemIsNullConstraint()
     {
-        // Arrange — value||code (system absent/null): constrains QuantityCodeId only; no SystemId IS NULL
+        // Arrange — a null system (the segment was never supplied): constrains QuantityCodeId only, with
+        // no SystemId IS NULL. Note this is NOT what "5.4||mg" parses to — that supplies an empty system,
+        // covered by GivenAnEmptySystemQuantity_... below.
         var parameter = Parameter();
         var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
         var predicate = new SearchParameterPredicateExpression(
@@ -89,6 +91,71 @@ public class QuantityLoweringRuleTests
         var codeEqual = outer.Right.ShouldBeOfType<Predicate.Equal>();
         codeEqual.Column.Column.ShouldBe("QuantityCodeId");
         codeEqual.Value.Value.ShouldBe(77);
+    }
+
+    [Fact]
+    public void GivenAnEmptySystemQuantity_WhenLowered_ThenEmitsSystemIdIsNull()
+    {
+        // Arrange — "5.4||mg": the system segment was supplied but empty, which constrains the stored
+        // system to be ABSENT. Passing an empty string must not be conflated with passing null.
+        var parameter = Parameter();
+        var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, QuantitySearchValue.Parse("5.4||mg"));
+
+        // Act
+        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202, quantityCodeIds: quantityCodeIds), 103);
+
+        // Assert — And(And(numeric, IsNull(SystemId)), Equal(QuantityCodeId, 77))
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var middle = outer.Left.ShouldBeOfType<Predicate.And>();
+        var numeric = middle.Left.ShouldBeOfType<Predicate.And>();
+        numeric.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Column.Column.ShouldBe("LowValue");
+        numeric.Right.ShouldBeOfType<Predicate.LessThanOrEqual>().Column.Column.ShouldBe("HighValue");
+        var systemIsNull = middle.Right.ShouldBeOfType<Predicate.IsNull>();
+        systemIsNull.Column.Table.ShouldBe("QuantitySearchParam");
+        systemIsNull.Column.Column.ShouldBe("SystemId");
+        var codeEqual = outer.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("QuantityCodeId");
+        codeEqual.Value.Value.ShouldBe(77);
+    }
+
+    [Fact]
+    public void GivenAnEmptySystemQuantity_WhenLowered_ThenMatchesTheTokenPathsEmptySystemShape()
+    {
+        // Arrange — quantity's system follows the token pattern, so an empty system must lower to the
+        // same IsNull(SystemId) node the token rule builds, not to a second convention.
+        var quantityParameter = Parameter();
+        var quantityPredicate = new SearchParameterPredicateExpression(
+            quantityParameter, SearchComparator.Eq, modifier: null, QuantitySearchValue.Parse("5.4||mg"));
+        var tokenParameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var tokenPredicate = new SearchParameterPredicateExpression(
+            tokenParameter, SearchComparator.Eq, modifier: null, TokenSearchValue.Parse("|mg"));
+
+        // Act
+        var quantityCte = QuantityLoweringRule.Lower(
+            quantityPredicate,
+            (QuantitySearchValue)quantityPredicate.Value,
+            ContextResolving(quantityParameter, 202, quantityCodeIds: new Dictionary<string, int?> { ["mg"] = 77 }),
+            103);
+        var tokenCte = TokenLoweringRule.Lower(
+            tokenPredicate,
+            (TokenSearchValue)tokenPredicate.Value,
+            new LeafContext(new SymbolTable(
+                new Dictionary<string, short> { [tokenParameter.Url.ToString()] = 55 },
+                new Dictionary<string, short>())),
+            103);
+
+        // Assert — both express "the stored system is absent" as IsNull over their own SystemId column
+        var quantitySystem = quantityCte.Predicate
+            .ShouldBeOfType<Predicate.And>().Left
+            .ShouldBeOfType<Predicate.And>().Right
+            .ShouldBeOfType<Predicate.IsNull>();
+        var tokenSystem = tokenCte.Predicate
+            .ShouldBeOfType<Predicate.And>().Left
+            .ShouldBeOfType<Predicate.IsNull>();
+        quantitySystem.Column.Column.ShouldBe("SystemId");
+        tokenSystem.Column.Column.ShouldBe("SystemId");
     }
 
     [Fact]
@@ -150,10 +217,10 @@ public class QuantityLoweringRuleTests
         cte.Predicate.ShouldBeOfType<Predicate.False>();
     }
 
-    // :ap quantity — unqualified: same numeric approximation range as number :ap
-    // 5.4m: tol=0.54 → LowValue >= 4.86, HighValue <= 5.94
+    // :ap quantity — unqualified: same numeric approximation overlap as number :ap
+    // 5.4m: tol=0.54 → LowValue <= 5.94, HighValue >= 4.86
     [Fact]
-    public void GivenApComparator_WhenLoweredUnqualified_ThenBuildsApproximateNumericRange()
+    public void GivenApComparator_WhenLoweredUnqualified_ThenBuildsApproximateNumericOverlap()
     {
         // Arrange
         var parameter = Parameter();
@@ -167,12 +234,12 @@ public class QuantityLoweringRuleTests
         cte.SearchParamId.ShouldBe((short)202);
         cte.ResourceTypeId.ShouldBe((short)103);
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
-        var ge = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        ge.Column.Column.ShouldBe("LowValue");
-        ge.Value.Value.ShouldBe(4.86m);
-        var le = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        le.Column.Column.ShouldBe("HighValue");
+        var le = and.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
         le.Value.Value.ShouldBe(5.94m);
+        var ge = and.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(4.86m);
     }
 
     // :ap quantity — fully qualified: numeric approximation with system+code identity still conjoins
@@ -190,16 +257,16 @@ public class QuantityLoweringRuleTests
         // Act
         var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202, systemIds, quantityCodeIds), 103);
 
-        // Assert — And(And(And(LowValue >= 4.86, HighValue <= 5.94), Equal(SystemId, 42)), Equal(QuantityCodeId, 77))
+        // Assert — And(And(And(LowValue <= 5.94, HighValue >= 4.86), Equal(SystemId, 42)), Equal(QuantityCodeId, 77))
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var middle = outer.Left.ShouldBeOfType<Predicate.And>();
         var numeric = middle.Left.ShouldBeOfType<Predicate.And>();
-        var ge = numeric.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        ge.Column.Column.ShouldBe("LowValue");
-        ge.Value.Value.ShouldBe(4.86m);
-        var le = numeric.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        le.Column.Column.ShouldBe("HighValue");
+        var le = numeric.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        le.Column.Column.ShouldBe("LowValue");
         le.Value.Value.ShouldBe(5.94m);
+        var ge = numeric.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        ge.Column.Column.ShouldBe("HighValue");
+        ge.Value.Value.ShouldBe(4.86m);
         var sysEqual = middle.Right.ShouldBeOfType<Predicate.Equal>();
         sysEqual.Column.Column.ShouldBe("SystemId");
         sysEqual.Value.Value.ShouldBe(42);

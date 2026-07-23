@@ -45,26 +45,17 @@ public static class StringLoweringRule
 
         Predicate p = (exact, contains, usesTextColumn) switch
         {
-            // :exact with value fitting within inline width: IsNull guard excludes overflowed rows
-            // whose truncated Text prefix would otherwise false-positive match the search value.
             (true, _, true) => new Predicate.And(
                 new Predicate.IsNull(overflowColumn),
                 new Predicate.Equal(textColumn, context.Parameter(value.String), CaseSensitiveCollation)),
-            // :exact with value exceeding inline width: TextOverflow holds the complete stored value.
             (true, _, false) => new Predicate.Equal(overflowColumn, context.Parameter(value.String), CaseSensitiveCollation),
-            // :contains with value within inline width: search both Text (for non-overflowed rows) and
-            // TextOverflow (for overflowed rows). The IsNull guard on the Text branch excludes overflowed
-            // rows whose truncated Text could yield false negatives (the substring might only exist past
-            // offset 256). Each Like uses a separate parameter ref so emission produces @p0 then @p1.
+            // Each Like takes its own parameter ref, so emission binds @p0 then @p1 rather than reusing one.
             (_, true, true) => new Predicate.Or(
                 new Predicate.And(
                     new Predicate.IsNull(overflowColumn),
                     new Predicate.Like(textColumn, context.Parameter(value.String), LikeMatch.Contains, CaseInsensitiveCollation)),
                 new Predicate.Like(overflowColumn, context.Parameter(value.String), LikeMatch.Contains, CaseInsensitiveCollation)),
-            // :contains with value exceeding inline width: the substring can only exist in a stored value
-            // that itself exceeded the inline width, so TextOverflow is guaranteed populated.
             (_, true, false) => new Predicate.Like(overflowColumn, context.Parameter(value.String), LikeMatch.Contains, CaseInsensitiveCollation),
-            // Default StartsWith: Text for inline values, TextOverflow for longer ones.
             _ => new Predicate.Like(usesTextColumn ? textColumn : overflowColumn, context.Parameter(value.String), LikeMatch.StartsWith, CaseInsensitiveCollation),
         };
 

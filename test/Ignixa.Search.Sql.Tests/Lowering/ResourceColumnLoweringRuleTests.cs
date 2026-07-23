@@ -155,22 +155,26 @@ public class ResourceColumnLoweringRuleTests
         ge.Column.Column.ShouldBe("ResourceSurrogateId");
         le.Column.Column.ShouldBe("ResourceSurrogateId");
         ge.Value.Value.ShouldBe(widenedStart.UtcTicks << 3);
-        le.Value.Value.ShouldBe(widenedEnd.UtcTicks << 3);
+
+        // The upper bound must cover the whole boundary millisecond. The database appends a uniquifier of
+        // 0-79999 at write time, so comparing against the bare floor would match only the row that drew 0,
+        // dropping up to 79,999 resources written in that millisecond.
+        le.Value.Value.ShouldBe((widenedEnd.UtcTicks << 3) + 79999);
     }
 
     [Fact]
     public void GivenAnApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenComparesWidenedRangeAgainstResourceSurrogateId()
     {
-        // Arrange: "2023-06" resolves to [Jun 1 00:00:00, Jun 30 23:59:59.9999999] -- reference is
-        // exactly 1 tick after that interval's End, so tolerance = (End - Start ~ 30 days) / 2 distance
-        // / 10 = 36h. widenedEnd's sub-millisecond remainder (.9999999s) is truncated away by
-        // ToSurrogateId, landing on .999s rather than .9999999s -- expressed directly below via the
-        // millisecond-precision DateTimeOffset constructor instead of replicating the truncation math.
+        // Arrange: "2023-06" resolves to [Jun 1 00:00:00, Jun 30 23:59:59.9999999]. The proportional term
+        // is 36h, but the value's own precision -- one month less one tick -- is larger, so the max()
+        // floor selects it and the interval widens by a full month either side. widenedEnd's
+        // sub-millisecond remainder is truncated away by ToSurrogateId, landing on .999s -- expressed
+        // directly below via the millisecond-precision constructor instead of replicating that math.
         var value = DateTimeSearchValue.Parse("2023-06");
         var referenceTime = new DateTimeOffset(2023, 7, 1, 0, 0, 0, TimeSpan.Zero);
         var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ap, modifier: null, value);
-        var widenedStart = new DateTimeOffset(2023, 5, 30, 12, 0, 0, TimeSpan.Zero);
-        var truncatedWidenedEnd = new DateTimeOffset(2023, 7, 2, 11, 59, 59, 999, TimeSpan.Zero);
+        var widenedStart = new DateTimeOffset(2023, 5, 2, 0, 0, 0, TimeSpan.Zero);
+        var truncatedWidenedEnd = new DateTimeOffset(2023, 7, 30, 23, 59, 59, 999, TimeSpan.Zero);
 
         var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103, referenceTime));
 
@@ -180,7 +184,7 @@ public class ResourceColumnLoweringRuleTests
         ge.Column.Column.ShouldBe("ResourceSurrogateId");
         le.Column.Column.ShouldBe("ResourceSurrogateId");
         ge.Value.Value.ShouldBe(widenedStart.UtcTicks << 3);
-        le.Value.Value.ShouldBe(truncatedWidenedEnd.UtcTicks << 3);
+        le.Value.Value.ShouldBe((truncatedWidenedEnd.UtcTicks << 3) + 79999);
     }
 
     [Fact]

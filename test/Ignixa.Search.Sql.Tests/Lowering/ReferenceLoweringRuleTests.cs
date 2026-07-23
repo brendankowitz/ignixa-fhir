@@ -54,7 +54,7 @@ public class ReferenceLoweringRuleTests
     }
 
     [Fact]
-    public void GivenALocalUntypedReference_WhenLowered_ThenBaseUriIsNullAndResourceIdOnly()
+    public void GivenAnUntypedReference_WhenLowered_ThenConstrainsResourceIdOnly()
     {
         // Arrange
         var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
@@ -69,20 +69,18 @@ public class ReferenceLoweringRuleTests
         // Act
         var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context, 104);
 
-        // Assert — BaseUri IS NULL AND Id = @p0
+        // Assert — Id = @p0, with no BaseUri constraint. A value the parser could not resolve to a
+        // resource type carries the whole input as its id, so there is nothing else to constrain on;
+        // adding BaseUri IS NULL here would exclude every externally-based row for no stated reason.
         cte.ResourceTypeId.ShouldBe((short)104);
 
-        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
-        var baseUriIsNull = and.Left.ShouldBeOfType<Predicate.IsNull>();
-        baseUriIsNull.Column.Column.ShouldBe("BaseUri");
-
-        var idEqual = and.Right.ShouldBeOfType<Predicate.Equal>();
+        var idEqual = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         idEqual.Column.Column.ShouldBe("ReferenceResourceId");
         idEqual.Value.Value.ShouldBe("123");
     }
 
     [Fact]
-    public void GivenAnExternalTypedReference_WhenLowered_ThenBaseUriEqualCollateBin2AndTypeIdAndResourceId()
+    public void GivenAnExternalTypedReference_WhenLowered_ThenBaseUriEqualAndTypeIdAndResourceId()
     {
         // Arrange
         var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
@@ -97,17 +95,17 @@ public class ReferenceLoweringRuleTests
         // Act
         var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, context, 104);
 
-        // Assert — BaseUri = @p0 COLLATE Latin1_General_100_BIN2 AND TypeId = @p1 AND Id = @p2
+        // Assert — BaseUri = @p0 AND TypeId = @p1 AND Id = @p2
         cte.Table.TableName.ShouldBe("ReferenceSearchParam");
 
         var outerAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var innerAnd = outerAnd.Left.ShouldBeOfType<Predicate.And>();
 
-        // BaseUri = @p0 COLLATE Latin1_General_100_BIN2
+        // BaseUri = @p0
         var baseUriEqual = innerAnd.Left.ShouldBeOfType<Predicate.Equal>();
         baseUriEqual.Column.Column.ShouldBe("BaseUri");
         baseUriEqual.Value.Value.ShouldBe("http://example.org/fhir/");
-        baseUriEqual.Collation.ShouldBe("Latin1_General_100_BIN2");
+        baseUriEqual.Collation.ShouldBeNull();
 
         // TypeId = @p1
         var typeEqual = innerAnd.Right.ShouldBeOfType<Predicate.Equal>();
@@ -149,7 +147,7 @@ public class ReferenceLoweringRuleTests
         var externalInnerAnd = externalOuterAnd.Left.ShouldBeOfType<Predicate.And>();
         var externalBaseUri = externalInnerAnd.Left.ShouldBeOfType<Predicate.Equal>();
         externalBaseUri.Value.Value.ShouldBe("http://remote.org/");
-        externalBaseUri.Collation.ShouldBe("Latin1_General_100_BIN2");
+        externalBaseUri.Collation.ShouldBeNull();
     }
 
 }

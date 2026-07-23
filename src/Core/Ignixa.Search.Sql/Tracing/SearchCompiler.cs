@@ -112,6 +112,7 @@ public static class SearchCompiler
                     approximationReferenceTime: approximationReferenceTime);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
+                MarkKnownMisses(outcomes, lowered);
 
                 var emitted = SqlBuilder.Run(lowered.Plan, new EmitOptions(IncludeTextRanges: true));
                 sqlTrace = new EmittedSqlTrace(emitted.Sql, emitted.TextRanges ?? []);
@@ -215,6 +216,65 @@ public static class SearchCompiler
             };
         }
     }
+
+    /// <summary>
+    /// Marks a parameter <see cref="ParameterOutcome.KnownMiss"/> when its CTE lowered to an unsatisfiable
+    /// predicate, so "this query cannot return a row, and here is the value that made it so" is data on the
+    /// trace rather than a <c>1 = 0</c> a reader has to spot in the emitted SQL.
+    /// </summary>
+    /// <remarks>
+    /// Only overwrites <see cref="ParameterOutcome.Compiled"/>. A parameter already Failed or Ignored has a
+    /// stronger story to tell, and restamping it would replace a cause with a consequence.
+    /// </remarks>
+    private static void MarkKnownMisses(IList<ParameterTrace> outcomes, LoweredPlan lowered)
+    {
+        foreach (var origin in lowered.Provenance.Origins)
+        {
+            if (FindFalse(PredicateOf(lowered.Plan.Ctes[origin.CteIndex])) is not { } miss)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < outcomes.Count; i++)
+            {
+                var trace = outcomes[i];
+                if (trace.Outcome is not ParameterOutcome.Compiled ||
+                    trace.Ir is null ||
+                    !Flatten(trace.Ir).Any(n => ReferenceEquals(n, origin.SourceNode)))
+                {
+                    continue;
+                }
+
+                outcomes[i] = trace with
+                {
+                    Outcome = new ParameterOutcome.KnownMiss(
+                        miss.Reason ?? "The parameter lowered to a predicate that can never match.",
+                        ExtractSpan(origin.SourceNode)),
+                };
+            }
+        }
+    }
+
+    /// <summary>The predicate a CTE definition filters on, or null for the definitions that compose other CTEs rather than filter a table.</summary>
+    private static Predicate? PredicateOf(CteDefinition definition) => definition switch
+    {
+        CteDefinition.ParamSource source => source.Predicate,
+        CteDefinition.ResourceSource source => source.Predicate,
+        CteDefinition.CompartmentSource source => source.Predicate,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The unsatisfiable term that makes a whole predicate tree unsatisfiable, or null when the tree can
+    /// still hold. An <c>And</c> falls to either side being false; an <c>Or</c> needs both.
+    /// </summary>
+    private static Predicate.False? FindFalse(Predicate? predicate) => predicate switch
+    {
+        Predicate.False unsatisfiable => unsatisfiable,
+        Predicate.And and => FindFalse(and.Left) ?? FindFalse(and.Right),
+        Predicate.Or or => FindFalse(or.Left) is { } left && FindFalse(or.Right) is not null ? left : null,
+        _ => null,
+    };
 
     /// <summary>Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against every trace's IR subtree. Origins with no owner (:missing, compartment, structural CTEs) keep a null ordinal.</summary>
     private static QueryPlanTrace BuildPlanTrace(LoweredPlan lowered, IReadOnlyList<ParameterTrace> outcomes)

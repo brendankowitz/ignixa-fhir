@@ -67,7 +67,7 @@ internal static class SearchTraceFixtures
     /// what a :ap comparator actually consumes, not just that the call count is right for a query that
     /// wouldn't notice either way. widened = [2019-12-31T21:36:00Z, 2020-01-01T02:24:00Z] for a reference
     /// instant one day after the value (the same scenario already pinned against
-    /// EndToEndCompilationTests.GivenADateApComparatorQueryWithAnExplicitFixedTimeProvider... and
+    /// EndToEndCompilationTests.GivenADateApComparatorQueryWithAMovingClock... and
     /// DateTimeLoweringRuleTests' "past instant" :ap case).</summary>
     public static Task<SearchTrace> TraceObservationDateApWithTimeProviderAsync(TimeProvider? timeProvider)
     {
@@ -591,6 +591,73 @@ internal static class SearchTraceFixtures
 
             return options;
         }
+    }
+
+    /// <summary>Patient?identifier=http://unknown.org/mrn|12345 -- the system resolves to nothing, so the
+    /// token lowers to Predicate.False and the parameter is a known miss rather than a compile failure.</summary>
+    public static Task<SearchTrace> TraceUnresolvableTokenSystemAsync()
+    {
+        var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            identifierParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://unknown.org/mrn", code: "12345", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 31),
+        };
+        var expression = new SearchParameterExpression(identifierParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "identifier", null, "http://unknown.org/mrn|12345", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[identifierParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("identifier", "http://unknown.org/mrn|12345")], builder, resolver);
+    }
+
+    /// <summary>Patient?active=true&amp;identifier=http://unknown.org/mrn|12345 -- one satisfiable parameter
+    /// alongside a known miss, so the miss must be attributed to its own parameter and not to both.</summary>
+    public static Task<SearchTrace> TraceSatisfiableAndUnresolvableTokenSystemAsync()
+    {
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+
+        var activePredicate = new SearchParameterPredicateExpression(
+            activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 4),
+        };
+        var identifierPredicate = new SearchParameterPredicateExpression(
+            identifierParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://unknown.org/mrn", code: "12345", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 10, 28),
+        };
+
+        var activeExpression = new SearchParameterExpression(activeParam, activePredicate);
+        var identifierExpression = new SearchParameterExpression(identifierParam, identifierPredicate);
+        var tree = new MultiaryExpression(MultiaryOperator.And, [activeExpression, identifierExpression]);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = tree },
+            [
+                new ParameterTrace(0, "active", null, "true", null, activeExpression, new ParameterOutcome.Compiled(), null),
+                new ParameterTrace(1, "identifier", null, "http://unknown.org/mrn|12345", null, identifierExpression, new ParameterOutcome.Compiled(), null),
+            ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.SearchParamIds[identifierParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient",
+            [new QueryParameter("active", "true"), new QueryParameter("identifier", "http://unknown.org/mrn|12345")],
+            builder,
+            resolver);
     }
 
     private sealed class FakeSymbolResolver : ISymbolResolver

@@ -25,7 +25,7 @@ public static class TokenStringLoweringRule
         short resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenStringCompositeSearchParam");
-        var tokenPredicate = TokenColumnEquality.Build(table, "SystemId1", "Code1", (TokenSearchValue)components[0].Value, context);
+        var tokenPredicate = TokenColumnEquality.Build(table, "SystemId1", "Code1", "CodeOverflow1", (TokenSearchValue)components[0].Value, context);
         var stringPredicate = StringColumnStartsWith(table, (StringSearchValue)components[1].Value, context);
 
         var predicate = new Predicate.And(tokenPredicate, stringPredicate);

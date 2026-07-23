@@ -15,6 +15,9 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class UriLoweringRuleTests
 {
+    private static readonly SearchParameterInfo UrlParameter =
+        new("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
+
     private static LeafContext ContextResolving(SearchParameterInfo parameter, short searchParamId)
         => new(new SymbolTable(
             new Dictionary<string, short> { [parameter.Url.ToString()] = searchParamId },
@@ -23,185 +26,170 @@ public class UriLoweringRuleTests
     private static EmittedSql EmitSql(CteDefinition.ParamSource cte)
         => SqlBuilder.Run(new QueryPlan([cte], new CteRef(0)));
 
-    [Fact]
-    public void GivenAPlainUriValue_WhenLowered_ThenComparesTheUriColumnWithBinaryCollation()
+    private static CteDefinition.ParamSource Lower(string uri, SearchModifierCode? modifier = null)
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new UriSearchValue("http://example.org/fhir/ValueSet/1", separateCanonicalComponents: false));
+            UrlParameter,
+            SearchComparator.Eq,
+            modifier is { } code ? new SearchModifier(code) : null,
+            new UriSearchValue(uri, separateCanonicalComponents: false));
 
+        return UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(UrlParameter, 88), 105);
+    }
+
+    [Fact]
+    public void GivenAPlainUriValue_WhenLowered_ThenComparesTheUriColumnWithoutACollationOverride()
+    {
         // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
+        var cte = Lower("http://example.org/fhir/ValueSet/1");
 
-        // Assert
+        // Assert -- no COLLATE override: the column is already CS_AS, and forcing BIN2 on the column side
+        // made the predicate incompatible with the index key ordering.
         cte.SearchParamId.ShouldBe((short)88);
         cte.ResourceTypeId.ShouldBe((short)105);
         var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Column.ShouldBe("Uri");
         equal.Value.Value.ShouldBe("http://example.org/fhir/ValueSet/1");
-        equal.Collation.ShouldBe("Latin1_General_100_BIN2");
+        equal.Collation.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenABelowModifier_WhenLowered_ThenProducesStartsWithLikeWithBinaryCollation()
+    public void GivenABelowModifier_WhenLowered_ThenMatchesSelfOrAnyDescendantAtASegmentBoundary()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Below), new UriSearchValue("http://example.org/fhir/ValueSet", separateCanonicalComponents: false));
-
         // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
+        var cte = Lower("http://example.org/fhir/ValueSet", SearchModifierCode.Below);
 
-        // Assert
-        var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
-        like.Column.Column.ShouldBe("Uri");
-        like.Match.ShouldBe(LikeMatch.StartsWith);
-        like.Collation.ShouldBe("Latin1_General_100_BIN2");
-        like.Value.Value.ShouldBe("http://example.org/fhir/ValueSet");
+        // Assert -- self, OR anything under the "/" boundary.
+        var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
+
+        var self = or.Left.ShouldBeOfType<Predicate.Equal>();
+        self.Column.Column.ShouldBe("Uri");
+        self.Value.Value.ShouldBe("http://example.org/fhir/ValueSet");
+
+        var descendants = or.Right.ShouldBeOfType<Predicate.Like>();
+        descendants.Column.Column.ShouldBe("Uri");
+        descendants.Match.ShouldBe(LikeMatch.StartsWith);
+        descendants.Value.Value.ShouldBe("http://example.org/fhir/ValueSet/");
+        descendants.Collation.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenAnAboveModifier_WhenLowered_ThenProducesPrefixOfParameterWithBinaryCollation()
+    public void GivenABelowModifier_WhenTheStoredValueIsASamePrefixSibling_ThenTheEmittedPatternCannotMatchIt()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Above), new UriSearchValue("http://example.org/fhir", separateCanonicalComponents: false));
+        // Arrange -- the exact false positive a bare lexical prefix produces:
+        // url:below=http://acme.org/fhir/ValueSet must not match a stored .../ValueSetOther.
+        var cte = Lower("http://acme.org/fhir/ValueSet", SearchModifierCode.Below);
 
         // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
+        var emitted = EmitSql(cte);
+
+        // Assert -- the LIKE pattern carries the separator, so "ValueSetOther" cannot satisfy it, while
+        // the equality arm still admits the exact value itself.
+        var patterns = emitted.Parameters.Select(p => p.Value).ToArray();
+        patterns.ShouldContain("http://acme.org/fhir/ValueSet");
+        patterns.ShouldContain("http://acme.org/fhir/ValueSet/%");
+        patterns.ShouldNotContain("http://acme.org/fhir/ValueSet%");
+    }
+
+    [Fact]
+    public void GivenABelowModifierAndATrailingSlash_WhenLowered_ThenTheSeparatorIsNotDoubled()
+    {
+        // Act
+        var cte = Lower("http://example.org/fhir/ValueSet/", SearchModifierCode.Below);
 
         // Assert
+        var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
+        or.Right.ShouldBeOfType<Predicate.Like>().Value.Value.ShouldBe("http://example.org/fhir/ValueSet/");
+    }
+
+    [Fact]
+    public void GivenAnAboveModifier_WhenLowered_ThenBindsTheValueWithASegmentSeparatorAppended()
+    {
+        // Act
+        var cte = Lower("http://example.org/fhir", SearchModifierCode.Above);
+
+        // Assert -- LEFT(@p, LEN(Uri)) = Uri. The appended separator makes the parameter one character
+        // longer than an exact-matching stored value, so the exact match still succeeds while a
+        // same-prefix sibling fails character-for-character.
         var prefixOf = cte.Predicate.ShouldBeOfType<Predicate.PrefixOfParameter>();
         prefixOf.Column.Column.ShouldBe("Uri");
-        prefixOf.Value.Value.ShouldBe("http://example.org/fhir");
-        prefixOf.Collation.ShouldBe("Latin1_General_100_BIN2");
+        prefixOf.Value.Value.ShouldBe("http://example.org/fhir/");
+        prefixOf.Collation.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenABelowModifierAndPlainUri_WhenEmitted_ThenSqlUsesLikeWithBinaryCollationAndEscapeClause()
+    public void GivenABelowModifierAndPlainUri_WhenEmitted_ThenSqlUsesLikeWithNoCollationOverrideAndAnEscapeClause()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Below), new UriSearchValue("http://example.org/fhir/ValueSet", separateCanonicalComponents: false));
-
         // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
-        var emitted = EmitSql(cte);
+        var emitted = EmitSql(Lower("http://example.org/fhir/ValueSet", SearchModifierCode.Below));
 
         // Assert
-        emitted.Sql.ShouldContain("Uri COLLATE Latin1_General_100_BIN2 LIKE @p0 ESCAPE '\\'");
-        emitted.Parameters[0].Value.ShouldBe("http://example.org/fhir/ValueSet%");
+        emitted.Sql.ShouldContain("Uri LIKE @p1 ESCAPE '\\'");
+        emitted.Sql.ShouldNotContain("COLLATE");
+        emitted.Parameters[1].Value.ShouldBe("http://example.org/fhir/ValueSet/%");
     }
 
     [Fact]
-    public void GivenAnAboveModifierAndPlainUri_WhenEmitted_ThenSqlUsesLeftLenEqualityWithBinaryCollation()
+    public void GivenAnAboveModifierAndPlainUri_WhenEmitted_ThenSqlUsesLeftLenEqualityWithNoCollationOverride()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Above), new UriSearchValue("http://example.org/fhir/Patient/123", separateCanonicalComponents: false));
-
         // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
-        var emitted = EmitSql(cte);
+        var emitted = EmitSql(Lower("http://example.org/fhir/Patient/123", SearchModifierCode.Above));
 
         // Assert
-        emitted.Sql.ShouldContain("LEFT(@p0, LEN(Uri)) COLLATE Latin1_General_100_BIN2 = Uri");
-        emitted.Parameters[0].Value.ShouldBe("http://example.org/fhir/Patient/123");
+        emitted.Sql.ShouldContain("LEFT(@p0, LEN(Uri)) = Uri");
+        emitted.Sql.ShouldNotContain("COLLATE");
+        emitted.Parameters[0].Value.ShouldBe("http://example.org/fhir/Patient/123/");
     }
 
     [Fact]
-    public void GivenDifferingCaseUri_WhenLoweredWithNoModifier_ThenPredicateUsesExactBinaryCollation()
+    public void GivenDifferingCaseUri_WhenLoweredWithNoModifier_ThenBindsTheValueVerbatim()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new UriSearchValue("HTTP://EXAMPLE.ORG/fhir/ValueSet/1", separateCanonicalComponents: false));
-
-        // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
+        // Arrange & Act -- case sensitivity now comes from the column's own CS_AS collation rather than
+        // an emitted override, so the rule must not fold case itself.
+        var cte = Lower("HTTP://EXAMPLE.ORG/fhir/ValueSet/1");
 
         // Assert
         var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
-        equal.Collation.ShouldBe("Latin1_General_100_BIN2");
+        equal.Collation.ShouldBeNull();
         equal.Value.Value.ShouldBe("HTTP://EXAMPLE.ORG/fhir/ValueSet/1");
     }
 
     [Fact]
-    public void GivenANearPrefixUri_WhenLoweredWithBelowModifier_ThenPredicateBindsRawValueForLexicalPrefixMatch()
+    public void GivenABelowModifierWithSpecialCharsInUri_WhenEmitted_ThenTheLikeArmIsEscapedExactlyOnce()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Below), new UriSearchValue("http://example.org/fhir/ValueSet/1b", separateCanonicalComponents: false));
+        // Arrange -- URI contains %, _, [, \
+        var cte = Lower("http://example.org/fhir/ValueSet/a%b_c[d\\e", SearchModifierCode.Below);
 
-        // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
+        // Assert -- raw value in the AST (pre-escape), separator appended
+        var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
+        or.Right.ShouldBeOfType<Predicate.Like>().Value.Value.ShouldBe("http://example.org/fhir/ValueSet/a%b_c[d\\e/");
 
-        // Assert
-        var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
-        like.Value.Value.ShouldBe("http://example.org/fhir/ValueSet/1b");
-        like.Match.ShouldBe(LikeMatch.StartsWith);
-        like.Collation.ShouldBe("Latin1_General_100_BIN2");
-    }
-
-    [Fact]
-    public void GivenABelowModifierWithSpecialCharsInUri_WhenEmitted_ThenParameterIsEscapedExactlyOnce()
-    {
-        // Arrange — URI contains %, _, [, \
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Below), new UriSearchValue("http://example.org/fhir/ValueSet/a%b_c[d\\e", separateCanonicalComponents: false));
-
-        // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
-
-        // Assert — raw value in the AST (pre-escape)
-        var like = cte.Predicate.ShouldBeOfType<Predicate.Like>();
-        like.Value.Value.ShouldBe("http://example.org/fhir/ValueSet/a%b_c[d\\e");
-
-        // Assert — emitted parameter is escaped by SqlBuilder (escaped + trailing %)
+        // Assert -- emitted parameter is escaped by SqlBuilder (escaped + trailing %)
         var emitted = EmitSql(cte);
-        emitted.Parameters[0].Value.ShouldBe("http://example.org/fhir/ValueSet/a\\%b\\_c\\[d\\\\e%");
-        emitted.Sql.ShouldContain("LIKE @p0 ESCAPE '\\'");
+        emitted.Parameters[1].Value.ShouldBe("http://example.org/fhir/ValueSet/a\\%b\\_c\\[d\\\\e/%");
+        emitted.Sql.ShouldContain("LIKE @p1 ESCAPE '\\'");
     }
 
     [Fact]
     public void GivenAnAboveModifierWithSpecialCharsInUri_WhenEmitted_ThenParameterIsRawWithNoEscaping()
     {
-        // Arrange — URI contains %, _, [, \
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Above), new UriSearchValue("http://example.org/fhir/ValueSet/a%b_c[d\\e", separateCanonicalComponents: false));
+        // Arrange -- URI contains %, _, [, \
+        var cte = Lower("http://example.org/fhir/ValueSet/a%b_c[d\\e", SearchModifierCode.Above);
 
-        // Act
-        var cte = UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105);
+        // Assert -- raw value in the AST, separator appended, no LIKE escaping
+        cte.Predicate.ShouldBeOfType<Predicate.PrefixOfParameter>()
+            .Value.Value.ShouldBe("http://example.org/fhir/ValueSet/a%b_c[d\\e/");
 
-        // Assert — raw value in the AST (unchanged)
-        var prefixOf = cte.Predicate.ShouldBeOfType<Predicate.PrefixOfParameter>();
-        prefixOf.Value.Value.ShouldBe("http://example.org/fhir/ValueSet/a%b_c[d\\e");
-
-        // Assert — emitted parameter is raw (no escaping for PrefixOfParameter)
         var emitted = EmitSql(cte);
-        emitted.Parameters[0].Value.ShouldBe("http://example.org/fhir/ValueSet/a%b_c[d\\e");
+        emitted.Parameters[0].Value.ShouldBe("http://example.org/fhir/ValueSet/a%b_c[d\\e/");
         emitted.Sql.ShouldContain("LEFT(@p0, LEN(Uri))");
     }
 
     [Fact]
     public void GivenAnUnsupportedModifier_WhenLowered_ThenThrowsNotSupportedExceptionNamingTheModifier()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new UriSearchValue("http://example.org/fhir", separateCanonicalComponents: false));
-
         // Act & Assert
-        var ex = Should.Throw<NotSupportedException>(() =>
-            UriLoweringRule.Lower(predicate, (UriSearchValue)predicate.Value, ContextResolving(parameter, 88), 105));
+        var ex = Should.Throw<NotSupportedException>(() => Lower("http://example.org/fhir", SearchModifierCode.Exact));
         ex.Message.ShouldContain("Exact");
     }
 }

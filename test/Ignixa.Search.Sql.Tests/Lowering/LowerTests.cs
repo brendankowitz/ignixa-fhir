@@ -117,6 +117,46 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenAWrappedNotModifiedTokenPredicate_WhenLowered_ThenLowersAsANegationWithoutReachingTheTokenModifierGuard()
+    {
+        // Arrange -- TokenLoweringRule now throws for any modifier it does not implement, which is only
+        // safe because :not is rewritten into a negation by LowerSearchParameter before leaf dispatch.
+        // This pins that premise: the shape the real binder produces must still lower.
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null));
+        var expression = new SearchParameterExpression(parameter, Expression.Not(predicate));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldContain(c => c is CteDefinition.ParamSource);
+        plan.Ctes.ShouldContain(c => c is CteDefinition.Except);
+    }
+
+    [Fact]
+    public void GivenAMissingTokenParameter_WhenLowered_ThenLowersThroughItsOwnNodeKindWithoutReachingTheTokenModifierGuard()
+    {
+        // Arrange -- :missing lowers through MissingSearchParameterExpression, never carrying the
+        // modifier down to TokenLoweringRule, so the new guard must not fire on it.
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var expression = new MissingSearchParameterExpression(parameter, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldContain(c => c is CteDefinition.Except);
+    }
+
+    [Fact]
     public void GivenAPredicateWithAnUnsupportedSearchValueType_WhenLowered_ThenThrowsRatherThanSilentlyDroppingIt()
     {
         // Arrange -- CompositeIndexSearchValue has no tier-1 lowering rule (composites are out of

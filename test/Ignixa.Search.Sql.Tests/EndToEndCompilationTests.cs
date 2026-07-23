@@ -84,7 +84,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
-        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0 collate Latin1_General_100_BIN2");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
@@ -141,7 +141,7 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- identical plan shape to the bare-predicate case above (same table, same SearchParamId)
-        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0 collate Latin1_General_100_BIN2");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0");
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.ShouldContain(p => p.Value.Equals("http://example.org/fhir/ValueSet/1"));
     }
@@ -1815,8 +1815,10 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- false predicate in plan; 1 = 0 in SQL; no user value exposed; no bound parameters
-        plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  false");
+        // Assert -- the plan and the SQL spell the unsatisfiable predicate identically, so a reader
+        // comparing them in a trace does not have to decide whether they are the same node; no user
+        // value is exposed and nothing is bound
+        plan.Explain().ShouldBe("root = TokenSearchParam[104,88]  1 = 0");
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
@@ -1826,6 +1828,114 @@ public class EndToEndCompilationTests
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownSystemTokenUnderNot_WhenCompiled_ThenTheNegationYieldsTheWholeTargetScope()
+    {
+        // Arrange -- Observation?code:not=http://unknown.org|abc. This is the dangerous composition: the
+        // complement of a predicate matching nothing is everything in scope, so the correct answer is every
+        // Observation. A negation built the wrong way round returns nothing instead, and nothing about the
+        // query looks wrong -- the caller just sees an empty bundle for a search that should match all rows.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var tree = new SearchParameterExpression(
+            codeParam,
+            new NotExpression(new SearchParameterPredicateExpression(
+                codeParam, SearchComparator.Eq, modifier: null,
+                new TokenSearchValue(system: "http://unknown.org", code: "abc", text: null))));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the unsatisfiable CTE is the SUBTRAHEND of the Except (emitted as a NOT EXISTS
+        // anti-join), so the result is ResourceSource minus the empty set: every Observation. The
+        // direction is the whole point -- swapping the Except operands emits equally valid SQL that
+        // returns nothing.
+        plan.Explain().ShouldBe(
+            "cte0 = TokenSearchParam[104,88]  1 = 0\n" +
+            "cte1 = ResourceSource[104]\n" +
+            "root = Except(cte1, cte0)");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 88 AND 1 = 0\n" +
+            "),\n" +
+            "cte1 AS (\n" +
+            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.Resource\n" +
+            "    WHERE ResourceTypeId = @p0 AND IsHistory = 0 AND IsDeleted = 0\n" +
+            "),\n" +
+            "cte2 AS (\n" +
+            "    SELECT cte1.T1, cte1.Sid1\n" +
+            "    FROM cte1\n" +
+            "    WHERE NOT EXISTS (\n" +
+            "        SELECT 1 FROM cte0\n" +
+            "        WHERE cte0.T1 = cte1.T1 AND cte0.Sid1 = cte1.Sid1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte2 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)(short)104)]);
+    }
+
+    [Fact]
+    public async Task GivenAnUnknownSystemTokenOredWithAKnownOne_WhenCompiled_ThenTheKnownBranchStillContributesMatches()
+    {
+        // Arrange -- Observation?code=http://unknown.org|abc,http://loinc.org|8480-6. One alternative is a
+        // known miss; the other must still be able to match. Collapsing the whole union to false because one
+        // branch is unsatisfiable would drop rows the caller asked for.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var tree = new SearchParameterExpression(
+            codeParam,
+            new MultiaryExpression(MultiaryOperator.Or,
+            [
+                new SearchParameterPredicateExpression(
+                    codeParam, SearchComparator.Eq, modifier: null,
+                    new TokenSearchValue(system: "http://unknown.org", code: "abc", text: null)),
+                new SearchParameterPredicateExpression(
+                    codeParam, SearchComparator.Eq, modifier: null,
+                    new TokenSearchValue(system: "http://loinc.org", code: "8480-6", text: null)),
+            ]));
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 88;
+        resolver.ResourceTypeIds["Observation"] = 104;
+        resolver.SystemIds["http://loinc.org"] = 7;
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the union keeps both branches; the satisfiable one is untouched and still binds its
+        // own parameters, and only the unsatisfiable branch degenerates to 1 = 0
+        plan.Explain().ShouldBe(
+            "cte0 = TokenSearchParam[104,88]  1 = 0\n" +
+            "cte1 = TokenSearchParam[104,88]  SystemId = @p0 AND Code = @p1\n" +
+            "root = Union(cte0, cte1)");
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 88 AND 1 = 0\n" +
+            "),\n" +
+            "cte1 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 88 AND (SystemId = @p0 AND Code = @p1)\n" +
+            "),\n" +
+            "cte2 AS (\n" +
+            "    SELECT T1, Sid1 FROM cte0\n" +
+            "    UNION\n" +
+            "    SELECT T1, Sid1 FROM cte1\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte2 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)7), ("@p1", (object)"8480-6")]);
     }
 
     // ─── Phase 2: URI hierarchy and external reference matching ─────────────────
@@ -1850,23 +1960,24 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- plan shape: LIKE StartsWith, binary collation
-        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri LIKE @p0 (StartsWith) collate Latin1_General_100_BIN2");
+        // Assert -- plan shape: self OR descendants-at-a-segment-boundary
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri = @p0 OR Uri LIKE @p1 (StartsWith)");
 
-        // Assert -- complete SQL golden: collation prefix on Uri column, ESCAPE clause present
+        // Assert -- complete SQL golden: no collation override, ESCAPE clause present on the LIKE arm
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.UriSearchParam\n" +
-            "    WHERE ResourceTypeId = 105 AND SearchParamId = 88 AND Uri COLLATE Latin1_General_100_BIN2 LIKE @p0 ESCAPE '\\'\n" +
+            "    WHERE ResourceTypeId = 105 AND SearchParamId = 88 AND (Uri = @p0 OR Uri LIKE @p1 ESCAPE '\\')\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
-        // Assert -- user value not inlined; % is escaped to \%, trailing % appended for StartsWith
+        // Assert -- user value not inlined; the equality arm binds it raw, the LIKE arm escapes % to \%
+        // and appends the segment separator before the trailing wildcard.
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
-            [("@p0", (object)"http://example.org/fhir/ValueSet\\%2%")]);
+            [("@p0", (object)"http://example.org/fhir/ValueSet%2"), ("@p1", (object)"http://example.org/fhir/ValueSet\\%2/%")]);
     }
 
     [Fact]
@@ -1874,7 +1985,7 @@ public class EndToEndCompilationTests
     {
         // Arrange -- ValueSet?url:above=http://example.org/fhir/Patient/123
         // :above maps to PrefixOfParameter: the stored URI must be a prefix of the search value,
-        // i.e. LEFT(@p0, LEN(Uri)) COLLATE BIN2 = Uri. The full URI is bound once, raw, no escaping.
+        // i.e. LEFT(@p0, LEN(Uri)) = Uri. The full URI is bound once, raw, no escaping.
         var urlParam = new SearchParameterInfo("url", "url", SearchParamType.Uri, new Uri("http://hl7.org/fhir/SearchParameter/ValueSet-url"));
         var predicate = new SearchParameterPredicateExpression(
             urlParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Above),
@@ -1889,22 +2000,23 @@ public class EndToEndCompilationTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: PrefixOfParameter, binary collation
-        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri PREFIX_OF @p0 collate Latin1_General_100_BIN2");
+        plan.Explain().ShouldBe("root = UriSearchParam[105,88]  Uri PREFIX_OF @p0");
 
-        // Assert -- complete SQL golden: LEFT(@p, LEN(col)) COLLATE BIN2 = col; no LIKE, no ESCAPE
+        // Assert -- complete SQL golden: LEFT(@p, LEN(col)) = col; no LIKE, no ESCAPE
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.UriSearchParam\n" +
-            "    WHERE ResourceTypeId = 105 AND SearchParamId = 88 AND LEFT(@p0, LEN(Uri)) COLLATE Latin1_General_100_BIN2 = Uri\n" +
+            "    WHERE ResourceTypeId = 105 AND SearchParamId = 88 AND LEFT(@p0, LEN(Uri)) = Uri\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
-        // Assert -- full URI bound once, raw (no escaping); user value not inlined in SQL text
+        // Assert -- full URI bound once, raw (no escaping), with the segment separator appended so that
+        // a same-prefix sibling cannot satisfy the LEFT() comparison; user value not inlined in SQL text
         emitted.Sql.ShouldNotContain("example.org");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
-            [("@p0", (object)"http://example.org/fhir/Patient/123")]);
+            [("@p0", (object)"http://example.org/fhir/Patient/123/")]);
     }
 
     [Fact]
@@ -1979,7 +2091,7 @@ public class EndToEndCompilationTests
 
         // Assert -- both plans have identical explain shape; only the @p0 runtime value differs
         planA.Explain().ShouldBe(
-            "root = ReferenceSearchParam[104,77]  BaseUri = @p0 collate Latin1_General_100_BIN2 AND ReferenceResourceTypeId = @p1 AND ReferenceResourceId = @p2");
+            "root = ReferenceSearchParam[104,77]  BaseUri = @p0 AND ReferenceResourceTypeId = @p1 AND ReferenceResourceId = @p2");
         planB.Explain().ShouldBe(planA.Explain());
 
         // Assert -- complete SQL golden for server-a; the template is identical for server-b
@@ -1987,7 +2099,7 @@ public class EndToEndCompilationTests
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.ReferenceSearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 77 AND ((BaseUri = @p0 COLLATE Latin1_General_100_BIN2 AND ReferenceResourceTypeId = @p1) AND ReferenceResourceId = @p2)\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 77 AND ((BaseUri = @p0 AND ReferenceResourceTypeId = @p1) AND ReferenceResourceId = @p2)\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC";
@@ -2100,11 +2212,22 @@ public class EndToEndCompilationTests
         public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
+    /// <summary>
+    /// Returns a different instant on every <see cref="GetUtcNow"/> call. A test that would still pass
+    /// against this provider is a test that does not actually depend on which instant was captured.
+    /// </summary>
+    private sealed class IncrementingTimeProvider(DateTimeOffset start, TimeSpan step) : TimeProvider
+    {
+        public int CallCount { get; private set; }
+
+        public override DateTimeOffset GetUtcNow() => start + (step * CallCount++);
+    }
+
     [Fact]
     public async Task GivenANumberApComparatorQuery_WhenCompiled_ThenWidensByMaxOfPrecisionAndTenPercentAndEmitsCompleteSql()
     {
         // Arrange -- Observation?value-number=ap5.4 -- tol = max(precisionModifier=0.05, abs(5.4)*0.10=0.54)
-        // = 0.54, widened to the inclusive range [4.86, 5.94] -- the same value and tolerance already
+        // = 0.54, overlapped against the inclusive range [4.86, 5.94] -- the same value and tolerance already
         // pinned against NumberLoweringRuleTests' leaf case and TokenNumberNumberLoweringRuleTests' :ap
         // composite slot, reused here rather than re-derived, so this test proves the compiler boundary
         // (Resolve -> Lower -> Emit), not a new tolerance computation.
@@ -2119,22 +2242,22 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- plan shape: inclusive widened range, low bound first then high bound
-        plan.Explain().ShouldBe("root = NumberSearchParam[104,205]  LowValue >= @p0 AND HighValue <= @p1");
+        // Assert -- plan shape: overlap against the widened range, upper bound first then lower bound
+        plan.Explain().ShouldBe("root = NumberSearchParam[104,205]  LowValue <= @p0 AND HighValue >= @p1");
 
         // Assert -- complete SQL golden
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.NumberSearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 205 AND (LowValue >= @p0 AND HighValue <= @p1)\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 205 AND (LowValue <= @p0 AND HighValue >= @p1)\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
-        // Assert -- raw value never inlined; exactly the widened low then widened high bound, in order
+        // Assert -- raw value never inlined; exactly the widened high then widened low bound, in order
         emitted.Sql.ShouldNotContain("5.4");
-        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)4.86m), ("@p1", (object)5.94m)]);
+        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)5.94m), ("@p1", (object)4.86m)]);
     }
 
     [Fact]
@@ -2161,31 +2284,31 @@ public class EndToEndCompilationTests
         var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- plan shape: widened numeric range first, then SystemId, then QuantityCodeId
+        // Assert -- plan shape: widened numeric overlap first, then SystemId, then QuantityCodeId
         plan.Explain().ShouldBe(
-            "root = QuantitySearchParam[104,204]  LowValue >= @p0 AND HighValue <= @p1 AND SystemId = @p2 AND QuantityCodeId = @p3");
+            "root = QuantitySearchParam[104,204]  LowValue <= @p0 AND HighValue >= @p1 AND SystemId = @p2 AND QuantityCodeId = @p3");
 
-        // Assert -- complete SQL golden: nested parens follow And(And(And(Ge,Le),SystemEq),CodeEq)
+        // Assert -- complete SQL golden: nested parens follow And(And(And(Le,Ge),SystemEq),CodeEq)
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.QuantitySearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND (((LowValue >= @p0 AND HighValue <= @p1) AND SystemId = @p2) AND QuantityCodeId = @p3)\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 204 AND (((LowValue <= @p0 AND HighValue >= @p1) AND SystemId = @p2) AND QuantityCodeId = @p3)\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
-        // Assert -- raw value never inlined; widened low, widened high, resolved SystemId, resolved
+        // Assert -- raw value never inlined; widened high, widened low, resolved SystemId, resolved
         // QuantityCodeId, in that exact order -- system/code identity IDs, not the raw strings
         emitted.Sql.ShouldNotContain("5.4");
         emitted.Sql.ShouldNotContain("unitsofmeasure");
         emitted.Sql.ShouldNotContain("mg");
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
-            [("@p0", (object)4.86m), ("@p1", (object)5.94m), ("@p2", (object)11), ("@p3", (object)22)]);
+            [("@p0", (object)5.94m), ("@p1", (object)4.86m), ("@p2", (object)11), ("@p3", (object)22)]);
     }
 
     [Fact]
-    public async Task GivenADateApComparatorQueryWithAnExplicitFixedTimeProvider_WhenCompiledTwice_ThenProducesByteIdenticalSqlAndParameterSequences()
+    public async Task GivenADateApComparatorQueryWithAMovingClock_WhenCompiledTwice_ThenTheBoundsTrackEachCapturedInstantWhileTheSqlTextStaysByteIdentical()
     {
         // Arrange -- Observation?date=ap2020-01-01T00:00:00Z, reference instant exactly one day later --
         // 1-day gap / 10 = 2h24m tolerance (the same scenario already pinned against
@@ -2200,13 +2323,17 @@ public class EndToEndCompilationTests
         resolver.SearchParamIds[dateParam.Url!.ToString()] = 203;
         resolver.ResourceTypeIds["Observation"] = 104;
 
-        var timeProvider = new FixedTimeProvider(new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero));
+        // A clock that moves on every read. Each compile below reads it once, so the two compiles see
+        // instants one day apart -- which is what gives the "different instant, different bounds"
+        // assertion below any force. Against a fixed clock that assertion could not fail.
+        var timeProvider = new IncrementingTimeProvider(new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero), TimeSpan.FromDays(1));
         var widenedStart = new DateTimeOffset(2019, 12, 31, 21, 36, 0, TimeSpan.Zero);
         var widenedEnd = new DateTimeOffset(2020, 1, 1, 2, 24, 0, TimeSpan.Zero);
+        var secondWidenedStart = new DateTimeOffset(2019, 12, 31, 19, 12, 0, TimeSpan.Zero);
+        var secondWidenedEnd = new DateTimeOffset(2020, 1, 1, 4, 48, 0, TimeSpan.Zero);
 
-        // Act -- compile the identical search twice, each compile capturing its own reference instant
-        // from the same FixedTimeProvider (mirroring SearchCompiler.CompileWithTimeProviderAsync's single
-        // GetUtcNow() call per compile) to prove the boundary is deterministic given the same captured time.
+        // Act -- compile the identical search twice, each compile reading the clock exactly once, the way
+        // SearchCompiler.CompileWithTimeProviderAsync captures one instant per compile
         var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
         var plan1 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
         var emitted1 = SqlBuilder.Run(plan1);
@@ -2226,13 +2353,20 @@ public class EndToEndCompilationTests
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
-        // Assert -- exact parameter order/values: widened end first, then widened start
+        // Assert -- exact parameter order/values: widened end first, then widened start, derived from the
+        // FIRST instant the clock returned
         emitted1.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)widenedEnd), ("@p1", (object)widenedStart)]);
 
-        // Assert -- byte-identical SQL text and an identical parameter sequence across both compiles
-        // of the same query against the same captured reference instant
+        // Assert -- the second compile read a later instant and its bounds moved accordingly. This is what
+        // makes the assertion above meaningful: the bounds genuinely track the captured instant, so a
+        // compile that re-read the clock partway through would not have produced the first pair.
+        timeProvider.CallCount.ShouldBe(2);
+        emitted2.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)secondWidenedEnd), ("@p1", (object)secondWidenedStart)]);
+        emitted2.Parameters.Select(p => p.Value).ShouldNotBe(emitted1.Parameters.Select(p => p.Value));
+
+        // Assert -- the SQL TEXT is nevertheless byte-identical: only bound values move with the clock,
+        // never the emitted statement, which is what keeps the golden tests and any plan cache stable
         emitted2.Sql.ShouldBe(emitted1.Sql);
-        emitted2.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(emitted1.Parameters.Select(p => (p.Name, p.Value)));
     }
 
     [Fact]
@@ -2279,8 +2413,10 @@ public class EndToEndCompilationTests
             "WHERE (ResourceSurrogateId >= @p1 AND ResourceSurrogateId <= @p2)\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
+        // The upper bound covers the whole boundary millisecond: the database appends a 0-79999
+        // uniquifier at write time, so the bare floor would match only the row that drew 0.
         var expectedLowerSurrogateId = widenedStart.UtcDateTime.Ticks << 3;
-        var expectedUpperSurrogateId = widenedEnd.UtcDateTime.Ticks << 3;
+        var expectedUpperSurrogateId = (widenedEnd.UtcDateTime.Ticks << 3) + 79999;
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
             [("@p0", (object)(short)103), ("@p1", (object)expectedLowerSurrogateId), ("@p2", (object)expectedUpperSurrogateId)]);
     }

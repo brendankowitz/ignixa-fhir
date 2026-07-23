@@ -177,7 +177,7 @@ public class TokenQuantityLoweringRuleTests
     // :ap composite proof — quantity slot dispatches through NumericRangeComparison.Build (via
     // QuantityColumnPredicate.Build) with the same tolerance formula as the leaf, while a qualified
     // token (slot 1) and fully qualified quantity system/code (slot 2, Phase 1) are retained around it.
-    // 5.4m: tol = max(pm=0.05, abs(5.4)*0.10=0.54) = 0.54 → [4.86, 5.94] (same as leaf QuantityLoweringRuleTests).
+    // 5.4m: tol = max(pm=0.05, abs(5.4)*0.10=0.54) = 0.54 → overlap against [4.86, 5.94] (same as leaf QuantityLoweringRuleTests).
     [Fact]
     public void GivenApComparatorOnQualifiedQuantityWithQualifiedToken_WhenLowered_ThenWidensRangeAndRetainsSystemAndCodeIdentity()
     {
@@ -200,7 +200,7 @@ public class TokenQuantityLoweringRuleTests
         // Act
         var cte = TokenQuantityLoweringRule.Lower(composite, components, ContextResolving(composite, 402, systemIds, quantityCodeIds), 104);
 
-        // Assert — And(And(Equal(SystemId1),Equal(Code1)), And(And(And(Ge,Le), Equal(SystemId2)), Equal(QuantityCodeId2)))
+        // Assert — And(And(Equal(SystemId1),Equal(Code1)), And(And(And(Le,Ge), Equal(SystemId2)), Equal(QuantityCodeId2)))
         var topAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var tokenAnd = topAnd.Left.ShouldBeOfType<Predicate.And>();
         var systemEqual = tokenAnd.Left.ShouldBeOfType<Predicate.Equal>();
@@ -213,12 +213,12 @@ public class TokenQuantityLoweringRuleTests
         var quantityOuter = topAnd.Right.ShouldBeOfType<Predicate.And>();
         var quantityMiddle = quantityOuter.Left.ShouldBeOfType<Predicate.And>();
         var quantityRange = quantityMiddle.Left.ShouldBeOfType<Predicate.And>();
-        var quantityGe = quantityRange.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        quantityGe.Column.Column.ShouldBe("LowValue2");
-        quantityGe.Value.Value.ShouldBe(4.86m);
-        var quantityLe = quantityRange.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        quantityLe.Column.Column.ShouldBe("HighValue2");
+        var quantityLe = quantityRange.Left.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        quantityLe.Column.Column.ShouldBe("LowValue2");
         quantityLe.Value.Value.ShouldBe(5.94m);
+        var quantityGe = quantityRange.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        quantityGe.Column.Column.ShouldBe("HighValue2");
+        quantityGe.Value.Value.ShouldBe(4.86m);
         var quantitySystemEqual = quantityMiddle.Right.ShouldBeOfType<Predicate.Equal>();
         quantitySystemEqual.Column.Column.ShouldBe("SystemId2");
         quantitySystemEqual.Value.Value.ShouldBe(43);
@@ -226,22 +226,22 @@ public class TokenQuantityLoweringRuleTests
         quantityCodeEqual.Column.Column.ShouldBe("QuantityCodeId2");
         quantityCodeEqual.Value.Value.ShouldBe(77);
 
-        // Assert — complete emitted SQL and ordered parameters: token system/code, numeric lower/upper,
-        // quantity system, quantity code (@p0 SystemId1, @p1 Code1, @p2/@p3 approximate range, @p4 SystemId2, @p5 QuantityCodeId2).
+        // Assert — complete emitted SQL and ordered parameters: token system/code, numeric upper/lower,
+        // quantity system, quantity code (@p0 SystemId1, @p1 Code1, @p2/@p3 widened overlap bounds, @p4 SystemId2, @p5 QuantityCodeId2).
         var emitted = EmitSql(cte);
         emitted.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.TokenQuantityCompositeSearchParam\n" +
-            "    WHERE ResourceTypeId = 104 AND SearchParamId = 402 AND ((SystemId1 = @p0 AND Code1 = @p1) AND (((LowValue2 >= @p2 AND HighValue2 <= @p3) AND SystemId2 = @p4) AND QuantityCodeId2 = @p5))\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 402 AND ((SystemId1 = @p0 AND Code1 = @p1) AND (((LowValue2 <= @p2 AND HighValue2 >= @p3) AND SystemId2 = @p4) AND QuantityCodeId2 = @p5))\n" +
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(6);
         emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", 42));
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "8480-6"));
-        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 4.86m));
-        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5.94m));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 5.94m));
+        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 4.86m));
         emitted.Parameters[4].ShouldBe(new EmittedSqlParameter("@p4", 43));
         emitted.Parameters[5].ShouldBe(new EmittedSqlParameter("@p5", 77));
     }

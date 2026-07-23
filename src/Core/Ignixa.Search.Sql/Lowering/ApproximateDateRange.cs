@@ -3,20 +3,31 @@ using Ignixa.Search.Indexing.SearchValues;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Widens a date search value's [Start, End] interval for the :ap comparator by the FHIR-recommended 10
-/// percent tolerance, measured against one caller-supplied reference instant: the distance from the
-/// interval's midpoint to that instant, divided by ten. Pure -- it takes the reference time as an
-/// explicit parameter and never reads the ambient clock, preserving Lower's determinism invariant.
+/// Widens a date search value's [Start, End] interval for the :ap comparator, mirroring the numeric
+/// :ap formula in <see cref="NumericRangeComparison"/>: <c>max(precision_modifier, distance × 0.10)</c>.
+/// For dates the distance is measured from the interval's midpoint to one caller-supplied reference
+/// instant, and the precision modifier is the value's own [Start, End] width -- a partial date such as
+/// <c>2010-01</c> spans its whole month, while a full instant spans zero. Pure -- it takes the reference
+/// time as an explicit parameter and never reads the ambient clock, preserving Lower's determinism
+/// invariant.
 /// </summary>
+/// <remarks>
+/// The spec's 10 percent figure is a recommendation ("systems may choose other values where
+/// appropriate"). Flooring at the value's own precision is a deliberate deviation: without it
+/// <c>date=ap&lt;today&gt;</c> degenerates to exact equality, because the midpoint-to-reference distance
+/// -- and therefore the tolerance -- is zero at "now". That is the single most likely real-world :ap
+/// query, so it is also the one that must not collapse.
+/// </remarks>
 internal static class ApproximateDateRange
 {
     /// <summary>
     /// Computes the widened [Start, End] endpoints for a date :ap comparison. Throws
     /// <see cref="InvalidOperationException"/> when <paramref name="referenceTime"/> is null -- a direct
     /// caller compiling a date :ap search must supply <c>Lower.Run</c>'s approximationReferenceTime
-    /// parameter. Throws <see cref="ArgumentOutOfRangeException"/>, rather than clamping or letting a raw
-    /// <see cref="OverflowException"/> escape, when the widened endpoint would fall outside the
-    /// representable <see cref="DateTimeOffset"/> range.
+    /// parameter. Endpoints that would fall outside the representable <see cref="DateTimeOffset"/> range
+    /// saturate at <see cref="DateTimeOffset.MinValue"/>/<see cref="DateTimeOffset.MaxValue"/>, matching
+    /// how numeric :ap saturates at the decimal bounds. <c>date=ap0001-01-01</c> is legal user input and
+    /// must compile, not throw past the trace boundary.
     /// </summary>
     public static (DateTimeOffset Start, DateTimeOffset End) Widen(DateTimeSearchValue value, DateTimeOffset? referenceTime)
     {
@@ -29,39 +40,23 @@ internal static class ApproximateDateRange
                 "TimeProvider; a direct Lower.Run caller must pass it explicitly.");
         }
 
-        var midpointTicks = value.Start.UtcTicks + ((value.End.UtcTicks - value.Start.UtcTicks) / 2);
-        var toleranceTicks = Math.Abs(reference.UtcTicks - midpointTicks) / 10;
+        var precisionTicks = value.End.UtcTicks - value.Start.UtcTicks;
+        var midpointTicks = value.Start.UtcTicks + (precisionTicks / 2);
+        var proportionalTicks = Math.Abs(reference.UtcTicks - midpointTicks) / 10;
+        var toleranceTicks = Math.Max(precisionTicks, proportionalTicks);
 
         return (
-            Subtract(value.Start, toleranceTicks),
-            Add(value.End, toleranceTicks));
+            SubtractSaturating(value.Start, toleranceTicks),
+            AddSaturating(value.End, toleranceTicks));
     }
 
-    private static DateTimeOffset Subtract(DateTimeOffset value, long toleranceTicks)
-    {
-        var minTicks = DateTimeOffset.MinValue.UtcTicks;
-        if (value.UtcTicks - minTicks < toleranceTicks)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(value),
-                toleranceTicks,
-                $"Widening '{value:o}' downward by {toleranceTicks} ticks for ':ap' would underflow DateTimeOffset.MinValue.");
-        }
+    private static DateTimeOffset SubtractSaturating(DateTimeOffset value, long toleranceTicks)
+        => value.UtcTicks - DateTimeOffset.MinValue.UtcTicks < toleranceTicks
+            ? DateTimeOffset.MinValue
+            : new DateTimeOffset(value.UtcTicks - toleranceTicks, TimeSpan.Zero);
 
-        return new DateTimeOffset(value.UtcTicks - toleranceTicks, TimeSpan.Zero);
-    }
-
-    private static DateTimeOffset Add(DateTimeOffset value, long toleranceTicks)
-    {
-        var maxTicks = DateTimeOffset.MaxValue.UtcTicks;
-        if (maxTicks - value.UtcTicks < toleranceTicks)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(value),
-                toleranceTicks,
-                $"Widening '{value:o}' upward by {toleranceTicks} ticks for ':ap' would overflow DateTimeOffset.MaxValue.");
-        }
-
-        return new DateTimeOffset(value.UtcTicks + toleranceTicks, TimeSpan.Zero);
-    }
+    private static DateTimeOffset AddSaturating(DateTimeOffset value, long toleranceTicks)
+        => DateTimeOffset.MaxValue.UtcTicks - value.UtcTicks < toleranceTicks
+            ? DateTimeOffset.MaxValue
+            : new DateTimeOffset(value.UtcTicks + toleranceTicks, TimeSpan.Zero);
 }

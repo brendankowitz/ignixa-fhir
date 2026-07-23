@@ -188,8 +188,8 @@ foreach (var p in emitted.Parameters)      // the values to bind
 | Area | Supported | Notes |
 |------|-----------|-------|
 | **Boolean composition** | AND, OR, `:not` | Intersect / Union / Except CTEs |
-| **Leaf types** | string, token (bare code, `system\|code`, `\|code`, `system\|`), reference (local and external/absolute; `BaseUri` binary-collation equality; resource version not part of identity), uri (exact, `:above`, `:below` hierarchy), number, quantity (with `system`/`code` identity), date | see gaps below |
-| **Comparators** | `eq ne gt lt ge le sa eb ap` | on date / number / quantity; `:ap` widens the search value by a fixed 10% tolerance — see [Approximate (`:ap`) matching](#approximate-ap-matching) |
+| **Leaf types** | string (incl. `TextOverflow`), token (bare code, `system\|code`, `\|code`, `system\|`, incl. `CodeOverflow`), reference (relative, same-server absolute, and external; resource version not part of identity), uri (exact, segment-aware `:above` / `:below`), number, quantity (with `system`/`code` identity, including explicitly-absent `\|code`), date | see gaps below |
+| **Comparators** | `eq ne gt lt ge le sa eb ap` | on date / number / quantity; `eq` is containment and `ne` its exact complement; `:ap` is overlap against bounds widened by `max(precision, 10%)` — see [Approximate (`:ap`) matching](#approximate-ap-matching) |
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
 | **Chaining** | forward and reverse chains, any nesting depth | 10-level depth guard |
@@ -297,16 +297,33 @@ supplied from outside the pure `Lower` stage. That instant is captured **exactly
   `approximationReferenceTime`) always produce byte-identical SQL and parameter values — the determinism
   guarantee above extends to `:ap` exactly as it does to every other comparator.
 
-The tolerance itself is `abs(referenceInstant - midpoint) / 10`, where `midpoint` is the search value's own
-`[Start, End]` interval midpoint (already resolving FHIR partial-date precision). The widened interval is
-`[Start - tolerance, End + tolerance]`.
+The tolerance is `max(precision, abs(referenceInstant - midpoint) / 10)`, where `midpoint` is the search
+value's own `[Start, End]` interval midpoint and `precision` is that interval's own width (already
+resolving FHIR partial-date precision). The widened interval is `[Start - tolerance, End + tolerance]`.
 
-- **`date`** compares the widened interval against the stored `[StartDateTime, EndDateTime]` pair with the
-  same overlap shape `eq` uses: `StartDateTime <= widenedEnd AND EndDateTime >= widenedStart`.
+The precision floor is a deliberate deviation from a literal reading of the spec's 10% guidance, which
+the spec explicitly permits ("systems may choose other values where appropriate"). Without it the
+proportional term goes to zero as the search value approaches the reference instant, so `date=ap<today>`
+— the most likely real-world `:ap` query — would silently degenerate into exact `eq`. The floor mirrors
+the `precision_modifier` term numeric `:ap` already used.
+
+Endpoints that would fall outside `DateTimeOffset`'s range saturate at `MinValue`/`MaxValue` rather than
+throwing, matching how numeric `:ap` saturates at the decimal bounds: `date=ap0001-01-01` is legal user
+input and must compile.
+
+- **`date`** compares the widened interval against the stored `[StartDateTime, EndDateTime]` pair with an
+  overlap test: `StartDateTime <= widenedEnd AND EndDateTime >= widenedStart`.
 - **`_lastUpdated`** has no interval column of its own — it targets the single point column
   `ResourceSurrogateId` — so both widened endpoints are converted through the same surrogate-id encoding
   every other `_lastUpdated` comparator uses, then compared as a lower-then-upper range:
   `ResourceSurrogateId >= widenedLowerSurrogateId AND ResourceSurrogateId <= widenedUpperSurrogateId`.
+
+  The upper bound is the *last* surrogate id in its millisecond, not the first. `ResourceSurrogateId`
+  encodes `msSince0001 * 80000 + uniquifier`, where the database allocates the uniquifier from a sequence
+  declared `MAXVALUE 79999`. Comparing an upper bound against the bare millisecond floor would match only
+  the row that happened to draw uniquifier 0, dropping up to 79,999 resources written in that
+  millisecond. Every `_lastUpdated` comparator — not just `:ap` — is expressed against the closed range
+  `[floor, floor + 79999]`.
 
 These claims describe what `Resolve` and `Lower` (and the SQL `Emit` renders from them) do; they say
 nothing about execution against a live database — see the alpha notice above.
@@ -319,10 +336,28 @@ in the stored index. Phase 2 external-reference leaf matching enables searching 
 references with a non-null `BaseUri`, but it does not enable fetching or traversing resources hosted
 on an external FHIR server.
 
+**Reference reconciliation depends on the base URI being resolvable, and only applies going forward.**
+The spec requires that "a relative reference resolving to the same value as a specified absolute URL, or
+vice versa, qualifies as a match". That holds here through two mechanisms working together:
+
+1. `ReferenceSearchValueParser` collapses an absolute URL whose base equals this server's base to
+   `ReferenceKind.Internal` with a null `BaseUri`. The same parser runs on both the index path and the
+   query path, so the two forms converge on one representation before reaching SQL.
+2. A bare relative search value is `ReferenceKind.InternalOrExternal` and emits *no* `BaseUri` predicate,
+   so it matches a stored row whether or not that row carries a base.
+
+Two consequences follow. First, the server base comes from `IFhirBaseUriProvider` — the request context
+in-request, falling back to configured `Fhir:BaseUri` for background work such as reindex and `$import`.
+If that fallback is unset or disagrees with what the request path produces, background-indexed rows will
+disagree with request-indexed ones about which references are internal. Second, normalization applies
+only to rows written after this change; references already stored with a self-referencing absolute base
+keep it and need a reindex to become findable by their relative form.
+
 **Unknown terminology values lower to `Predicate.False`, not a resolution error.** When a
 system-qualified token or quantity carries a `system` or quantity `code` that has no database row,
 `Resolve` stores the known-miss, `Lower` lowers that individual predicate to `Predicate.False`, and
-`Emit` renders `1 = 0` for that branch in the WHERE clause. Normal Boolean composition still applies
+`Emit` renders `1 = 0` for that branch in the WHERE clause, and `Explain` prints the same `1 = 0` so a
+plan and its SQL read alike in a trace. Normal Boolean composition still applies
 on the surrounding query: AND with the false predicate makes that conjunction empty; OR may still
 return matches from its other branches; negating the false predicate yields its complement (the full
 target-resource set for that predicate's scope). Resolver I/O failures still propagate unchanged —

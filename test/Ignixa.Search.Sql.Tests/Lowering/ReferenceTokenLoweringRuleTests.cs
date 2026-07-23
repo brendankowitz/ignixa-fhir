@@ -112,7 +112,7 @@ public class ReferenceTokenLoweringRuleTests
     }
 
     [Fact]
-    public void GivenAnExternalReferenceComponent_WhenLowered_ThenBaseUri1EqualCollateBin2AndTypeIdAndId()
+    public void GivenAnExternalReferenceComponent_WhenLowered_ThenBaseUri1EqualAndTypeIdAndId()
     {
         // Arrange
         var composite = CompositeParameter();
@@ -122,16 +122,16 @@ public class ReferenceTokenLoweringRuleTests
         // Act
         var cte = ReferenceTokenLoweringRule.Lower(composite, components, ContextResolving(composite, 404, "DocumentReference", 55), 55);
 
-        // Assert — (BaseUri1 = @p0 COLLATE BIN2 AND TypeId1 = @p1 AND Id1 = @p2) AND Code2 = @p3
+        // Assert — (BaseUri1 = @p0 AND TypeId1 = @p1 AND Id1 = @p2) AND Code2 = @p3
         var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var refOuterAnd = outer.Left.ShouldBeOfType<Predicate.And>();
         var refInnerAnd = refOuterAnd.Left.ShouldBeOfType<Predicate.And>();
 
-        // BaseUri1 = @p0 COLLATE Latin1_General_100_BIN2
+        // BaseUri1 = @p0
         var baseUriEqual = refInnerAnd.Left.ShouldBeOfType<Predicate.Equal>();
         baseUriEqual.Column.Column.ShouldBe("BaseUri1");
         baseUriEqual.Value.Value.ShouldBe("http://example.org/fhir/");
-        baseUriEqual.Collation.ShouldBe("Latin1_General_100_BIN2");
+        baseUriEqual.Collation.ShouldBeNull();
 
         // TypeId1 = @p1
         var typePredicate = refInnerAnd.Right.ShouldBeOfType<Predicate.Equal>();

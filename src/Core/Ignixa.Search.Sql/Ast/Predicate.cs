@@ -26,7 +26,12 @@ public abstract record Predicate
 
     public sealed record IsNull(SqlColumnRef Column) : Predicate;
 
-    public sealed record False : Predicate;
+    /// <summary>
+    /// A predicate that can never hold, emitted as <c>1 = 0</c>. <paramref name="Reason"/> names the value
+    /// that made it unsatisfiable (e.g. an unresolvable token system) so the trace can report a known miss
+    /// instead of leaving that fact discoverable only by reading the emitted SQL. It never affects emission.
+    /// </summary>
+    public sealed record False(string? Reason = null) : Predicate;
 
     public sealed record PrefixOfParameter(SqlColumnRef Column, SqlParameterRef Value, string? Collation = null) : Predicate;
 }

@@ -263,7 +263,7 @@ public class PlanExplainerTests
     }
 
     [Fact]
-    public void GivenAFalsePredicate_WhenExplained_ThenPrintsFalse()
+    public void GivenAFalsePredicate_WhenExplained_ThenPrintsTheSameUnsatisfiableLiteralTheSqlEmitterUses()
     {
         // Arrange
         var table = SqlCatalog.Default.Table("TokenSearchParam");
@@ -274,7 +274,7 @@ public class PlanExplainerTests
         var explained = plan.Explain();
 
         // Assert
-        explained.ShouldBe("root = TokenSearchParam[103,44]  false");
+        explained.ShouldBe("root = TokenSearchParam[103,44]  1 = 0");
     }
 
     [Fact]

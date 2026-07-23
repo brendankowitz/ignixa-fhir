@@ -97,15 +97,12 @@ public static class ResourceColumnLoweringRule
 
         if (predicate.Comparator == SearchComparator.Ap)
         {
-            // :ap is the one comparator that has a defined meaning for a partial-precision value --
-            // ApproximateDateRange.Widen (the same pure helper the date leaf/composite lowering uses)
-            // widens [Start, End] by the FHIR-recommended tolerance around context's fixed reference
-            // instant, and both widened endpoints are compared against the single ResourceSurrogateId
-            // point column via the same ToSurrogateId conversion the other comparators use below.
+            // :ap is the one comparator with a defined meaning for a partial-precision value, so it is
+            // handled before the exact-instant guard below rejects one.
             var (widenedStart, widenedEnd) = ApproximateDateRange.Widen(value, context.ApproximationReferenceTime);
             return new Predicate.And(
                 new Predicate.GreaterThanOrEqual(column, context.Parameter(ToSurrogateId(widenedStart))),
-                new Predicate.LessThanOrEqual(column, context.Parameter(ToSurrogateId(widenedEnd))));
+                new Predicate.LessThanOrEqual(column, context.Parameter(ToSurrogateIdUpperBound(widenedEnd))));
         }
 
         if (value.Start != value.End)
@@ -117,31 +114,76 @@ public static class ResourceColumnLoweringRule
                 "only ever compares against one already-resolved instant); deliberately deferred, not an oversight.");
         }
 
-        var targetId = ToSurrogateId(value.Start);
-        var targetParam = context.Parameter(targetId);
+        // A single instant addresses a whole millisecond bucket [floor, floor + 79999], because the
+        // database appends a uniquifier at write time. Every comparator is expressed against that closed
+        // range; comparing against the bare floor would match only uniquifier 0.
+        var lowerParam = context.Parameter(ToSurrogateId(value.Start));
+        var upperParam = context.Parameter(ToSurrogateIdUpperBound(value.Start));
 
         return predicate.Comparator switch
         {
-            SearchComparator.Eq => new Predicate.Equal(column, targetParam),
-            SearchComparator.Ne => new Predicate.Or(new Predicate.LessThan(column, targetParam), new Predicate.GreaterThan(column, targetParam)),
-            SearchComparator.Gt or SearchComparator.Sa => new Predicate.GreaterThan(column, targetParam),
-            SearchComparator.Ge => new Predicate.GreaterThanOrEqual(column, targetParam),
-            SearchComparator.Lt or SearchComparator.Eb => new Predicate.LessThan(column, targetParam),
-            SearchComparator.Le => new Predicate.LessThanOrEqual(column, targetParam),
+            SearchComparator.Eq => new Predicate.And(
+                new Predicate.GreaterThanOrEqual(column, lowerParam),
+                new Predicate.LessThanOrEqual(column, upperParam)),
+            SearchComparator.Ne => new Predicate.Or(
+                new Predicate.LessThan(column, lowerParam),
+                new Predicate.GreaterThan(column, upperParam)),
+            SearchComparator.Gt or SearchComparator.Sa => new Predicate.GreaterThan(column, upperParam),
+            SearchComparator.Ge => new Predicate.GreaterThanOrEqual(column, lowerParam),
+            SearchComparator.Lt or SearchComparator.Eb => new Predicate.LessThan(column, lowerParam),
+            SearchComparator.Le => new Predicate.LessThanOrEqual(column, upperParam),
             _ => throw new NotSupportedException($"Unknown SearchComparator '{predicate.Comparator}'."),
         };
     }
 
     /// <summary>
-    /// Converts an instant to the surrogate id used by ResourceSurrogateId. Millisecond-truncated UTC
-    /// ticks, left-shifted 3 bits — the low 3 bits hold a per-millisecond uniquifier the database
-    /// allocates at write time, which a search-time comparison does not need. Transcribed from the data
+    /// Largest uniquifier the database allocates within a single millisecond. dbo.ResourceSurrogateIdUniquifierSequence
+    /// is declared MAXVALUE 79999, so every resource written in millisecond <c>m</c> occupies the closed
+    /// range [ToSurrogateId(m), ToSurrogateId(m) + MaxUniquifier].
+    /// </summary>
+    private const long MaxUniquifier = 79999;
+
+    /// <summary>
+    /// Largest instant <see cref="ToSurrogateId"/> can encode without overflowing Int64, mirroring
+    /// Ignixa.Domain.Abstractions.IdHelper.MaxDateTime.
+    /// </summary>
+    private static readonly DateTimeOffset MaxEncodableInstant =
+        new DateTimeOffset(
+            new DateTime(long.MaxValue >> 3, DateTimeKind.Utc).Ticks / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond,
+            TimeSpan.Zero).AddTicks(-1);
+
+    /// <summary>
+    /// Converts an instant to the <em>inclusive lower</em> surrogate id for the millisecond containing it:
+    /// millisecond-truncated UTC ticks, left-shifted 3 bits. Because ticks = milliseconds × 10000, that
+    /// shift is arithmetically <c>msSince0001 × 80000</c> — the uniquifier is <em>not</em> held in the low
+    /// three bits; it occupies the [0, 79999] value range above this floor. Transcribed from the data
     /// layer's IdHelper.ToId (pure math, no dependencies), since this Core project cannot reference it.
     /// </summary>
+    /// <remarks>
+    /// Instants past <see cref="MaxEncodableInstant"/> saturate rather than throw. A left shift never
+    /// participates in <c>checked</c>, so an unguarded conversion would wrap negative and silently invert
+    /// the comparison. Saturating is also the semantically correct answer: no stored resource can carry a
+    /// lastUpdated beyond that instant, so clamping preserves the result set, and ApproximateDateRange
+    /// deliberately saturates its widened endpoints for wide :ap ranges.
+    /// </remarks>
     private static long ToSurrogateId(DateTimeOffset dateTimeOffset)
     {
+        if (dateTimeOffset >= MaxEncodableInstant)
+        {
+            return long.MaxValue - MaxUniquifier;
+        }
+
         var utc = dateTimeOffset.UtcDateTime;
         var truncatedTicks = utc.Ticks / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond;
         return truncatedTicks << 3;
     }
+
+    /// <summary>
+    /// Converts an instant to the <em>inclusive upper</em> surrogate id for the millisecond containing it.
+    /// Comparing against the bare floor would match only the single resource that happened to draw
+    /// uniquifier 0, silently dropping up to 79,999 rows per boundary millisecond. The upstream
+    /// GetResourcesByTypeAndSurrogateIdRange procedure applies the same <c>+ 79999</c> widening.
+    /// </summary>
+    private static long ToSurrogateIdUpperBound(DateTimeOffset dateTimeOffset)
+        => ToSurrogateId(dateTimeOffset) + MaxUniquifier;
 }

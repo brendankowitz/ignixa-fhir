@@ -317,6 +317,84 @@ public class SearchTraceTests
             SearchTraceFixtures.TracePatientNameSmithWithCancellationCheckAsync(cts.Token));
     }
 
+    [Fact]
+    public async Task GivenAParameterThatLoweredToAnUnsatisfiablePredicate_WhenTraced_ThenItIsReportedAsAKnownMiss()
+    {
+        // Arrange & Act — a token system no resource uses compiles cleanly but can never match, which is
+        // a property of the data, not a failure of the query; reporting it as Compiled would hide it.
+        var trace = await SearchTraceFixtures.TraceUnresolvableTokenSystemAsync();
+
+        // Assert
+        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var knownMiss = parameter.Outcome.ShouldBeOfType<ParameterOutcome.KnownMiss>();
+        knownMiss.Reason.ShouldBe("No resource uses the token system 'http://unknown.org/mrn'.");
+        knownMiss.Span.ShouldBe(new SourceSpan(SourceOrigin.Value, 0, 31));
+        trace.Failure.ShouldBeNull();
+        trace.Plan.ShouldNotBeNull();
+        trace.Sql.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenOneSatisfiableAndOneUnsatisfiableParameter_WhenTraced_ThenOnlyTheUnsatisfiableOneIsAKnownMiss()
+    {
+        // Arrange & Act
+        var trace = await SearchTraceFixtures.TraceSatisfiableAndUnresolvableTokenSystemAsync();
+
+        // Assert — the miss is attributed to its own parameter, and the other stays Compiled
+        trace.Parameters.Count.ShouldBe(2);
+        trace.Parameters[0].Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        var knownMiss = trace.Parameters[1].Outcome.ShouldBeOfType<ParameterOutcome.KnownMiss>();
+        knownMiss.Reason.ShouldBe("No resource uses the token system 'http://unknown.org/mrn'.");
+        knownMiss.Span.ShouldBe(new SourceSpan(SourceOrigin.Value, 10, 28));
+    }
+
+    [Fact]
+    public async Task GivenAllParametersSatisfiable_WhenTraced_ThenNoneAreReportedAsAKnownMiss()
+    {
+        // Arrange & Act
+        var trace = await SearchTraceFixtures.TracePatientActiveTrueAsync();
+
+        // Assert
+        trace.Parameters.ShouldAllBe(p => !(p.Outcome is ParameterOutcome.KnownMiss));
+    }
+
+    [Fact]
+    public async Task GivenAMovingClock_WhenCompiled_ThenTheReferenceInstantIsReadExactlyOnceSoEveryConsumerSeesTheSameValue()
+    {
+        // Arrange -- a clock that advances a day on every read. Against the fixed provider used above,
+        // a compile that read the clock twice would still widen consistently and only trip the call
+        // count; here a second read genuinely returns a different instant, so "captured once" and "every
+        // consumer saw the same instant" become the same assertion rather than two hopeful ones.
+        var provider = new IncrementingTimeProvider(new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero), TimeSpan.FromDays(1));
+
+        // Act
+        var trace = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+
+        // Assert
+        provider.CallCount.ShouldBe(1);
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.DateTimeSearchParam\n" +
+            "    WHERE ResourceTypeId = 104 AND SearchParamId = 203 AND (StartDateTime <= @p0 AND EndDateTime >= @p1)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+    }
+
+    /// <summary>
+    /// Returns a different instant on every <see cref="GetUtcNow"/> call, so a compile that captures the
+    /// reference time more than once cannot silently agree with itself.
+    /// </summary>
+    private sealed class IncrementingTimeProvider(DateTimeOffset start, TimeSpan step) : TimeProvider
+    {
+        public int CallCount { get; private set; }
+
+        public override DateTimeOffset GetUtcNow() => start + (step * CallCount++);
+    }
+
     private sealed class CountingFixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public int CallCount { get; private set; }
