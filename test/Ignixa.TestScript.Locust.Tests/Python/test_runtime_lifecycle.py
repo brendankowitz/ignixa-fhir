@@ -111,29 +111,12 @@ class RuntimeLifecycleTests(unittest.TestCase):
     # Action dispatcher scaffold
     # ------------------------------------------------------------------
 
-    def test_execute_action_dispatches_operation_kind_to_operation_executor(self):
-        # Task 8 replaced the operation placeholder (which always raised) with
-        # a real executor; the dispatcher now simply routes "operation"
-        # actions to it and returns whatever it produces. Full operation
-        # execution semantics are covered by test_runtime_operations.py --
-        # here we only prove the dispatch wiring, via a substitute executor,
-        # so this suite keeps running under bare Python 3.9 with no
-        # third-party imports.
-        calls = []
-
-        def fake_execute_operation(document, user, context, action):
-            calls.append(action["id"])
-            return {"applicable": True, "failed": False}
-
-        self.runtime._execute_operation = fake_execute_operation
-
+    def test_execute_action_default_dispatch_raises_for_operation(self):
         context = self.runtime._new_context(_document(), {"iteration": 0, "ordinal": 0})
-        result = self.runtime._execute_action(
-            _document(), fakes.FakeUser(client=None), context, _action("op-1", kind="operation")
-        )
-
-        self.assertEqual(["op-1"], calls)
-        self.assertEqual({"applicable": True, "failed": False}, result)
+        with self.assertRaises(RuntimeError):
+            self.runtime._execute_action(
+                _document(), fakes.FakeUser(client=None), context, _action("op-1", kind="operation")
+            )
 
     def test_execute_action_default_dispatch_raises_for_assertion(self):
         context = self.runtime._new_context(_document(), {"iteration": 0, "ordinal": 0})
