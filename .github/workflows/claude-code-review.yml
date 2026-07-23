@@ -12,11 +12,14 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Fork PRs cannot run this job: GitHub withholds repository secrets from
+    # `pull_request` runs raised from a fork and downgrades GITHUB_TOKEN to
+    # read-only, so `id-token: write` below is denied and the action fails
+    # with a misleading "Did you remember to add `id-token: write`?" error.
+    # Skip cleanly instead of red-X'ing every external contribution; review a
+    # fork PR on demand by commenting `@claude` on it, which runs claude.yml in
+    # the base-repo context where secrets are available.
+    if: github.event.pull_request.head.repo.full_name == github.repository
 
     runs-on: ubuntu-latest
     permissions:
