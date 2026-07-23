@@ -41,6 +41,45 @@ public class TokenTextLoweringRuleTests
     }
 
     [Fact]
+    public void GivenAContainsTextModifiedToken_WhenLowered_ThenUsesAContainsLikeMatch()
+    {
+        // Arrange -- Observation?code:text:contains=aux binds to a StringExpression with StringOperator.Contains.
+        // The Contains arm of the operator switch is distinct from StartsWith and would silently regress if
+        // mis-mapped, so it is pinned separately.
+        var parameter = CodeParameter();
+        var tree = new SearchParameterExpression(
+            parameter,
+            new StringExpression(StringOperator.Contains, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
+
+        // Act
+        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ParamSource>();
+        source.Table.TableName.ShouldBe("TokenText");
+        source.Predicate.ShouldBeOfType<Predicate.Like>().Match.ShouldBe(LikeMatch.Contains);
+    }
+
+    [Fact]
+    public void GivenATextModifiedToken_WhenEmitted_ThenEmitsNoCollateBecauseTheColumnIsAlreadyCaseInsensitive()
+    {
+        // Arrange -- dbo.TokenText.Text is declared Latin1_General_CI_AI, so :text gets its case- and
+        // accent-insensitive match from the column's own collation. Forcing a COLLATE would make the
+        // predicate non-sargable against that table's index, so the rule deliberately emits none.
+        var parameter = CodeParameter();
+        var tree = new SearchParameterExpression(
+            parameter,
+            new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
+        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldNotContain("COLLATE");
+    }
+
+    [Fact]
     public void GivenATextModifiedToken_WhenEmitted_ThenExcludesHistoryRowsAndBindsTheValue()
     {
         // Arrange -- unlike every other leaf table, dbo.TokenText carries its own IsHistory column, so a

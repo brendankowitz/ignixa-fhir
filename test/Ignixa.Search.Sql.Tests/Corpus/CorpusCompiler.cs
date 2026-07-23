@@ -3,6 +3,7 @@ using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Tracing;
+using Ignixa.Serialization.Abstractions;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -34,7 +35,7 @@ public static class CorpusCompiler
         {
             parameters = QueryParser.Parse(entry.QueryString);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (IsExpressibilityFailure(exception))
         {
             return CorpusCompilation.Failed(entry, "query-parse", exception.Message);
         }
@@ -61,7 +62,7 @@ public static class CorpusCompiler
 
             return CorpusCompilation.Compiled(entry, trace.Sql.Sql);
         }
-        catch (Exception exception)
+        catch (Exception exception) when (IsExpressibilityFailure(exception))
         {
             // SearchCompiler records Lower/Emit NotSupported and KeyNotFound as trace failures, but the
             // build stage ahead of it (search-parameter binding, value parsing) still throws. Those are
@@ -69,6 +70,21 @@ public static class CorpusCompiler
             return CorpusCompilation.Failed(entry, StageOf(exception), exception.Message);
         }
     }
+
+    /// <summary>
+    /// Whether an exception means "the compiler cannot express this query" (a corpus data point) rather
+    /// than a defect in the compiler itself. A NullReferenceException, an IndexOutOfRangeException, or any
+    /// other unexpected type is a real bug and must fail the test loudly instead of being recorded as a
+    /// known expressiveness limit; OperationCanceledException must propagate so cooperative cancellation
+    /// still works. Only the four families the build/lower/emit stages throw for genuinely-unsupported
+    /// input are treated as data.
+    /// </summary>
+    private static bool IsExpressibilityFailure(Exception exception) => exception switch
+    {
+        OperationCanceledException => false,
+        NotSupportedException or KeyNotFoundException or FhirException => true,
+        _ => false,
+    };
 
     private static string StageOf(Exception exception) => exception switch
     {

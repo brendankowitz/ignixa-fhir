@@ -1251,6 +1251,27 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenANotReferencedSourceWithSourceTypeButNoPath_WhenEmitted_ThenFiltersOnSourceTypeButNotSearchParamId()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:* -- source type 96, no reference path. The
+        // anti-join narrows to references originating from Observation, but not to any single path.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, null)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId\n" +
+            "          AND rsp.ResourceTypeId = 96)\n");
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+    }
+
+    [Fact]
     public void GivenANotReferencedSourceFullWildcard_WhenEmitted_ThenTheAntiJoinFiltersOnlyOnTargetIdentity()
     {
         // Arrange -- Patient?_not-referenced=*:* -- a Patient referenced by nothing at all.

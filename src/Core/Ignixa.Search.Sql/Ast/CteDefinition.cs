@@ -50,6 +50,13 @@ public abstract record CteDefinition
     /// anti-join to references originating from one resource type (<c>_not-referenced=Type:*</c>), and
     /// <paramref name="ReferenceSearchParamId"/> further to one reference path (<c>Type:path</c>); both null
     /// is the full wildcard (<c>*:*</c>), matching a resource referenced by nothing at all.
+    /// <para>
+    /// Invariant: <paramref name="ReferenceSearchParamId"/> implies <paramref name="SourceResourceTypeId"/>
+    /// — the three valid forms are <c>*:*</c>, <c>Type:*</c>, and <c>Type:path</c>; there is no
+    /// <c>*:path</c>. The sole producer (<c>StructuralContext.LowerNotReferenced</c>) upholds it structurally
+    /// by deriving the reference-path id only when the source type is present, matching the sibling records'
+    /// convention of trusting Lower rather than self-validating.
+    /// </para>
     /// </summary>
     public sealed record NotReferencedSource(
         short TargetResourceTypeId,

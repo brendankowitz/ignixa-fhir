@@ -61,6 +61,13 @@ public sealed class StructuralContext
     {
         var targetTypeId = _leafContext.ResourceTypeId(resourceType);
 
+        // A source type the resolver could not find yields UnmatchableResourceTypeId (-1), which Emit
+        // renders as `rsp.ResourceTypeId = -1` inside the anti-join subquery. No row has that id, so the
+        // inner EXISTS is empty and NOT EXISTS is vacuously true -- every target passes. That is the
+        // OPPOSITE of the sentinel's effect in a positive position (an empty match), yet it is the correct
+        // answer here: a source type that does not exist has no reference rows, so no target is referenced
+        // by it, so all targets are "not referenced by it". The unmatchable target type at the outer scan
+        // still (correctly) matches nothing.
         short? sourceTypeId = expression.SourceResourceType is { } sourceType
             ? _leafContext.ResourceTypeId(sourceType)
             : null;

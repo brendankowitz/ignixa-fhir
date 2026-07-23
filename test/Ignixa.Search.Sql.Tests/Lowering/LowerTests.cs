@@ -924,6 +924,33 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenASingleValuedNegatedIdParameter_WhenLowered_ThenLiftsABarePredicateUnderNotIntoTheOuterWhere()
+    {
+        // Arrange -- Patient?_id:not=a. The binder still wraps a single value as NotExpression(Or([_id=a])),
+        // so the outer predicate is Not(Equal) directly (a bare predicate under Not), a distinct shape from
+        // the multi-value Not(Or(...)) case. Pins that the one-element Or collapses to the equality without
+        // a spurious Or wrapper.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new NotExpression(Expression.Or(
+            [
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null)),
+            ])));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
+        not.Operand.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+    }
+
+    [Fact]
     public void GivenANotReferencedSourceAndPath_WhenLowered_ThenProducesANotReferencedSourceCteWithResolvedIds()
     {
         // Arrange -- Patient?_not-referenced=Observation:subject.

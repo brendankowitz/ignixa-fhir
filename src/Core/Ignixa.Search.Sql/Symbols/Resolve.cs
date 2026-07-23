@@ -133,10 +133,13 @@ public static class Resolve
 
     /// <summary>
     /// Resolves each <c>_not-referenced=Type:path</c> pair to its reference search parameter and adds that
-    /// parameter to the collector so it gets a SearchParamId like any other. A pair whose path is unknown,
-    /// carries no Url, or is not a reference-type parameter is dropped rather than recorded: Lower then
-    /// falls back to a path-agnostic (source-type-only) anti-join, which is the shipping engine's behaviour
-    /// for an unresolvable path. Returns null when there are no pairs, so the common case allocates nothing.
+    /// parameter to the collector so it gets a SearchParamId like any other. A pair whose path the resolver
+    /// cannot find, that carries no Url, or that is not a reference-type parameter is dropped rather than
+    /// recorded: Lower then falls back to a path-agnostic (source-type-only) anti-join, which is the shipping
+    /// engine's lenient behaviour for an unresolvable path. A missing definition manager is a different case
+    /// -- a required dependency was not supplied -- and throws rather than silently degrading every path
+    /// filter, mirroring <see cref="ResolveCompartmentMembership"/>. Returns null when there are no pairs, so
+    /// the common case allocates nothing.
     /// </summary>
     private static Dictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo>? ResolveNotReferencedPaths(
         SymbolCollectingVisitor collector,
@@ -147,6 +150,15 @@ public static class Resolve
             return null;
         }
 
+        if (searchParameterDefinitionManager is null)
+        {
+            throw new InvalidOperationException(
+                "Resolve encountered a _not-referenced path filter (Type:path) but no " +
+                "ISearchParameterDefinitionManager was supplied -- it is required to resolve the reference " +
+                "path. Silently omitting it would widen the anti-join to a path-agnostic one, returning more " +
+                "resources than the query asked for.");
+        }
+
         var resolved = new Dictionary<(string, string), SearchParameterInfo>();
         foreach (var (sourceType, path) in collector.NotReferencedPaths)
         {
@@ -155,8 +167,7 @@ public static class Resolve
                 continue;
             }
 
-            if (searchParameterDefinitionManager is null
-                || !searchParameterDefinitionManager.TryGetSearchParameter(sourceType, path, out var parameter)
+            if (!searchParameterDefinitionManager.TryGetSearchParameter(sourceType, path, out var parameter)
                 || parameter.Type != SearchParamType.Reference
                 || parameter.Url is null)
             {
