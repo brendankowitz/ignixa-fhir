@@ -27,6 +27,9 @@ public sealed class LeafContext
 
     public IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)> CompartmentMembership(string compartmentType) => _symbols.CompartmentMembership(compartmentType);
 
+    /// <inheritdoc cref="SymbolTable.NotReferencedPath"/>
+    public SearchParameterInfo? NotReferencedPath(string sourceResourceType, string referencePath) => _symbols.NotReferencedPath(sourceResourceType, referencePath);
+
     /// <inheritdoc cref="SymbolTable.SystemId"/>
     public int? SystemId(string system) => _symbols.SystemId(system);
 

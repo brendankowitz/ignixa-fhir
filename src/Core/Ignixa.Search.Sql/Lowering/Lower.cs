@@ -113,6 +113,7 @@ public static class Lower
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
+        NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };

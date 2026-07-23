@@ -892,4 +892,92 @@ public class LowerTests
         plan.OuterPredicate.ShouldNotBeNull();
         plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
     }
+
+    [Fact]
+    public void GivenANotReferencedSourceAndPath_WhenLowered_ThenProducesANotReferencedSourceCteWithResolvedIds()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var tree = new NotReferencedExpression("Observation", "subject");
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 969 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 },
+            notReferencedPaths: new Dictionary<(string, string), SearchParameterInfo> { [("Observation", "subject")] = subjectParam });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        source.TargetResourceTypeId.ShouldBe((short)103);
+        source.SourceResourceTypeId.ShouldBe((short)96);
+        source.ReferenceSearchParamId.ShouldBe((short)969);
+    }
+
+    [Fact]
+    public void GivenAFullWildcardNotReferenced_WhenLowered_ThenNeitherSourceNorPathIsSet()
+    {
+        // Arrange -- Patient?_not-referenced=*:*.
+        var tree = new NotReferencedExpression(sourceResourceType: null, referencePath: null);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        source.TargetResourceTypeId.ShouldBe((short)103);
+        source.SourceResourceTypeId.ShouldBeNull();
+        source.ReferenceSearchParamId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAPathWildcardNotReferenced_WhenLowered_ThenSourceIsSetButPathIsNot()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:* -- source type narrows the anti-join, but no
+        // single reference path does.
+        var tree = new NotReferencedExpression("Observation", referencePath: null);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        source.SourceResourceTypeId.ShouldBe((short)96);
+        source.ReferenceSearchParamId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenANotReferencedAndedWithAnIdentifier_WhenLowered_ThenIntersectsTheAntiJoinWithTheParamSource()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject&identifier=... -- the anti-join composes
+        // with an ordinary predicate the same way any two leaves do.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new NotReferencedExpression("Observation", "subject"),
+            new SearchParameterExpression(
+                identifierParam,
+                new SearchParameterPredicateExpression(identifierParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://ignixa.io/testscript/suite/ms-not-referenced", code: null, text: null))),
+        ]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 969, [identifierParam.Url.ToString()] = 1013 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 },
+            notReferencedPaths: new Dictionary<(string, string), SearchParameterInfo> { [("Observation", "subject")] = subjectParam },
+            systemIds: new Dictionary<string, int?> { ["http://ignixa.io/testscript/suite/ms-not-referenced"] = 5 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
+    }
 }

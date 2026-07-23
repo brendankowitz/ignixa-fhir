@@ -6,11 +6,11 @@
 
 | Verdict | Count |
 |---|---:|
-| NotCompiled | 11 |
+| NotCompiled | 8 |
 | Match | 69 |
-| CompilerDoesLess | 43 |
+| CompilerDoesLess | 44 |
 | CompilerDoesMore | 14 |
-| Divergent | 48 |
+| Divergent | 50 |
 
 ## Gaps -- queries the compiler cannot express
 
@@ -21,21 +21,17 @@
   - `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$107%7Chttp://unitsofmeasure.org%7Cmm%5BHg%5D&identifier=http://ignixa.io/testscript/suite/composite%7C`
   - `/Observation?combo-code-value-quantity=http://loinc.org%7C8480-6$120%7Chttp://unitsofmeasure.org%7CmmHg&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
 
-### Lower (4)
-
-- **3x** Lower does not support NotReferencedExpression yet -- see this plan's scope notes.
-  - `/Patient?_not-referenced=*:*&identifier=http://ignixa.io/testscript/suite/ms-not-referenced%7C&_count=100`
-  - `/Patient?_not-referenced=Observation:*&identifier=http://ignixa.io/testscript/suite/ms-not-referenced%7C&_count=100`
-  - `/Patient?_not-referenced=Observation:subject&identifier=http://ignixa.io/testscript/suite/ms-not-referenced%7C&_count=100`
-- **1x** A resource-column predicate ('_id') reached the leaf/composite dispatch — only Lower.Run's top-level extraction pass (via ResourceColumnLoweringRule) handles these. Guarding here, at the dispatch choke point, covers every caller of Lower/LowerComposite structurally. Throwing rather than routing a resource column into an unrelated table, which would silently produce a wrong-scope or always-empty match.
-  - `/Observation?identifier=http://ignixa.io/testscript/suite/token%7C&_id:not=ignixa-tok-o1,ignixa-tok-o2&_count=100`
-
 ### build:InvalidSearchOperationException (3)
 
 - **3x** The _include search is missing the type to search.
   - `/Patient?_id=ignixa-inc-pat1&_include=*`
   - `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*`
   - `/Patient?_id=ignixa-inco-p1&_include=*&_revinclude=*&_includesCount=1`
+
+### Lower (1)
+
+- **1x** A resource-column predicate ('_id') reached the leaf/composite dispatch — only Lower.Run's top-level extraction pass (via ResourceColumnLoweringRule) handles these. Guarding here, at the dispatch choke point, covers every caller of Lower/LowerComposite structurally. Throwing rather than routing a resource column into an unrelated table, which would silently produce a wrong-scope or always-empty match.
+  - `/Observation?identifier=http://ignixa.io/testscript/suite/token%7C&_id:not=ignixa-tok-o1,ignixa-tok-o2&_count=100`
 
 ## Divergences -- compiled, but asks the database for something different
 
@@ -778,6 +774,36 @@ cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,
 compiler:
 select0 = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join,order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+```
+
+</details>
+
+### CompilerDoesLess: `/Patient?_not-referenced=*:*&identifier=http://ignixa.io/testscript/suite/ms-not-referenced%7C&_count=100`
+
+Only the shipping engine does:
+- `filter IsHistory = <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op distinct`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p
+cte1 = Resource+sub:ReferenceSearchParam  <-cte0  IsDeleted = <n> IsHistory = <n> IsHistory = <n> ResourceTypeId = <n>  [correlate,correlate,correlate,correlate,exists,exists,not]
+cte2 = <-cte1  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = Resource+sub:ReferenceSearchParam  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p  [correlate,correlate,exists,not]
+cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
 
 </details>
@@ -3097,6 +3123,74 @@ cte2 = <-cte1  [distinct,order-by,top]
 compiler:
 select0 = Resource  <-cte0  ResourceId = @p  [correlate,correlate,inner-join,order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+```
+
+</details>
+
+### Divergent: `/Patient?_not-referenced=Observation:*&identifier=http://ignixa.io/testscript/suite/ms-not-referenced%7C&_count=100`
+
+Only the shipping engine does:
+- `filter IsHistory = <v>`
+- `filter SourceResourceTypeId = <v>`
+
+Only the compiler does:
+- `filter ResourceTypeId = <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op distinct`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p
+cte1 = Resource+sub:ReferenceSearchParam  <-cte0  IsDeleted = <n> IsHistory = <n> IsHistory = <n> ResourceTypeId = <n> sub:SourceResourceTypeId = <n>  [correlate,correlate,correlate,correlate,exists,exists,not]
+cte2 = <-cte1  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = Resource+sub:ReferenceSearchParam  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p sub:ResourceTypeId = <n>  [correlate,correlate,exists,not]
+cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
+```
+
+</details>
+
+### Divergent: `/Patient?_not-referenced=Observation:subject&identifier=http://ignixa.io/testscript/suite/ms-not-referenced%7C&_count=100`
+
+Only the shipping engine does:
+- `filter IsHistory = <v>`
+- `filter SourceResourceTypeId = <v>`
+
+Only the compiler does:
+- `filter ResourceTypeId = <v>`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x2)`
+- `legacy: op distinct`
+- `legacy: op exists`
+- `legacy: op order-by`
+- `legacy: op top`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte0 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p
+cte1 = Resource+sub:ReferenceSearchParam  <-cte0  IsDeleted = <n> IsHistory = <n> IsHistory = <n> ResourceTypeId = <n> sub:SearchParamId = <n> sub:SourceResourceTypeId = <n>  [correlate,correlate,correlate,correlate,exists,exists,not]
+cte2 = <-cte1  [distinct,order-by,top]
+
+compiler:
+select0 = <-cte2  [order-by]
+cte0 = Resource+sub:ReferenceSearchParam  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p sub:ResourceTypeId = <n> sub:SearchParamId = <n>  [correlate,correlate,exists,not]
+cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
+cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
 
 </details>

@@ -265,6 +265,7 @@ public static class SqlBuilder
             $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
+        CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -507,6 +508,37 @@ public static class SqlBuilder
            $"    WHERE SearchParamId = {cs.SearchParamId}\n" +
            $"      AND {EmitTypeInFilter("ResourceTypeId", cs.ResourceTypeIds)}\n" +
            $"      AND {EmitPredicate(cs.Predicate, parameters)}";
+
+    /// <summary>
+    /// Renders a NotReferencedSource: current, non-deleted rows of dbo.Resource for the target type that
+    /// no dbo.ReferenceSearchParam row points at. The anti-join correlates on reference-target identity
+    /// (ReferenceResourceId/ReferenceResourceTypeId against the candidate's own ResourceId/ResourceTypeId),
+    /// optionally narrowed to references originating from one source type and/or one reference path. Only
+    /// the target type is bound (as ResourceSource binds its own); the inner ids are schema surrogates,
+    /// inlined like every other schema id.
+    /// </summary>
+    private static string EmitNotReferencedSource(CteDefinition.NotReferencedSource nr, List<EmittedSqlParameter> parameters)
+    {
+        var innerFilters = string.Empty;
+        if (nr.SourceResourceTypeId is { } sourceTypeId)
+        {
+            innerFilters += $"\n          AND rsp.ResourceTypeId = {sourceTypeId}";
+        }
+
+        if (nr.ReferenceSearchParamId is { } refParamId)
+        {
+            innerFilters += $"\n          AND rsp.SearchParamId = {refParamId}";
+        }
+
+        return $"    SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+               $"    FROM dbo.Resource r\n" +
+               $"    WHERE r.ResourceTypeId = {EmitParam(new SqlParameterRef(nr.TargetResourceTypeId), parameters)} AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+               $"      AND NOT EXISTS (\n" +
+               $"        SELECT 1\n" +
+               $"        FROM dbo.ReferenceSearchParam rsp\n" +
+               $"        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+               $"          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId{innerFilters})";
+    }
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
