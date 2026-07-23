@@ -6,7 +6,9 @@ using Ignixa.DataLayer.SqlServer.Search;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using SearchIndexEntry = Ignixa.Search.Indexing.SearchIndexEntry;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -80,15 +82,27 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
 
     private static readonly SortExpression FamilyAscending = new(FamilyParameter, SortOrder.Ascending);
 
+    // The bare ResourceWrapper constructor leaves SearchIndices null -- production indexing
+    // (CreateOrUpdateResourceHandler.CreateResourceWrapper) computes it via ISearchIndexer.Extract
+    // BEFORE calling the repository. This test project doesn't wire a full ISearchIndexer into its
+    // fixtures, so a hand-built SearchIndexEntry/StringSearchValue is the established substitute --
+    // SqlServerMergeRepositoryTests.cs and SqlServerFhirRepositoryCrudTests.cs already use this exact
+    // pattern for the same reason. IsMin/IsMax are both set true because each patient here has a
+    // single family value: ElementSearchIndexer.MarkMinMaxValues marks a lone value as both the min
+    // and the max for its search parameter, and the Valued phase's join seeks on IsMin = 1.
     private async Task CreatePatientWithFamilyAsync(string resourceId, string family)
     {
+        var familyValue = new StringSearchValue(family) { IsMin = true, IsMax = true };
         var resource = new ResourceWrapper(
             "Patient",
             resourceId,
             "1",
             DateTimeOffset.UtcNow,
             ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{resourceId}}","name":[{"family":"{{family}}"}]}"""),
-            new ResourceRequest("PUT", $"Patient/{resourceId}"));
+            new ResourceRequest("PUT", $"Patient/{resourceId}"))
+        {
+            SearchIndices = [new SearchIndexEntry(FamilyParameter, familyValue)]
+        };
 
         await _database.Repository.CreateOrUpdateAsync(resource, CancellationToken.None);
     }
@@ -118,6 +132,31 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
         {
             await CreatePatientWithoutFamilyAsync($"sort-{tag}-missing-{i}");
         }
+
+        await AssertFamilyIndexedIntoStringSearchParamAsync(tag);
+    }
+
+    /// <summary>
+    /// Regression guard for the defect this fixture originally had: with SearchIndices left null,
+    /// CreateOrUpdateAsync silently indexes nothing, the Valued phase's join always matches zero
+    /// rows, and both tests below pass by numeric coincidence against a single unified
+    /// MissingPrimary-only pool rather than a genuine Valued/MissingPrimary split. Fails fast with a
+    /// diagnostic message instead of letting that regress silently.
+    /// </summary>
+    private async Task AssertFamilyIndexedIntoStringSearchParamAsync(string tag)
+    {
+        var familySearchParamId = await _database.ExecuteScalarAsync<int>(
+            $"SELECT SearchParamId FROM dbo.SearchParam WHERE Uri = '{FamilyParameter.Url}'");
+
+        var indexedRowCount = await _database.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.StringSearchParam sp " +
+            "INNER JOIN dbo.Resource r ON r.ResourceSurrogateId = sp.ResourceSurrogateId " +
+            $"WHERE sp.SearchParamId = {familySearchParamId} AND r.ResourceId LIKE 'sort-{tag}-valued-%' AND r.IsHistory = 0");
+
+        indexedRowCount.ShouldBe(
+            10,
+            "no rows in dbo.StringSearchParam for the family SearchParamId -- the 10 \"with family\" " +
+            "patients weren't indexed, so the two-phase Valued/MissingPrimary split isn't being genuinely exercised.");
     }
 
     [Fact]
