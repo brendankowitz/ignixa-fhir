@@ -339,14 +339,20 @@ public static class Lower
         return single is null ? (expression, null) : (null, single);
     }
 
-    /// <summary>Returns the resource-column predicate for a single wrapped leaf, or an Or of same-column
-    /// equalities for a wrapped comma-separated value list (e.g. _type=Patient,Observation), or null if
-    /// the expression is neither.</summary>
+    /// <summary>Returns the resource-column predicate for a single wrapped leaf, a negated one (e.g.
+    /// _id:not=a, _id:not=a,b -- see <see cref="TryLowerResourceColumn"/>), or an Or of same-column
+    /// equalities for a wrapped positive comma-separated value list (e.g. _type=Patient,Observation), or
+    /// null if the expression is none of those.</summary>
     private static Predicate? TryExtractResourceColumnPredicate(Expression expression, LeafContext leafContext)
     {
         if (expression is SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate })
         {
             return ResourceColumnLoweringRule.TryLower(predicate, leafContext);
+        }
+
+        if (expression is SearchParameterExpression { Expression: NotExpression not })
+        {
+            return TryLowerResourceColumn(not, leafContext);
         }
 
         if (expression is SearchParameterExpression { Expression: MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or }
