@@ -42,13 +42,13 @@ public sealed class EmptyResultComposabilityTests : IDisposable
         _context = new FhirDbContext(options);
     }
 
-    public static TheoryData<string> SetOperators() =>
-    [
+    public static TheoryData<string> SetOperators() => new()
+    {
         "Except",
         "Union",
         "Intersect",
         "Concat",
-    ];
+    };
 
     [Theory]
     [MemberData(nameof(SetOperators))]
