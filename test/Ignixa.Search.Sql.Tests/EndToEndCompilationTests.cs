@@ -1747,7 +1747,10 @@ public class EndToEndCompilationTests
 
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain($"SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte{plan.Match.Index} m");
-        emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC, m.Sid1 ASC");
+        // m.Sid1 ASC appears once: it is LastUpdated's own sort-key value expression, so the trailing
+        // tiebreak's Sid1 term is correctly suppressed to avoid a duplicate ORDER BY column (SQL Server
+        // Msg 145) -- see SqlBuilder.EmitOrderBy.
+        emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC");
     }
 
     [Fact]

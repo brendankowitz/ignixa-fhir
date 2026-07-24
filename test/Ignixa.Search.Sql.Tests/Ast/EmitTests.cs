@@ -668,7 +668,10 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldNotContain("JOIN dbo.");
         emitted.Sql.ShouldContain("SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte0 m\n");
-        emitted.Sql.ShouldContain("ORDER BY m.Sid1 DESC, m.T1 ASC, m.Sid1 ASC");
+        // The trailing tiebreak's Sid1 term is suppressed here: m.Sid1 is already LastUpdated's own
+        // sort-key value expression, so repeating it would duplicate a column in the ORDER BY list (SQL
+        // Server Msg 145) -- see SqlBuilder.EmitOrderBy.
+        emitted.Sql.ShouldContain("ORDER BY m.Sid1 DESC, m.T1 ASC");
     }
 
     [Fact]

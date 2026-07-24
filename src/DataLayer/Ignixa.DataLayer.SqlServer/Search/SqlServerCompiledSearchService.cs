@@ -360,7 +360,14 @@ public sealed class SqlServerCompiledSearchService(
             reader => ReadMatchRow(reader, hasIncludes),
             cancellationToken);
 
-        var surrogateIds = rows.Select(r => (r.ResourceTypeId, r.SurrogateId)).ToList();
+        // Distinct: a resource can legitimately appear more than once in the raw row set when multiple
+        // include/iterate stages independently resolve the same (ResourceTypeId, SurrogateId) -- e.g. a
+        // multitype array reference matched by more than one join path. Without this, FetchResourcesAsync's
+        // VALUES-table-constructor batch would carry duplicate keys, and the fetched.ToDictionary below
+        // would throw ArgumentException on the second occurrence. A FHIR bundle should only ever contain
+        // one entry per resource anyway, so collapsing to distinct identities here is correct, not just
+        // crash-avoidance.
+        var surrogateIds = rows.Select(r => (r.ResourceTypeId, r.SurrogateId)).Distinct().ToList();
 
         foreach (var batch in surrogateIds.Chunk(100))
         {

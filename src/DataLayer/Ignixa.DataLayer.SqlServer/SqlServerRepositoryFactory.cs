@@ -1,6 +1,8 @@
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
+using Ignixa.DataLayer.SqlServer.Search;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Search.Definition;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 
@@ -55,5 +57,27 @@ public static class SqlServerRepositoryFactory
         return new SqlServerFhirRepository(
             sqlExecutionService, tenantId, compressor, cache, mergeRepository,
             loggerFactory.CreateLogger<SqlServerFhirRepository>());
+    }
+
+    public static ISearchService CreateSearchService(
+        ISqlExecutionService sqlExecutionService,
+        int tenantId,
+        SqlServerSearchIndexReferenceDataCache cache,
+        ICompartmentDefinitionManager compartmentDefinitionManager,
+        ISearchParameterDefinitionManager searchParameterDefinitionManager,
+        RecyclableMemoryStreamManager memoryStreamManager,
+        ILoggerFactory loggerFactory)
+    {
+        var compressor = new GzipResourceCompressor(memoryStreamManager);
+        var symbolResolver = new SqlServerSymbolResolver(cache);
+
+        return new SqlServerCompiledSearchService(
+            sqlExecutionService,
+            tenantId,
+            symbolResolver,
+            compartmentDefinitionManager,
+            searchParameterDefinitionManager,
+            compressor,
+            loggerFactory.CreateLogger<SqlServerCompiledSearchService>());
     }
 }

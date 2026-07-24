@@ -370,77 +370,19 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             SqlServerRepositoryFactory.CreateRepository(
                 _sqlExecutionService, tenantId, sqlServerSearchIndexCache, _memoryStreamManager, _loggerFactory);
 
-        // Create factory delegate for SearchService (accepts DbContext and Repository parameters)
-        Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (dbContext, repository) =>
-        {
-            var compressor = new GzipResourceCompressor(_memoryStreamManager);
-
-            var compositeQueryGenerator = new Search.CompositeSearchParameterQueryGenerator(
-                dbContext,
-                searchIndexCache,
-                _loggerFactory.CreateLogger<Search.CompositeSearchParameterQueryGenerator>());
-
-            var parameterQueryGenerator = new Search.SearchParameterQueryGenerator(
-                dbContext,
-                searchIndexCache,
-                _loggerFactory.CreateLogger<Search.SearchParameterQueryGenerator>(),
-                compositeQueryGenerator);
-
-            var chainedExpressionProcessor = new Search.ChainedExpressionProcessor(
-                dbContext,
-                searchIndexCache,
-                parameterQueryGenerator,
-                _loggerFactory.CreateLogger<Search.ChainedExpressionProcessor>());
-
-            var compartmentQueryGenerator = new Search.CompartmentSearchQueryGenerator(
-                dbContext,
-                searchIndexCache,
-                compartmentManager,
-                parameterManager,
-                _loggerFactory.CreateLogger<Search.CompartmentSearchQueryGenerator>());
-
-            var patientEverythingQueryGenerator = new Search.PatientEverythingQueryGenerator(
-                dbContext,
-                compartmentQueryGenerator,
-                _loggerFactory.CreateLogger<Search.PatientEverythingQueryGenerator>());
-
-            var queryBuilder = new Search.SearchExpressionQueryBuilder(
-                dbContext,
-                parameterQueryGenerator,
-                chainedExpressionProcessor,
-                compartmentQueryGenerator,
-                patientEverythingQueryGenerator,
-                parameterManager,
-                _loggerFactory.CreateLogger<Search.SearchExpressionQueryBuilder>());
-
-            var includeProcessor = new Search.IncludeProcessor(
-                dbContext,
-                searchIndexCache,
-                compressor,
-                _loggerFactory.CreateLogger<Search.IncludeProcessor>());
-
-            var revIncludeProcessor = new Search.RevIncludeProcessor(
-                dbContext,
-                searchIndexCache,
-                compressor,
-                _loggerFactory.CreateLogger<Search.RevIncludeProcessor>());
-
-            var iterateProcessor = new Search.IterateProcessor(
-                includeProcessor,
-                revIncludeProcessor,
-                _loggerFactory.CreateLogger<Search.IterateProcessor>());
-
-            return new Search.SqlEntityFrameworkSearchService(
-                dbContext,
-                repository,
-                queryBuilder,
-                includeProcessor,
-                revIncludeProcessor,
-                iterateProcessor,
-                compressor,
-                searchIndexCache,
-                _loggerFactory.CreateLogger<Search.SqlEntityFrameworkSearchService>());
-        };
+        // Create factory delegate for SearchService (accepts DbContext and Repository parameters,
+        // both retained for GetSearchServiceAsync's call-site shape but unused here since
+        // SqlServerCompiledSearchService drives Ignixa.Search.Sql's compiler directly through
+        // ISqlExecutionService, not the DbContext/IFhirRepository).
+        // CUTOVER (search adapter design doc, Task 14): reads go through SqlServerCompiledSearchService,
+        // not SqlEntityFrameworkSearchService. Straight, unconditional swap -- no feature flag, mirroring
+        // createRepository's own cutover above. Search.SqlEntityFrameworkSearchService and its query
+        // generators remain in the codebase untouched as the reference implementation and rollback
+        // lever, but this closure no longer constructs them.
+        Func<FhirDbContext, IFhirRepository, ISearchService> createSearchService = (_, _) =>
+            SqlServerRepositoryFactory.CreateSearchService(
+                _sqlExecutionService, tenantId, sqlServerSearchIndexCache, compartmentManager, parameterManager,
+                _memoryStreamManager, _loggerFactory);
 
         logger.LogInformation("Successfully created service factory for tenant {TenantId}", tenantId);
 

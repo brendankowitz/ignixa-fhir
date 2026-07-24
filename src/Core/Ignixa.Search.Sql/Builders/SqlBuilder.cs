@@ -534,8 +534,21 @@ public static class SqlBuilder
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select(i =>
-            $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
-        return string.Join(", ", terms.Append("m.T1 ASC").Append("m.Sid1 ASC"));
+            $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}").ToList();
+
+        // SortValueExpr(LastUpdated) is literally "m.Sid1" (see below) -- if an active key is LastUpdated,
+        // appending "m.Sid1 ASC" again as the trailing tiebreak would reference the same column twice in
+        // one ORDER BY list, which SQL Server rejects (Msg 145, "A column has been specified more than
+        // once in the order by list"). m.T1 is never duplicated this way (no key's value expression is T1),
+        // so it is always safe to append.
+        var hasLastUpdatedKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.LastUpdated);
+        terms.Add("m.T1 ASC");
+        if (!hasLastUpdatedKey)
+        {
+            terms.Add("m.Sid1 ASC");
+        }
+
+        return string.Join(", ", terms);
     }
 
     /// <summary>Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the projected SortValueN columns, then the (T1, Sid1) tiebreak.</summary>
