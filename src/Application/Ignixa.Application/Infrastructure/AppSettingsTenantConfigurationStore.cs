@@ -21,6 +21,7 @@ public class AppSettingsTenantConfigurationStore : ITenantConfigurationStore
     private readonly ILogger<AppSettingsTenantConfigurationStore> _logger;
     private readonly Lazy<TenantConfiguration[]> _tenants;
     private readonly Lazy<TenantMode> _mode;
+    private readonly Lazy<IReadOnlyDictionary<string, TenantConfiguration>> _hostIndex;
 
     public AppSettingsTenantConfigurationStore(
         IConfiguration configuration,
@@ -29,6 +30,7 @@ public class AppSettingsTenantConfigurationStore : ITenantConfigurationStore
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _tenants = new Lazy<TenantConfiguration[]>(LoadTenants);
+        _hostIndex = new Lazy<IReadOnlyDictionary<string, TenantConfiguration>>(BuildHostIndex);
         _mode = new Lazy<TenantMode>(LoadMode);
     }
 
@@ -90,6 +92,49 @@ public class AppSettingsTenantConfigurationStore : ITenantConfigurationStore
             Mode);
 
         return tenantList.ToArray();
+    }
+
+    private IReadOnlyDictionary<string, TenantConfiguration> BuildHostIndex()
+    {
+        var index = new Dictionary<string, TenantConfiguration>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tenant in _tenants.Value)
+        {
+            if (tenant.IsSystemPartition || !tenant.IsActive)
+            {
+                continue;
+            }
+
+            foreach (var host in tenant.Hostnames)
+            {
+                var normalized = host.Trim();
+                if (normalized.Length == 0)
+                {
+                    continue;
+                }
+
+                if (index.TryGetValue(normalized, out var existing))
+                {
+                    throw new InvalidOperationException(
+                        $"Hostname '{normalized}' is claimed by both tenant {existing.TenantId} and tenant {tenant.TenantId}. A hostname must resolve exactly one tenant.");
+                }
+
+                index[normalized] = tenant;
+            }
+        }
+
+        return index;
+    }
+
+    public ValueTask<TenantConfiguration?> ResolveByHostAsync(
+        string host,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+
+        return _hostIndex.Value.TryGetValue(host.Trim(), out var tenant)
+            ? ValueTask.FromResult<TenantConfiguration?>(tenant)
+            : ValueTask.FromResult<TenantConfiguration?>(null);
     }
 
     public ValueTask<TenantConfiguration?> GetTenantConfigurationAsync(

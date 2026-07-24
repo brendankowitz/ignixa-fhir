@@ -25,4 +25,13 @@ public interface ITenantConfigurationStore
     /// </summary>
     ValueTask<IReadOnlyList<TenantConfiguration>> GetAllTenantsAsync(
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves the active tenant registered for <paramref name="host"/> (case-insensitive), or null if no
+    /// tenant claims it. Hostnames are unique across tenants; a host claimed by more than one is a
+    /// configuration error and throws.
+    /// </summary>
+    ValueTask<TenantConfiguration?> ResolveByHostAsync(
+        string host,
+        CancellationToken cancellationToken = default);
 }
