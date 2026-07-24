@@ -9,15 +9,15 @@ using Microsoft.IO;
 namespace Ignixa.DataLayer.SqlServer;
 
 /// <summary>
-/// Composition root for the SqlServer-native write path, relocated here from
+/// Composition root for the SqlServer-native write AND search paths, relocated here from
 /// Ignixa.DataLayer.SqlEntityFramework's SqlEntityFrameworkRepositoryFactory (which now calls
 /// into this class instead of constructing these types inline). Preserves the original's
 /// two-scope construction split exactly: <see cref="CreateReferenceDataCacheAsync"/> is called ONCE
 /// PER TENANT (outside any per-request scope), immediately followed by both eager preloads;
-/// <see cref="CreateRepository"/> is called PER REQUEST, reusing the tenant-scoped cache passed
-/// in. Flattening these into one per-request call would change the cache's cardinality and
-/// re-run both preloads on every repository creation -- a real, silent behavior/performance
-/// regression, not a refactor-neutral change.
+/// <see cref="CreateRepository"/> and <see cref="CreateSearchService"/> are called PER REQUEST,
+/// reusing the tenant-scoped cache passed in. Flattening these into one per-request call would
+/// change the cache's cardinality and re-run both preloads on every repository/search-service
+/// creation -- a real, silent behavior/performance regression, not a refactor-neutral change.
 /// </summary>
 public static class SqlServerRepositoryFactory
 {

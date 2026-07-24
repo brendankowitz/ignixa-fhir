@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Ignixa.Abstractions;
-using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
@@ -363,9 +362,11 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // SqlServerFhirRepository writes through ISqlExecutionService directly, not the DbContext).
         // CUTOVER (Phase D, Task 11): writes go through SqlServerFhirRepository, not
         // SqlEntityFrameworkRepository/SqlMergeRepository. Straight, unconditional swap -- no
-        // feature flag (design doc §5). Reads (createSearchService below) are untouched and remain
-        // on the EF-based search path; it receives whatever IFhirRepository it's handed purely
+        // feature flag (design doc §5). It receives whatever IFhirRepository it's handed purely
         // through the IFhirRepository interface, with no downcast, so it is unaffected by this swap.
+        // Reads also cut over to SqlServerCompiledSearchService (createSearchService below, sub-project
+        // 3 Task 14) -- SqlEntityFrameworkSearchService and its generator chain remain in the codebase,
+        // untouched, as a rollback lever, but createSearchService no longer constructs them.
         Func<FhirDbContext, IFhirRepository> createRepository = (_) =>
             SqlServerRepositoryFactory.CreateRepository(
                 _sqlExecutionService, tenantId, sqlServerSearchIndexCache, _memoryStreamManager, _loggerFactory);
