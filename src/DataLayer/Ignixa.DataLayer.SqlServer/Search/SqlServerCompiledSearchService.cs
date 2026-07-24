@@ -309,46 +309,73 @@ public sealed class SqlServerCompiledSearchService(
 
     /// <summary>
     /// Combines the Valued and MissingPrimary phases' independently-materialized result lists into the
-    /// final, duplicate-free page: each (ResourceType, ResourceId) identity is yielded exactly once, in
-    /// first-occurrence order (Valued's rows first, then MissingPrimary's), and if that identity occurs
-    /// as a genuine Match in EITHER phase, the merged entry is a Match -- a resource that is a real primary
-    /// match in one phase is never demoted to an Include just because the other phase's independent include
-    /// stage also happened to pull it in (see this method's only caller for why the two phases' own
-    /// per-execution <see cref="SearchEntryMode"/> assignments cannot be trusted to already resolve this
-    /// on their own once both lists are combined).
+    /// final, duplicate-free page, preserving true global stream order -- a requirement the Application
+    /// layer's StreamingBundleSerializer.SerializeWithPaginationAsync's offset-arithmetic pagination
+    /// depends on (it trusts stream order alone to know which row sits at the global "+1-for-hasMore"
+    /// sentinel position; see this method's only caller for the full cross-phase collision scenario this
+    /// resolves). A single in-place "promote this Include entry to Match" mutation
+    /// is NOT sufficient: it keeps the promoted entry at whatever position its (wrong-phase) Include
+    /// occurrence happened to hold, which can be far earlier than its true position among the OTHER
+    /// phase's own matches -- corrupting the Match ordering the serializer relies on.
+    ///
+    /// Two-pass scan-then-emit instead: pass 1 determines each (ResourceType, ResourceId) identity's FINAL
+    /// <see cref="SearchEntryMode"/> by scanning both lists once (Match if either phase records it as a
+    /// genuine Match -- the two phases partition on sort-key presence/absence, so an identity can be a
+    /// genuine Match in at most one of them). Pass 2 walks both lists again in their original order
+    /// (Valued then MissingPrimary, each internally still in its own true sort order) and emits, for a
+    /// Match-final identity, ONLY the occurrence that IS that Match (i.e. at the phase position where it
+    /// was genuinely matched -- discarding any other phase's stray Include occurrence entirely rather than
+    /// mutating it in place); for an Include-only identity, the first occurrence encountered. The result:
+    /// merged Match entries appear in exactly the order they would have if only the genuinely-correct
+    /// occurrences had been walked in the first place.
     /// </summary>
     private static IEnumerable<SearchEntryResult> MergeCrossPhaseResults(
         IReadOnlyList<SearchEntryResult> valuedResults,
         IReadOnlyList<SearchEntryResult> missingResults)
     {
-        var merged = new List<SearchEntryResult>(valuedResults.Count + missingResults.Count);
-        var indexByIdentity = new Dictionary<(string ResourceType, string ResourceId), int>();
-
-        void AddOrPromote(SearchEntryResult result)
-        {
-            var identity = (result.ResourceType, result.ResourceId);
-            if (indexByIdentity.TryGetValue(identity, out var existingIndex))
-            {
-                if (result.SearchMode == SearchEntryMode.Match && merged[existingIndex].SearchMode != SearchEntryMode.Match)
-                {
-                    merged[existingIndex] = merged[existingIndex] with { SearchMode = SearchEntryMode.Match };
-                }
-
-                return;
-            }
-
-            indexByIdentity.Add(identity, merged.Count);
-            merged.Add(result);
-        }
-
+        var matchIdentities = new HashSet<(string ResourceType, string ResourceId)>();
         foreach (var result in valuedResults)
         {
-            AddOrPromote(result);
+            if (result.SearchMode == SearchEntryMode.Match)
+            {
+                matchIdentities.Add((result.ResourceType, result.ResourceId));
+            }
         }
 
         foreach (var result in missingResults)
         {
-            AddOrPromote(result);
+            if (result.SearchMode == SearchEntryMode.Match)
+            {
+                matchIdentities.Add((result.ResourceType, result.ResourceId));
+            }
+        }
+
+        var emittedIdentities = new HashSet<(string ResourceType, string ResourceId)>();
+        var merged = new List<SearchEntryResult>(valuedResults.Count + missingResults.Count);
+
+        void EmitCanonicalOccurrence(SearchEntryResult result)
+        {
+            var identity = (result.ResourceType, result.ResourceId);
+
+            // An identity known to be a genuine Match somewhere: only ITS OWN Match occurrence is
+            // canonical -- any Include occurrence of the same identity (the other phase's own include
+            // stage independently rediscovering it) is not the row this identity belongs at and is
+            // discarded outright, never mutated in place.
+            var isCanonicalOccurrence = !matchIdentities.Contains(identity) || result.SearchMode == SearchEntryMode.Match;
+            if (isCanonicalOccurrence && emittedIdentities.Add(identity))
+            {
+                merged.Add(result);
+            }
+        }
+
+        foreach (var result in valuedResults)
+        {
+            EmitCanonicalOccurrence(result);
+        }
+
+        foreach (var result in missingResults)
+        {
+            EmitCanonicalOccurrence(result);
         }
 
         return merged;

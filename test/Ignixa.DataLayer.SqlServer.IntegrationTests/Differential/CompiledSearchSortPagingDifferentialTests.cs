@@ -398,4 +398,175 @@ public class CompiledSearchSortPagingDifferentialTests
         var legacyFullResults = await CollectAsync(harness.LegacySearchService.SearchStreamAsync(legacyFullOptions, CancellationToken.None));
         legacyFullResults.Single(r => r.ResourceId == linkTargetId).SearchMode.ShouldBe(SearchEntryMode.Match);
     }
+
+    /// <summary>
+    /// Simulates <c>StreamingBundleSerializer.SerializeWithPaginationAsync</c>'s own Match-counting trim
+    /// logic (lines 173-217 of that file): the first <paramref name="pageSize"/> Match-mode entries in
+    /// stream order are rendered, every Include-mode entry always passes through (no
+    /// <c>IncludesMaxItemCount</c> configured on this test's <see cref="SearchOptions"/>), and any Match
+    /// beyond <paramref name="pageSize"/> is dropped and flips <c>HasMore</c> -- the exact +1-for-hasMore
+    /// sentinel mechanism the merge-order bug corrupts.
+    /// </summary>
+    private static (List<SearchEntryResult> Rendered, bool HasMore) ApplyPaginationTrim(
+        IReadOnlyList<SearchEntryResult> raw, int pageSize)
+    {
+        var rendered = new List<SearchEntryResult>();
+        var matchCount = 0;
+        var hasMore = false;
+
+        foreach (var entry in raw)
+        {
+            if (entry.SearchMode == SearchEntryMode.Match)
+            {
+                if (matchCount >= pageSize)
+                {
+                    hasMore = true;
+                    continue;
+                }
+
+                matchCount++;
+            }
+
+            rendered.Add(entry);
+        }
+
+        return (rendered, hasMore);
+    }
+
+    [Fact]
+    public async Task GivenAStraddlingIncludeThatAlsoLandsAtTheMissingPrimarySentinelPosition_WhenPagedAcrossTwoRealPages_ThenNoDuplicateOrDroppedEntriesAppear()
+    {
+        // Arrange -- final-review re-review fix: Patient?_sort=family&_include=Patient:link, 4 Patients
+        // WITH "family" set (Valued: valued00..valued03) followed by 3 WITHOUT it (MissingPrimary:
+        // missing00..missing02), where the LAST Valued match in this page's own window (valued03) has a
+        // Patient:link reference pointing at missing01 -- the resource that ALSO happens to be, purely by
+        // MissingPrimary's own internal (Sid1) tie-break order, the +1-for-hasMore SENTINEL row of the
+        // MissingPrimary fetch window. This is exactly the collision the prior promotion-in-place fix got
+        // wrong: it promotes missing01 to Match AT THE POSITION Valued's own include stage happened to
+        // emit it (right after valued02/valued03), not at its true late (sentinel) position among
+        // MissingPrimary's own matches (after missing00).
+        //
+        // offset=2, pageSize=3 (requestedCount=4 after the +1-for-hasMore convention): Valued returns only
+        // its tail {valued02, valued03} (2 rows, short of 4), so MissingPrimary runs too, at offset 0,
+        // limit 4-2=2, returning {missing00, missing01}. Valued's OWN include stage (seeded only from
+        // {valued02, valued03}) independently re-discovers missing01 via valued03's link -- the same
+        // cross-phase collision Task 10's straddling test already proves is de-duplicated, but this time
+        // the colliding identity is ALSO the sentinel: with the buggy promote-in-place merge, the stream's
+        // Match order becomes [valued02, valued03, missing01, missing00] (missing01 wrongly BEFORE
+        // missing00), so the serializer's first-3-Matches page-1 render is [valued02, valued03, missing01]
+        // -- missing01 wrongly SHOWN, missing00 wrongly TRIMMED as the sentinel and never re-fetched (page
+        // 2's offset arithmetic, computed from the wrong trim count, starts past it). Page 2 (offset 5)
+        // then independently re-fetches missing01 as a genuine MissingPrimary match, producing missing01
+        // TWICE across the two pages while missing00 is silently gone from both. This test proves the
+        // two-pass merge fix: missing01 appears exactly once (as Match, wherever the true global order
+        // places it), and missing00 is never dropped.
+        await using var harness = await DifferentialTestHarness.CreateAsync(CancellationToken.None);
+        var familyParam = ParameterManager.GetSearchParameter("Patient", "family");
+        var linkParam = ParameterManager.GetSearchParameter("Patient", "link");
+        await harness.SeedSearchParameterCatalogAsync([familyParam.Url!, linkParam.Url!], CancellationToken.None);
+
+        var tag = Guid.NewGuid().ToString("N");
+        var valuedIds = new List<string>();
+        for (var i = 0; i < 4; i++)
+        {
+            valuedIds.Add($"diff-sentinel-valued-{tag}-{i}");
+        }
+
+        var missingIds = new List<string>
+        {
+            $"diff-sentinel-missing-{tag}-0",
+            $"diff-sentinel-missing-{tag}-1",
+            $"diff-sentinel-missing-{tag}-2",
+        };
+
+        // valuedIds[3] is the ONLY Valued resource carrying a link -- it points at missingIds[1], the
+        // resource this whole test exists to mis-position. Created before the "missing" group so its
+        // reference target id is known ahead of time; creation order within THIS loop is irrelevant to the
+        // Valued phase (which orders by the explicit "family" value, not creation order).
+        for (var i = 0; i < 4; i++)
+        {
+            var searchIndices = new List<object>
+            {
+                new SearchIndexEntry(familyParam, new StringSearchValue($"family-{i:D2}") { IsMin = true, IsMax = true }),
+            };
+
+            if (i == 3)
+            {
+                searchIndices.Add(new SearchIndexEntry(
+                    linkParam,
+                    new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Patient", resourceId: missingIds[1])));
+            }
+
+            await CreateResourceAsync(harness, "Patient", valuedIds[i], searchIndices, CancellationToken.None);
+        }
+
+        // Creation order here IS load-bearing: MissingPrimary's own tie-break is Sid1 (ResourceSurrogateId)
+        // ascending (SqlBuilder.cs's ORDER BY ... T1 ASC, Sid1 ASC), and surrogate ids are assigned
+        // monotonically in creation order -- so missingIds[0] genuinely sorts before missingIds[1] before
+        // missingIds[2] within the MissingPrimary phase, exactly as this test's arithmetic requires.
+        foreach (var missingId in missingIds)
+        {
+            await CreateResourceAsync(harness, "Patient", missingId, null, CancellationToken.None);
+        }
+
+        var sentinelId = missingIds[1];
+        var droppedVictimId = missingIds[0];
+
+        const int pageSize = 3;
+        var linkInclude = new IncludeExpression(["Patient"], linkParam, "Patient", "Patient", null, wildCard: false, reversed: false, iterate: false);
+
+        var page1Options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(familyParam, SortOrder.Ascending)],
+            Include = [linkInclude],
+            MaxItemCount = pageSize + 1,
+            ContinuationToken = ContinuationToken.Encode(offset: 2, count: pageSize),
+        };
+
+        // Act -- page 1: a real search call at the exact offset that straddles the phase boundary.
+        var page1Raw = await CollectAsync(harness.NewSearchService.SearchStreamAsync(page1Options, CancellationToken.None));
+        var (page1Rendered, page1HasMore) = ApplyPaginationTrim(page1Raw, pageSize);
+
+        // Assert -- page 1 must signal hasMore (there IS a 5th match beyond this page), proving the test
+        // fixture genuinely lands at the sentinel boundary rather than exhausting the result set early.
+        page1HasMore.ShouldBeTrue("page 1 should have a 5th match beyond it (the sentinel row) -- if not, this fixture is not exercising the phase-boundary/sentinel collision at all.");
+
+        // Act -- page 2: decoded/re-encoded via the real ContinuationToken API exactly as the
+        // Application-layer handler and StreamingBundleSerializer would (currentOffset + pageSize).
+        var page2Token = ContinuationToken.Encode(offset: 2 + pageSize, count: pageSize);
+        var page2Options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(familyParam, SortOrder.Ascending)],
+            Include = [linkInclude],
+            MaxItemCount = pageSize + 1,
+            ContinuationToken = page2Token,
+        };
+
+        var page2Raw = await CollectAsync(harness.NewSearchService.SearchStreamAsync(page2Options, CancellationToken.None));
+        var (page2Rendered, _) = ApplyPaginationTrim(page2Raw, pageSize);
+
+        var combinedRendered = page1Rendered.Concat(page2Rendered).ToList();
+
+        // Assert -- every expected resource (2 Valued-tail matches + all 3 MissingPrimary matches) appears
+        // across the two rendered pages EXACTLY ONCE, and nothing unexpected leaked through -- this single
+        // set-equality-with-multiplicity check simultaneously proves "no duplicate" and "no silent drop".
+        var expectedIds = new[] { valuedIds[2], valuedIds[3], missingIds[0], missingIds[1], missingIds[2] };
+        combinedRendered.Select(r => r.ResourceId).OrderBy(x => x, StringComparer.Ordinal)
+            .ShouldBe(expectedIds.OrderBy(x => x, StringComparer.Ordinal));
+
+        // Assert -- the sentinel/include-colliding resource (missingIds[1]) is present exactly once, on
+        // whichever page it actually lands on, and is labeled Match (never left as, or demoted to, Include
+        // just because Valued's own include stage also independently reached it).
+        var sentinelOccurrences = combinedRendered.Where(r => r.ResourceId == sentinelId).ToList();
+        sentinelOccurrences.Count.ShouldBe(1, "the sentinel-colliding resource was duplicated across the two pages.");
+        sentinelOccurrences[0].SearchMode.ShouldBe(SearchEntryMode.Match);
+
+        // Assert -- the true sentinel victim (missingIds[0], which the buggy in-place promotion silently
+        // drops because the wrong row gets trimmed) is present exactly once and labeled Match.
+        var droppedVictimOccurrences = combinedRendered.Where(r => r.ResourceId == droppedVictimId).ToList();
+        droppedVictimOccurrences.Count.ShouldBe(1, "a resource was silently dropped across the two pages -- the true sentinel row never got re-fetched on page 2.");
+        droppedVictimOccurrences[0].SearchMode.ShouldBe(SearchEntryMode.Match);
+    }
 }
