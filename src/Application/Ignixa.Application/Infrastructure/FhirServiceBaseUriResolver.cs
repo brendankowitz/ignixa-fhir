@@ -67,4 +67,45 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
             ? [tenantScoped, root]
             : [root, tenantScoped];
     }
+
+    /// <summary>
+    /// Resolves every base URI that identifies this server for a tenant, canonical first. The canonical base
+    /// is the tenant's first configured hostname, or the <c>tenant/{id}/</c> path form when it has none. The
+    /// remaining hostnames and the path form are additional recognized inbound bases; the deployment root is
+    /// recognized only when <see cref="TenantAddressing.IncludeDeploymentRoot"/> is set. Both the request
+    /// path and the background path call this method, so a self-reference classifies identically either way.
+    /// </summary>
+    public IReadOnlyList<Uri> Resolve(Uri? requestOrigin, TenantAddressing tenant)
+    {
+        ArgumentNullException.ThrowIfNull(tenant);
+
+        var root = _configuredServiceRoot ?? FhirServiceBaseUri.Normalize(requestOrigin);
+
+        if (root is null || !root.IsAbsoluteUri)
+        {
+            return [];
+        }
+
+        var bases = new List<Uri>();
+
+        foreach (var host in tenant.Hostnames)
+        {
+            var hostBase = FhirServiceBaseUri.Normalize(new Uri($"{root.Scheme}://{host.Trim()}/"));
+            if (hostBase is not null)
+            {
+                bases.Add(hostBase);
+            }
+        }
+
+        // Numeric path form is always recognized (and canonical when no hostname is configured), so a
+        // reference stored via /tenant/{id}/ still classifies as internal after the switch to hostnames.
+        bases.Add(new Uri(root, $"tenant/{tenant.TenantId}/"));
+
+        if (tenant.IncludeDeploymentRoot)
+        {
+            bases.Add(root);
+        }
+
+        return bases.Distinct().ToArray();
+    }
 }
