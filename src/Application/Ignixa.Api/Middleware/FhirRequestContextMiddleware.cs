@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Microsoft.AspNetCore.Http;
@@ -40,7 +41,8 @@ public class FhirRequestContextMiddleware
         HttpContext httpContext,
         IFhirRequestContextAccessor contextAccessor,
         IFhirVersionContext versionContext,
-        FhirServiceBaseUriResolver serviceBaseUriResolver)
+        FhirServiceBaseUriResolver serviceBaseUriResolver,
+        ITenantConfigurationStore configStore)
     {
         // Skip if context already set (e.g., bundle entry created isolated context)
         if (contextAccessor.RequestContext != null)
@@ -68,10 +70,22 @@ public class FhirRequestContextMiddleware
                 tenantId);
         }
 
-        fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
-            BuildRequestOrigin(httpContext),
-            resolvedTenantId,
-            CanonicalFormFor(httpContext));
+        if (fhirContext.TenantConfiguration is { } resolvedTenant)
+        {
+            var soleTenant = (await configStore.GetAllTenantsAsync(httpContext.RequestAborted)).Count == 1;
+
+            fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
+                BuildRequestOrigin(httpContext),
+                new TenantAddressing(resolvedTenant.TenantId, resolvedTenant.Hostnames, IncludeDeploymentRoot: soleTenant));
+        }
+        else
+        {
+            fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
+                BuildRequestOrigin(httpContext),
+                resolvedTenantId,
+                CanonicalFormFor(httpContext));
+        }
+
         fhirContext.BaseUri = fhirContext.ServiceBaseUris is [var canonical, ..] ? canonical : null;
 
         // Extract FHIR version from Content-Type/Accept headers

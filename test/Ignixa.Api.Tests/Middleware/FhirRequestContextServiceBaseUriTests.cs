@@ -7,6 +7,8 @@ using Ignixa.Abstractions;
 using Ignixa.Api.Middleware;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Specification.Generated;
 using Microsoft.AspNetCore.Http;
@@ -112,6 +114,27 @@ public class FhirRequestContextServiceBaseUriTests
         tenantExplicit.BaseUri.ShouldBe(new Uri("https://fhir.example.org/tenant/1/"));
     }
 
+    [Fact]
+    public async Task GivenARequestOnATenantHost_WhenContextBuilt_ThenBaseUriIsTheCanonicalHost()
+    {
+        var resolvedTenant = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Acme",
+            FhirVersion = "4.0",
+            Hostnames = new[] { "fhir1.example.org" },
+        };
+
+        var context = await BuildContextAsync(
+            "/Patient",
+            new FhirServiceBaseUriResolver(new Uri("https://example.org/")),
+            host: "fhir1.example.org",
+            resolvedTenant: resolvedTenant);
+
+        context.BaseUri.ShouldBe(new Uri("https://fhir1.example.org/"));
+        context.ServiceBaseUris.ShouldContain(new Uri("https://example.org/tenant/1/"));
+    }
+
     private static Task<ReferenceSearchValue> ParseUnderRequestAsync(
         string requestPath,
         string reference,
@@ -129,8 +152,9 @@ public class FhirRequestContextServiceBaseUriTests
     private static Task<IFhirRequestContext> BuildContextAsync(
         string requestPath,
         FhirServiceBaseUriResolver resolver,
-        string host = "fhir.example.org")
-        => DuringRequestAsync(requestPath, resolver, host, accessor => accessor.RequestContext!);
+        string host = "fhir.example.org",
+        TenantConfiguration? resolvedTenant = null)
+        => DuringRequestAsync(requestPath, resolver, host, accessor => accessor.RequestContext!, resolvedTenant);
 
     /// <summary>
     /// Runs the middleware and evaluates <paramref name="observe"/> from inside the pipeline. The context
@@ -141,7 +165,8 @@ public class FhirRequestContextServiceBaseUriTests
         string requestPath,
         FhirServiceBaseUriResolver resolver,
         string host,
-        Func<IFhirRequestContextAccessor, T> observe)
+        Func<IFhirRequestContextAccessor, T> observe,
+        TenantConfiguration? resolvedTenant = null)
     {
         var accessor = new FhirRequestContextAccessor
         {
@@ -153,6 +178,16 @@ public class FhirRequestContextServiceBaseUriTests
         httpContext.Request.Host = new HostString(host);
         httpContext.Request.Path = requestPath;
         httpContext.Items["TenantId"] = TenantId;
+
+        if (resolvedTenant is not null)
+        {
+            httpContext.Items["TenantConfiguration"] = resolvedTenant;
+        }
+
+        var configStore = Substitute.For<ITenantConfigurationStore>();
+        configStore.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>(
+                resolvedTenant is null ? Array.Empty<TenantConfiguration>() : [resolvedTenant]));
 
         T? observed = default;
 
@@ -168,7 +203,8 @@ public class FhirRequestContextServiceBaseUriTests
             httpContext,
             accessor,
             Substitute.For<IFhirVersionContext>(),
-            resolver);
+            resolver,
+            configStore);
 
         return observed!;
     }
