@@ -144,7 +144,7 @@ public class FhirRequestContextServiceBaseUriTests
         {
             var parser = new ReferenceSearchValueParser(
                 new R4CoreSchemaProvider(),
-                new FhirRequestContextBaseUriProvider(accessor, resolver));
+                new FhirRequestContextBaseUriProvider(accessor, resolver, Substitute.For<ITenantConfigurationStore>()));
 
             return parser.Parse(reference);
         });

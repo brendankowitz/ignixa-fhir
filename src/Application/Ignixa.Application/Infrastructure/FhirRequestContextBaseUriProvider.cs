@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.Domain.Abstractions;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -21,7 +22,8 @@ namespace Ignixa.Application.Infrastructure;
 /// </remarks>
 public sealed class FhirRequestContextBaseUriProvider(
     IFhirRequestContextAccessor requestContextAccessor,
-    FhirServiceBaseUriResolver resolver) : IFhirBaseUriProvider
+    FhirServiceBaseUriResolver resolver,
+    ITenantConfigurationStore configStore) : IFhirBaseUriProvider
 {
     /// <inheritdoc />
     public Uri? GetBaseUri() => GetServiceBaseUris() is [var canonical, ..] ? canonical : null;
@@ -34,6 +36,24 @@ public sealed class FhirRequestContextBaseUriProvider(
         if (context?.ServiceBaseUris is { Count: > 0 } fromRequest)
         {
             return fromRequest;
+        }
+
+        if (context?.TenantId is { } tenantId and > 0)
+        {
+            // GetAwaiter().GetResult() is safe here: GetServiceBaseUris() is a synchronous interface
+            // member (background indexing calls it with no async context to await from), and the
+            // production store (AppSettingsTenantConfigurationStore) returns already-completed
+            // ValueTasks backed by a Lazy array, so this never actually blocks.
+#pragma warning disable CA2012 // Use ValueTasks correctly - store's ValueTasks are already completed
+            var tenant = configStore.GetTenantConfigurationAsync(tenantId).GetAwaiter().GetResult();
+            if (tenant is not null)
+            {
+                var soleTenant = configStore.GetAllTenantsAsync().GetAwaiter().GetResult().Count == 1;
+#pragma warning restore CA2012
+                return resolver.Resolve(
+                    requestOrigin: null,
+                    new TenantAddressing(tenantId, tenant.Hostnames, IncludeDeploymentRoot: soleTenant));
+            }
         }
 
         return resolver.Resolve(

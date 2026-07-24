@@ -56,7 +56,7 @@ public class ImportBatchActivityBaseUriWiringTests
     {
         var accessor = new FhirRequestContextAccessor();
         var resolver = new FhirServiceBaseUriResolver(ServiceRoot);
-        var baseUriProvider = new FhirRequestContextBaseUriProvider(accessor, resolver);
+        var baseUriProvider = new FhirRequestContextBaseUriProvider(accessor, resolver, Substitute.For<ITenantConfigurationStore>());
         var versionContext = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(),
@@ -84,7 +84,7 @@ public class ImportBatchActivityBaseUriWiringTests
     {
         var accessor = new FhirRequestContextAccessor();
         var resolver = new FhirServiceBaseUriResolver(ServiceRoot);
-        var baseUriProvider = new FhirRequestContextBaseUriProvider(accessor, resolver);
+        var baseUriProvider = new FhirRequestContextBaseUriProvider(accessor, resolver, Substitute.For<ITenantConfigurationStore>());
         var versionContext = new FhirVersionContext(
             NullLoggerFactory.Instance,
             new SearchParameterResolutionOptions(),

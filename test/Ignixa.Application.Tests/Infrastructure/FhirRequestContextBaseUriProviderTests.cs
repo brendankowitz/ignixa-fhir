@@ -5,6 +5,8 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Abstractions;
+using NSubstitute;
 using Shouldly;
 using Xunit;
 
@@ -19,6 +21,8 @@ public class FhirRequestContextBaseUriProviderTests
 {
     private static readonly Uri ServiceRoot = new("https://fhir.example.org/");
 
+    private static ITenantConfigurationStore UnconfiguredStore() => Substitute.For<ITenantConfigurationStore>();
+
     [Fact]
     public void GivenABackgroundContextForATenant_WhenResolving_ThenItAgreesWithTheRequestPath()
     {
@@ -28,7 +32,7 @@ public class FhirRequestContextBaseUriProviderTests
             RequestContext = FhirRequestContextFactory.CreateBackgroundContext(tenantId: 1)
         };
 
-        IFhirBaseUriProvider provider = new FhirRequestContextBaseUriProvider(accessor, resolver);
+        IFhirBaseUriProvider provider = new FhirRequestContextBaseUriProvider(accessor, resolver, UnconfiguredStore());
 
         provider.GetServiceBaseUris().ShouldBe(
             resolver.Resolve(requestOrigin: null, tenantId: 1),
@@ -42,7 +46,8 @@ public class FhirRequestContextBaseUriProviderTests
     {
         IFhirBaseUriProvider provider = new FhirRequestContextBaseUriProvider(
             new FhirRequestContextAccessor { RequestContext = null },
-            new FhirServiceBaseUriResolver());
+            new FhirServiceBaseUriResolver(),
+            UnconfiguredStore());
 
         provider.GetBaseUri().ShouldBeNull();
         provider.GetServiceBaseUris().ShouldBeEmpty();
@@ -63,7 +68,8 @@ public class FhirRequestContextBaseUriProviderTests
 
         IFhirBaseUriProvider provider = new FhirRequestContextBaseUriProvider(
             accessor,
-            new FhirServiceBaseUriResolver(ServiceRoot));
+            new FhirServiceBaseUriResolver(ServiceRoot),
+            UnconfiguredStore());
 
         provider.GetBaseUri().ShouldBe(new Uri("https://from-request.example.org/"));
     }
@@ -73,7 +79,8 @@ public class FhirRequestContextBaseUriProviderTests
     {
         IFhirBaseUriProvider provider = new FhirRequestContextBaseUriProvider(
             new FhirRequestContextAccessor { RequestContext = null },
-            new FhirServiceBaseUriResolver(new Uri("https://fhir.example.org/fhir/")));
+            new FhirServiceBaseUriResolver(new Uri("https://fhir.example.org/fhir/")),
+            UnconfiguredStore());
 
         provider.IsServiceBaseUri(new Uri("https://fhir.example.org/fhir")).ShouldBeTrue();
         provider.IsServiceBaseUri(new Uri("https://FHIR.EXAMPLE.ORG/fhir/")).ShouldBeTrue();
