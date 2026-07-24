@@ -10,18 +10,18 @@ namespace Ignixa.Application.Infrastructure;
 
 /// <summary>
 /// Validates tenant hostname configuration: each hostname is a bare DNS host, and no hostname is claimed by
-/// more than one tenant. Returns human-readable problems; an empty list means valid.
+/// more than one tenant. Returns typed problems; an empty list means valid.
 /// </summary>
 public static partial class TenantHostnameValidator
 {
-    [GeneratedRegex(@"^(?=.{1,253}$)([a-z0-9](-?[a-z0-9])*)(\.[a-z0-9](-?[a-z0-9])*)*$")]
+    [GeneratedRegex(@"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")]
     private static partial Regex HostnameShape();
 
-    public static IReadOnlyList<string> Validate(IReadOnlyList<TenantConfiguration> tenants)
+    public static IReadOnlyList<HostnameProblem> Validate(IReadOnlyList<TenantConfiguration> tenants)
     {
         ArgumentNullException.ThrowIfNull(tenants);
 
-        var problems = new List<string>();
+        var problems = new List<HostnameProblem>();
         var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var tenant in tenants)
@@ -32,13 +32,17 @@ public static partial class TenantHostnameValidator
 
                 if (!HostnameShape().IsMatch(value))
                 {
-                    problems.Add($"Tenant {tenant.TenantId}: '{host}' is not a bare lowercase DNS hostname (no scheme, port, or path).");
+                    problems.Add(new HostnameProblem(
+                        HostnameProblemKind.Format,
+                        $"Tenant {tenant.TenantId}: '{host}' is not a bare lowercase DNS hostname (no scheme, port, or path)."));
                     continue;
                 }
 
                 if (seen.TryGetValue(value, out var otherTenant))
                 {
-                    problems.Add($"Hostname '{value}' is claimed by tenant {otherTenant} and tenant {tenant.TenantId}; a hostname must resolve exactly one tenant.");
+                    problems.Add(new HostnameProblem(
+                        HostnameProblemKind.Duplicate,
+                        $"Hostname '{value}' is claimed by tenant {otherTenant} and tenant {tenant.TenantId}; a hostname must resolve exactly one tenant."));
                     continue;
                 }
 

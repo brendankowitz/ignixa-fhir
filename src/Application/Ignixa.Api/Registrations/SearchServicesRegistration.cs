@@ -175,10 +175,10 @@ public static class SearchServicesRegistration
 
         foreach (var problem in hostnameProblems)
         {
-            logger.LogError("Tenant hostname configuration problem: {Problem}", problem);
+            logger.LogError("Tenant hostname configuration problem: {Problem}", problem.Message);
         }
 
-        if (hostnameProblems.Any(p => p.Contains("claimed by tenant", StringComparison.Ordinal)))
+        if (hostnameProblems.Any(p => p.Kind == HostnameProblemKind.Duplicate))
         {
             throw new InvalidOperationException(
                 "Duplicate tenant hostname configuration; refusing to start. See preceding log entries.");
