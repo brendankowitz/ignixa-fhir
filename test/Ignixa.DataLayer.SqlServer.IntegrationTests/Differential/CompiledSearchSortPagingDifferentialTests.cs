@@ -302,4 +302,100 @@ public class CompiledSearchSortPagingDifferentialTests
         });
         ex.Message.ShouldContain("_lastUpdated only supports an exact instant");
     }
+
+    [Fact]
+    public async Task GivenASortedIncludeSearchStraddlingThePhaseBoundary_WhenSearchedOnTheNewEngine_ThenNoDuplicateOrMislabeledEntriesAppear()
+    {
+        // Arrange -- final-review fix: Patient?_sort=family&_include=Patient:link, 4 Patients WITH "family"
+        // set (Valued) followed by 3 WITHOUT it (MissingPrimary), where the FIRST MissingPrimary match
+        // (missing00) has a Patient:link reference pointing at the LAST Valued match (valued02) that this
+        // exact page will also return as a genuine Match in its own right. A page requested at offset=2,
+        // count=3 (real requestedCount, after the +1-for-hasMore convention, is 4) straddles the
+        // Valued/MissingPrimary boundary: Valued returns only its tail (valued02, valued03 -- 2 rows),
+        // short of requestedCount, so MissingPrimary runs too, at its own offset 0, limit 4-2=2 (missing00,
+        // missing01). MissingPrimary's own include stage is seeded ONLY from ITS OWN match page
+        // {missing00, missing01} -- it has no visibility into Valued's match page, so its anti-join does
+        // not exclude valued02, and it independently re-discovers valued02 as an Include row. Before the
+        // fix, SearchStreamWithPhaseHandlingAsync concatenated both phases' raw streams with no cross-phase
+        // dedup: valued02 came back TWICE (once correctly as Match from the Valued phase, once wrongly as
+        // Include from the MissingPrimary phase) -- a duplicate bundle entry, one of the two copies
+        // mislabeled. This test proves the fix: exactly 4 distinct (ResourceType, ResourceId) pairs, and
+        // valued02's single surviving entry is Match, never demoted to Include.
+        await using var harness = await DifferentialTestHarness.CreateAsync(CancellationToken.None);
+        var familyParam = ParameterManager.GetSearchParameter("Patient", "family");
+        var linkParam = ParameterManager.GetSearchParameter("Patient", "link");
+        await harness.SeedSearchParameterCatalogAsync([familyParam.Url!, linkParam.Url!], CancellationToken.None);
+
+        var tag = Guid.NewGuid().ToString("N");
+        var valuedIds = new List<string>();
+        for (var i = 0; i < 4; i++)
+        {
+            var id = $"diff-straddle-valued-{tag}-{i}";
+            valuedIds.Add(id);
+            await CreateResourceAsync(harness, "Patient", id,
+                [new SearchIndexEntry(familyParam, new StringSearchValue($"family-{i:D2}") { IsMin = true, IsMax = true })],
+                CancellationToken.None);
+        }
+
+        var linkTargetId = valuedIds[2]; // the Valued match the straddling page's own tail will also return.
+        var valuedTailOtherId = valuedIds[3]; // the other Valued-tail match, uninvolved in the collision.
+
+        var missingLinkedId = $"diff-straddle-missing-linked-{tag}";
+        var missingPlainId = $"diff-straddle-missing-plain-{tag}";
+        var missingExtraId = $"diff-straddle-missing-extra-{tag}";
+        await CreateResourceAsync(harness, "Patient", missingLinkedId,
+            [new SearchIndexEntry(linkParam, new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Patient", resourceId: linkTargetId))],
+            CancellationToken.None);
+        await CreateResourceAsync(harness, "Patient", missingPlainId, null, CancellationToken.None);
+        await CreateResourceAsync(harness, "Patient", missingExtraId, null, CancellationToken.None);
+
+        var linkInclude = new IncludeExpression(["Patient"], linkParam, "Patient", "Patient", null, wildCard: false, reversed: false, iterate: false);
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(familyParam, SortOrder.Ascending)],
+            Include = [linkInclude],
+            MaxItemCount = 3,
+            ContinuationToken = ContinuationToken.Encode(offset: 2, count: 3),
+        };
+
+        // Act
+        var newResults = await CollectAsync(harness.NewSearchService.SearchStreamAsync(options, CancellationToken.None));
+
+        // Assert -- no duplicate (ResourceType, ResourceId) pairs: exactly the 2 Valued-tail matches plus
+        // the 2 MissingPrimary-head matches, valued02 counted ONCE despite both phases independently
+        // producing a row for it.
+        var identities = newResults.Select(r => (r.ResourceType, r.ResourceId)).ToList();
+        identities.Distinct().Count().ShouldBe(identities.Count, "the new engine returned a duplicate (ResourceType, ResourceId) entry for a sorted, includes-bearing search that straddles the phase boundary.");
+
+        var expectedIds = new[] { linkTargetId, valuedTailOtherId, missingLinkedId, missingPlainId };
+        newResults.Select(r => r.ResourceId).OrderBy(x => x, StringComparer.Ordinal)
+            .ShouldBe(expectedIds.OrderBy(x => x, StringComparer.Ordinal));
+
+        // Assert -- valued02 (linkTargetId) is a genuine primary Match (it satisfied the Valued phase's
+        // own page), and must never be demoted to Include just because MissingPrimary's independent
+        // include stage also reached it through missing00's link reference. Also confirms it appears
+        // exactly once (the Count assertion is redundant with the Distinct check above for THIS identity
+        // specifically, kept because it is the one identity the whole test exists to protect).
+        newResults.Count(r => r.ResourceId == linkTargetId).ShouldBe(1);
+        newResults.Single(r => r.ResourceId == linkTargetId).SearchMode.ShouldBe(SearchEntryMode.Match);
+
+        newResults.Single(r => r.ResourceId == valuedTailOtherId).SearchMode.ShouldBe(SearchEntryMode.Match);
+        newResults.Single(r => r.ResourceId == missingLinkedId).SearchMode.ShouldBe(SearchEntryMode.Match);
+        newResults.Single(r => r.ResourceId == missingPlainId).SearchMode.ShouldBe(SearchEntryMode.Match);
+
+        // Sanity against the legacy engine: even without the compiler's two-phase split, valued02 must
+        // still resolve as a genuine Match (never an Include) on a full, unpaged run of the same query --
+        // confirming this test's fixture models a real FHIR search shape, not an artifact of the compiler's
+        // own phase mechanics.
+        var legacyFullOptions = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(familyParam, SortOrder.Ascending)],
+            Include = [linkInclude],
+            MaxItemCount = 100,
+        };
+        var legacyFullResults = await CollectAsync(harness.LegacySearchService.SearchStreamAsync(legacyFullOptions, CancellationToken.None));
+        legacyFullResults.Single(r => r.ResourceId == linkTargetId).SearchMode.ShouldBe(SearchEntryMode.Match);
+    }
 }

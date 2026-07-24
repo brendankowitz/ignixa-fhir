@@ -191,6 +191,16 @@ public sealed class SqlServerCompiledSearchService(
             throw new RequestNotValidException(valuedTrace.Failure?.Message ?? "The search could not be compiled.");
         }
 
+        // Buffered, not streamed straight out: both phase compiles share the SAME options.Include/RevInclude
+        // list, so each phase's own include stage is seeded ONLY from that phase's own match page (SqlBuilder's
+        // "NOT EXISTS (... FROM MatchPage ...)" anti-join has no visibility into the OTHER phase's match set).
+        // A resource genuinely matched in one phase can therefore resurface as an Include row in the other
+        // phase's independent execution -- the only way to catch and correctly resolve that cross-phase
+        // collision (see MergeCrossPhaseResults) is to see both phases' full result sets before committing to
+        // what gets yielded, which means neither phase's rows can be handed to the caller until it's known
+        // whether a second phase will even run.
+        var valuedResults = new List<SearchEntryResult>();
+
         // Only count Match-mode rows toward the phase-boundary arithmetic below. An includes-bearing plan's
         // match-page CTE yields Match rows AND separately-unioned Include rows through the same reader --
         // the OFFSET/FETCH paging and every offset/limit computed in this method govern the MATCH set only.
@@ -205,12 +215,19 @@ public sealed class SqlServerCompiledSearchService(
                 valuedCount++;
             }
 
-            yield return result;
+            valuedResults.Add(result);
         }
 
         if (valuedCount >= requestedCount)
         {
-            yield break; // Valued alone filled the whole page -- no room left for MissingPrimary rows.
+            // Valued alone filled the whole page -- no MissingPrimary phase will run, so there is no
+            // cross-phase collision possible and these rows can be handed out exactly as materialized.
+            foreach (var result in valuedResults)
+            {
+                yield return result;
+            }
+
+            yield break;
         }
 
         // _id/_lastUpdated are resource-column sort keys (ResourceId/ResourceSurrogateId) -- both are
@@ -226,6 +243,13 @@ public sealed class SqlServerCompiledSearchService(
         var primarySortCode = options.Sort[0].Parameter.Code;
         if (primarySortCode is "_id" or "_lastUpdated")
         {
+            // No MissingPrimary phase will run -- same "no cross-phase collision possible" reasoning as
+            // the valuedCount >= requestedCount branch above, just reached via a different guard.
+            foreach (var result in valuedResults)
+            {
+                yield return result;
+            }
+
             yield break;
         }
 
@@ -271,10 +295,63 @@ public sealed class SqlServerCompiledSearchService(
             throw new RequestNotValidException(missingTrace.Failure?.Message ?? "The search could not be compiled.");
         }
 
+        var missingResults = new List<SearchEntryResult>();
         await foreach (var result in ExecuteAndMaterializeAsync(missingSql, missingTrace.CompiledPlan!, cancellationToken))
+        {
+            missingResults.Add(result);
+        }
+
+        foreach (var result in MergeCrossPhaseResults(valuedResults, missingResults))
         {
             yield return result;
         }
+    }
+
+    /// <summary>
+    /// Combines the Valued and MissingPrimary phases' independently-materialized result lists into the
+    /// final, duplicate-free page: each (ResourceType, ResourceId) identity is yielded exactly once, in
+    /// first-occurrence order (Valued's rows first, then MissingPrimary's), and if that identity occurs
+    /// as a genuine Match in EITHER phase, the merged entry is a Match -- a resource that is a real primary
+    /// match in one phase is never demoted to an Include just because the other phase's independent include
+    /// stage also happened to pull it in (see this method's only caller for why the two phases' own
+    /// per-execution <see cref="SearchEntryMode"/> assignments cannot be trusted to already resolve this
+    /// on their own once both lists are combined).
+    /// </summary>
+    private static IEnumerable<SearchEntryResult> MergeCrossPhaseResults(
+        IReadOnlyList<SearchEntryResult> valuedResults,
+        IReadOnlyList<SearchEntryResult> missingResults)
+    {
+        var merged = new List<SearchEntryResult>(valuedResults.Count + missingResults.Count);
+        var indexByIdentity = new Dictionary<(string ResourceType, string ResourceId), int>();
+
+        void AddOrPromote(SearchEntryResult result)
+        {
+            var identity = (result.ResourceType, result.ResourceId);
+            if (indexByIdentity.TryGetValue(identity, out var existingIndex))
+            {
+                if (result.SearchMode == SearchEntryMode.Match && merged[existingIndex].SearchMode != SearchEntryMode.Match)
+                {
+                    merged[existingIndex] = merged[existingIndex] with { SearchMode = SearchEntryMode.Match };
+                }
+
+                return;
+            }
+
+            indexByIdentity.Add(identity, merged.Count);
+            merged.Add(result);
+        }
+
+        foreach (var result in valuedResults)
+        {
+            AddOrPromote(result);
+        }
+
+        foreach (var result in missingResults)
+        {
+            AddOrPromote(result);
+        }
+
+        return merged;
     }
 
     private async Task<SearchTrace> CompileAsync(
