@@ -1,0 +1,51 @@
+// -------------------------------------------------------------------------------------------------
+// Copyright (c) Ignixa Contributors. All rights reserved.
+// Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
+// -------------------------------------------------------------------------------------------------
+
+using System.Text.RegularExpressions;
+using Ignixa.Domain.Models;
+
+namespace Ignixa.Application.Infrastructure;
+
+/// <summary>
+/// Validates tenant hostname configuration: each hostname is a bare DNS host, and no hostname is claimed by
+/// more than one tenant. Returns human-readable problems; an empty list means valid.
+/// </summary>
+public static partial class TenantHostnameValidator
+{
+    [GeneratedRegex(@"^(?=.{1,253}$)([a-z0-9](-?[a-z0-9])*)(\.[a-z0-9](-?[a-z0-9])*)*$")]
+    private static partial Regex HostnameShape();
+
+    public static IReadOnlyList<string> Validate(IReadOnlyList<TenantConfiguration> tenants)
+    {
+        ArgumentNullException.ThrowIfNull(tenants);
+
+        var problems = new List<string>();
+        var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tenant in tenants)
+        {
+            foreach (var host in tenant.Hostnames)
+            {
+                var value = host.Trim();
+
+                if (!HostnameShape().IsMatch(value))
+                {
+                    problems.Add($"Tenant {tenant.TenantId}: '{host}' is not a bare lowercase DNS hostname (no scheme, port, or path).");
+                    continue;
+                }
+
+                if (seen.TryGetValue(value, out var otherTenant))
+                {
+                    problems.Add($"Hostname '{value}' is claimed by tenant {otherTenant} and tenant {tenant.TenantId}; a hostname must resolve exactly one tenant.");
+                    continue;
+                }
+
+                seen[value] = tenant.TenantId;
+            }
+        }
+
+        return problems;
+    }
+}

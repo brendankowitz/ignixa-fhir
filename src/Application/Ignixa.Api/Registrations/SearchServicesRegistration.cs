@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification;
@@ -76,7 +77,9 @@ public static class SearchServicesRegistration
         // header from deciding whether a reference is stored as internal or external.
         builder.Register(c =>
         {
-            var configuredServiceRoot = ReadConfiguredServiceRoot(configuration, c.Resolve<ILoggerFactory>());
+            var loggerFactory = c.Resolve<ILoggerFactory>();
+            var configuredServiceRoot = ReadConfiguredServiceRoot(configuration, loggerFactory);
+            ValidateTenantHostnames(configuration, loggerFactory);
             return new FhirServiceBaseUriResolver(configuredServiceRoot);
         }).AsSelf().SingleInstance();
 
@@ -155,6 +158,31 @@ public static class SearchServicesRegistration
 
         logger.LogInformation("Using configured FHIR service base {ConfiguredBaseUri}", FhirServiceBaseUri.Normalize(parsed));
         return parsed;
+    }
+
+    /// <summary>
+    /// Validates tenant hostname configuration at startup. Binds tenants directly from configuration --
+    /// mirroring <c>AppSettingsTenantConfigurationStore.LoadTenants</c> -- because the container is still
+    /// being built here and <see cref="Ignixa.Domain.Abstractions.ITenantConfigurationStore"/> is not yet
+    /// resolvable. A duplicate hostname across tenants is fatal (the cross-tenant-confusion case); a
+    /// malformed hostname is logged but non-fatal since the host simply won't route.
+    /// </summary>
+    private static void ValidateTenantHostnames(IConfiguration configuration, ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger(typeof(TenantHostnameValidator).FullName!);
+        var tenants = configuration.GetSection("Tenants:Configurations").Get<List<TenantConfiguration>>() ?? new List<TenantConfiguration>();
+        var hostnameProblems = TenantHostnameValidator.Validate(tenants);
+
+        foreach (var problem in hostnameProblems)
+        {
+            logger.LogError("Tenant hostname configuration problem: {Problem}", problem);
+        }
+
+        if (hostnameProblems.Any(p => p.Contains("claimed by tenant", StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException(
+                "Duplicate tenant hostname configuration; refusing to start. See preceding log entries.");
+        }
     }
 
     private static void RegisterSearchParameterDefinitionManagers(ContainerBuilder builder)
