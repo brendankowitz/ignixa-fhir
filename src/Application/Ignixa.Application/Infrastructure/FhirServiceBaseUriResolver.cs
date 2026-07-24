@@ -90,7 +90,19 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
 
         foreach (var host in tenant.Hostnames)
         {
-            var hostBase = FhirServiceBaseUri.Normalize(new Uri($"{root.Scheme}://{host.Trim()}/"));
+            var trimmed = host.Trim();
+            if (!Uri.TryCreate($"{root.Scheme}://{trimmed}/", UriKind.Absolute, out var candidate)
+                || candidate.AbsolutePath != "/"
+                || !candidate.IsDefaultPort
+                || candidate.Host.Length == 0)
+            {
+                // Malformed config (embedded path, explicit port, or an unparseable authority) is never
+                // admitted into the recognition set. There is no logger here by design; startup validation
+                // (a later task) is the place operator-facing diagnostics for a bad hostname belong.
+                continue;
+            }
+
+            var hostBase = FhirServiceBaseUri.Normalize(candidate);
             if (hostBase is not null)
             {
                 bases.Add(hostBase);

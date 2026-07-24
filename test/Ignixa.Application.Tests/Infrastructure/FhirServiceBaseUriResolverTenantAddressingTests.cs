@@ -85,4 +85,51 @@ public class FhirServiceBaseUriResolverTenantAddressingTests
         bases[0].ShouldBe(new Uri("https://fhir1.example.org/"));
         bases.ShouldContain(new Uri("https://acme.example.org/"));
     }
+
+    [Fact]
+    public void GivenAHostnameWithASpace_WhenResolving_ThenItIsSkippedRatherThanThrowing()
+    {
+        // Arrange
+        var resolver = new FhirServiceBaseUriResolver(Root);
+        var tenant = new TenantAddressing(1, ["bad host name", "fhir1.example.org"], IncludeDeploymentRoot: false);
+
+        // Act
+        var bases = () => resolver.Resolve(requestOrigin: null, tenant);
+
+        // Assert
+        Should.NotThrow(bases);
+        var result = bases();
+        result.ShouldContain(new Uri("https://fhir1.example.org/"));
+        result.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public void GivenAHostnameWithAnEmbeddedPath_WhenResolving_ThenItIsSkipped()
+    {
+        // Arrange
+        var resolver = new FhirServiceBaseUriResolver(Root);
+        var tenant = new TenantAddressing(1, ["fhir1.example.org/evil", "fhir1.example.org"], IncludeDeploymentRoot: false);
+
+        // Act
+        var bases = resolver.Resolve(requestOrigin: null, tenant);
+
+        // Assert
+        bases.ShouldNotContain(b => b.AbsolutePath == "/evil/");
+        bases.ShouldContain(new Uri("https://fhir1.example.org/"));
+    }
+
+    [Fact]
+    public void GivenAHostnameWithAnExplicitPort_WhenResolving_ThenItIsSkipped()
+    {
+        // Arrange
+        var resolver = new FhirServiceBaseUriResolver(Root);
+        var tenant = new TenantAddressing(1, ["fhir1.example.org:8080", "fhir1.example.org"], IncludeDeploymentRoot: false);
+
+        // Act
+        var bases = resolver.Resolve(requestOrigin: null, tenant);
+
+        // Assert
+        bases.ShouldNotContain(b => !b.IsDefaultPort);
+        bases.ShouldContain(new Uri("https://fhir1.example.org/"));
+    }
 }
