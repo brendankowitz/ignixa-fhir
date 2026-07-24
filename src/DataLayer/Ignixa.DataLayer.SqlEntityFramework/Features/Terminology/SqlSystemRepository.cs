@@ -5,6 +5,7 @@
 
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.Domain.Abstractions;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -90,8 +91,8 @@ public class SqlSystemRepository : ISystemRepository
             if (existingSystemAfterRace == null)
             {
                 // Should never happen, but handle gracefully
-                _logger.LogError("Race condition detected but system not found: {SystemUri}", normalizedUri);
-                throw new InvalidOperationException($"Failed to get or create system: {normalizedUri}");
+                _logger.LogError(ex, "Race condition detected but system not found: {SystemUri}", normalizedUri);
+                throw new InvalidOperationException($"Failed to get or create system: {normalizedUri}", ex);
             }
 
             _logger.LogDebug("Race condition resolved for System: {SystemUri} → SystemId={SystemId}", normalizedUri, existingSystemAfterRace.SystemId);
@@ -116,13 +117,10 @@ public class SqlSystemRepository : ISystemRepository
         return system?.SystemId;
     }
 
-    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        // SQL Server unique constraint violation error numbers:
-        // 2601 = Cannot insert duplicate key row (unique index)
-        // 2627 = Violation of unique constraint
-        return ex.InnerException?.Message?.Contains("2601", StringComparison.Ordinal) == true
-            || ex.InnerException?.Message?.Contains("2627", StringComparison.Ordinal) == true
-            || ex.InnerException?.Message?.Contains("unique", StringComparison.OrdinalIgnoreCase) == true;
-    }
+    // 2601 = cannot insert duplicate key row (unique index); 2627 = violation of unique constraint.
+    // Matched on the error number rather than the message text: this context is shared with the CodeSystem
+    // importer, so a duplicate-key failure on any other table it staged reaches the same SaveChanges. A
+    // substring match on "unique" claimed those as a System race and reported them under this URI.
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex) =>
+        ex.InnerException is SqlException { Number: 2601 or 2627 };
 }

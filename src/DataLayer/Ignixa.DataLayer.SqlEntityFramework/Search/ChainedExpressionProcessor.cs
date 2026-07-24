@@ -85,7 +85,7 @@ public class ChainedExpressionProcessor
         if (targetResourceTypeIds.Count == 0)
         {
             _logger.LogWarning("Target resource types not found: {TargetTypes}", string.Join(",", chainedExpression.TargetResourceTypes));
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Step 2: Recursively process the target expression to get matching target resource IDs
@@ -112,7 +112,7 @@ public class ChainedExpressionProcessor
         else
         {
             _logger.LogWarning("Unsupported chain target expression type: {Type}", chainedExpression.Expression?.GetType().Name);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Step 2.5: Get the SearchParamId for the reference search parameter
@@ -123,7 +123,7 @@ public class ChainedExpressionProcessor
             _logger.LogWarning(
                 "Reference search parameter not found for forward chain: {Uri}",
                 chainedExpression.ReferenceSearchParameter.Url);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         _logger.LogDebug(
@@ -176,7 +176,7 @@ public class ChainedExpressionProcessor
         if (referencingResourceTypeIds.Count == 0)
         {
             _logger.LogWarning("Referencing resource types not found: {ReferencingTypes}", string.Join(",", chainedExpression.ResourceTypes));
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Step 2: Process the expression to get matching referencing resource IDs
@@ -201,7 +201,7 @@ public class ChainedExpressionProcessor
         else
         {
             _logger.LogWarning("Unsupported reverse chain expression type: {Type}", chainedExpression.Expression?.GetType().Name);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Step 2.5: Get the SearchParamId for the reference search parameter
@@ -212,7 +212,7 @@ public class ChainedExpressionProcessor
             _logger.LogWarning(
                 "Reference search parameter not found for reverse chain: {Uri}",
                 chainedExpression.ReferenceSearchParameter.Url);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Step 3: Find references FROM matching referencing resources TO source type
@@ -261,7 +261,7 @@ public class ChainedExpressionProcessor
 
         if (queries.Count == 0)
         {
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Combine based on operator

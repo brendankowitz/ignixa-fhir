@@ -252,6 +252,53 @@ public class SearchExpressionBinderTests
     }
 
     [Fact]
+    public void GivenACompositeQuantityComponentWithSystemAndCode_WhenBinding_ThenKeepsItAQuantityRatherThanInferringAToken()
+    {
+        // Arrange -- Observation?code-value-quantity=http://loinc.org|8310-5$gt38|http://unitsofmeasure.org|Cel.
+        // The value-quantity component's value carries a full system|code pair, so it contains two '|'.
+        // Inferring a token from any '|' misreads it as a token with two separators and rejects the whole
+        // search; the '|' here is the quantity's own system|code separator, not a token separator.
+        var context = new SearchParserTestContext();
+        var code = new SearchParameterInfo("code", "code", SearchParamType.Token);
+        var quantity = new SearchParameterInfo("value-quantity", "value-quantity", SearchParamType.Quantity);
+        var codeComponent = new SearchParameterComponentInfo(new Uri("http://example.org/SearchParameter/code"))
+        {
+            ResolvedSearchParameter = code,
+        };
+        var quantityComponent = new SearchParameterComponentInfo(new Uri("http://example.org/SearchParameter/value-quantity"))
+        {
+            ResolvedSearchParameter = quantity,
+        };
+        var composite = context.Add(
+            "Observation",
+            "code-value-quantity",
+            SearchParamType.Composite,
+            components: [codeComponent, quantityComponent]);
+        var binder = CreateBinder(context);
+        var syntax = SearchValueSyntaxParser.Parse(
+            SearchParamType.Composite,
+            null,
+            "http://loinc.org|8310-5$gt38|http://unitsofmeasure.org|Cel");
+
+        // Act
+        var result = binder.BindValue(composite, null, syntax);
+
+        // Assert -- the value-quantity component bound as a quantity, not a token
+        var search = result.ShouldBeOfType<SearchParameterExpression>();
+        var and = search.Expression.ShouldBeOfType<MultiaryExpression>();
+        and.MultiaryOperation.ShouldBe(MultiaryOperator.And);
+        var quantityPredicate = and.Expressions
+            .OfType<CompositeComponentExpression>()
+            .Select(component => component.WrappedExpression)
+            .OfType<SearchParameterPredicateExpression>()
+            .Single(predicate => predicate.Value is QuantitySearchValue);
+        var quantityValue = quantityPredicate.Value.ShouldBeOfType<QuantitySearchValue>();
+        quantityValue.System.ShouldBe("http://unitsofmeasure.org");
+        quantityValue.Code.ShouldBe("Cel");
+        quantityPredicate.Comparator.ShouldBe(SearchComparator.Gt);
+    }
+
+    [Fact]
     public void GivenTooManyCompositeComponents_WhenBinding_ThenPreservesResourceMessage()
     {
         var context = new SearchParserTestContext();

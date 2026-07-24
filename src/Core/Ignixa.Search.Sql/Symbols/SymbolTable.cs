@@ -21,19 +21,22 @@ public sealed class SymbolTable
     private readonly IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>> _compartmentMembership;
     private readonly IReadOnlyDictionary<string, int?> _systemIds;
     private readonly IReadOnlyDictionary<string, int?> _quantityCodeIds;
+    private readonly IReadOnlyDictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo> _notReferencedPaths;
 
     public SymbolTable(
         IReadOnlyDictionary<string, short> searchParamIds,
         IReadOnlyDictionary<string, short> resourceTypeIds,
         IReadOnlyDictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>? compartmentMembership = null,
         IReadOnlyDictionary<string, int?>? systemIds = null,
-        IReadOnlyDictionary<string, int?>? quantityCodeIds = null)
+        IReadOnlyDictionary<string, int?>? quantityCodeIds = null,
+        IReadOnlyDictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo>? notReferencedPaths = null)
     {
         _searchParamIds = searchParamIds;
         _resourceTypeIds = resourceTypeIds;
         _compartmentMembership = compartmentMembership ?? new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>();
         _systemIds = systemIds ?? new Dictionary<string, int?>();
         _quantityCodeIds = quantityCodeIds ?? new Dictionary<string, int?>();
+        _notReferencedPaths = notReferencedPaths ?? new Dictionary<(string, string), SearchParameterInfo>();
     }
 
     /// <summary>
@@ -85,6 +88,16 @@ public sealed class SymbolTable
         => _compartmentMembership.TryGetValue(compartmentType, out var membership)
            ? membership
            : throw new KeyNotFoundException($"SymbolTable has no compartment membership map for '{compartmentType}' -- Resolve should have resolved every compartment type Lower will need.");
+
+    /// <summary>
+    /// The reference-path search parameter a <c>_not-referenced=Type:path</c> search resolved to, or
+    /// <see langword="null"/> when the pair was not resolved to a reference parameter — in which case
+    /// Lower falls back to a path-agnostic anti-join (source type only), matching the shipping engine.
+    /// Holds the parameter, not its id; Lower resolves the id through <see cref="SearchParamId"/>, the
+    /// same way compartment membership does.
+    /// </summary>
+    public SearchParameterInfo? NotReferencedPath(string sourceResourceType, string referencePath)
+        => _notReferencedPaths.TryGetValue((sourceResourceType, referencePath), out var parameter) ? parameter : null;
 
     /// <summary>
     /// Looks up a token-system or quantity-system surrogate ID. Returns the stored nullable value when

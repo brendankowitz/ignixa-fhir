@@ -211,6 +211,44 @@ public class PlanExplainerTests
     }
 
     [Fact]
+    public void GivenANotReferencedSourceWithSourceAndPath_WhenExplained_ThenPrintsTargetSourceAndParam()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = NotReferencedSource[103] not referenced by source=96 ref=969");
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceFullWildcard_WhenExplainedAlongsideAParameterizedCte_ThenConsumesOneOrdinalForItsTargetType()
+    {
+        // Arrange -- the target ResourceTypeId is a bound @pN in Emit, so Explain must consume an ordinal
+        // for it too or the @pN numbering diverges from the emitted SQL when another parameterized CTE
+        // follows. `*:*` prints without source/ref suffixes.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var plan = new QueryPlan(
+        [
+            new CteDefinition.NotReferencedSource(103, null, null),
+            new CteDefinition.ParamSource(table, 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
+            new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
+        ],
+        new CteRef(2));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert -- the ParamSource's Text predicate is @p1, not @p0, because NotReferencedSource took @p0
+        explained.ShouldBe(
+            "cte0 = NotReferencedSource[103]\n" +
+            "cte1 = StringSearchParam[103,202]  Text = @p1\n" +
+            "root = Intersect(cte0, cte1)");
+    }
+
+    [Fact]
     public void GivenAPlanWithSortAndAPageBoundary_WhenExplained_ThenPrintsBothAsTrailingLines()
     {
         // Arrange

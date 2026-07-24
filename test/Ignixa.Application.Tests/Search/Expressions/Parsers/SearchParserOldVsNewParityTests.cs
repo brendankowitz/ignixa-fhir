@@ -433,6 +433,18 @@ public class SearchParserOldVsNewParityTests
     }
 
     [Fact]
+    public void GivenRevIncludeWildcard_WhenParsingBareStar_ThenIdenticalToOldParser()
+    {
+        // Patient?_revinclude=* -- the reverse bare wildcard. Both parsers now accept it (the active one
+        // via the "*" source sentinel, the legacy oracle by normalizing "*" -> "*:*"); this pins that they
+        // reach the same reversed-wildcard shape so the rollback lever stays safe.
+        var context = new SearchParserTestContext();
+        context.Add("Observation", "subject", SearchParamType.Reference, targets: Patient);
+
+        AssertIdenticalIncludeBehavior(context, Patient, "*", isReversed: true, iterate: false);
+    }
+
+    [Fact]
     public void GivenIncludeIterate_WhenParsingIterateFlagSet_ThenIdenticalToOldParser()
     {
         var context = new SearchParserTestContext();

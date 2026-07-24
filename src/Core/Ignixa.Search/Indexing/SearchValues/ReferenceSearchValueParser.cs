@@ -110,10 +110,15 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
             }
             catch (UriFormatException)
             {
-                // The reference is not a relative reference but is not a valid absolute reference either.
+                // The type/id shape matched but the base segment ahead of it is not a parseable absolute
+                // URI, so there is no base to attach. Fall through to the same unparsed form the regex
+                // miss below produces: indexing records the reference verbatim rather than failing the
+                // write, and both routes into that form agree on what it means.
             }
         }
 
+        // Unparsed: no base and no resource type, the whole input preserved as the id. Reached either
+        // because the reference does not match the type/id shape at all, or because its base did not parse.
         return new ReferenceSearchValue(
             ReferenceKind.InternalOrExternal,
             null,

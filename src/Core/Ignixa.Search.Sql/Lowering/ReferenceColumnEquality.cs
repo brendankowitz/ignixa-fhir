@@ -92,7 +92,10 @@ internal static class ReferenceColumnEquality
         return value.Kind switch
         {
             ReferenceKind.Internal => new Predicate.IsNull(column),
-            ReferenceKind.External => new Predicate.Equal(column, context.Parameter(value.BaseUri.ToString())),
+            ReferenceKind.External => value.BaseUri is { } externalBase
+                ? new Predicate.Equal(column, context.Parameter(externalBase.ToString()))
+                : throw new InvalidOperationException(
+                    $"External reference to {value.ResourceType}/{value.ResourceId} carries no base URI."),
             ReferenceKind.InternalOrExternal => value.BaseUri is not null
                 ? new Predicate.Equal(column, context.Parameter(value.BaseUri.ToString()))
                 : null,

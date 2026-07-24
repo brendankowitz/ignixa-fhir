@@ -139,7 +139,10 @@ public class ExpressionParser : IExpressionParser
         EnsureArg.HasItems(resourceTypes, nameof(resourceTypes));
         EnsureArg.IsNotNullOrWhiteSpace(includeValue, nameof(includeValue));
 
-        if (!includeValue.Contains(':', StringComparison.Ordinal))
+        // A bare "*" is the whole-type wildcard (_include=* / _revinclude=*): every reference out of (or,
+        // reversed, into) the searched resource type. It carries no explicit "Type:" prefix and so no ':',
+        // which the missing-type guard below would otherwise reject.
+        if (!includeValue.Equals("*", StringComparison.Ordinal) && !includeValue.Contains(':', StringComparison.Ordinal))
         {
             throw new InvalidSearchOperationException(
                 isReversed

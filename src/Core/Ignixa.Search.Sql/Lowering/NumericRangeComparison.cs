@@ -18,6 +18,15 @@ namespace Ignixa.Search.Sql.Lowering;
 /// compare against the near column, or a row whose range straddles the search value would be missed.
 /// </para>
 /// <para>
+/// The ordering comparators each constrain the bound the spec's intersection test names, which is the
+/// OPPOSITE bound to the direction of the operator: <c>gt</c>/<c>ge</c> ask whether the range above the
+/// search value reaches the target at all, which is true when the target's HighValue clears it;
+/// <c>lt</c>/<c>le</c> likewise test LowValue. <c>sa</c>/<c>eb</c> ask whether the target lies wholly to
+/// one side, so they take the other bound: <c>sa</c> is LowValue, <c>eb</c> is HighValue. Reading the
+/// operator as though it applied to the near bound (gt on LowValue) silently implements <c>sa</c>/
+/// <c>eb</c> semantics instead, which agrees with the spec only for point-valued rows.
+/// </para>
+/// <para>
 /// What differs between comparators is only what [S, E] is. <c>eq</c>/<c>ne</c> widen the search value by
 /// the FHIR implied-decimal-precision tolerance, and <c>:ap</c> by
 /// <c>max(precision_modifier, abs(value) × 0.10)</c>. The ordering comparators do not widen at all: the
@@ -30,9 +39,12 @@ namespace Ignixa.Search.Sql.Lowering;
 /// exact negation of that containment, which makes <c>eq</c> and <c>ne</c> genuine complements: every
 /// stored row satisfies exactly one of them. <c>ap</c> is OVERLAP against the widened bounds, matching
 /// <see cref="DateTimeRangeComparison"/>'s <c>ap</c> — a deliberately looser relation than <c>eq</c>.
+/// </para>
+/// <para>
 /// For a point-valued row (LowValue = HighValue, what a plain <c>valueQuantity</c> or number indexes to)
-/// containment and overlap coincide; the distinction only bites on a row that stores a genuine range,
-/// such as an indexed <c>Range</c> element.
+/// containment and overlap coincide, and so do all six ordering comparators' two candidate columns; the
+/// distinction only bites on a row that stores a genuine range, such as an indexed <c>Range</c> element,
+/// or one the row generator half-bounded with a sentinel.
 /// </para>
 /// </summary>
 internal static class NumericRangeComparison

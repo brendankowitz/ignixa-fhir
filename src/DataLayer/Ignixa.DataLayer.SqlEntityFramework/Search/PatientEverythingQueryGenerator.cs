@@ -133,7 +133,7 @@ public class PatientEverythingQueryGenerator
         if (patientTypeId == 0)
         {
             _logger.LogWarning("Patient resource type not found in database");
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Query for patient resources using batched IN clause
@@ -190,7 +190,7 @@ public class PatientEverythingQueryGenerator
                 : unionedQuery.Union(compartmentQuery);
         }
 
-        return unionedQuery ?? Enumerable.Empty<long>().AsQueryable();
+        return unionedQuery ?? _context.EmptyResourceIds();
     }
 
     /// <summary>

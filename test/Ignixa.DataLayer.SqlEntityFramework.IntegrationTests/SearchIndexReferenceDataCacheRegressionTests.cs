@@ -41,42 +41,65 @@ public sealed class SearchIndexReferenceDataCacheRegressionTests : IDisposable
     }
 
     [Fact]
-    public async Task GivenARowReturnedUnderADifferentSpelling_WhenGetSystemIdsAsync_ThenCreditsTheRequestedSpelling()
-    {
-        // Arrange: the database's collation decides which rows come back. Asking for two spellings the
-        // server considers equal is the in-memory stand-in for a case-insensitive collation returning
-        // http://loinc.org for a request that named http://LOINC.ORG.
-        var seeded = new SystemEntity { Value = "http://loinc.org" };
-        _context.Systems.Add(seeded);
-        await _context.SaveChangesAsync();
-
-        // Act
-        var results = await _cache.GetSystemIdsAsync(["http://loinc.org", "http://LOINC.ORG"]);
-
-        // Assert
-        results["http://loinc.org"].ShouldBe(seeded.SystemId);
-        results["http://LOINC.ORG"].ShouldBe(
-            seeded.SystemId,
-            "a returned row must be credited to every requested spelling the database matched it against");
-    }
-
-    [Fact]
-    public async Task GivenABatchLookupUsedACaseVariant_WhenGetSystemIdAsyncCalledAfterwards_ThenStillFindsTheSystem()
+    public async Task GivenARowMatchedExactly_WhenGetSystemIdsAsync_ThenCreditsTheRequestedSpelling()
     {
         // Arrange
         var seeded = new SystemEntity { Value = "http://loinc.org" };
         _context.Systems.Add(seeded);
         await _context.SaveChangesAsync();
 
+        // Act
+        var results = await _cache.GetSystemIdsAsync(["http://loinc.org"]);
+
+        // Assert
+        results["http://loinc.org"].ShouldBe(seeded.SystemId);
+    }
+
+    [Fact]
+    public async Task GivenASpellingDifferingOnlyByCase_WhenGetSystemIdsAsync_ThenItAgreesWithTheScalarLookup()
+    {
+        // Arrange: which spellings a batch query returns is decided by the column's collation, and this
+        // provider compares ordinally. That makes the exact outcome for a case variant a property of the
+        // database, not of this code -- so the assertion is agreement between the two lookup paths rather
+        // than a fixed answer. Crediting a returned row to a spelling the database did not match would pass
+        // under a case-insensitive collation and be a wrong positive under a case-sensitive one, cached
+        // ordinally for the life of the process; recording a miss instead is wrong the other way round.
+        _context.Systems.Add(new SystemEntity { Value = "http://loinc.org" });
+        await _context.SaveChangesAsync();
+
+        using var scalarOnlyCache = new SearchIndexReferenceDataCache(_context, NullLogger<SearchIndexReferenceDataCache>.Instance);
+        var scalar = await scalarOnlyCache.GetSystemIdAsync("http://LOINC.ORG");
+
+        // Act
+        var batch = await _cache.GetSystemIdsAsync(["http://loinc.org", "http://LOINC.ORG"]);
+
+        // Assert
+        batch["http://LOINC.ORG"].ShouldBe(
+            scalar,
+            "the batch and scalar paths must answer the same question the same way, under any collation");
+    }
+
+    [Fact]
+    public async Task GivenABatchLookupUsedACaseVariant_WhenGetSystemIdAsyncCalledAfterwards_ThenItStillAgrees()
+    {
+        // Arrange: the batch path records misses in a cache the scalar path consults before taking the lock,
+        // so a miss the batch invented would outlive it for the whole TTL -- and null lowers to
+        // Predicate.False, a definitive "this terminology does not exist".
+        _context.Systems.Add(new SystemEntity { Value = "http://loinc.org" });
+        await _context.SaveChangesAsync();
+
+        using var referenceCache = new SearchIndexReferenceDataCache(_context, NullLogger<SearchIndexReferenceDataCache>.Instance);
+        var withoutPriorBatch = await referenceCache.GetSystemIdAsync("http://LOINC.ORG");
+
         await _cache.GetSystemIdsAsync(["http://loinc.org", "http://LOINC.ORG"]);
 
         // Act
-        var result = await _cache.GetSystemIdAsync("http://LOINC.ORG");
+        var afterBatch = await _cache.GetSystemIdAsync("http://LOINC.ORG");
 
-        // Assert: a spelling the batch failed to credit would have been recorded missing, and that record is
-        // consulted before the lock -- one batch lookup would make the single lookup wrong for the whole TTL,
-        // which the compiler turns into Predicate.False.
-        result.ShouldBe(seeded.SystemId, "a batch lookup must not poison the negative cache for a system that exists");
+        // Assert
+        afterBatch.ShouldBe(
+            withoutPriorBatch,
+            "a preceding batch lookup must not change the answer the scalar lookup gives");
     }
 
     [Fact]

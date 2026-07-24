@@ -333,10 +333,12 @@ public class SearchIndexReferenceDataCache : IDisposable
         {
             await _context.SaveChangesAsync(cancellationToken);
         }
-        catch
+        finally
         {
+            // Also on success: the store-generated key is materialized on the instance by now, so the
+            // tracked entry has no further use, and leaving it behind would accumulate one entry per row
+            // ever created here for the life of the process -- which every later DetectChanges walks.
             entry.State = EntityState.Detached;
-            throw;
         }
     }
 
@@ -421,14 +423,14 @@ public class SearchIndexReferenceDataCache : IDisposable
     /// cache are excluded from the query, so a warm cache issues no round trip at all.
     /// </para>
     /// <para>
-    /// A returned row is credited to every requested URI that is case-insensitively equal to its stored
-    /// <c>Value</c>, not just to the one spelled identically. Under SQL Server's default case-insensitive
-    /// collation the <c>IN</c> predicate matches <c>http://LOINC.ORG</c> against a stored
-    /// <c>http://loinc.org</c>, and re-keying the response by the stored spelling would leave the requested
-    /// spelling unanswered and record it as a miss -- poisoning the negative cache for the full TTL against a
-    /// system <see cref="GetSystemIdAsync"/> would have found. Matching back the way the database matched
-    /// keeps the two paths in agreement under either collation, since the fallback only ever credits rows the
-    /// database itself chose to return.
+    /// A returned row is credited only to the requested spelling that equals its stored <c>Value</c>
+    /// ordinally. A requested spelling that differs only by case from a returned row is a question about the
+    /// column's collation, which this method cannot read, so it re-queries that exact spelling and credits it
+    /// only if the database confirms the match. Crediting it unconditionally would be a wrong positive under a
+    /// case-sensitive collation and would poison the ordinal <c>_systemCache</c> for the process lifetime;
+    /// recording it as a miss would be wrong under a case-insensitive one and would disagree with
+    /// <see cref="GetSystemIdAsync"/>. Deferring to the database keeps the two paths in agreement under either
+    /// collation.
     /// </para>
     /// </remarks>
     /// <param name="systemUris">The system URIs to look up.</param>
@@ -480,31 +482,42 @@ public class SearchIndexReferenceDataCache : IDisposable
                 .Select(s => new { s.Value, s.SystemId })
                 .ToListAsync(cancellationToken);
 
-            var pendingByValue = pending
-                .GroupBy(uri => uri, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
-
-            foreach (var entry in found)
-            {
-                if (!pendingByValue.TryGetValue(entry.Value, out var requestedSpellings))
-                {
-                    continue;
-                }
-
-                foreach (var requested in requestedSpellings)
-                {
-                    _systemCache.TryAdd(requested, entry.SystemId);
-                    results[requested] = entry.SystemId;
-                }
-            }
+            var foundByValue = found.ToDictionary(entry => entry.Value, entry => entry.SystemId, StringComparer.Ordinal);
+            var foundIgnoringCase = new HashSet<string>(found.Select(entry => entry.Value), StringComparer.OrdinalIgnoreCase);
 
             foreach (var systemUri in pending)
             {
-                if (results[systemUri] is null)
+                // An ordinal-equal row is this spelling under any collation.
+                if (foundByValue.TryGetValue(systemUri, out var systemId))
                 {
-                    _logger.LogDebug("System not found: {SystemUri}", systemUri);
-                    _missingSystems.RecordMiss(systemUri);
+                    _systemCache.TryAdd(systemUri, systemId);
+                    results[systemUri] = systemId;
+                    continue;
                 }
+
+                // A row came back that differs only by case. Whether it answers to THIS spelling is a
+                // question about the column's collation, which this code cannot read: crediting it is
+                // wrong under a case-sensitive one and recording a miss is wrong under a case-insensitive
+                // one, and either answer would also disagree with GetSystemIdAsync. Ask the database about
+                // the exact spelling instead -- the same equality it would apply, under its own collation.
+                if (foundIgnoringCase.Contains(systemUri))
+                {
+                    var exactMatch = await _context.Systems
+                        .AsNoTracking()
+                        .Where(s => s.Value == systemUri)
+                        .Select(s => (int?)s.SystemId)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (exactMatch is { } exactId)
+                    {
+                        _systemCache.TryAdd(systemUri, exactId);
+                        results[systemUri] = exactId;
+                        continue;
+                    }
+                }
+
+                _logger.LogDebug("System not found: {SystemUri}", systemUri);
+                _missingSystems.RecordMiss(systemUri);
             }
 
             return results;

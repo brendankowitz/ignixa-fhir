@@ -84,6 +84,15 @@ public sealed class LegacyExpressionParser : IExpressionParser
 
     public IncludeExpression ParseInclude(string[] resourceTypes, string includeValue, bool isReversed, bool iterate)
     {
+        // A bare "*" is the whole-type wildcard (_include=* / _revinclude=*): it carries no "Type:" prefix,
+        // so the split below would fail the missing-type check. Normalizing it to "*:*" up front routes it
+        // through the existing wildcard branch with the "*" source sentinel -- kept identical to
+        // SearchExpressionBinder's handling so the new parser and this rollback oracle agree.
+        if (includeValue.Equals("*", StringComparison.Ordinal))
+        {
+            includeValue = "*:*";
+        }
+
         ReadOnlySpan<char> valueSpan = includeValue.AsSpan();
         if (!TrySplit(SearchSplitChar, ref valueSpan, out ReadOnlySpan<char> originalType))
         {

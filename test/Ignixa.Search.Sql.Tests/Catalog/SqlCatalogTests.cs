@@ -305,4 +305,24 @@ public class SqlCatalogTests
         table.Column("IsHistory").ShouldNotBeNull();
         table.Column("IsDeleted").ShouldNotBeNull();
     }
+
+    [Fact]
+    public void GivenTheTokenTextTable_WhenLookedUp_ThenMatchesRealDdl()
+    {
+        // Arrange -- the table `:text` searches. Its name does not end in "SearchParam", so it needs the
+        // catalog generator to name it explicitly, and unlike the other leaf tables it carries its own
+        // IsHistory column that any query against it has to filter.
+        var catalog = SqlCatalog.Default;
+
+        // Act
+        var table = catalog.Table("TokenText");
+        var text = table.Column("Text");
+
+        // Assert
+        text.SqlType.ShouldBe("nvarchar");
+        text.MaxLength.ShouldBe(400);
+        text.Collation.ShouldBe("Latin1_General_CI_AI");
+        text.IsNullable.ShouldBeFalse();
+        table.Column("IsHistory").ShouldNotBeNull();
+    }
 }

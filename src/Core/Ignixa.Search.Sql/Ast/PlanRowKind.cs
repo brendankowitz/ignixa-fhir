@@ -30,6 +30,8 @@ public static class PlanRowKind
 
     public const string CompartmentSource = "compartmentSource";
 
+    public const string NotReferencedSource = "notReferencedSource";
+
     public const string IncludeStage = "includeStage";
 
     public const string SortSpec = "sortSpec";

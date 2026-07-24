@@ -24,6 +24,13 @@ public abstract record Predicate
 
     public sealed record Or(Predicate Left, Predicate Right) : Predicate;
 
+    /// <summary>
+    /// Logical negation of a predicate, emitted as <c>NOT (…)</c>. Used for a negated resource-column
+    /// filter (<c>_id:not=a,b</c> → <c>NOT (ResourceId = @p0 OR ResourceId = @p1)</c>) in the outer WHERE,
+    /// where the negation must be visible rather than silently dropped.
+    /// </summary>
+    public sealed record Not(Predicate Operand) : Predicate;
+
     public sealed record IsNull(SqlColumnRef Column) : Predicate;
 
     /// <summary>

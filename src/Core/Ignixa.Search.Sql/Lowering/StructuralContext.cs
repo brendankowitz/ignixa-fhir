@@ -51,6 +51,50 @@ public sealed class StructuralContext
         return new CteRef(index);
     }
 
+    /// <summary>
+    /// Lowers a <c>_not-referenced</c> search to a NotReferencedSource CTE: resources of the target type
+    /// that no reference row points at. A named source type and reference path narrow the anti-join; a
+    /// path that did not resolve to a reference parameter falls back to a source-type-only (path-agnostic)
+    /// filter, matching the shipping engine.
+    /// </summary>
+    public CteRef LowerNotReferenced(NotReferencedExpression expression, string resourceType)
+    {
+        var targetTypeId = _leafContext.ResourceTypeId(resourceType);
+
+        // A source type the resolver could not find yields UnmatchableResourceTypeId (-1), which Emit
+        // renders as `rsp.ResourceTypeId = -1` inside the anti-join subquery. No row has that id, so the
+        // inner EXISTS is empty and NOT EXISTS is vacuously true -- every target passes. That is the
+        // OPPOSITE of the sentinel's effect in a positive position (an empty match), yet it is the correct
+        // answer here: a source type that does not exist has no reference rows, so no target is referenced
+        // by it, so all targets are "not referenced by it". The unmatchable target type at the outer scan
+        // still (correctly) matches nothing.
+        short? sourceTypeId = expression.SourceResourceType is { } sourceType
+            ? _leafContext.ResourceTypeId(sourceType)
+            : null;
+
+        short? referenceParamId =
+            expression.SourceResourceType is { } src
+            && expression.ReferencePath is { } path
+            && _leafContext.NotReferencedPath(src, path) is { } parameter
+                ? _leafContext.SearchParamId(parameter)
+                : null;
+
+        _ctes.Add(new CteDefinition.NotReferencedSource(targetTypeId, sourceTypeId, referenceParamId));
+        var index = _ctes.Count - 1;
+        _origins.Add(new CteOrigin(index, expression));
+        return new CteRef(index);
+    }
+
+    /// <summary>Lowers a <c>:text</c> search, which reads dbo.TokenText rather than a search-param table.</summary>
+    public CteRef LowerTokenText(SearchParameterInfo parameter, StringExpression expression, string resourceType, Expression provenanceNode)
+    {
+        var resourceTypeId = _leafContext.ResourceTypeId(resourceType);
+        _ctes.Add(TokenTextLoweringRule.Lower(parameter, expression, _leafContext, resourceTypeId));
+        var index = _ctes.Count - 1;
+        _origins.Add(new CteOrigin(index, provenanceNode));
+        return new CteRef(index);
+    }
+
     public CteRef LowerComposite(SearchParameterInfo compositeParameter, IReadOnlyList<CompositeComponentExpression> components, string resourceType, Expression provenanceNode)
     {
         foreach (var component in components)
@@ -158,9 +202,16 @@ public sealed class StructuralContext
     }
 
     public CteRef LowerNot(CteRef innerMatch, string resourceType)
+        => Except(LowerResourceSource(resourceType), innerMatch);
+
+    /// <summary>
+    /// Subtracts one match set from another. Callers that already hold a narrower left-hand set should
+    /// use this directly rather than <see cref="LowerNot"/>, whose ResourceSource anchor reads every
+    /// resource of the type.
+    /// </summary>
+    public CteRef Except(CteRef left, CteRef right)
     {
-        var baseRef = LowerResourceSource(resourceType);
-        _ctes.Add(new CteDefinition.Except(baseRef, innerMatch));
+        _ctes.Add(new CteDefinition.Except(left, right));
         return new CteRef(_ctes.Count - 1);
     }
 

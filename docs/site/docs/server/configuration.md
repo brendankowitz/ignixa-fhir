@@ -189,7 +189,11 @@ Two things depend on setting it:
 - **Background indexing.** `$reindex` and `$import` have no HTTP request to derive a base from. With
   `Fhir:BaseUri` unset they recognise nothing, so reindexed rows file self-references as external while the
   rows they replace filed them as internal, and those resources drop out of absolute searches. The server
-  logs a warning at startup when the setting is missing.
+  logs a warning at startup when the setting is missing. Recognising the tenant-scoped base also depends on
+  the background activity establishing which tenant it is running for — `$import` does this via
+  `FhirRequestContextFactory.CreateBackgroundContext`, restored on exit so it cannot leak to the next job on
+  a pooled thread. Any future background path that indexes resources (a `$reindex` implementation, for
+  example) must do the same or it will silently reintroduce this gap even with `Fhir:BaseUri` set.
 - **Host header trust.** With `Fhir:BaseUri` unset, the base is derived from the request's `Host` header,
   which a client controls — a forged `Host` decides whether an inbound reference is stored as internal or
   external. When it is set, the `Host` header is ignored for this purpose. Independently, set `AllowedHosts`
