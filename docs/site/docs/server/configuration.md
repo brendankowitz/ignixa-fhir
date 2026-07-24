@@ -53,6 +53,82 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
 | `Storage.Type` | `SqlEntityFramework` (recommended) |
 | `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
 
+### Hostname-based Tenant Resolution
+
+Each tenant may declare a `Hostnames` array to enable resolution by request `Host` header in addition to numeric `/tenant/{id}/` path routing.
+
+#### Configuration
+
+```json
+{
+  "Tenants": {
+    "Configurations": [
+      {
+        "TenantId": 1,
+        "DisplayName": "Production Database",
+        "Hostnames": ["fhir1.example.org", "fhir1-backup.example.org"],
+        "Storage": { "Type": "SqlEntityFramework", "ConnectionString": "..." }
+      }
+    ]
+  }
+}
+```
+
+#### How It Works
+
+**Hostname Semantics:**
+
+- **First hostname** is the **canonical base** for that tenant's absolute references. This hostname is used when the server emits absolute URLs (in `Location` headers, pagination links, `Bundle.entry.fullUrl`, etc.) and when stored internally.
+- **Additional hostnames** (if any) are recognized as valid inbound hosts for the same tenant but are **not** used for outbound references.
+- Hostnames must be **bare DNS names** (lowercase, no scheme, no port, no path). Example: `fhir1.example.org` (valid); `https://fhir1.example.org:8080/fhir` (invalid).
+- Hostnames are **unique across all tenants**. A duplicate hostname is fatal: the server refuses to serve and the error is enforced when the host-index resolver is first used or during host-index build.
+
+**Resolution Precedence:**
+
+1. If the request's `Host` header matches a configured hostname, that tenant is selected.
+2. If the URL path contains `/tenant/{id}/` (numeric), that tenant is selected by ID.
+3. If **both** `Host` header and `/tenant/{id}/` path are present and resolve to **different** tenants, the server returns **400 Bad Request**.
+4. If the `Host` header is not recognized and no `/tenant/{id}/` is in the path, resolution falls through to single-tenant auto-detect (if only one active tenant) or remains unresolved.
+
+**Examples:**
+
+```
+Request: GET http://fhir1.example.org/metadata
+Result: Selects tenant with Hostnames[0] = "fhir1.example.org"
+
+Request: GET http://fhir1-backup.example.org/Patient/123
+Result: Selects same tenant via Hostnames[1] (alternate hostname)
+
+Request: GET http://fhir1.example.org/tenant/2/Patient/123
+Result: 400 Bad Request (Host resolves to Tenant 1, path specifies Tenant 2 — conflict)
+
+Request: GET http://localhost/tenant/1/Patient/123
+Result: Selects Tenant 1 (by path; Host not recognized)
+
+Request: GET http://unrecognized.example.org/Patient/123
+Result: Falls through to auto-detect or single-tenant mode
+```
+
+#### TLS/Certificate Considerations
+
+- **Subdomains under one zone** (e.g., `fhir1.example.org`, `fhir2.example.org`) are covered by a single **wildcard certificate** (`*.example.org`). Wildcards match a single DNS level.
+- **Apex/vanity domains** (different registrable domains like `org1.com`, `org2.com`) require **separate certificates**, each signed for its own domain.
+- For development, self-signed certificates or local DNS overrides (`/etc/hosts` or Windows hosts file) are common.
+
+#### Limitations
+
+**Path-based vanity slugs are not yet supported.** The following forms are **NOT** available:
+
+- `/tenant/{slug}/` (path-based slug routing)
+- `/{slug}/` (bare slug routing)
+
+Currently, only these forms work:
+
+- `/tenant/{id}/` (numeric ID routing) ✅
+- `Host` header routing with `Hostnames` ✅
+
+Path-based slugs (`/tenant/{slug}/`) are planned for a future release and will require relaxing route constraints, slug indexing, and slug format validation across the API layer. Track progress in the project roadmap.
+
 ### SQL Server Connection String
 
 For production SQL Server:
