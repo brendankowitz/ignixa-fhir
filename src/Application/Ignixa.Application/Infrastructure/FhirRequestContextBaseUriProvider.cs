@@ -53,15 +53,13 @@ public sealed class FhirRequestContextBaseUriProvider(
             // ValueTasks backed by a Lazy array, so this never actually blocks.
 #pragma warning disable CA2012 // Use ValueTasks correctly - store's ValueTasks are already completed
             var tenant = configStore.GetTenantConfigurationAsync(tenantId).GetAwaiter().GetResult();
-            var allTenantCount = tenant is not null
-                ? configStore.GetAllTenantsAsync().GetAwaiter().GetResult().Count
-                : 0;
-#pragma warning restore CA2012
 
             if (tenant is not null)
             {
+                var allTenantCount = configStore.GetAllTenantsAsync().GetAwaiter().GetResult().Count;
                 return resolver.Resolve(requestOrigin: null, TenantAddressing.For(tenant, allTenantCount));
             }
+#pragma warning restore CA2012
 
             // The store gates GetTenantConfigurationAsync on IsActive, so this branch is reached specifically
             // when the tenant was deactivated after being addressed. The numeric-form fallback below still

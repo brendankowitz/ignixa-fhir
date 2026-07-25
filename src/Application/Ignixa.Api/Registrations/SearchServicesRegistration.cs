@@ -183,7 +183,7 @@ public static class SearchServicesRegistration
     internal static void ValidateTenantHostnames(IConfiguration configuration, ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger(typeof(TenantHostnameValidator).FullName!);
-        var tenants = configuration.GetSection("Tenants:Configurations").Get<List<TenantConfiguration>>() ?? new List<TenantConfiguration>();
+        var tenants = configuration.GetSection("Tenants:Configurations").Get<List<TenantConfiguration>>() ?? [];
         var hostnameProblems = TenantHostnameValidator.Validate(tenants);
 
         foreach (var problem in hostnameProblems)

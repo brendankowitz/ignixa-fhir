@@ -70,18 +70,19 @@ public class FhirRequestContextMiddleware
                 tenantId);
         }
 
+        var requestOrigin = BuildRequestOrigin(httpContext);
         if (fhirContext.TenantConfiguration is { } resolvedTenant)
         {
             var allTenantCount = (await configStore.GetAllTenantsAsync(httpContext.RequestAborted)).Count;
 
             fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
-                BuildRequestOrigin(httpContext),
+                requestOrigin,
                 TenantAddressing.For(resolvedTenant, allTenantCount));
         }
         else
         {
             fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
-                BuildRequestOrigin(httpContext),
+                requestOrigin,
                 resolvedTenantId,
                 CanonicalFormFor(httpContext));
         }
