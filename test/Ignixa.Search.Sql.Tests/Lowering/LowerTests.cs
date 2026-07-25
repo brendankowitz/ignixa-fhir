@@ -1201,7 +1201,8 @@ public class LowerTests
     public void GivenLowerRunWithIncludesOnlyAndCountOnly_WhenCalled_ThenThrowsNotSupportedException()
     {
         // IncludesOnly asks for include rows; CountOnly counts match rows — these are contradictory.
-        // The guard fires before include stages are built, so even an expression with no includes throws.
+        // The guard fires before BuildIncludeStages and before the access-constraint binding loop,
+        // so the combination is rejected immediately without building any include stages.
         var symbols = new SymbolTable(
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103 });

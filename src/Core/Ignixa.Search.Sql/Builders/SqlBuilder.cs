@@ -254,9 +254,12 @@ public static class SqlBuilder
 
         for (var i = 0; i < includes.Count; i++)
         {
-            // When IncludesOnly, the first include SELECT defines result column names for the UNION ALL;
-            // give IsMatch an explicit alias so it remains addressable by name (e.g., in ORDER BY).
-            var isMatchAlias = plan.IncludesOnly && i == 0 ? " AS IsMatch" : string.Empty;
+            // SQL Server takes a UNION ALL's column names from its first SELECT, and callers read those
+            // columns by ordinal. When IncludesOnly omits the match arm, the first arm appended to
+            // unionBlocks must carry the explicit " AS IsMatch" alias to preserve the four-column shape.
+            // Key off unionBlocks.Count == 0 (first arm overall), not i == 0 (first include stage),
+            // so any future arm inserted before this loop cannot silently break the ordinal contract.
+            var isMatchAlias = plan.IncludesOnly && unionBlocks.Count == 0 ? " AS IsMatch" : string.Empty;
             unionBlocks.Add(hasActiveProjection
                 ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns}{projectionCols} FROM {IncludeLimitLabel(i)} i\n" +
                   $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +

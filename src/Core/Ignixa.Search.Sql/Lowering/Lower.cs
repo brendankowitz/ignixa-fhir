@@ -81,6 +81,16 @@ public static class Lower
                 "already established for typed leaves and _include/_revinclude under a null scope.");
         }
 
+        // Reject the self-contradictory combination up front, before doing the work of building
+        // include stages — IncludesOnly requests include rows; CountOnly requests a count of match
+        // rows; the two are mutually exclusive regardless of what includes are present.
+        if (options.IncludesOnly && options.CountOnly)
+        {
+            throw new NotSupportedException(
+                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
+                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
+        }
+
         IReadOnlyList<IncludeStage>? includeStages;
         if (targetResourceType is null)
         {
@@ -112,13 +122,6 @@ public static class Lower
                     return bindings is null ? stage : stage with { Constraints = bindings };
                 })
                 .ToList();
-        }
-
-        if (options.IncludesOnly && options.CountOnly)
-        {
-            throw new NotSupportedException(
-                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
-                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
         }
 
         if (options.IncludesOnly && includeStages is not { Count: > 0 })

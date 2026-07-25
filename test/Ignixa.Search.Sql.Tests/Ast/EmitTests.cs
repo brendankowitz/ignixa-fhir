@@ -2420,26 +2420,34 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanAndIncludesOnlyIgnored_ThenIsMatchOneRowsWouldBePresent()
+    public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenIsMatchAliasIsOnTheFirstUnionAllArm()
     {
-        // Non-vacuity proof: this test is specifically written to FAIL if IncludesOnly is ignored
-        // (i.e., if the match arm is still emitted). With IncludesOnly properly respected, the
-        // match arm (CAST(1 AS bit) AS IsMatch ... FROM cteMatchPage) must be absent.
-        //
-        // Failure message when flag is ignored:
-        //   "sql" should not contain "CAST(1 AS bit) AS IsMatch" but does.
+        // SQL Server takes a UNION ALL's column names from its first SELECT. Keying the alias off
+        // unionBlocks.Count == 0 (first arm appended overall) rather than i == 0 (first include-stage
+        // index) ensures that any future arm inserted before the loop cannot silently break the ordinal
+        // contract that callers rely on. This test verifies the alias is on the structurally-first arm,
+        // not merely present somewhere in the SQL.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
             IncludesOnly: true);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
-        // This assertion is the discriminating one: it passes only if the match arm is absent.
-        sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
-        // And the include arm must be present (ensures the plan is non-empty).
-        sql.ShouldContain("CAST(0 AS bit) AS IsMatch");
+        // Split the entire SQL on the assembly separator — no CTE emits "AS IsMatch", so any match
+        // in arms[0] must come from the first assembly arm (which is at the end of that element).
+        // This is the structural check: the alias must be in the first UNION ALL arm overall,
+        // not on a subsequent arm that happens to be the first *include-stage* index.
+        var arms = sql.Split("\nUNION ALL\n");
+
+        // The alias must be on the first arm — not on a later arm, and not merely in the SQL overall.
+        arms[0].ShouldContain(" AS IsMatch");
+        // Subsequent arms must not re-alias it (SQL Server reads names from the first SELECT only).
+        for (var i = 1; i < arms.Length; i++)
+        {
+            arms[i].ShouldNotContain(" AS IsMatch");
+        }
     }
 
     [Fact]
