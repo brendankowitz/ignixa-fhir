@@ -11,6 +11,7 @@ using Ignixa.Api.Filters;
 using Ignixa.Api.Http;
 using Ignixa.Application.Features.Compartment;
 using Ignixa.Application.Features.Bundle.Serialization;
+using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
@@ -118,6 +119,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -151,6 +153,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);
@@ -169,6 +172,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -190,6 +194,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);
@@ -209,6 +214,7 @@ public static class CompartmentEndpoints
         IMediator mediator,
         IQueryParameterParser queryParser,
         ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        IFhirVersionContext versionContext,
         IFhirRequestContextAccessor fhirContextAccessor,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -242,6 +248,7 @@ public static class CompartmentEndpoints
         // CRITICAL: Pass tenantId to use tenant-specific search parameters (e.g., US Core)
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
         var searchOptionsBuilder = searchOptionsBuilderFactory.Create(fhirSpec, fhirContext.TenantId);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, fhirContext.TenantId);
 
         // Parse query parameters
         var queryParameters = queryParser.Parse(context.Request.Query);
@@ -277,6 +284,7 @@ public static class CompartmentEndpoints
             searchOptions: searchOptions,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
+            schemaProvider: schemaProvider,
             pretty: pretty,
             cancellationToken: cancellationToken);
 
@@ -295,6 +303,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -327,6 +336,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);
@@ -344,6 +354,7 @@ public static class CompartmentEndpoints
         [FromServices] IMediator mediator,
         [FromServices] IQueryParameterParser queryParser,
         [FromServices] ISearchOptionsBuilderFactory searchOptionsBuilderFactory,
+        [FromServices] IFhirVersionContext versionContext,
         [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
         [FromServices] ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
@@ -364,6 +375,7 @@ public static class CompartmentEndpoints
             mediator,
             queryParser,
             searchOptionsBuilderFactory,
+            versionContext,
             fhirContextAccessor,
             loggerFactory,
             cancellationToken);

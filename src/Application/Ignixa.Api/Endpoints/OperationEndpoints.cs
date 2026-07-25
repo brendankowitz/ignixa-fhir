@@ -436,6 +436,9 @@ public static class OperationEndpoints
         HttpContext context,
         string id,
         [FromServices] IMediator mediator,
+        [FromServices] IFhirVersionContext versionContext,
+        [FromServices] IFhirRequestContextAccessor fhirContextAccessor,
+        [FromServices] ILoggerFactory loggerFactory,
         [FromQuery] string? start,
         [FromQuery] string? end,
         [FromQuery] DateTimeOffset? _since,
@@ -443,6 +446,20 @@ public static class OperationEndpoints
         [FromQuery] int? _count,
         CancellationToken cancellationToken)
     {
+        var logger = loggerFactory.CreateLogger(typeof(OperationEndpoints).FullName!);
+
+        // Get tenant configuration from FHIR request context (works for both regular and bundle entry requests)
+        var fhirContext = fhirContextAccessor.RequestContext;
+        if (fhirContext?.TenantConfiguration == null)
+        {
+            logger.LogError("TenantConfiguration not found in IFhirRequestContext for Patient/{Id}/$everything", id.SanitizeForLog());
+            return Results.StatusCode(StatusCodes.Status500InternalServerError);
+        }
+
+        var tenantConfig = fhirContext.TenantConfiguration;
+        var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
+        var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, fhirContext.TenantId);
+
         // Parse _type parameter (comma-delimited list of resource types)
         ISet<string>? types = null;
         if (!string.IsNullOrEmpty(_type))
@@ -512,6 +529,7 @@ public static class OperationEndpoints
             searchOptions: result.SearchOptions!,
             baseUrl: baseUrl,
             queryString: context.Request.QueryString.Value ?? string.Empty,
+            schemaProvider: schemaProvider,
             pretty: pretty,
             cancellationToken: cancellationToken);
 
