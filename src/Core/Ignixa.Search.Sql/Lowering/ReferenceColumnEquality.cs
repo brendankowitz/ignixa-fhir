@@ -74,10 +74,10 @@ internal static class ReferenceColumnEquality
                         context.Parameter(declared[i])));
             }
 
-            // A stored row may carry a null type when the reference was indexed untyped; the
-            // shipping engine admits those when there are multiple declared targets (where type
-            // ambiguity exists at index time). For single-target parameters the shipping engine
-            // uses a strict equality match and does not admit null-typed rows.
+            // A stored NULL type means the reference was indexed without resolvable type information.
+            // That is only ambiguous when the parameter itself admits several target types; for a
+            // single-target parameter the type is unambiguous, so admitting NULL rows would widen the
+            // match for no semantic gain — matching the shipping engine's observed behaviour.
             if (declared.Count > 1)
             {
                 targets = new Predicate.Or(targets, new Predicate.IsNull(new SqlColumnRef(table.TableName, resourceTypeColumn)));

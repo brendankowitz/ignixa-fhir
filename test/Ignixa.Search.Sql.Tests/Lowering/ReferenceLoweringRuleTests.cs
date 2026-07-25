@@ -175,6 +175,112 @@ public class ReferenceLoweringRuleTests
         ReferencesBaseUri(cte.Predicate).ShouldBeFalse("InternalOrExternal must leave BaseUri unconstrained.");
     }
 
+    [Fact]
+    public void GivenAnUntypedReferenceWithAllUnresolvableTargets_WhenLowered_ThenStillEmitsTypeFilter()
+    {
+        // When every declared target resolves to the unmatchable sentinel (-1) the predicate must still
+        // contain a ReferenceResourceTypeId constraint. Dropping sentinel targets would produce an empty
+        // declared list, which falls through to the unconstrained id-only predicate — re-introducing the
+        // false-positive behaviour the type-narrowing pass exists to prevent.
+        var parameter = new SearchParameterInfo(
+            "organization",
+            "organization",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["UnknownFoo"]);
+
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: null!, resourceId: "org-123"));
+
+        // Store the declared target as the unmatchable sentinel, as Resolve does when the resolver
+        // returns null for a type name it does not recognise.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url!.ToString()] = 210 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["UnknownFoo"] = SymbolTable.UnmatchableResourceTypeId });
+
+        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, new LeafContext(symbols), 103);
+
+        // Must be AND(Equal(ReferenceResourceTypeId, -1), Equal(ReferenceResourceId, ...)), not a bare
+        // Equal(ReferenceResourceId) — confirming the sentinel is emitted rather than the list being collapsed.
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var typeConstraint = and.Left.ShouldBeOfType<Predicate.Equal>();
+        typeConstraint.Column.Column.ShouldBe("ReferenceResourceTypeId");
+        typeConstraint.Value.Value.ShouldBe(SymbolTable.UnmatchableResourceTypeId);
+        and.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceId");
+    }
+
+    [Fact]
+    public void GivenAnUntypedReferenceWithMultipleDeclaredTargets_WhenLowered_ThenEmitsIsNullArm()
+    {
+        // The shipping engine admits null-typed rows for multi-target parameters because a reference
+        // indexed without type information is genuinely ambiguous when the parameter allows several types.
+        var parameter = new SearchParameterInfo(
+            "general-practitioner",
+            "general-practitioner",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-general-practitioner"),
+            targetResourceTypes: ["Organization", "Practitioner"]);
+
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: null!, resourceId: "gp-456"));
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url!.ToString()] = 211 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111, ["Practitioner"] = 114 });
+
+        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, new LeafContext(symbols), 103);
+
+        // Predicate: AND(OR(OR(Eq(typeId,111), Eq(typeId,114)), IsNull(typeId)), Eq(id))
+        var outerAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var typeOr = outerAnd.Left.ShouldBeOfType<Predicate.Or>();
+        typeOr.Right.ShouldBeOfType<Predicate.IsNull>().Column.Column.ShouldBe("ReferenceResourceTypeId");
+        outerAnd.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceId");
+    }
+
+    [Fact]
+    public void GivenAnUntypedReferenceWithSingleDeclaredTarget_WhenLowered_ThenOmitsIsNullArm()
+    {
+        // For a single-target parameter the reference type is unambiguous regardless of how it was
+        // indexed; admitting null-typed rows would widen the match for no semantic gain.
+        var parameter = new SearchParameterInfo(
+            "organization",
+            "organization",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: null!, resourceId: "org-123"));
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url!.ToString()] = 210 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111 });
+
+        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, new LeafContext(symbols), 103);
+
+        // Predicate: AND(Equal(typeId, 111), Equal(id)) — no IS NULL arm anywhere.
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        and.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceTypeId");
+        ContainsTypeIsNull(cte.Predicate).ShouldBeFalse("single-target must not admit null-typed rows.");
+    }
+
+    private static bool ContainsTypeIsNull(Predicate predicate) => predicate switch
+    {
+        Predicate.And and => ContainsTypeIsNull(and.Left) || ContainsTypeIsNull(and.Right),
+        Predicate.Or or => ContainsTypeIsNull(or.Left) || ContainsTypeIsNull(or.Right),
+        Predicate.IsNull isNull => isNull.Column.Column == "ReferenceResourceTypeId",
+        _ => false,
+    };
+
     private static bool ReferencesBaseUri(Predicate predicate) => predicate switch
     {
         Predicate.And and => ReferencesBaseUri(and.Left) || ReferencesBaseUri(and.Right),

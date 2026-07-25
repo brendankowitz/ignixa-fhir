@@ -37,10 +37,23 @@ public sealed class LeafContext
     public int? QuantityCodeId(string code) => _symbols.QuantityCodeId(code);
 
     /// <summary>
-    /// The ResourceTypeIds a reference parameter declares it may point at, skipping any the symbol table
-    /// could not resolve. Empty when the parameter declares no targets, which leaves the reference
-    /// unconstrained by type.
+    /// The ResourceTypeIds a reference parameter declares it may point at. Empty when the parameter
+    /// declares no targets, which leaves the reference unconstrained by type.
     /// </summary>
+    /// <remarks>
+    /// A declared target type that the symbol table could not resolve is included as
+    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) rather than dropped. That sentinel
+    /// contributes an OR arm that matches nothing — no catalog row carries id -1 — but it does not
+    /// collapse the predicate. Dropping instead would be more dangerous: if every declared target is
+    /// unresolvable, the resulting empty list falls through to the unconstrained id-only predicate,
+    /// matching a reference to any resource type carrying that id. That is exactly the false-positive
+    /// behaviour the type-narrowing pass exists to prevent.
+    ///
+    /// In the mixed case (<c>[Organization, UnknownType]</c>) the -1 arm contributes nothing to the OR
+    /// and the resolvable arms still work correctly. This mirrors the convention established in
+    /// <see cref="StructuralContext.LowerNotReferenced"/>, where an unresolvable source type also
+    /// resolves to the unmatchable sentinel.
+    /// </remarks>
     public IReadOnlyList<short> DeclaredTargetResourceTypeIds(SearchParameterInfo parameter)
     {
         ArgumentNullException.ThrowIfNull(parameter);
