@@ -39,15 +39,32 @@ public static class SqlBuilder
             writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
 
             var countWhereClauses = new List<string>();
-            if (plan.OuterPredicate is not null)
+
+            // Emit the resource join when any of outer predicate or hash filter needs it — all three
+            // predicates share the same single join; emitting it conditionally per-predicate would
+            // produce duplicate JOINs (a SQL error) or miss it entirely (a silent no-op).
+            var countNeedsResourceJoin = plan.OuterPredicate is not null || plan.SearchParameterHash is not null;
+            if (countNeedsResourceJoin)
             {
                 writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1");
+            }
+
+            if (plan.OuterPredicate is not null)
+            {
                 countWhereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
             }
 
             if (plan.SurrogateRange is { } countRange)
             {
                 AppendSurrogateRangeClauses(countWhereClauses, countRange, parameters);
+            }
+
+            if (plan.SearchParameterHash is { } countHash)
+            {
+                // r.SearchParamHash IS NULL means the resource has never been indexed and must qualify
+                // for reindex. Omitting this disjunct would silently skip exactly the resources most in
+                // need of indexing — the ones that have no hash because they pre-date the feature.
+                countWhereClauses.Add($"(r.SearchParamHash IS NULL OR r.SearchParamHash <> {EmitParam(countHash, parameters)})");
             }
 
             if (countWhereClauses.Count > 0)
@@ -74,7 +91,10 @@ public static class SqlBuilder
             var sortColumns = EmitSortSelectColumns(plan.Sort);
             var orderByText = EmitOrderBy(plan.Sort);
 
-            var needsResourceJoin = plan.OuterPredicate is not null || hasActiveProjection;
+            // Emit the resource join when any of outer predicate, projection, or hash filter needs it —
+            // all three share the same single join; emitting it conditionally per-contributor would
+            // produce duplicate JOINs (a SQL error) or miss it entirely (a silent no-op).
+            var needsResourceJoin = plan.OuterPredicate is not null || hasActiveProjection || plan.SearchParameterHash is not null;
 
             var whereClauses = new List<string>();
             int? seekClauseIndex = null;
@@ -97,6 +117,14 @@ public static class SqlBuilder
             if (plan.SurrogateRange is { } range)
             {
                 AppendSurrogateRangeClauses(whereClauses, range, parameters);
+            }
+
+            if (plan.SearchParameterHash is { } hash)
+            {
+                // r.SearchParamHash IS NULL means the resource has never been indexed and must qualify
+                // for reindex. Omitting this disjunct would silently skip exactly the resources most in
+                // need of indexing — the ones that have no hash because they pre-date the feature.
+                whereClauses.Add($"(r.SearchParamHash IS NULL OR r.SearchParamHash <> {EmitParam(hash, parameters)})");
             }
 
             writer.Append(";WITH ");
@@ -163,7 +191,22 @@ public static class SqlBuilder
             AppendSurrogateRangeClauses(matchWhereClauses, matchRange, parameters);
         }
 
-        var matchResourceJoin = plan.OuterPredicate is null
+        // The hash filter constrains the match arm only. Reindex does not use _include, so the
+        // combination is semantically meaningless: include rows are fetched by reference from matched
+        // resources and are not iterated independently for reindexing. Applying the filter to include
+        // rows would silently drop legitimately-included resources whose hash differs from the current
+        // definition set but which are not being reindexed.
+        // r.SearchParamHash IS NULL means the resource has never been indexed and must qualify for
+        // reindex; omitting this disjunct would silently skip the resources most in need of indexing.
+        if (plan.SearchParameterHash is { } matchHash)
+        {
+            matchWhereClauses.Add($"(r.SearchParamHash IS NULL OR r.SearchParamHash <> {EmitParam(matchHash, parameters)})");
+        }
+
+        // Emit the resource join inside cteMatchPage when any of outer predicate or hash filter needs
+        // it — both share the same single join; emitting it conditionally per-contributor would
+        // produce duplicate JOINs (a SQL error) or miss it entirely (a silent no-op).
+        var matchResourceJoin = plan.OuterPredicate is null && plan.SearchParameterHash is null
             ? string.Empty
             : "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
 

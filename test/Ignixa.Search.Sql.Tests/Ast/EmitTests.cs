@@ -1529,6 +1529,1020 @@ public class EmitTests
         emitted.Sql.ShouldContain("m.Sid1 <=");
     }
 
+    // ─── SearchParameterHash tests ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenAPlanWithASearchParameterHash_WhenEmitted_ThenRowsCarryingThatHashAreExcluded()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("SearchParamHash");
+        emitted.Parameters.Select(p => p.Value).ShouldContain("abc123");
+    }
+
+    [Fact]
+    public void GivenAPlanWithASearchParameterHash_WhenEmitted_ThenTheIsNullDisjunctIsPresent_SoNeverIndexedResourcesQualify()
+    {
+        // A resource with a NULL SearchParamHash has never been indexed and must qualify for reindex.
+        // The IS NULL disjunct is not optional: dropping it would silently skip exactly the resources
+        // most in need of indexing.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("(r.SearchParamHash IS NULL OR r.SearchParamHash <> ");
+    }
+
+    [Fact]
+    public void GivenAPlanWithASearchParameterHashAlone_WhenEmitted_ThenTheResourceJoinAppearsExactlyOnce()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        System.Text.RegularExpressions.Regex.Matches(sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAPlanWithBothAProjectionAndAHashFilter_WhenEmitted_ThenTheResourceJoinAppearsOnce()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Projection: new ProjectionSpec(["RawResource"]),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        System.Text.RegularExpressions.Regex.Matches(sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAPlanWithOuterPredicateAndHashFilter_WhenEmitted_ThenTheResourceJoinAppearsOnceAndBothFiltersArePresent()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        System.Text.RegularExpressions.Regex.Matches(sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+        sql.ShouldContain("SearchParamHash");
+        sql.ShouldContain("ResourceId =");
+    }
+
+    [Fact]
+    public void GivenAPlanWithProjectionOuterPredicateAndHashFilter_WhenEmitted_ThenTheResourceJoinAppearsOnceAndAllFiltersArePresent()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
+            Projection: new ProjectionSpec(["RawResource"]),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        System.Text.RegularExpressions.Regex.Matches(sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+        sql.ShouldContain("SearchParamHash");
+        sql.ShouldContain("ResourceId =");
+        sql.ShouldContain("r.[RawResource]");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithASearchParameterHash_WhenEmitted_ThenTheHashFilterIsAppliedToTheCount()
+    {
+        // A reindex driver counts outstanding work before doing it; a count that ignores the hash
+        // filter would report the wrong total.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("COUNT_BIG(DISTINCT m.Sid1)");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r");
+        emitted.Sql.ShouldContain("SearchParamHash");
+        emitted.Parameters.Select(p => p.Value).ShouldContain("abc123");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithHashFilterAlone_WhenEmitted_ThenTheResourceJoinAppearsExactlyOnce()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        System.Text.RegularExpressions.Regex.Matches(sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenANoIncludesPlanWithSortAndSearchParameterHash_WhenEmitted_ThenBothFiltersAppearAndTheResourceJoinIsEmittedOnce()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("SearchParamHash");
+        System.Text.RegularExpressions.Regex.Matches(emitted.Sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+        emitted.Parameters.Select(p => p.Value).ShouldContain("abc123");
+    }
+
+    [Fact]
+    public void GivenAPlanWithSearchParameterHashAndSurrogateRange_WhenEmitted_ThenBothFiltersAppearInTheWhere()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("m.Sid1 >=");
+        emitted.Sql.ShouldContain("m.Sid1 <=");
+        emitted.Sql.ShouldContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenTheHashFilterAppliesToTheMatchArmOnly()
+    {
+        // Reindex does not use _include: the combination is semantically meaningless. Include rows are
+        // fetched by reference from matched resources and are not iterated independently for reindexing.
+        // Applying the hash filter to include rows would drop legitimately-included resources whose hash
+        // differs from the current definition set but which are not themselves being reindexed.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        // The filter must appear inside the cteMatchPage CTE only, not in the include-stage CTEs.
+        var matchPageStart = emitted.Sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = emitted.Sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        matchPageStart.ShouldBeGreaterThanOrEqualTo(0);
+        inc0Start.ShouldBeGreaterThanOrEqualTo(0);
+
+        var matchPageBody = emitted.Sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldContain("SearchParamHash");
+
+        var inc0End = emitted.Sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var inc0Body = emitted.Sql[inc0Start..inc0End];
+        inc0Body.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenTheResourceJoinInsideMatchPageAppearsOnce()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The inc0/inc0lim stages use their own dbo.Resource join for chaining, so we count only
+        // the match-page INNER JOIN dbo.Resource added by the hash filter.
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        System.Text.RegularExpressions.Regex.Matches(matchPageBody, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenItIsValidSql()
+    {
+        // Sanity: the includes shape with a hash filter produces syntactically valid T-SQL.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        // Does not throw -- shape is valid and coherent.
+        var emitted = SqlBuilder.Run(plan);
+        emitted.Sql.ShouldContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHashAndAnOuterPredicate_WhenEmitted_ThenTheResourceJoinAppearsOnce()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        System.Text.RegularExpressions.Regex.Matches(matchPageBody, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+        matchPageBody.ShouldContain("SearchParamHash");
+        matchPageBody.ShouldContain("ResourceId =");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashAlone_WhenEmitted_ThenNoSearchParamHashAppearsInIncludeStage()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var inc0LimStart = sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var inc0Body = sql[inc0Start..inc0LimStart];
+        inc0Body.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenHashFilterIsInsideMatchPageWhereClause()
+    {
+        // Prove the filter appears in cteMatchPage's WHERE, not in the outer UNION ALL assembly section.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldContain("WHERE");
+        matchPageBody.ShouldContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashAloneAndNoOuterPredicate_WhenEmitted_ThenMatchPageUsesInnerJoinOnlyForHashFilter()
+    {
+        // Prove that the includes shape emits the resource join inside cteMatchPage when hash alone is set.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldContain("INNER JOIN dbo.Resource r ON");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithNoHashAndNoOuterPredicate_WhenEmitted_ThenMatchPageHasNoResourceJoin()
+    {
+        // Regression guard: the includes shape must not emit a resource join in cteMatchPage when
+        // neither the outer predicate nor the hash filter is present.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage]);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        // The inc0 stage has its own resource join; we must not mistake it for the match-page join.
+        matchPageBody.ShouldNotContain("INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilter_WhenEmitted_ThenTheUnionAllAssemblyDoesNotContainTheHashFilter()
+    {
+        // The hash filter is scoped to the match arm inside cteMatchPage. The outer UNION ALL assembly
+        // (the SELECT ... FROM cteMatchPage block) must not have it: include rows should flow through
+        // without any hash restriction.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Extract from the start of the UNION ALL assembly (after the last CTE definition)
+        var inc0LimEnd = sql.IndexOf("\nSELECT", sql.IndexOf("inc0lim AS (", StringComparison.Ordinal), StringComparison.Ordinal);
+        var assemblySection = sql[inc0LimEnd..];
+        assemblySection.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenIncludeStageDoesNotCarryHashFilter()
+    {
+        // Proves inc0 body does not contain SearchParamHash (complementary to match-arm test).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var inc0LimStart = sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var inc0Body = sql[inc0Start..inc0LimStart];
+        inc0Body.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilter_WhenEmitted_ThenBothSearchParamHashAndIncludeJoinArePresent()
+    {
+        // Confirms the includes shape with hash compiles without corrupting the include join logic.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("SearchParamHash");
+        sql.ShouldContain("inc0 AS (");
+        sql.ShouldContain("inc0lim AS (");
+        sql.ShouldContain("UNION ALL");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilter_WhenEmitted_ThenExistsCorrelationStillPointsToMatchPage()
+    {
+        // The EXISTS correlation in inc0 must still reference cteMatchPage — not a broken alias.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilterAndSurrogateRange_WhenEmitted_ThenBothFiltersAreInsideMatchPage()
+    {
+        // Both hash and surrogate range must be scoped to the match arm.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldContain("SearchParamHash");
+        matchPageBody.ShouldContain("Sid1 >=");
+        matchPageBody.ShouldContain("Sid1 <=");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithNoHashFilter_WhenEmitted_ThenExistingBehaviourIsUnchanged()
+    {
+        // Regression guard: adding SearchParameterHash support must not change the SQL for plans
+        // that do not set it.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage]);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        // Exact known-good text from the corresponding GivenAForwardIncludeStageSeededFromMatch test.
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            "),\n" +
+            "cteMatchPage AS (\n" +
+            "    SELECT TOP (50) m.T1, m.Sid1\n" +
+            "    FROM cte0 m\n" +
+            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            "),\n" +
+            "inc0 AS (\n" +
+            "    SELECT DISTINCT TOP (1001) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.ReferenceSearchParam rsp\n" +
+            "    INNER JOIN dbo.Resource r\n" +
+            "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+            "       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+            "       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+            "    WHERE rsp.SearchParamId = 55\n" +
+            "      AND rsp.ResourceTypeId = 103\n" +
+            "      AND r.ResourceTypeId = 105\n" +
+            "      AND rsp.BaseUri IS NULL\n" +
+            "      AND EXISTS (\n" +
+            "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+            "    )\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            "),\n" +
+            "inc0lim AS (\n" +
+            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
+            "    FROM inc0\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            ")\n" +
+            "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage\n" +
+            "UNION ALL\n" +
+            "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial FROM inc0lim i\n" +
+            "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
+            "ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenIncludeBodyPreservesIsNullDisjunct()
+    {
+        // Prove the IS NULL guard in the hash filter is present for the includes/match-arm shape too.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("(r.SearchParamHash IS NULL OR r.SearchParamHash <> ");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilter_WhenEmitted_ThenIncludeLimitBodyDoesNotContainHashFilter()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var inc0LimStart = sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var inc0LimEnd = sql.IndexOf("\n)\n", inc0LimStart, StringComparison.Ordinal);
+        var inc0LimBody = sql[inc0LimStart..inc0LimEnd];
+        inc0LimBody.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilter_WhenEmitted_ThenNotExistsInFinalSelectDoesNotContainHashFilter()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The NOT EXISTS in "SELECT i.T1 ... WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage ...)" should
+        // not contain SearchParamHash; it is just a deduplication predicate.
+        var notExistsIdx = sql.IndexOf("WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage", StringComparison.Ordinal);
+        notExistsIdx.ShouldBeGreaterThanOrEqualTo(0);
+        var notExistsClause = sql[notExistsIdx..(notExistsIdx + 80)];
+        notExistsClause.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenANoIncludesPlanWithHashFilterAndNoOtherJoinTrigger_WhenEmitted_ThenNoResourceJoinExistsWithoutHash()
+    {
+        // Regression: prove no-hash plan still has no resource join.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The ResourceSource CTE itself references dbo.Resource inside the CTE block;
+        // the outer SELECT must not add an extra INNER JOIN.
+        sql.ShouldNotContain("INNER JOIN dbo.Resource r");
+    }
+
+    [Fact]
+    public void GivenAPlanWithSearchParameterHashOnly_WhenEmitted_ThenHashValueIsNeverInlinedInSql()
+    {
+        // Safety: the hash value must only appear as a parameter, never as a SQL literal.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SearchParameterHash: new SqlParameterRef("MyHashValue"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldNotContain("MyHashValue");
+        emitted.Parameters.Select(p => p.Value).ShouldContain("MyHashValue");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashAloneAndNoSort_WhenEmitted_ThenMatchPageCarriesTheResourceJoinBeforeTheWhereClause()
+    {
+        // Validates textual ordering: INNER JOIN must appear before WHERE inside cteMatchPage.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        var joinIdx = matchPageBody.IndexOf("INNER JOIN dbo.Resource r ON", StringComparison.Ordinal);
+        var whereIdx = matchPageBody.IndexOf("WHERE", StringComparison.Ordinal);
+        joinIdx.ShouldBeGreaterThanOrEqualTo(0);
+        whereIdx.ShouldBeGreaterThanOrEqualTo(0);
+        joinIdx.ShouldBeLessThan(whereIdx);
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashFilterAndNoSortAndNoTop_WhenEmitted_ThenMatchPageHasNoOrderByButOuter()
+    {
+        // Regression guard: the includes + no-sort + no-top constraint (SQL Server Msg 1033) must still
+        // hold when hash filter is added.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldNotContain("ORDER BY");
+        sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenNoSearchParamHashAppearsInIncludeLimitBlock()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var inc0LimIdx = sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var finalSelectIdx = sql.IndexOf("\nSELECT", inc0LimIdx, StringComparison.Ordinal);
+        var inc0LimBody = sql[inc0LimIdx..finalSelectIdx];
+        inc0LimBody.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenSearchParamHashIsNeverInlinedInSql()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("ZorbaxilHash"));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldNotContain("ZorbaxilHash");
+        emitted.Parameters.Select(p => p.Value).ShouldContain("ZorbaxilHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenIncludeStageDoesNotMentionHashInAnyContext()
+    {
+        // Belt-and-suspenders: the inc0 and inc0lim bodies must both be hash-free.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("ZorbaxilHash"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        // From inc0 to the start of the outer SELECT.
+        var finalSelectIdx = sql.IndexOf("\nSELECT", sql.IndexOf("inc0lim AS (", StringComparison.Ordinal), StringComparison.Ordinal);
+        var inc0ThroughLim = sql[inc0Start..finalSelectIdx];
+        inc0ThroughLim.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilterAndAnOuterPredicateAndSurrogateRange_WhenEmitted_ThenAllThreeFiltersAreInsideMatchPageWhereClause()
+    {
+        // All three post-join filters coexist correctly in cteMatchPage's WHERE.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
+            Includes: [stage],
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldContain("SearchParamHash");
+        matchPageBody.ShouldContain("Sid1 >=");
+        matchPageBody.ShouldContain("Sid1 <=");
+        matchPageBody.ShouldContain("ResourceId =");
+        System.Text.RegularExpressions.Regex.Matches(matchPageBody, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithAnIncludesPlanWithHashFilter_WhenEmitted_ThenIncludeLimitDoesNotMentionHashFilter()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var inc0LimStart = sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var closingMarker = sql.IndexOf("\n)\n", inc0LimStart, StringComparison.Ordinal);
+        var inc0LimBody = sql[inc0LimStart..closingMarker];
+        inc0LimBody.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenFinalSelectDoesNotCarryHashFilter()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Extract the final SELECT block (after last CTE definition).
+        var lastCteBrace = sql.LastIndexOf("\n)\n", StringComparison.Ordinal);
+        var finalSelect = sql[(lastCteBrace + 3)..];
+        finalSelect.ShouldNotContain("SearchParamHash");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenMatchPageHasExactlyOneWhereClauseContainingBothHashAndNoOtherFilters()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        var matchPageBody = sql[matchPageStart..inc0Start];
+        // Exactly one WHERE block inside the match page when only the hash filter contributes.
+        System.Text.RegularExpressions.Regex.Matches(matchPageBody, @"\bWHERE\b").Count.ShouldBe(1);
+    }
+
+    // ─── End SearchParameterHash tests ──────────────────────────────────────────────────────────────
+
     [Fact]
     public void GivenAnIncludesPlanWithASurrogateIdRange_WhenEmitted_ThenTheRangeAppliesOnlyToTheMatchArm()
     {

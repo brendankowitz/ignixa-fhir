@@ -20,6 +20,12 @@ namespace Ignixa.Search.Sql.Ast;
 /// <see cref="Projection"/> is null the historical identity-only shape is preserved and the caller
 /// fetches resource rows itself.
 /// </para>
+/// <para>
+/// A non-null <see cref="SearchParameterHash"/> restricts the match set to rows whose
+/// <c>dbo.Resource.SearchParamHash</c> differs from this value — the resources reindex must revisit
+/// because their indexed parameters predate the current definition set. Rows with a <c>NULL</c> hash
+/// have never been indexed and always qualify.
+/// </para>
 /// </summary>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,
@@ -32,7 +38,13 @@ public sealed record QueryPlan(
     bool CountOnly = false,
     ResourceVisibility? Visibility = null,
     ProjectionSpec? Projection = null,
-    SurrogateIdRange? SurrogateRange = null)
+    SurrogateIdRange? SurrogateRange = null,
+    /// <summary>
+    /// When set, restricts the match set to rows whose dbo.Resource.SearchParamHash differs from this
+    /// value — the resources reindex must revisit because their indexed parameters predate the current
+    /// definition set. A row with a NULL hash has never been indexed and always qualifies.
+    /// </summary>
+    SqlParameterRef? SearchParameterHash = null)
 {
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;

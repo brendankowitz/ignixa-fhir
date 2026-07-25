@@ -34,6 +34,13 @@ public class EmitSqlGrammarTests
         yield return ["surrogate range + outer predicate", SurrogateRangeWithOuterPredicatePlan()];
         yield return ["surrogate range + sort + paging", SurrogateRangeWithSortAndPagingPlan()];
         yield return ["surrogate range + includes", SurrogateRangeWithIncludesPlan()];
+        yield return ["search parameter hash alone", SearchParameterHashAlonePlan()];
+        yield return ["search parameter hash + projection", SearchParameterHashWithProjectionPlan()];
+        yield return ["search parameter hash + outer predicate", SearchParameterHashWithOuterPredicatePlan()];
+        yield return ["search parameter hash + surrogate range", SearchParameterHashWithSurrogateRangePlan()];
+        yield return ["search parameter hash + projection + outer predicate + surrogate range", SearchParameterHashAllFourPlan()];
+        yield return ["search parameter hash + includes", SearchParameterHashWithIncludesPlan()];
+        yield return ["search parameter hash + count only", SearchParameterHashCountOnlyPlan()];
     }
 
     [Theory]
@@ -394,5 +401,96 @@ public class EmitSqlGrammarTests
 
         emitted.Sql.ShouldContain("r.[Raw]]Resource]");
         SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    private static SqlParameterRef StandardHash() => new("hash-abc-123");
+
+    private static QueryPlan SearchParameterHashAlonePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithProjectionPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Projection: StandardProjection(),
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithOuterPredicatePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithSurrogateRangePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            SurrogateRange: StandardRange(),
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashAllFourPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            Projection: StandardProjection(),
+            SurrogateRange: StandardRange(),
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithIncludesPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashCountOnlyPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            CountOnly: true,
+            SearchParameterHash: StandardHash());
     }
 }
