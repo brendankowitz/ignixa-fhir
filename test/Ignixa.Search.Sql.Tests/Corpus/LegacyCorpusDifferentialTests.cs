@@ -65,6 +65,27 @@ public class LegacyCorpusDifferentialTests
         compiled.ShouldBeGreaterThanOrEqualTo(DifferentialBaseline.CompiledQueries);
     }
 
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoFewerQueriesMatchTheShippingEngineThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var matched = results.Count(r => r.Verdict == ShapeVerdict.Match);
+
+        // Raise this as divergences are closed. Never lower it without recording why in the report.
+        matched.ShouldBeGreaterThanOrEqualTo(DivergenceBaseline.MatchingQueries);
+    }
+
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoMoreQueriesOmitAFilterThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var doesLess = results.Count(r => r.Verdict == ShapeVerdict.CompilerDoesLess);
+
+        // Lower this as omitted filters are restored. Never raise it: a new omission is a
+        // correctness regression until proven redundant.
+        doesLess.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesOmittingAFilter);
+    }
+
     private static async Task<IReadOnlyList<DifferentialResult>> RunAsync()
     {
         var results = new List<DifferentialResult>();
