@@ -39,6 +39,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ICompositeSchemaProviderRegistry? _compositeProviderRegistry;
     private readonly SearchParameterResolutionOptions _searchParameterResolutionOptions;
     private readonly ConformanceState? _conformanceState;
+    private readonly IFhirBaseUriProvider? _baseUriProvider;
     private readonly ILogger<FhirVersionContext> _logger;
     private bool _disposed;
 
@@ -48,7 +49,8 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         IPackageResourceRepository? packageResourceRepository = null,
         IPackageResourceProvider? packageResourceProvider = null,
         ICompositeSchemaProviderRegistry? compositeProviderRegistry = null,
-        ConformanceState? conformanceState = null)
+        ConformanceState? conformanceState = null,
+        IFhirBaseUriProvider? baseUriProvider = null)
     {
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _searchParameterResolutionOptions = searchParameterResolutionOptions ?? throw new ArgumentNullException(nameof(searchParameterResolutionOptions));
@@ -56,6 +58,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
         _packageResourceProvider = packageResourceProvider;
         _compositeProviderRegistry = compositeProviderRegistry;
         _conformanceState = conformanceState;
+        _baseUriProvider = baseUriProvider;
         _logger = _loggerFactory.CreateLogger<FhirVersionContext>();
     }
 
@@ -162,7 +165,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 
             // Create new search indexer
             // Factory initializes synchronously using pre-generated search parameters
-            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager);
+            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager, _baseUriProvider);
 
             // Cache and return
             _searchIndexers.TryAdd(fhirVersion, indexer);
@@ -222,7 +225,7 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
 
             // Create new search indexer with tenant-specific search parameter manager
             // This indexer will use IG-provided search parameters from loaded packages
-            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager);
+            var indexer = SearchIndexerFactory.CreateInstance(schemaProvider, _loggerFactory, searchParamManager, _baseUriProvider);
 
             // Cache and return
             _tenantSearchIndexers.TryAdd((fhirVersion, tenantId.Value), indexer);

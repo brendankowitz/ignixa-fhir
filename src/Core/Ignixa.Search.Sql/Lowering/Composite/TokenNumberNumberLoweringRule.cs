@@ -23,7 +23,7 @@ public static class TokenNumberNumberLoweringRule
     {
         var table = SqlCatalog.Default.Table("TokenNumberNumberCompositeSearchParam");
 
-        var tokenPredicate = TokenColumnEquality.Build(table, "Code1", (TokenSearchValue)components[0].Value, context);
+        var tokenPredicate = TokenColumnEquality.Build(table, "SystemId1", "Code1", "CodeOverflow1", (TokenSearchValue)components[0].Value, context);
         var number1Predicate = NumberRangePredicate(table, "LowValue2", "HighValue2", components[1], context);
         var number2Predicate = NumberRangePredicate(table, "LowValue3", "HighValue3", components[2], context);
 

@@ -182,13 +182,14 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                             ParseResult parseResult = _expressionParser.ParseWithSyntax(resourceTypes, param.Name, param.Value);
                             searchExpressions.Add(parseResult.Expression);
                             outcomes.Add(new ParameterTrace(
-                                searchOrdinal++,
-                                param.Name,
-                                param.Value,
-                                parseResult.KeySyntax,
-                                parseResult.ValueSyntax,
-                                parseResult.Expression,
-                                new ParameterOutcome.Compiled()));
+                                ordinal: searchOrdinal++,
+                                key: param.Name,
+                                keySyntax: parseResult.KeySyntax,
+                                value: param.Value,
+                                valueSyntax: parseResult.ValueSyntax,
+                                ir: parseResult.Expression,
+                                outcome: new ParameterOutcome.Compiled(),
+                                dataType: parseResult.DataType));
                         }
                         else
                         {
@@ -240,13 +241,14 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 if (outcomes is not null && param.Category == ParameterCategory.Search)
                 {
                     outcomes.Add(new ParameterTrace(
-                        searchOrdinal++,
-                        param.Name,
-                        param.Value,
-                        null,
-                        null,
-                        null,
-                        new ParameterOutcome.Ignored(ex.Message, null)));
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
                 }
             }
             catch (InvalidSearchOperationException ex)
@@ -255,13 +257,14 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                 if (outcomes is not null && param.Category == ParameterCategory.Search)
                 {
                     outcomes.Add(new ParameterTrace(
-                        searchOrdinal++,
-                        param.Name,
-                        param.Value,
-                        null,
-                        null,
-                        null,
-                        new ParameterOutcome.Ignored(ex.Message, null)));
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
                 }
             }
         }

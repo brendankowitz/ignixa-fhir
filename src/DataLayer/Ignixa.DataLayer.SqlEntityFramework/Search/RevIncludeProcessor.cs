@@ -144,7 +144,7 @@ public class RevIncludeProcessor
             return [];
         }
 
-        var targetResourceTypeId = await _cache.GetResourceTypeIdAsync(targetResourceTypeName);
+        var targetResourceTypeId = await _cache.GetResourceTypeIdAsync(targetResourceTypeName, ct);
         if (!targetResourceTypeId.HasValue)
         {
             _logger.LogWarning("Target resource type not found: {Type}", targetResourceTypeName);
@@ -177,7 +177,7 @@ public class RevIncludeProcessor
         }
 
         // Step 4: Get source resource type ID (the type that references the main results)
-        var sourceResourceTypeId = await _cache.GetResourceTypeIdAsync(revIncludeExpr.SourceResourceType);
+        var sourceResourceTypeId = await _cache.GetResourceTypeIdAsync(revIncludeExpr.SourceResourceType, ct);
         if (!sourceResourceTypeId.HasValue)
         {
             _logger.LogWarning("Source resource type not found: {Type}", revIncludeExpr.SourceResourceType);
@@ -188,7 +188,7 @@ public class RevIncludeProcessor
         short? searchParamId = null;
         if (revIncludeExpr.ReferenceSearchParameter?.Url is not null)
         {
-            searchParamId = await _cache.GetSearchParamIdAsync(revIncludeExpr.ReferenceSearchParameter);
+            searchParamId = await _cache.GetSearchParamIdAsync(revIncludeExpr.ReferenceSearchParameter, ct);
             if (!searchParamId.HasValue)
             {
                 _logger.LogWarning("SearchParamId not found for: {Url}", revIncludeExpr.ReferenceSearchParameter.Url);
@@ -265,7 +265,7 @@ public class RevIncludeProcessor
         var targetTypeIdPairs = new List<(short ResourceTypeId, string ResourceId)>();
         foreach (var (resourceType, resourceIds) in targetsByType)
         {
-            var typeId = await _cache.GetResourceTypeIdAsync(resourceType);
+            var typeId = await _cache.GetResourceTypeIdAsync(resourceType, ct);
             if (typeId.HasValue)
             {
                 foreach (var resourceId in resourceIds)

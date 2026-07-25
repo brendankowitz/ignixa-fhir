@@ -46,6 +46,122 @@ public class PlanExplainDescribeTests
     }
 
     [Fact]
+    public void GivenANonTrivialPlan_WhenDescribed_ThenOnlyTheMatchRowsDisplayAndCanonicalLabelsDiffer()
+    {
+        // Arrange
+        var plan = NonTrivialPlan();
+
+        // Act
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- "root" is cosmetic; cte2 is what the SQL and CteProvenance actually use.
+        rows.Select(row => row.CanonicalLabel).ShouldBe(["cte0", "cte1", "cte2", "inc0", "sort", "page"]);
+        rows.Count(row => row.Label != row.CanonicalLabel).ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenANonTrivialPlan_WhenDescribed_ThenEachRowCarriesItsNodeKind()
+    {
+        // Arrange
+        var plan = NonTrivialPlan();
+
+        // Act
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- the kind comes off the plan node, so a consumer never prefix-matches the body text.
+        rows.Select(row => row.Kind).ShouldBe([
+            PlanRowKind.ParamSource,
+            PlanRowKind.ParamSource,
+            PlanRowKind.Intersect,
+            PlanRowKind.IncludeStage,
+            PlanRowKind.SortSpec,
+            PlanRowKind.PageSpec,
+        ]);
+    }
+
+    [Fact]
+    public void GivenAStructuralCte_WhenDescribed_ThenItNamesTheCtesItComposesAsData()
+    {
+        // Arrange
+        var plan = NonTrivialPlan();
+
+        // Act
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- these are the same indices the body renders, kept as data so no consumer has to
+        // regex cte(\d+) out of generated prose to rebuild the tree.
+        var root = rows.First(r => r.Label == "root");
+        root.ReferencedCteIndexes.ShouldBe([0, 1]);
+        rows.Where(r => r.Kind == PlanRowKind.ParamSource).ShouldAllBe(r => r.ReferencedCteIndexes.Count == 0);
+    }
+
+    [Fact]
+    public void GivenAnExceptCte_WhenDescribed_ThenLeftAndRightKeepTheirOrder()
+    {
+        // Arrange -- Except(cte0, cte1) is not Except(cte1, cte0). A transposition here would be invisible
+        // to ContributingOrdinals, which unions the two, so this is the only place it can be caught.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(table, 103, 202, predicate),
+                new CteDefinition.ParamSource(table, 103, 44, predicate),
+                new CteDefinition.Except(new CteRef(0), new CteRef(1)),
+            ],
+            Match: new CteRef(2));
+
+        // Act
+        var row = PlanExplainer.Describe(plan).Single(r => r.Kind == PlanRowKind.Except);
+
+        // Assert
+        row.ReferencedCteIndexes.ShouldBe([0, 1]);
+    }
+
+    [Fact]
+    public void GivenAUnionCte_WhenDescribed_ThenEveryPartIsNamedInOrder()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(table, 103, 202, predicate),
+                new CteDefinition.ParamSource(table, 103, 44, predicate),
+                new CteDefinition.ParamSource(table, 103, 55, predicate),
+                new CteDefinition.Union([new CteRef(0), new CteRef(1), new CteRef(2)]),
+            ],
+            Match: new CteRef(3));
+
+        // Act
+        var row = PlanExplainer.Describe(plan).Single(r => r.Kind == PlanRowKind.Union);
+
+        // Assert -- N-ary, so an implementation that only read two parts would truncate silently.
+        row.ReferencedCteIndexes.ShouldBe([0, 1, 2]);
+    }
+
+    [Fact]
+    public void GivenTwoRowsDescribingTheSameNode_WhenCompared_ThenTheyAreEqual()
+    {
+        // Arrange -- a record compares a collection property by reference, so without the explicit
+        // Equals these two are unequal despite being identical.
+        var left = new PlanExplainRow("root", "cte2", PlanRowKind.Intersect, "Intersect(cte0, cte1)", [0, 1]);
+        var right = new PlanExplainRow("root", "cte2", PlanRowKind.Intersect, "Intersect(cte0, cte1)", [0, 1]);
+
+        // Assert
+        left.ShouldBe(right);
+        left.GetHashCode().ShouldBe(right.GetHashCode());
+    }
+
+    [Fact]
+    public void GivenAnEmptyLabelOrKind_WhenConstructed_ThenItThrows()
+    {
+        Should.Throw<ArgumentException>(() => new PlanExplainRow(string.Empty, "cte0", PlanRowKind.ParamSource, "b", []));
+        Should.Throw<ArgumentException>(() => new PlanExplainRow("cte0", string.Empty, PlanRowKind.ParamSource, "b", []));
+        Should.Throw<ArgumentException>(() => new PlanExplainRow("cte0", "cte0", string.Empty, "b", []));
+        Should.Throw<ArgumentOutOfRangeException>(() => new PlanExplainRow("cte0", "cte0", PlanRowKind.Intersect, "b", [-1]));
+    }
+
+    [Fact]
     public void GivenANonTrivialPlan_WhenDescribed_ThenTheRootRowBodyExcludesItsOwnLabel()
     {
         // Arrange
@@ -70,7 +186,7 @@ public class PlanExplainDescribeTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert
-        rows[^1].ShouldBe(new PlanExplainRow("countOnly", "true"));
+        rows[^1].ShouldBe(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
     }
 
     [Fact]

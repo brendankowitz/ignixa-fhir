@@ -117,6 +117,46 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenAWrappedNotModifiedTokenPredicate_WhenLowered_ThenLowersAsANegationWithoutReachingTheTokenModifierGuard()
+    {
+        // Arrange -- TokenLoweringRule now throws for any modifier it does not implement, which is only
+        // safe because :not is rewritten into a negation by LowerSearchParameter before leaf dispatch.
+        // This pins that premise: the shape the real binder produces must still lower.
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null));
+        var expression = new SearchParameterExpression(parameter, Expression.Not(predicate));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldContain(c => c is CteDefinition.ParamSource);
+        plan.Ctes.ShouldContain(c => c is CteDefinition.Except);
+    }
+
+    [Fact]
+    public void GivenAMissingTokenParameter_WhenLowered_ThenLowersThroughItsOwnNodeKindWithoutReachingTheTokenModifierGuard()
+    {
+        // Arrange -- :missing lowers through MissingSearchParameterExpression, never carrying the
+        // modifier down to TokenLoweringRule, so the new guard must not fire on it.
+        var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var expression = new MissingSearchParameterExpression(parameter, isMissing: true);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldContain(c => c is CteDefinition.Except);
+    }
+
+    [Fact]
     public void GivenAPredicateWithAnUnsupportedSearchValueType_WhenLowered_ThenThrowsRatherThanSilentlyDroppingIt()
     {
         // Arrange -- CompositeIndexSearchValue has no tier-1 lowering rule (composites are out of
@@ -739,5 +779,262 @@ public class LowerTests
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("unresolved");
+    }
+
+    [Fact]
+    public void GivenAnApproximationReferenceTime_WhenStructuralContextConstructed_ThenLeafContextCarriesTheExactInstant()
+    {
+        // Arrange
+        var fixedTime = new DateTimeOffset(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var context = new StructuralContext(symbols, fixedTime);
+
+        // Assert
+        context.LeafContext.ApproximationReferenceTime.ShouldBe(fixedTime);
+    }
+
+    [Fact]
+    public void GivenAnExplicitApproximationReferenceTime_WhenLowered_ThenThePlanProducesSuccessfully()
+    {
+        // Arrange
+        var fixedTime = new DateTimeOffset(2026, 7, 22, 12, 0, 0, TimeSpan.Zero);
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: fixedTime).Plan;
+
+        // Assert
+        plan.Ctes.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenANegatedPredicateAndedWithAPositiveOne_WhenLowered_ThenSubtractsFromThePositiveRatherThanScanningEveryResource()
+    {
+        // Arrange -- Patient?name=Smith&active:not=true. Anchoring the negation on a ResourceSource makes
+        // the plan read every resource of the type just to subtract from it; the positive sibling is
+        // already a strictly smaller set and (A and not B) is (A except B), so it is the better anchor.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var name = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
+        var notActive = new SearchParameterExpression(
+            activeParam,
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "true", text: null)));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [name, notActive]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202, [activeParam.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldNotContain(cte => cte is CteDefinition.ResourceSource);
+        var except = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+        plan.Ctes[except.Left.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe((short)202);
+        plan.Ctes[except.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe((short)44);
+    }
+
+    [Fact]
+    public void GivenANegatedPredicateWithNoPositiveSibling_WhenLowered_ThenStillAnchorsOnTheResourceSource()
+    {
+        // Arrange -- Patient?active:not=true. There is no smaller set to subtract from, so the full
+        // resource set remains the only correct anchor.
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var tree = new SearchParameterExpression(
+            activeParam,
+            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "true", text: null)));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [activeParam.Url.ToString()] = 44 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes.ShouldContain(cte => cte is CteDefinition.ResourceSource);
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
+    }
+
+    [Fact]
+    public void GivenAMultiValuedIdParameter_WhenLowered_ThenLiftsTheWholeOrIntoTheOuterWhere()
+    {
+        // Arrange -- Patient?_id=a,b,c. A comma list binds to one SearchParameterExpression wrapping an
+        // Or of predicates, not a bare predicate, so the single-predicate shape the extraction pass
+        // recognised let it fall through to CTE lowering -- where the leaf dispatcher throws on purpose
+        // rather than route a resource column into an unrelated search-param table.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var alternatives = Expression.Or(
+        [
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null)),
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "b", text: null)),
+            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "c", text: null)),
+        ]);
+        var tree = new SearchParameterExpression(idParam, alternatives);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- no search-param CTE is needed for a query that only filters resource columns
+        plan.OuterPredicate.ShouldNotBeNull();
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+    }
+
+    [Fact]
+    public void GivenANegatedMultiValuedIdParameter_WhenLowered_ThenLiftsANegatedOrIntoTheOuterWhere()
+    {
+        // Arrange -- Observation?_id:not=a,b. The binder wraps a negated comma list as
+        // NotExpression(Or([_id=a, _id=b])), each alternative losing its own modifier. It must lift into
+        // the outer WHERE as NOT (ResourceId = @p0 OR ResourceId = @p1), not fall through to CTE lowering
+        // where the leaf dispatcher rejects resource columns.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new NotExpression(Expression.Or(
+            [
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null)),
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "b", text: null)),
+            ])));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Observation"] = 96 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
+        var or = not.Operand.ShouldBeOfType<Predicate.Or>();
+        or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        or.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+    }
+
+    [Fact]
+    public void GivenASingleValuedNegatedIdParameter_WhenLowered_ThenLiftsABarePredicateUnderNotIntoTheOuterWhere()
+    {
+        // Arrange -- Patient?_id:not=a. The binder still wraps a single value as NotExpression(Or([_id=a])),
+        // so the outer predicate is Not(Equal) directly (a bare predicate under Not), a distinct shape from
+        // the multi-value Not(Or(...)) case. Pins that the one-element Or collapses to the equality without
+        // a spurious Or wrapper.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = new SearchParameterExpression(
+            idParam,
+            new NotExpression(Expression.Or(
+            [
+                new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null)),
+            ])));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
+        not.Operand.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceAndPath_WhenLowered_ThenProducesANotReferencedSourceCteWithResolvedIds()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var tree = new NotReferencedExpression("Observation", "subject");
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 969 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 },
+            notReferencedPaths: new Dictionary<(string, string), SearchParameterInfo> { [("Observation", "subject")] = subjectParam });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        source.TargetResourceTypeId.ShouldBe((short)103);
+        source.SourceResourceTypeId.ShouldBe((short)96);
+        source.ReferenceSearchParamId.ShouldBe((short)969);
+    }
+
+    [Fact]
+    public void GivenAFullWildcardNotReferenced_WhenLowered_ThenNeitherSourceNorPathIsSet()
+    {
+        // Arrange -- Patient?_not-referenced=*:*.
+        var tree = new NotReferencedExpression(sourceResourceType: null, referencePath: null);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        source.TargetResourceTypeId.ShouldBe((short)103);
+        source.SourceResourceTypeId.ShouldBeNull();
+        source.ReferenceSearchParamId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAPathWildcardNotReferenced_WhenLowered_ThenSourceIsSetButPathIsNot()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:* -- source type narrows the anti-join, but no
+        // single reference path does.
+        var tree = new NotReferencedExpression("Observation", referencePath: null);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        source.SourceResourceTypeId.ShouldBe((short)96);
+        source.ReferenceSearchParamId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenANotReferencedAndedWithAnIdentifier_WhenLowered_ThenIntersectsTheAntiJoinWithTheParamSource()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject&identifier=... -- the anti-join composes
+        // with an ordinary predicate the same way any two leaves do.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var tree = new MultiaryExpression(MultiaryOperator.And,
+        [
+            new NotReferencedExpression("Observation", "subject"),
+            new SearchParameterExpression(
+                identifierParam,
+                new SearchParameterPredicateExpression(identifierParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://ignixa.io/testscript/suite/ms-not-referenced", code: null, text: null))),
+        ]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url.ToString()] = 969, [identifierParam.Url.ToString()] = 1013 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 },
+            notReferencedPaths: new Dictionary<(string, string), SearchParameterInfo> { [("Observation", "subject")] = subjectParam },
+            systemIds: new Dictionary<string, int?> { ["http://ignixa.io/testscript/suite/ms-not-referenced"] = 5 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.NotReferencedSource>();
+        plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
     }
 }

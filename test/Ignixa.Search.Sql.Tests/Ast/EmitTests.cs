@@ -1051,4 +1051,243 @@ public class EmitTests
             ")\n" +
             "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
     }
+
+    [Fact]
+    public void GivenAnIsNullPredicate_WhenEmitted_ThenProducesIsNullWithNoParameters()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.IsNull(new SqlColumnRef(table.TableName, "SystemId"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND SystemId IS NULL\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenAFalsePredicate_WhenEmitted_ThenProduces1Equals0WithNoParameters()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var predicate = new Predicate.False();
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.TokenSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 44 AND 1 = 0\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicate_WhenEmitted_ThenProducesLeftLenComparison()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"),
+            "Latin1_General_100_BIN2");
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.UriSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND LEFT(@p0, LEN(Uri)) COLLATE Latin1_General_100_BIN2 = Uri\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(1);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "http://example.org/fhir/Patient/123"));
+    }
+
+    [Fact]
+    public void GivenAPrefixOfParameterPredicateWithoutCollation_WhenEmitted_ThenProducesLeftLenComparisonWithoutCollate()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("UriSearchParam");
+        var predicate = new Predicate.PrefixOfParameter(
+            new SqlColumnRef(table.TableName, "Uri"),
+            new SqlParameterRef("http://example.org/fhir/Patient/123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("LEFT(@p0, LEN(Uri)) = Uri");
+        emitted.Sql.ShouldNotContain("COLLATE");
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "http://example.org/fhir/Patient/123"));
+    }
+
+    [Fact]
+    public void GivenADualColumnContainsPredicate_WhenEmitted_ThenProducesFullyParenthesizedOrWithIsNullGuardAndTwoLikeParameters()
+    {
+        // Arrange — the Or(And(IsNull(TextOverflow), Like(Text)), Like(TextOverflow)) shape produced
+        // by StringLoweringRule for :contains within the inline width.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var textColumn = new SqlColumnRef(table.TableName, "Text");
+        var overflowColumn = new SqlColumnRef(table.TableName, "TextOverflow");
+        var predicate = new Predicate.Or(
+            new Predicate.And(
+                new Predicate.IsNull(overflowColumn),
+                new Predicate.Like(textColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
+            new Predicate.Like(overflowColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert — exact full SQL
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND ((TextOverflow IS NULL AND Text COLLATE Latin1_General_100_CI_AI LIKE @p0 ESCAPE '\\') OR TextOverflow COLLATE Latin1_General_100_CI_AI LIKE @p1 ESCAPE '\\')\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(2);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", "%mit%"));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "%mit%"));
+    }
+
+    [Fact]
+    public void GivenADualColumnContainsWithSpecialCharacters_WhenEmitted_ThenBothParametersAreEscapedOnceAndWrappedWithPercent()
+    {
+        // Arrange — value containing all four LIKE metacharacters: %, _, [, \
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var textColumn = new SqlColumnRef(table.TableName, "Text");
+        var overflowColumn = new SqlColumnRef(table.TableName, "TextOverflow");
+        var specialValue = @"%_[\";
+        var predicate = new Predicate.Or(
+            new Predicate.And(
+                new Predicate.IsNull(overflowColumn),
+                new Predicate.Like(textColumn, new SqlParameterRef(specialValue), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
+            new Predicate.Like(overflowColumn, new SqlParameterRef(specialValue), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert — escaped once: \ → \\, % → \%, _ → \_, [ → \[ then wrapped %...%
+        var expectedPattern = @"%\%\_\[\\%";
+        emitted.Parameters.Count.ShouldBe(2);
+        emitted.Parameters[0].ShouldBe(new EmittedSqlParameter("@p0", expectedPattern));
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", expectedPattern));
+    }
+
+    [Fact]
+    public void GivenANotPredicateInTheOuterWhere_WhenEmitted_ThenWrapsTheOperandInNot()
+    {
+        // Arrange -- Patient?_id:not=a,b -- a negated resource-column filter over a Resource scan.
+        var idColumn = new SqlColumnRef("Resource", "ResourceId");
+        var outer = new Predicate.Not(
+            new Predicate.Or(
+                new Predicate.Equal(idColumn, new SqlParameterRef("a")),
+                new Predicate.Equal(idColumn, new SqlParameterRef("b"))));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), OuterPredicate: outer);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("WHERE NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "a", "b"]);
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceWithSourceTypeAndPath_WhenEmitted_ThenAntiJoinsReferenceSearchParamByTargetIdentity()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:subject. Target type 103, source type 96, ref
+        // param 969. The anti-join correlates on reference-target identity: a ReferenceSearchParam row's
+        // ReferenceResourceId/ReferenceResourceTypeId against the candidate Resource's own id and type.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.Resource r\n" +
+            "    WHERE r.ResourceTypeId = @p0 AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId\n" +
+            "          AND rsp.ResourceTypeId = 96\n" +
+            "          AND rsp.SearchParamId = 969)\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+        emitted.Parameters.ShouldHaveSingleItem().ShouldBe(new EmittedSqlParameter("@p0", (short)103));
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceWithSourceTypeButNoPath_WhenEmitted_ThenFiltersOnSourceTypeButNotSearchParamId()
+    {
+        // Arrange -- Patient?_not-referenced=Observation:* -- source type 96, no reference path. The
+        // anti-join narrows to references originating from Observation, but not to any single path.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, null)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain(
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId\n" +
+            "          AND rsp.ResourceTypeId = 96)\n");
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceFullWildcard_WhenEmitted_ThenTheAntiJoinFiltersOnlyOnTargetIdentity()
+    {
+        // Arrange -- Patient?_not-referenced=*:* -- a Patient referenced by nothing at all.
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, null, null)], new CteRef(0));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- no source-type or param filter inside the NOT EXISTS
+        emitted.Sql.ShouldContain(
+            "      AND NOT EXISTS (\n" +
+            "        SELECT 1\n" +
+            "        FROM dbo.ReferenceSearchParam rsp\n" +
+            "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+            "          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId)\n");
+        emitted.Sql.ShouldNotContain("rsp.SearchParamId");
+        emitted.Sql.ShouldNotContain("rsp.ResourceTypeId =");
+    }
 }

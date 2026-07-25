@@ -72,6 +72,16 @@ internal static class SearchKeySyntaxParser
         {
             var start = _offset;
             var source = ParseIncludeSource();
+
+            // A bare "*" with no "Type:" prefix is the whole-type wildcard (_include=*): source stays the
+            // "*" sentinel and there is nothing further to consume. The typed forms (Type:* and
+            // Type:param) still require the ':' that separates the source from what follows.
+            if (source == "*" && AtEnd)
+            {
+                return new IncludeKeySyntax(source, null, null, true)
+                    { Span = new SourceSpan(SourceOrigin.Key, start, _offset - start) };
+            }
+
             Require(':', "':'");
 
             if (ConsumeIf('*'))

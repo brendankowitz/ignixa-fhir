@@ -141,12 +141,12 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token1.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token1.System);
+            systemId1 = await _cache.GetOrCreateSystemIdAsync(token1.System, cancellationToken);
         }
 
         if (!string.IsNullOrEmpty(token2.System))
         {
-            systemId2 = await _cache.GetOrCreateSystemIdAsync(token2.System);
+            systemId2 = await _cache.GetOrCreateSystemIdAsync(token2.System, cancellationToken);
         }
 
         // Build query against TokenTokenCompositeSearchParam table
@@ -212,7 +212,7 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System);
+            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
         }
 
         // Build base query
@@ -263,7 +263,7 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System);
+            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
         }
 
         // Build base query
@@ -354,7 +354,7 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId2 = await _cache.GetOrCreateSystemIdAsync(token.System);
+            systemId2 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
         }
 
         // Build base query
@@ -449,7 +449,7 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System);
+            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
         }
 
         // Build base query
@@ -642,7 +642,7 @@ public class CompositeSearchParameterQueryGenerator
         // Apply system filter
         if (!string.IsNullOrEmpty(quantitySystem))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(quantitySystem);
+            var systemId = await _cache.GetOrCreateSystemIdAsync(quantitySystem, cancellationToken);
             if (systemId.HasValue)
             {
                 query = query.Where(q => q.SystemId2 == systemId.Value);
@@ -652,7 +652,7 @@ public class CompositeSearchParameterQueryGenerator
         // Apply code filter
         if (!string.IsNullOrEmpty(quantityCode))
         {
-            var codeId = await _cache.GetOrCreateQuantityCodeIdAsync(quantityCode);
+            var codeId = await _cache.GetOrCreateQuantityCodeIdAsync(quantityCode, cancellationToken);
             if (codeId.HasValue)
             {
                 query = query.Where(q => q.QuantityCodeId == codeId.Value);

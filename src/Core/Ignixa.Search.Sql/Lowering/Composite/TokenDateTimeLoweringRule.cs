@@ -22,7 +22,7 @@ public static class TokenDateTimeLoweringRule
     {
         var table = SqlCatalog.Default.Table("TokenDateTimeCompositeSearchParam");
 
-        var tokenPredicate = TokenColumnEquality.Build(table, "Code1", (TokenSearchValue)components[0].Value, context);
+        var tokenPredicate = TokenColumnEquality.Build(table, "SystemId1", "Code1", "CodeOverflow1", (TokenSearchValue)components[0].Value, context);
 
         var dateComponent = components[1];
         var dateValue = (DateTimeSearchValue)dateComponent.Value;

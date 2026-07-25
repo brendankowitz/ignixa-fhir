@@ -32,6 +32,14 @@ public class SqlTextRangeTests
     }
 
     [Fact]
+    public void GivenInvalidBounds_WhenConstructed_ThenItThrows()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => new SqlTextRange("cte0", SqlRangeKind.Cte, -1, 5));
+        Should.Throw<ArgumentOutOfRangeException>(() => new SqlTextRange("cte0", SqlRangeKind.Cte, 0, -1));
+        Should.Throw<ArgumentException>(() => new SqlTextRange(string.Empty, SqlRangeKind.Cte, 0, 5));
+    }
+
+    [Fact]
     public void GivenTracingEnabled_WhenEmitted_ThenEachRangeExtractsTheSectionItClaims()
     {
         var emitted = SqlBuilder.Run(LeafPlan(), new EmitOptions(IncludeTextRanges: true));
@@ -76,5 +84,47 @@ public class SqlTextRangeTests
             && int.TryParse(label.AsSpan(3), out var i)
             && i >= plan.Ctes.Count);
         hasMisnumberedCteLabel.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenInvalidKind_WhenConstructed_ThenItThrows()
+        => Should.Throw<ArgumentException>(() => new SqlTextRange("cte0", string.Empty, 0, 5));
+
+    [Fact]
+    public void GivenAnIncludesPlan_WhenEmitted_ThenTheOuterAssemblyIsCovered()
+    {
+        // Arrange -- the final UNION ALL belongs to no plan row, so before it was sectioned there was a
+        // stretch of SQL a consumer could not address at all.
+        var emitted = SqlBuilder.Run(IncludesPlan(), new EmitOptions(IncludeTextRanges: true));
+
+        // Act
+        emitted.TextRanges!.ShouldContain(r => r.Kind == SqlRangeKind.Assembly);
+        var assembly = emitted.TextRanges!.First(r => r.Kind == SqlRangeKind.Assembly);
+
+        // Assert
+        emitted.Sql.Substring(assembly.Start, assembly.Length).ShouldContain("UNION ALL");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlan_WhenEmitted_ThenEveryRangeCarriesAKindAndAUniqueLabel()
+    {
+        // Arrange & Act
+        var ranges = SqlBuilder.Run(IncludesPlan(), new EmitOptions(IncludeTextRanges: true)).TextRanges!;
+
+        // Assert -- a consumer addresses a range by label and styles it by kind; neither may be absent,
+        // and a duplicate label would make the first unreachable.
+        ranges.ShouldAllBe(r => !string.IsNullOrEmpty(r.Kind));
+        ranges.Select(r => r.Label).ShouldBeUnique();
+    }
+
+    [Fact]
+    public void GivenAnIncludeStage_WhenEmitted_ThenItsTwoRangesAreDistinguishedByKindNotBySuffix()
+    {
+        // Arrange & Act
+        var ranges = SqlBuilder.Run(IncludesPlan(), new EmitOptions(IncludeTextRanges: true)).TextRanges!;
+
+        // Assert -- the companion range is identifiable without stripping "lim" off the label.
+        ranges.ShouldContain(r => r.Label == SqlLabels.IncludeLabel(0) && r.Kind == SqlRangeKind.Include);
+        ranges.ShouldContain(r => r.Label == SqlLabels.IncludeLimitLabel(0) && r.Kind == SqlRangeKind.IncludeLimit);
     }
 }

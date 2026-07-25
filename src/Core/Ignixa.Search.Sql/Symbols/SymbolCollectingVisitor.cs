@@ -33,6 +33,15 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 
     public HashSet<string> ResourceTypes { get; } = [];
 
+    /// <summary>Non-empty <see cref="TokenSearchValue.System"/> values found in the tree.</summary>
+    public HashSet<string> TokenSystems { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Non-empty <see cref="QuantitySearchValue.System"/> values found in the tree.</summary>
+    public HashSet<string> QuantitySystems { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Non-empty <see cref="QuantitySearchValue.Code"/> values found in the tree.</summary>
+    public HashSet<string> QuantityCodes { get; } = new(StringComparer.Ordinal);
+
     public override Expression VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, object? context)
     {
         AddParameter(expression.Parameter);
@@ -44,6 +53,24 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
         if (expression.Parameter.Code == "_type" && expression.Value is TokenSearchValue { Code: { Length: > 0 } typeCode })
         {
             ResourceTypes.Add(typeCode);
+        }
+
+        if (expression.Value is TokenSearchValue { System: { Length: > 0 } tokenSystem })
+        {
+            TokenSystems.Add(tokenSystem);
+        }
+
+        if (expression.Value is QuantitySearchValue quantityValue)
+        {
+            if (quantityValue.System is { Length: > 0 } qSystem)
+            {
+                QuantitySystems.Add(qSystem);
+            }
+
+            if (quantityValue.Code is { Length: > 0 } qCode)
+            {
+                QuantityCodes.Add(qCode);
+            }
         }
 
         return expression;
@@ -94,6 +121,36 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     {
         AddResourceType(expression.CompartmentType);
         Compartments.Add((expression.CompartmentType, expression.FilteredResourceTypes));
+        return expression;
+    }
+
+    /// <summary>
+    /// The (source resource type, reference path) pairs of every <c>_not-referenced=Type:path</c> in the
+    /// tree, for Resolve to resolve to a reference search parameter. The wildcard forms (<c>*:*</c>,
+    /// <c>Type:*</c>) contribute no pair — they need no parameter lookup — but a named source type is
+    /// still collected as a resource type below.
+    /// </summary>
+    public List<(string SourceResourceType, string ReferencePath)> NotReferencedPaths { get; } = [];
+
+    /// <summary>
+    /// Records a <c>_not-referenced</c> search's source type and reference path. Like
+    /// <see cref="VisitCompartment"/>, it does no definition-manager I/O of its own — Resolve resolves the
+    /// path — keeping this class's no-I/O contract intact.
+    /// </summary>
+    public override Expression VisitNotReferenced(NotReferencedExpression expression, object? context)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+
+        if (expression.SourceResourceType is { } sourceType)
+        {
+            AddResourceType(sourceType);
+
+            if (expression.ReferencePath is { } path)
+            {
+                NotReferencedPaths.Add((sourceType, path));
+            }
+        }
+
         return expression;
     }
 

@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+#nullable enable
+
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text;
@@ -14,6 +16,14 @@ namespace Ignixa.Search.Indexing.SearchValues;
 /// <summary>
 /// Represents a quantity search value.
 /// </summary>
+/// <remarks>
+/// <see cref="System"/> and <see cref="Code"/> follow the same three-state convention as
+/// <see cref="TokenSearchValue"/>, because the FHIR spec defines quantity's system/code as following the
+/// same pattern as token parameters: <see langword="null"/> means the segment was not supplied and places
+/// no constraint, an empty string means the segment was supplied but empty and constrains the stored value
+/// to be absent, and a non-empty string constrains it to that value. Parsing <c>5.4</c> yields a null
+/// system, <c>5.4||mg</c> yields an empty one.
+/// </remarks>
 public class QuantitySearchValue : ISearchValue
 {
     /// <summary>
@@ -22,7 +32,7 @@ public class QuantitySearchValue : ISearchValue
     /// <param name="system">The system value.</param>
     /// <param name="code">The code value.</param>
     /// <param name="quantity">The single quantity value.</param>
-    public QuantitySearchValue(string system, string code, decimal quantity)
+    public QuantitySearchValue(string? system, string? code, decimal quantity)
         : this(system, code, quantity, quantity)
     {
     }
@@ -34,7 +44,7 @@ public class QuantitySearchValue : ISearchValue
     /// <param name="code">The code value.</param>
     /// <param name="low">The lower bound of the quantity range.</param>
     /// <param name="high">The upper bound of the quantity range.</param>
-    public QuantitySearchValue(string system, string code, decimal? low, decimal? high)
+    public QuantitySearchValue(string? system, string? code, decimal? low, decimal? high)
     {
         if (low == null && high == null) throw new ArgumentNullException(nameof(low), $"Arguments '{nameof(low)}' and '{nameof(high)}' cannot both be null");
 
@@ -47,12 +57,12 @@ public class QuantitySearchValue : ISearchValue
     /// <summary>
     /// Gets the system value.
     /// </summary>
-    public string System { get; }
+    public string? System { get; }
 
     /// <summary>
     /// Gets the code value.
     /// </summary>
-    public string Code { get; }
+    public string? Code { get; }
 
     /// <summary>
     /// Gets the lower bound of the quantity range.
@@ -85,8 +95,8 @@ public class QuantitySearchValue : ISearchValue
 
         return Low == quantitytSearchValueOther.Low &&
                High == quantitytSearchValueOther.High &&
-               System.Equals(quantitytSearchValueOther.System, StringComparison.OrdinalIgnoreCase) &&
-               Code.Equals(quantitytSearchValueOther.Code, StringComparison.OrdinalIgnoreCase);
+               string.Equals(System, quantitytSearchValueOther.System, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(Code, quantitytSearchValueOther.Code, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -109,13 +119,10 @@ public class QuantitySearchValue : ISearchValue
             throw new BadSearchRequestException(string.Format(Resources.MalformedSearchValue, parts[0]));
         }
 
-        string system = parts.Count > 1 ? parts[1] : string.Empty;
-        string code = parts.Count > 2 ? parts[2] : string.Empty;
+        string? system = parts.Count > 1 ? parts[1].UnescapeSearchParameterValue() : null;
+        string? code = parts.Count > 2 ? parts[2].UnescapeSearchParameterValue() : null;
 
-        return new QuantitySearchValue(
-            system.UnescapeSearchParameterValue(),
-            code.UnescapeSearchParameterValue(),
-            quantity);
+        return new QuantitySearchValue(system, code, quantity);
     }
 
     /// <inheritdoc />

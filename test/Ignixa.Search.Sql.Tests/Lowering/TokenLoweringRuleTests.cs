@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
@@ -13,15 +14,23 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class TokenLoweringRuleTests
 {
-    private static LeafContext ContextResolving(SearchParameterInfo parameter, short searchParamId)
+    private static LeafContext ContextResolving(
+        SearchParameterInfo parameter,
+        short searchParamId,
+        IReadOnlyDictionary<string, int?>? systemIds = null)
         => new(new SymbolTable(
             new Dictionary<string, short> { [parameter.Url.ToString()] = searchParamId },
-            new Dictionary<string, short>()));
+            new Dictionary<string, short>(),
+            compartmentMembership: null,
+            systemIds: systemIds));
+
+    private static SearchParameterInfo IdentifierParameter()
+        => new("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
 
     [Fact]
     public void GivenACodeOnlyToken_WhenLowered_ThenComparesCodeColumnOnly()
     {
-        // Arrange
+        // Arrange — bare "code" (System is null): Code equality only, no system constraint
         var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null));
@@ -38,35 +47,251 @@ public class TokenLoweringRuleTests
     }
 
     [Fact]
-    public void GivenASystemQualifiedToken_WhenLowered_ThenThrowsRatherThanSilentlyIgnoringTheSystem()
+    public void GivenASystemMustBeAbsentToken_WhenLowered_ThenComparesSystemIdIsNullAndCode()
     {
-        // Arrange
-        var parameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://example.org/mrn", code: "12345", text: null));
-
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103));
-    }
-
-    [Fact]
-    public void GivenASystemMustBeAbsentToken_WhenLowered_ThenThrows()
-    {
-        // Arrange
+        // Arrange — "|code" (System is empty string): SystemId IS NULL AND Code = @code
         var parameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, modifier: null, TokenSearchValue.Parse("|12345"));
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var isNull = and.Left.ShouldBeOfType<Predicate.IsNull>();
+        isNull.Column.Column.ShouldBe("SystemId");
+        var codeEqual = and.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code");
+        codeEqual.Value.Value.ShouldBe("12345");
+    }
+
+    [Fact]
+    public void GivenASystemOnlyToken_WhenLowered_ThenComparesSystemIdOnly()
+    {
+        // Arrange — "system|" (non-empty System, empty Code): SystemId equality only
+        var parameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://example.org/mrn", code: "", text: null));
+        var systemIds = new Dictionary<string, int?> { ["http://example.org/mrn"] = 77 };
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55, systemIds), 103);
+
+        // Assert
+        var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Column.ShouldBe("SystemId");
+        equal.Value.Value.ShouldBe(77);
+    }
+
+    [Fact]
+    public void GivenASystemQualifiedToken_WhenLowered_ThenComparesSystemIdAndCode()
+    {
+        // Arrange — "system|code" (non-empty System, non-empty Code): both
+        var parameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://example.org/mrn", code: "12345", text: null));
+        var systemIds = new Dictionary<string, int?> { ["http://example.org/mrn"] = 77 };
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55, systemIds), 103);
+
+        // Assert
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var systemEqual = and.Left.ShouldBeOfType<Predicate.Equal>();
+        systemEqual.Column.Column.ShouldBe("SystemId");
+        systemEqual.Value.Value.ShouldBe(77);
+        var codeEqual = and.Right.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code");
+        codeEqual.Value.Value.ShouldBe("12345");
+    }
+
+    [Fact]
+    public void GivenAnUnknownSystem_WhenLowered_ThenReturnsFalsePredicate()
+    {
+        // Arrange — non-empty System where SystemId returns null: Predicate.False
+        var parameter = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: "http://unknown.org/system", code: "12345", text: null));
+        var systemIds = new Dictionary<string, int?> { ["http://unknown.org/system"] = null };
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55, systemIds), 103);
+
+        // Assert
+        cte.Predicate.ShouldBeOfType<Predicate.False>();
+    }
+
+    // The token row generators (TokenSearchParameterRowGenerator and every Token* composite generator)
+    // split at 128 characters and write the REMAINDER to CodeOverflow — the opposite of StringSearchParam,
+    // whose TextOverflow holds the whole value. The three boundary cases below pin length-1 / length /
+    // length+1 against that split, exactly as StringLoweringRuleTests does for TextOverflow.
+    [Fact]
+    public void GivenACodeAt127Chars_WhenLowered_ThenComparesCodeColumnWithNoOverflowGuard()
+    {
+        // Arrange — 127 is strictly below the split, so a truncated prefix (always exactly 128 long)
+        // can never equal it; the guard would only cost sargability.
+        var parameter = IdentifierParameter();
+        var code127 = new string('A', 127);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code127, text: null));
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert
+        var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Table.ShouldBe("TokenSearchParam");
+        equal.Column.Column.ShouldBe("Code");
+        equal.Value.Value.ShouldBe(code127);
+    }
+
+    [Fact]
+    public void GivenACodeAt128Chars_WhenLowered_ThenGuardsOnCodeOverflowIsNull()
+    {
+        // Arrange — 128 equals the split; without the IsNull guard an overflowed row whose truncated
+        // 128-char Code prefix equals this value would false-positive match.
+        var parameter = IdentifierParameter();
+        var code128 = new string('A', 128);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code128, text: null));
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert — And(IsNull(CodeOverflow), Equal(Code, value))
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var isNull = and.Left.ShouldBeOfType<Predicate.IsNull>();
+        isNull.Column.Table.ShouldBe("TokenSearchParam");
+        isNull.Column.Column.ShouldBe("CodeOverflow");
+        var equal = and.Right.ShouldBeOfType<Predicate.Equal>();
+        equal.Column.Column.ShouldBe("Code");
+        equal.Value.Value.ShouldBe(code128);
+    }
+
+    [Fact]
+    public void GivenACodeAt129Chars_WhenLowered_ThenComparesBothHalvesAgainstTheRemainderSplit()
+    {
+        // Arrange — 129 exceeds the split, so the value exists only as (prefix, remainder) across two
+        // columns; comparing either alone cannot match it.
+        var parameter = IdentifierParameter();
+        var code129 = new string('A', 128) + "B";
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code129, text: null));
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert — And(Equal(Code, first 128), Equal(CodeOverflow, remainder))
+        var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var codeEqual = and.Left.ShouldBeOfType<Predicate.Equal>();
+        codeEqual.Column.Column.ShouldBe("Code");
+        codeEqual.Value.Value.ShouldBe(new string('A', 128));
+        var overflowEqual = and.Right.ShouldBeOfType<Predicate.Equal>();
+        overflowEqual.Column.Column.ShouldBe("CodeOverflow");
+        overflowEqual.Value.Value.ShouldBe("B");
+    }
+
+    [Fact]
+    public void GivenAnOverflowedCode_WhenEvaluatedAgainstTheRowTheGeneratorWouldWrite_ThenItMatches()
+    {
+        // Arrange — the generator writes Code = code[..128] and CodeOverflow = code[128..]. Before the
+        // overflow column was threaded through, the emitted predicate compared the whole code against
+        // Code alone and such a row could never match.
+        var parameter = IdentifierParameter();
+        var longCode = new string('A', 128) + new string('B', 40);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: longCode, text: null));
+        var storedRow = new Dictionary<string, object>
+        {
+            ["Code"] = longCode[..128],
+            ["CodeOverflow"] = longCode[128..],
+        };
+        var differentTailRow = new Dictionary<string, object>
+        {
+            ["Code"] = longCode[..128],
+            ["CodeOverflow"] = new string('C', 40),
+        };
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert — matches the row it was written from, and is not satisfied by a shared prefix alone
+        PredicateRowEvaluator.Matches(cte.Predicate!, storedRow).ShouldBeTrue();
+        PredicateRowEvaluator.Matches(cte.Predicate!, differentTailRow).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenACodeAt128Chars_WhenEvaluatedAgainstAnOverflowedRowWithTheSamePrefix_ThenTheGuardRejectsIt()
+    {
+        // Arrange — the false positive the IsNull(CodeOverflow) guard exists to prevent
+        var parameter = IdentifierParameter();
+        var code128 = new string('A', 128);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code128, text: null));
+        var exactRow = new Dictionary<string, object> { ["Code"] = code128 };
+        var overflowedRow = new Dictionary<string, object>
+        {
+            ["Code"] = code128,
+            ["CodeOverflow"] = "extra",
+        };
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert
+        PredicateRowEvaluator.Matches(cte.Predicate!, exactRow).ShouldBeTrue();
+        PredicateRowEvaluator.Matches(cte.Predicate!, overflowedRow).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenAnImplementedModifierFreeToken_WhenLowered_ThenLowersWithoutThrowing()
+    {
+        // Arrange — the unmodified form is the only one this rule implements
+        var parameter = IdentifierParameter();
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "12345", text: null));
+
+        // Act
+        var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
+
+        // Assert
+        cte.Predicate.ShouldBeOfType<Predicate.Equal>().Value.Value.ShouldBe("12345");
+    }
+
+    public static TheoryData<SearchModifierCode> UnimplementedModifiers() => new()
+    {
+        SearchModifierCode.Text,
+        SearchModifierCode.In,
+        SearchModifierCode.NotIn,
+        SearchModifierCode.OfType,
+        SearchModifierCode.Above,
+        SearchModifierCode.Below,
+        SearchModifierCode.Identifier,
+    };
+
+    [Theory]
+    [MemberData(nameof(UnimplementedModifiers))]
+    public void GivenAnUnimplementedModifier_WhenLowered_ThenThrowsNamingTheModifier(SearchModifierCode modifier)
+    {
+        // Arrange — each of these needs a different table or a terminology expansion this compiler does
+        // not perform; degrading them to plain equality would return wrong rows silently.
+        var parameter = IdentifierParameter();
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(modifier), new TokenSearchValue(system: null, code: "12345", text: null));
+
+        // Act
+        var exception = Should.Throw<NotSupportedException>(() =>
             TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103));
+
+        // Assert
+        exception.Message.ShouldContain($":{modifier}");
     }
 
     [Fact]
     public void GivenATextOnlyToken_WhenLowered_ThenThrows()
     {
-        // Arrange
+        // Arrange — text-only token (no system, no code): retain NotSupportedException
         var parameter = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: null, text: "foo"));

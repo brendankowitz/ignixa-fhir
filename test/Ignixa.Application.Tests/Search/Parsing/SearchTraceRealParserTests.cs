@@ -8,6 +8,8 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
@@ -151,7 +153,90 @@ public class SearchTraceRealParserTests
         cte.ShouldNotBeNull("no CTE was attributed to the parameter");
 
         trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Ranges.ShouldContain(r => r.Label == $"cte{cte.CteIndex}");
+        trace.Sql!.Ranges.ShouldContain(r => r.Label == SqlLabels.CteLabel(cte.CteIndex));
+    }
+
+    [Fact]
+    public async Task GivenARealParse_WhenTraced_ThenTheParameterCarriesItsDeclaredDataType()
+    {
+        // Arrange -- the binder resolved this type; recovering it downstream means walking the IR.
+        var harness = SearchOptionsBuilderHarness.ForPatient(("birthdate", SearchParamType.Date));
+        var resolver = FakeSymbolResolver.For("birthdate");
+
+        // Act
+        var trace = await CompileAsync(harness, resolver, ("birthdate", "2020-01-01"));
+
+        // Assert
+        trace.Parameters.ShouldHaveSingleItem().DataType.ShouldBe(SearchParamType.Date);
+    }
+
+    [Fact]
+    public async Task GivenTheMatchCte_WhenTraced_ThenItsRowIsAddressableByItsCanonicalLabel()
+    {
+        // Arrange
+        var harness = SearchOptionsBuilderHarness.ForPatient(("name", SearchParamType.String));
+        var resolver = FakeSymbolResolver.For("name");
+
+        // Act
+        var trace = await CompileAsync(harness, resolver, ("name", "Smith"));
+
+        // Assert -- the match CTE displays as "root" but is emitted as cte{i}. A consumer joining a plan
+        // row to its SQL range must be able to do it without knowing about that renaming.
+        trace.Plan.ShouldNotBeNull();
+        var root = trace.Plan!.Rows.First(r => r.Label == "root");
+        root.CanonicalLabel.ShouldNotBe("root");
+
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Ranges.ShouldContain(r => r.Label == root.CanonicalLabel);
+    }
+
+    [Fact]
+    public async Task GivenTwoAndedParameters_WhenTraced_ThenTheStructuralCteReportsBothContributors()
+    {
+        // Arrange -- two parameters ANDed together lower to an Intersect, which by construction belongs
+        // to neither one, so its ParameterOrdinal is correctly null. ContributingOrdinals is what lets a
+        // consumer still say which parameters the join came from.
+        var harness = SearchOptionsBuilderHarness.ForPatient(
+            ("name", SearchParamType.String), ("gender", SearchParamType.Token));
+        var resolver = FakeSymbolResolver.For("name", "gender");
+
+        // Act
+        var trace = await CompileAsync(harness, resolver, ("name", "Smith"), ("gender", "male"));
+
+        // Assert
+        trace.Plan.ShouldNotBeNull();
+        var structural = trace.Plan!.Ctes.First(c => c.ParameterOrdinal is null);
+        structural.ContributingOrdinals.ShouldBe([0, 1]);
+
+        foreach (var leaf in trace.Plan.Ctes.Where(c => c.ParameterOrdinal is not null))
+        {
+            leaf.ContributingOrdinals.ShouldBe([leaf.ParameterOrdinal!.Value]);
+        }
+    }
+
+    [Fact]
+    public async Task GivenThreeAndedParameters_WhenTraced_ThenContributorsAccumulateThroughNestedIntersects()
+    {
+        // Arrange -- Lower folds ANDs left-deep: Intersect(Intersect(cte0, cte1), cte2). Reaching ordinal
+        // 0 from the outermost CTE therefore takes two levels of recursion, so a walk that stopped at
+        // depth 1 would still pass the two-parameter test and fail here.
+        var harness = SearchOptionsBuilderHarness.ForPatient(
+            ("name", SearchParamType.String),
+            ("gender", SearchParamType.Token),
+            ("birthdate", SearchParamType.Date));
+        var resolver = FakeSymbolResolver.For("name", "gender", "birthdate");
+
+        // Act
+        var trace = await CompileAsync(
+            harness, resolver, ("name", "Smith"), ("gender", "male"), ("birthdate", "2020-01-01"));
+
+        // Assert
+        trace.Plan.ShouldNotBeNull();
+        var structural = trace.Plan!.Ctes.Where(c => c.ParameterOrdinal is null).ToList();
+        structural.Count.ShouldBeGreaterThanOrEqualTo(2, "a three-way AND should nest intersects");
+
+        var outermost = trace.Plan.Ctes[trace.Plan.Ctes.Count - 1];
+        outermost.ContributingOrdinals.ShouldBe([0, 1, 2]);
     }
 
     private static string Slice(ParameterTrace parameter, SourceSpan span)
@@ -206,5 +291,11 @@ public class SearchTraceRealParserTests
 
         public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
             => Task.FromResult<short?>(resourceType == "Patient" ? (short)103 : (short)105);
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+            => Task.FromResult<int?>(null);
     }
 }

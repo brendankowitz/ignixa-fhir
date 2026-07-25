@@ -1,5 +1,6 @@
 using System.Text;
 using Ignixa.Search.Expressions;
+using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Ast;
 
@@ -9,16 +10,18 @@ namespace Ignixa.Search.Sql.Ast;
 /// </summary>
 public static class PlanExplainer
 {
-    public static string Print(QueryPlan plan)
-        => string.Join('\n', Describe(plan).Select(row => $"{row.Label} = {row.Body}"));
+    public static string Print(QueryPlan plan) => Print(Describe(plan));
 
     /// <summary>
-    /// The label for the CTE at <paramref name="index"/>. Both this explainer's rows and the emitted SQL's
-    /// <see cref="Builders.SqlTextRange"/>s are labelled through here, because tooling joins a plan row to
-    /// its SQL text by that string — two independent format strings would be one silent typo from breaking
-    /// that join with nothing to fail at compile time.
+    /// The flat text for rows already described. Callers holding both the rows and the printed form take
+    /// this overload so <see cref="Describe"/> runs once — the two can then never disagree.
     /// </summary>
-    public static string CteLabel(int index) => $"cte{index}";
+    public static string Print(IReadOnlyList<PlanExplainRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+
+        return string.Join('\n', rows.Select(row => $"{row.Label} = {row.Body}"));
+    }
 
     /// <summary>
     /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
@@ -26,6 +29,10 @@ public static class PlanExplainer
     /// owning parameter via <see cref="Tracing.CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
     /// terms of this method so the two can never disagree.
     /// </summary>
+    /// <remarks>
+    /// Every row carries both the name it displays and the identifier it is addressable by — see
+    /// <see cref="PlanExplainRow.CanonicalLabel"/>. The match CTE is the row where those differ.
+    /// </remarks>
     public static IReadOnlyList<PlanExplainRow> Describe(QueryPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -39,6 +46,10 @@ public static class PlanExplainer
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
             var isRoot = i == plan.Match.Index;
+
+            // The match CTE prints as "root" because that reads better in a plan dump, but it is emitted
+            // as cte{i} like every other CTE. Carrying both keeps the display name from being mistaken
+            // for something a consumer can join on.
             var label = isRoot ? "root" : CteLabel(i);
             var top = isRoot ? plan.Top : null;
             var body = PrintCte(plan.Ctes[i], top, ref parameterOrdinal);
@@ -47,34 +58,76 @@ public static class PlanExplainer
                 body += $" WHERE {PrintPredicate(plan.OuterPredicate, ref parameterOrdinal)}";
             }
 
-            rows.Add(new PlanExplainRow(label, body));
+            rows.Add(new PlanExplainRow(
+                label, CteLabel(i), KindOf(plan.Ctes[i]), body, ReferencedCteIndexesOf(plan.Ctes[i])));
         }
 
         if (plan.Includes is { Count: > 0 } includes)
         {
             for (var i = 0; i < includes.Count; i++)
             {
-                rows.Add(new PlanExplainRow($"inc{i}", PrintIncludeStage(includes[i])));
+                rows.Add(new PlanExplainRow(
+                    IncludeLabel(i), IncludeLabel(i), PlanRowKind.IncludeStage, PrintIncludeStage(includes[i]), []));
             }
         }
 
         if (plan.Sort is { } sort)
         {
-            rows.Add(new PlanExplainRow("sort", PrintSortSpec(sort)));
+            rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
         }
 
         if (plan.Page is { } page)
         {
-            rows.Add(new PlanExplainRow("page", PrintPageSpec(page, ref parameterOrdinal)));
+            rows.Add(new PlanExplainRow(
+                "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
         }
 
         if (plan.CountOnly)
         {
-            rows.Add(new PlanExplainRow("countOnly", "true"));
+            rows.Add(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
         }
 
         return rows;
     }
+
+    /// <summary>
+    /// Which <see cref="CteDefinition"/> case produced a row. Deliberately a separate switch from
+    /// <see cref="PrintCte"/> rather than a tuple returned alongside the body: the two answer different
+    /// questions (what it is vs how it reads), and the compiler still flags either one if a case is added.
+    /// </summary>
+    private static string KindOf(CteDefinition cte) => cte switch
+    {
+        CteDefinition.ParamSource => PlanRowKind.ParamSource,
+        CteDefinition.Intersect => PlanRowKind.Intersect,
+        CteDefinition.Union => PlanRowKind.Union,
+        CteDefinition.ResourceSource => PlanRowKind.ResourceSource,
+        CteDefinition.Except => PlanRowKind.Except,
+        CteDefinition.ChainJoin => PlanRowKind.ChainJoin,
+        CteDefinition.CompartmentSource => PlanRowKind.CompartmentSource,
+        CteDefinition.NotReferencedSource => PlanRowKind.NotReferencedSource,
+        _ => throw new NotSupportedException($"No Explain() kind for {cte.GetType().Name}."),
+    };
+
+    /// <summary>
+    /// The CTEs a structural node composes, in the order it names them — the same fields
+    /// <see cref="PrintCte"/> renders into the body, kept as data so consumers need not parse it back out.
+    /// </summary>
+    /// <remarks>
+    /// The leaf sources are listed explicitly rather than caught by a default arm, and an unknown case
+    /// throws like <see cref="KindOf"/> does. A silent <c>[]</c> here would let a new composing
+    /// <see cref="CteDefinition"/> report no children, which
+    /// <see cref="Tracing.SearchCompiler"/> would turn into silently-wrong parameter provenance with
+    /// nothing to fail.
+    /// </remarks>
+    internal static IReadOnlyList<int> ReferencedCteIndexesOf(CteDefinition cte) => cte switch
+    {
+        CteDefinition.Intersect x => [x.Left.Index, x.Right.Index],
+        CteDefinition.Union u => [.. u.Parts.Select(r => r.Index)],
+        CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
+        CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
+        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource => [],
+        _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
+    };
 
     private static string PrintSortSpec(SortSpec sort)
     {
@@ -101,7 +154,7 @@ public static class PlanExplainer
         var refParam = stage.ReferenceSearchParamId is { } id ? $"{id}" : "*";
         var seedTypes = stage.SeedTypeIds is null ? "*" : $"[{string.Join(",", stage.SeedTypeIds)}]";
         var outputTypes = stage.OutputTypeIds is null ? "*" : $"[{string.Join(",", stage.OutputTypeIds)}]";
-        var seedStageLabels = stage.SeedStages.Select(s => $"inc{s}");
+        var seedStageLabels = stage.SeedStages.Select(IncludeLabel);
         var seeds = stage.SeedFromMatch ? seedStageLabels.Prepend("match") : seedStageLabels;
         var iterate = stage.Iterate ? " iterate" : string.Empty;
         return $"IncludeStage(ref={refParam}, seedTypes={seedTypes}, outputTypes={outputTypes}, seeds=[{string.Join(",", seeds)}], limit={stage.Limit}{iterate}, {stage.Direction})";
@@ -112,17 +165,41 @@ public static class PlanExplainer
         CteDefinition.ParamSource p =>
             $"{p.Table.TableName}[{p.ResourceTypeId},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
         CteDefinition.Intersect x =>
-            $"Intersect(cte{x.Left.Index}, cte{x.Right.Index}){PrintTop(top)}",
+            $"Intersect({CteLabel(x.Left.Index)}, {CteLabel(x.Right.Index)}){PrintTop(top)}",
         CteDefinition.Union u =>
-            $"Union({string.Join(", ", u.Parts.Select(r => $"cte{r.Index}"))}){PrintTop(top)}",
+            $"Union({string.Join(", ", u.Parts.Select(r => CteLabel(r.Index)))}){PrintTop(top)}",
         CteDefinition.ResourceSource rs => PrintResourceSource(rs, top, ref parameterOrdinal),
-        CteDefinition.Except ex => $"Except(cte{ex.Left.Index}, cte{ex.Right.Index}){PrintTop(top)}",
+        CteDefinition.Except ex => $"Except({CteLabel(ex.Left.Index)}, {CteLabel(ex.Right.Index)}){PrintTop(top)}",
         CteDefinition.ChainJoin cj =>
-            $"ChainJoin(cte{cj.InnerMatch.Index}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
+            $"ChainJoin({CteLabel(cj.InnerMatch.Index)}, ref={cj.ReferenceSearchParamId}, inner={cj.InnerResourceTypeId}, output=[{string.Join(",", cj.OutputResourceTypeIds)}], {cj.Direction}){PrintTop(top)}",
         CteDefinition.CompartmentSource cs =>
             $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
+        CteDefinition.NotReferencedSource nr => PrintNotReferencedSource(nr, top, ref parameterOrdinal),
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
+
+    private static string PrintNotReferencedSource(CteDefinition.NotReferencedSource nr, int? top, ref int parameterOrdinal)
+    {
+        // The target ResourceTypeId is a bound parameter in Emit (EmitNotReferencedSource binds it as
+        // @pN, exactly as ResourceSource does), so this must consume an ordinal too or Explain()'s @pN
+        // numbering diverges from the emitted SQL. It is still shown inline for readability, like
+        // ResourceSource; only the counter is shared. The source-type and ref-param ids are inlined
+        // literals in Emit and consume no ordinal.
+        parameterOrdinal++;
+        var qualifiers = new List<string>();
+        if (nr.SourceResourceTypeId is { } sourceTypeId)
+        {
+            qualifiers.Add($"source={sourceTypeId}");
+        }
+
+        if (nr.ReferenceSearchParamId is { } refParamId)
+        {
+            qualifiers.Add($"ref={refParamId}");
+        }
+
+        var suffix = qualifiers.Count == 0 ? string.Empty : $" not referenced by {string.Join(" ", qualifiers)}";
+        return $"NotReferencedSource[{nr.TargetResourceTypeId}]{suffix}{PrintTop(top)}";
+    }
 
     private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)
     {
@@ -139,6 +216,15 @@ public static class PlanExplainer
         return $"ResourceSource[{rs.ResourceTypeId}]{predicateSuffix}{PrintTop(top)}";
     }
 
+    /// <summary>
+    /// How <see cref="Predicate.False"/> reads in an explained plan. Deliberately the same text the SQL
+    /// emitter produces, rather than a friendlier <c>false</c>: a plan and its SQL are read side by side in
+    /// a trace, and the emitter has no choice — <c>1 = 0</c> is the portable SQL literal for an
+    /// unsatisfiable predicate, while <c>false</c> is not valid in a T-SQL WHERE clause. Two spellings of
+    /// one node make the reader decide whether they are the same thing, and make a trace ungreppable.
+    /// </summary>
+    internal const string UnsatisfiableRendering = "1 = 0";
+
     private static string PrintPredicate(Predicate predicate, ref int parameterOrdinal) => predicate switch
     {
         Predicate.Equal e => $"{e.Column.Column} = @p{parameterOrdinal++}{PrintCollation(e.Collation)}",
@@ -149,6 +235,10 @@ public static class PlanExplainer
         Predicate.GreaterThan gt => $"{gt.Column.Column} > @p{parameterOrdinal++}",
         Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= @p{parameterOrdinal++}",
         Predicate.Or or => $"{PrintPredicate(or.Left, ref parameterOrdinal)} OR {PrintPredicate(or.Right, ref parameterOrdinal)}",
+        Predicate.Not not => $"NOT ({PrintPredicate(not.Operand, ref parameterOrdinal)})",
+        Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
+        Predicate.False => UnsatisfiableRendering,
+        Predicate.PrefixOfParameter pop => $"{pop.Column.Column} PREFIX_OF @p{parameterOrdinal++}{PrintCollation(pop.Collation)}",
         _ => throw new NotSupportedException($"No Explain() rendering for {predicate.GetType().Name}."),
     };
 

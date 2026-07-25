@@ -215,9 +215,14 @@ jobs:
             echo "::error::$report does not contain any recorded TestScript outcomes"
             exit 1
           fi
-          if jq -e '.results | any(.status == "error")' "$report" > /dev/null; then
-            echo "::error::$report contains TestScript execution errors, which indicates infrastructure or evaluator failure"
-            jq -r '.results[] | select(.status == "error") | "\(.file): \(.error.assertion // "error") - \(.error.received // "")"' "$report"
+          # Fail only on infrastructure errors (a suite that won't parse or an evaluator that
+          # throws), flagged by infrastructure_error in the report. Behavioral "error" outcomes
+          # — a wrong server response cascading a dependent step, e.g. a 404 export kick-off
+          # breaking its waitFor poll — are real findings published to the matrix, not a broken
+          # harness, so they must not fail the docs deploy.
+          if jq -e '.results | any(.status == "error" and .infrastructure_error == true)' "$report" > /dev/null; then
+            echo "::error::$report contains TestScript infrastructure/evaluator errors"
+            jq -r '.results[] | select(.status == "error" and .infrastructure_error == true) | "\(.file): \(.error.assertion // "error") - \(.error.received // "")"' "$report"
             exit 1
           fi
           echo "Generated $report ($(wc -c < "$report") bytes)"

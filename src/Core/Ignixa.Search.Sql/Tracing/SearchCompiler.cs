@@ -29,7 +29,7 @@ public static class SearchCompiler
     /// caught at this boundary, recorded on <see cref="SearchTrace.Failure"/>, and attributed to the
     /// parameter the failing dispatcher named.
     /// </summary>
-    public static async Task<SearchTrace> CompileAsync(
+    public static Task<SearchTrace> CompileAsync(
         string resourceType,
         IReadOnlyList<QueryParameter> parameters,
         ISearchOptionsBuilder optionsBuilder,
@@ -37,11 +37,29 @@ public static class SearchCompiler
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
         CancellationToken cancellationToken = default)
+        => CompileWithTimeProviderAsync(resourceType, parameters, optionsBuilder, resolver, compartmentDefinitionManager, searchParameterDefinitionManager, null, cancellationToken);
+
+    /// <summary>
+    /// Overload that accepts an explicit <see cref="TimeProvider"/> for deterministic approximation-time
+    /// capture. <see cref="TimeProvider.GetUtcNow"/> is called exactly once per compile; when
+    /// <paramref name="timeProvider"/> is null, <see cref="TimeProvider.System"/> is used.
+    /// </summary>
+    public static async Task<SearchTrace> CompileWithTimeProviderAsync(
+        string resourceType,
+        IReadOnlyList<QueryParameter> parameters,
+        ISearchOptionsBuilder optionsBuilder,
+        ISymbolResolver resolver,
+        ICompartmentDefinitionManager? compartmentDefinitionManager,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager,
+        TimeProvider? timeProvider,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
         ArgumentNullException.ThrowIfNull(parameters);
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentNullException.ThrowIfNull(resolver);
+
+        var approximationReferenceTime = (timeProvider ?? TimeProvider.System).GetUtcNow();
 
         var outcomes = new List<ParameterTrace>();
         var options = optionsBuilder.Build(resourceType, parameters, schemaProvider: null, outcomes);
@@ -73,9 +91,15 @@ public static class SearchCompiler
         // failure land on top of the Resolve-stage one already recorded above.
         if (resolved.Unresolved.Count == 0)
         {
+            // Tracks whether Lower itself completed. Keying the reported stage off planTrace instead would
+            // blame the lowerer for anything BuildPlanTrace throws -- and BuildPlanTrace runs the explainer,
+            // whose NotSupportedException means a CteDefinition case is missing from PlanExplainer, not
+            // that lowering went wrong. Filing that under Lower sends the next reader to the wrong file.
+            LoweredPlan? lowered = null;
+
             try
             {
-                var lowered = Lower.Run(
+                lowered = Lower.Run(
                     options.Expression,
                     resolved.Symbols,
                     resourceType,
@@ -84,16 +108,22 @@ public static class SearchCompiler
                     includeLimit: 0,
                     options.Sort,
                     SortPhase.Valued,
-                    page: null);
+                    page: null,
+                    approximationReferenceTime: approximationReferenceTime);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
+                MarkKnownMisses(outcomes, lowered);
 
                 var emitted = SqlBuilder.Run(lowered.Plan, new EmitOptions(IncludeTextRanges: true));
                 sqlTrace = new EmittedSqlTrace(emitted.Sql, emitted.TextRanges ?? []);
             }
+            // Deliberately does NOT catch ArgumentException. The trace records' construction guards
+            // (SqlTextRange, CteProvenance, PlanExplainRow) throw it, but none can trip on a well-formed
+            // plan -- they detect programmer error, so swallowing them into a TraceFailure would file a
+            // bug in this compiler as though it were a property of the user's query.
             catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
             {
-                failure = RecordFailure(outcomes, planTrace is null ? TraceStage.Lower : TraceStage.Emit, ex);
+                failure = RecordFailure(outcomes, lowered is null ? TraceStage.Lower : TraceStage.Emit, ex);
             }
         }
 
@@ -187,25 +217,130 @@ public static class SearchCompiler
         }
     }
 
+    /// <summary>
+    /// Marks a parameter <see cref="ParameterOutcome.KnownMiss"/> when its CTE lowered to an unsatisfiable
+    /// predicate, so "this query cannot return a row, and here is the value that made it so" is data on the
+    /// trace rather than a <c>1 = 0</c> a reader has to spot in the emitted SQL.
+    /// </summary>
+    /// <remarks>
+    /// Only overwrites <see cref="ParameterOutcome.Compiled"/>. A parameter already Failed or Ignored has a
+    /// stronger story to tell, and restamping it would replace a cause with a consequence.
+    /// </remarks>
+    private static void MarkKnownMisses(IList<ParameterTrace> outcomes, LoweredPlan lowered)
+    {
+        foreach (var origin in lowered.Provenance.Origins)
+        {
+            if (FindFalse(PredicateOf(lowered.Plan.Ctes[origin.CteIndex])) is not { } miss)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < outcomes.Count; i++)
+            {
+                var trace = outcomes[i];
+                if (trace.Outcome is not ParameterOutcome.Compiled ||
+                    trace.Ir is null ||
+                    !Flatten(trace.Ir).Any(n => ReferenceEquals(n, origin.SourceNode)))
+                {
+                    continue;
+                }
+
+                outcomes[i] = trace with
+                {
+                    Outcome = new ParameterOutcome.KnownMiss(
+                        miss.Reason ?? "The parameter lowered to a predicate that can never match.",
+                        ExtractSpan(origin.SourceNode)),
+                };
+            }
+        }
+    }
+
+    /// <summary>The predicate a CTE definition filters on, or null for the definitions that compose other CTEs rather than filter a table.</summary>
+    private static Predicate? PredicateOf(CteDefinition definition) => definition switch
+    {
+        CteDefinition.ParamSource source => source.Predicate,
+        CteDefinition.ResourceSource source => source.Predicate,
+        CteDefinition.CompartmentSource source => source.Predicate,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The unsatisfiable term that makes a whole predicate tree unsatisfiable, or null when the tree can
+    /// still hold. An <c>And</c> falls to either side being false; an <c>Or</c> needs both.
+    /// </summary>
+    private static Predicate.False? FindFalse(Predicate? predicate) => predicate switch
+    {
+        Predicate.False unsatisfiable => unsatisfiable,
+        Predicate.And and => FindFalse(and.Left) ?? FindFalse(and.Right),
+        Predicate.Or or => FindFalse(or.Left) is { } left && FindFalse(or.Right) is not null ? left : null,
+        _ => null,
+    };
+
     /// <summary>Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against every trace's IR subtree. Origins with no owner (:missing, compartment, structural CTEs) keep a null ordinal.</summary>
     private static QueryPlanTrace BuildPlanTrace(LoweredPlan lowered, IReadOnlyList<ParameterTrace> outcomes)
     {
-        var ctes = new CteProvenance[lowered.Plan.Ctes.Count];
-        for (var i = 0; i < ctes.Length; i++)
-        {
-            ctes[i] = new CteProvenance(i, null, null);
-        }
+        var rows = PlanExplainer.Describe(lowered.Plan);
+        var directOrdinals = new int?[lowered.Plan.Ctes.Count];
+        var spans = new SourceSpan?[lowered.Plan.Ctes.Count];
 
         foreach (var origin in lowered.Provenance.Origins)
         {
             var owner = outcomes.FirstOrDefault(t => t.Ir is not null && Flatten(t.Ir).Any(n => ReferenceEquals(n, origin.SourceNode)));
             if (owner is not null)
             {
-                ctes[origin.CteIndex] = new CteProvenance(origin.CteIndex, owner.Ordinal, ExtractSpan(origin.SourceNode));
+                directOrdinals[origin.CteIndex] = owner.Ordinal;
+                spans[origin.CteIndex] = ExtractSpan(origin.SourceNode);
             }
         }
 
-        return new QueryPlanTrace(lowered.Plan.Explain(), ctes, PlanExplainer.Describe(lowered.Plan));
+        var ctes = new CteProvenance[lowered.Plan.Ctes.Count];
+        for (var i = 0; i < ctes.Length; i++)
+        {
+            ctes[i] = new CteProvenance(
+                i, directOrdinals[i], spans[i], ContributingOrdinals(i, lowered.Plan, directOrdinals));
+        }
+
+        // Print off the rows already computed rather than calling Explain(), which would run Describe a
+        // second time -- same output, twice the work, and two chances to disagree.
+        return new QueryPlanTrace(PlanExplainer.Print(rows), ctes, rows);
+    }
+
+    /// <summary>
+    /// Every parameter ordinal the CTE at <paramref name="index"/> draws from, closed over the CTEs it
+    /// composes. A structural CTE has no ordinal of its own, so without this a consumer wanting "which
+    /// parameters does this join belong to" has to walk the plan itself.
+    /// </summary>
+    /// <remarks>
+    /// Reads the child references off <paramref name="plan"/> rather than off the explainer's rows: the
+    /// rows are a display projection, and provenance should not depend on how something renders. Plan CTE
+    /// references only ever point at lower indices — every structural factory appends itself after its
+    /// children — so the walk terminates. The visited set exists for a diamond, where two branches share a
+    /// child; ordinals land in a set, so revisiting would be harmless but wasteful.
+    /// </remarks>
+    private static IReadOnlyList<int> ContributingOrdinals(int index, QueryPlan plan, int?[] directOrdinals)
+    {
+        var ordinals = new SortedSet<int>();
+        var visited = new HashSet<int>();
+        Collect(index);
+        return [.. ordinals];
+
+        void Collect(int cteIndex)
+        {
+            if (!visited.Add(cteIndex))
+            {
+                return;
+            }
+
+            if (directOrdinals[cteIndex] is { } ordinal)
+            {
+                ordinals.Add(ordinal);
+            }
+
+            foreach (var child in PlanExplainer.ReferencedCteIndexesOf(plan.Ctes[cteIndex]))
+            {
+                Collect(child);
+            }
+        }
     }
 
     /// <summary>

@@ -28,7 +28,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name:exact", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -36,6 +36,104 @@ internal static class SearchTraceFixtures
 
         return SearchCompiler.CompileAsync(
             "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver);
+    }
+
+    public static Task<SearchTrace> TracePatientNameSmithWithTimeProviderAsync(TimeProvider? timeProvider)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileWithTimeProviderAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
+            null, null, timeProvider);
+    }
+
+    /// <summary>Observation?date=ap2020-01-01T00:00:00Z -- a date :ap search, whose lowering actually
+    /// depends on the captured reference instant reaching the leaf context's approximation reference time
+    /// (unlike <see cref="TracePatientNameSmithWithTimeProviderAsync"/> above, whose plain string value never
+    /// reads it at all) -- proving the SearchCompiler boundary's single captured <c>GetUtcNow()</c> value is
+    /// what a :ap comparator actually consumes, not just that the call count is right for a query that
+    /// wouldn't notice either way. widened = [2019-12-31T21:36:00Z, 2020-01-01T02:24:00Z] for a reference
+    /// instant one day after the value (the same scenario already pinned against
+    /// EndToEndCompilationTests.GivenADateApComparatorQueryWithAMovingClock... and
+    /// DateTimeLoweringRuleTests' "past instant" :ap case).</summary>
+    public static Task<SearchTrace> TraceObservationDateApWithTimeProviderAsync(TimeProvider? timeProvider)
+    {
+        var dateParam = new SearchParameterInfo("date", "date", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Observation-date"));
+        var value = new DateTimeSearchValue(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var predicate = new SearchParameterPredicateExpression(dateParam, SearchComparator.Ap, modifier: null, value)
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 22),
+        };
+        var expression = new SearchParameterExpression(dateParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Observation", Expression = expression },
+            [new ParameterTrace(0, "date", null, "ap2020-01-01T00:00:00Z", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[dateParam.Url!.ToString()] = 203;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        return SearchCompiler.CompileWithTimeProviderAsync(
+            "Observation", [new QueryParameter("date", "ap2020-01-01T00:00:00Z")], builder, resolver,
+            null, null, timeProvider);
+    }
+
+    public static Task<SearchTrace> TracePatientNameSmithWithCancellationTokenAsync(CancellationToken cancellationToken)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
+            null, null, cancellationToken);
+    }
+
+    public static Task<SearchTrace> TracePatientNameSmithWithCancellationCheckAsync(CancellationToken cancellationToken)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "name:exact", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new CancellationCheckingResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
+            null, null, cancellationToken);
     }
 
     public static Task<SearchTrace> TraceUnregisteredParameterAsync()
@@ -49,7 +147,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "unknown", "value", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "unknown", null, "value", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
@@ -70,7 +168,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "active", "true", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
@@ -108,7 +206,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Observation", Expression = expression },
-            [new ParameterTrace(0, "code-value-concept", "8480-6$high", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "code-value-concept", null, "8480-6$high", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
@@ -133,7 +231,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = chain },
-            [new ParameterTrace(0, "organization.name", "Acme", null, null, chain, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "organization.name", null, "Acme", null, chain, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
@@ -160,7 +258,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Include = [include] },
-            [new ParameterTrace(0, "active", "true", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
@@ -192,7 +290,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Include = [include] },
-            [new ParameterTrace(0, "name", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -221,7 +319,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Sort = [sort] },
-            [new ParameterTrace(0, "active", "true", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
@@ -244,7 +342,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name:not", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:not", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -262,7 +360,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = missing },
-            [new ParameterTrace(0, "name:missing", "true", null, null, missing, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:missing", null, "true", null, missing, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -286,7 +384,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -310,7 +408,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "name:not", "Smith", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "name:not", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -349,7 +447,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Observation", Expression = expression },
-            [new ParameterTrace(0, "code-value-string", "a$b", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "code-value-string", null, "a$b", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[compositeParam.Url!.ToString()] = 302;
@@ -388,8 +486,8 @@ internal static class SearchTraceFixtures
                 Expression = new MultiaryExpression(MultiaryOperator.And, [genderExpression, nameExpression]),
             },
             [
-                new ParameterTrace(0, "gender", "male", null, null, genderExpression, new ParameterOutcome.Compiled()),
-                new ParameterTrace(1, "name", "abcd", null, null, nameExpression, new ParameterOutcome.Compiled()),
+                new ParameterTrace(0, "gender", null, "male", null, genderExpression, new ParameterOutcome.Compiled(), null),
+                new ParameterTrace(1, "name", null, "abcd", null, nameExpression, new ParameterOutcome.Compiled(), null),
             ]);
 
         var resolver = new FakeSymbolResolver();
@@ -414,7 +512,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression },
-            [new ParameterTrace(0, "_id", "123", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "_id", null, "123", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
@@ -437,7 +535,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = chain },
-            [new ParameterTrace(0, "organization.name", "Acme", null, null, chain, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "organization.name", null, "Acme", null, chain, new ParameterOutcome.Compiled(), null)]);
 
         var resolver = new FakeSymbolResolver();
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
@@ -473,7 +571,7 @@ internal static class SearchTraceFixtures
 
         var builder = new FakeSearchOptionsBuilder(
             new SearchOptions { ResourceType = "Patient", Expression = expression, Sort = sorts },
-            [new ParameterTrace(0, "active", "true", null, null, expression, new ParameterOutcome.Compiled())]);
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
         return SearchCompiler.CompileAsync(
             "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "a,b,c,d")], builder, resolver);
@@ -495,16 +593,124 @@ internal static class SearchTraceFixtures
         }
     }
 
+    /// <summary>Patient?identifier=http://unknown.org/mrn|12345 -- the system resolves to nothing, so the
+    /// token lowers to Predicate.False and the parameter is a known miss rather than a compile failure.</summary>
+    public static Task<SearchTrace> TraceUnresolvableTokenSystemAsync()
+    {
+        var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            identifierParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://unknown.org/mrn", code: "12345", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 31),
+        };
+        var expression = new SearchParameterExpression(identifierParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression },
+            [new ParameterTrace(0, "identifier", null, "http://unknown.org/mrn|12345", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[identifierParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient", [new QueryParameter("identifier", "http://unknown.org/mrn|12345")], builder, resolver);
+    }
+
+    /// <summary>Patient?active=true&amp;identifier=http://unknown.org/mrn|12345 -- one satisfiable parameter
+    /// alongside a known miss, so the miss must be attributed to its own parameter and not to both.</summary>
+    public static Task<SearchTrace> TraceSatisfiableAndUnresolvableTokenSystemAsync()
+    {
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+
+        var activePredicate = new SearchParameterPredicateExpression(
+            activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 4),
+        };
+        var identifierPredicate = new SearchParameterPredicateExpression(
+            identifierParam, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue("http://unknown.org/mrn", code: "12345", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 10, 28),
+        };
+
+        var activeExpression = new SearchParameterExpression(activeParam, activePredicate);
+        var identifierExpression = new SearchParameterExpression(identifierParam, identifierPredicate);
+        var tree = new MultiaryExpression(MultiaryOperator.And, [activeExpression, identifierExpression]);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = tree },
+            [
+                new ParameterTrace(0, "active", null, "true", null, activeExpression, new ParameterOutcome.Compiled(), null),
+                new ParameterTrace(1, "identifier", null, "http://unknown.org/mrn|12345", null, identifierExpression, new ParameterOutcome.Compiled(), null),
+            ]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.SearchParamIds[identifierParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return SearchCompiler.CompileAsync(
+            "Patient",
+            [new QueryParameter("active", "true"), new QueryParameter("identifier", "http://unknown.org/mrn|12345")],
+            builder,
+            resolver);
+    }
+
     private sealed class FakeSymbolResolver : ISymbolResolver
     {
         public Dictionary<string, short> SearchParamIds { get; } = [];
 
         public Dictionary<string, short> ResourceTypeIds { get; } = [];
 
+        public Dictionary<string, int> SystemIds { get; } = [];
+
+        public Dictionary<string, int> QuantityCodeIds { get; } = [];
+
         public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
             => Task.FromResult(parameter.Url?.ToString() is { } url && SearchParamIds.TryGetValue(url, out var id) ? (short?)id : null);
 
         public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
             => Task.FromResult(ResourceTypeIds.TryGetValue(resourceType, out var id) ? (short?)id : null);
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+            => Task.FromResult(SystemIds.TryGetValue(system, out var id) ? (int?)id : null);
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+            => Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
+    }
+
+    private sealed class CancellationCheckingResolver : ISymbolResolver
+    {
+        public Dictionary<string, short> SearchParamIds { get; } = [];
+
+        public Dictionary<string, short> ResourceTypeIds { get; } = [];
+
+        public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(parameter.Url?.ToString() is { } url && SearchParamIds.TryGetValue(url, out var id) ? (short?)id : null);
+        }
+
+        public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(ResourceTypeIds.TryGetValue(resourceType, out var id) ? (short?)id : null);
+        }
+
+        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<int?>(null);
+        }
+
+        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<int?>(null);
+        }
     }
 }

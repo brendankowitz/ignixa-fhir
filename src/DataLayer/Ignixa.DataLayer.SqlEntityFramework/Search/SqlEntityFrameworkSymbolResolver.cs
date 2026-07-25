@@ -34,14 +34,20 @@ public sealed class SqlEntityFrameworkSymbolResolver : ISymbolResolver
     }
 
     public async Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return await _cache.GetSearchParamIdAsync(parameter);
-    }
+        => await _cache.GetSearchParamIdAsync(parameter, cancellationToken);
 
     public async Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        return await _cache.GetResourceTypeIdAsync(resourceType);
-    }
+        => await _cache.GetResourceTypeIdAsync(resourceType, cancellationToken);
+
+    public async Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
+        => await _cache.GetSystemIdAsync(system, cancellationToken);
+
+    /// <summary>
+    /// Overrides the interface's sequential default with the cache's single-round-trip batch lookup.
+    /// </summary>
+    public Task<IReadOnlyDictionary<string, int?>> GetSystemIdsAsync(IReadOnlyCollection<string> systems, CancellationToken cancellationToken)
+        => _cache.GetSystemIdsAsync(systems, cancellationToken);
+
+    public async Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
+        => await _cache.GetQuantityCodeIdAsync(code, cancellationToken);
 }
