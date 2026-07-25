@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Buffers;
 using System.Text.Json;
 using EnsureThat;
 
@@ -32,6 +33,11 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
         _writer = new Utf8JsonWriter(outputStream, pretty ? _indentedWriterOptions : _writerOptions);
     }
 
+    private FhirJsonWriter(IBufferWriter<byte> bufferWriter, bool pretty = false)
+    {
+        _writer = new Utf8JsonWriter(bufferWriter, pretty ? _indentedWriterOptions : _writerOptions);
+    }
+
     /// <summary>
     /// Gets the underlying Utf8JsonWriter for advanced scenarios that need direct access.
     /// </summary>
@@ -46,6 +52,17 @@ internal class FhirJsonWriter : IDisposable, IAsyncDisposable
     public static FhirJsonWriter Create(Stream outputStream, bool pretty = false)
     {
         return new FhirJsonWriter(outputStream, pretty);
+    }
+
+    /// <summary>
+    /// Creates a new FhirJsonWriter for staging JSON into a reusable buffer instead of a stream.
+    /// </summary>
+    /// <param name="bufferWriter">The buffer writer to write JSON to.</param>
+    /// <param name="pretty">Whether to format JSON with indentation.</param>
+    /// <returns>A new FhirJsonWriter instance.</returns>
+    public static FhirJsonWriter Create(IBufferWriter<byte> bufferWriter, bool pretty = false)
+    {
+        return new FhirJsonWriter(bufferWriter, pretty);
     }
 
     /// <summary>
