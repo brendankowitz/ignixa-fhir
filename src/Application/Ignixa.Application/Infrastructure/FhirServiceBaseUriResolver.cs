@@ -77,6 +77,11 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
     /// remaining hostnames and the path form are additional recognized inbound bases; the deployment root is
     /// recognized only when <see cref="TenantAddressing.IncludeDeploymentRoot"/> is set. Both the request
     /// path and the background path call this method, so a self-reference classifies identically either way.
+    /// A hostname is admitted into this recognition set only when <see cref="TenantHostnameValidator.IsValidHostname"/>
+    /// accepts it -- the identical gate <c>AppSettingsTenantConfigurationStore.BuildHostIndex</c> applies to
+    /// the inbound routing index -- so malformed configuration (non-lowercase, a port, an embedded path, an
+    /// empty or over-length label) is excluded from both the index and this recognition set. A tenant can
+    /// therefore never emit a self-reference under a base its own inbound routing would fail to recognize.
     /// </summary>
     public IReadOnlyList<Uri> Resolve(Uri? requestOrigin, TenantAddressing tenant)
     {
@@ -94,6 +99,19 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
         foreach (var host in tenant.Hostnames)
         {
             var trimmed = host.Trim();
+            if (!TenantHostnameValidator.IsValidHostname(trimmed))
+            {
+                // Not a bare lowercase DNS hostname (e.g. mixed case, empty, or a label that fails the shape
+                // check) -- excluded from the recognition set exactly as AppSettingsTenantConfigurationStore.
+                // BuildHostIndex excludes it from the inbound routing index. Without this gate, an
+                // uppercase-configured hostname (which Uri parsing lowercases for free) would still pass the
+                // checks below and be admitted as a recognized outbound base that the index can never route
+                // to inbound -- the exact drift class this feature exists to prevent. There is no logger here
+                // by design; TenantHostnameValidator.Validate is the eager startup validation where
+                // operator-facing diagnostics for a bad hostname belong.
+                continue;
+            }
+
             if (!Uri.TryCreate($"{root.Scheme}://{trimmed}/", UriKind.Absolute, out var candidate)
                 || candidate.AbsolutePath != "/"
                 || !candidate.IsDefaultPort

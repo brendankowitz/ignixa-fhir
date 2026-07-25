@@ -100,7 +100,8 @@ public static class SearchServicesRegistration
             new FhirRequestContextBaseUriProvider(
                 c.Resolve<IFhirRequestContextAccessor>(),
                 c.Resolve<FhirServiceBaseUriResolver>(),
-                c.Resolve<ITenantConfigurationStore>()))
+                c.Resolve<ITenantConfigurationStore>(),
+                c.Resolve<ILogger<FhirRequestContextBaseUriProvider>>()))
             .SingleInstance();
 
         // SearchOptionsBuilderFactory
