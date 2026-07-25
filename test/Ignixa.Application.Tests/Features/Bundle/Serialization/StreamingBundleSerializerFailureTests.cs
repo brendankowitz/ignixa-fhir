@@ -6,6 +6,7 @@
 using System.Text;
 using System.Text.Json;
 using Ignixa.Abstractions;
+using Ignixa.Application.Features.Bundle;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
@@ -440,6 +441,38 @@ public class StreamingBundleSerializerFailureTests
         yield return CreateEntry("p0");
         await Task.Yield();
         yield return CreateEntry("o0") with { SearchMode = SearchEntryMode.Include };
+        await Task.Yield();
+    }
+
+    [Fact]
+    public async Task GivenAMidEntryFailure_WhenStreamingABatchResponse_ThenTheBundleIsValidAndNoExceptionEscapes()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act — must NOT throw
+        await StreamingBundleSerializer.SerializeStreamAsync(
+            stream, "batch-response", EntriesWithCorruptResourceJsonResponseAsync());
+
+        // Assert
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        root.GetProperty("entry").EnumerateArray()
+            .Any(e => e.GetProperty("response").GetProperty("status").GetString() == "500 Internal Server Error")
+            .ShouldBeTrue();
+    }
+
+    private static BundleEntryResponse CreateEntryResponse(string resourceJson) => new()
+    {
+        StatusCode = 200,
+        Status = "200 OK",
+        ResourceJson = resourceJson,
+    };
+
+    private static async IAsyncEnumerable<BundleEntryResponse> EntriesWithCorruptResourceJsonResponseAsync()
+    {
+        yield return CreateEntryResponse("""{"resourceType":"Patient","id":"p0"}""");
+        await Task.Yield();
+        yield return CreateEntryResponse("{\"resourceType\":");
         await Task.Yield();
     }
 }

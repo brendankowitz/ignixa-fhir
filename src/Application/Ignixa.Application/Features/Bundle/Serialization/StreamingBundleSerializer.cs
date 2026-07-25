@@ -656,7 +656,9 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
         EnsureArg.IsNotNull(entryResponses, nameof(entryResponses));
 
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
         // Write bundle header
         WriteBundleHeader(writer, bundleType, total);
@@ -678,7 +680,7 @@ public static class StreamingBundleSerializer
         {
             await foreach (BundleEntryResponse entryResponse in entryResponses.WithCancellation(cancellationToken))
             {
-                WriteEntryResponse(writer, entryResponse);
+                WriteBufferedEntryResponse(writer, entryWriter, entryBuffer, entryResponse);
 
                 // Flush periodically to stream data to client
                 await writer.FlushAsync(cancellationToken);
@@ -827,6 +829,29 @@ public static class StreamingBundleSerializer
 
         writer.WriteEndObject();
         writer.WriteEndArray();
+    }
+
+    /// <summary>
+    /// Writes one complete entry response into the scratch writer, then copies the finished bytes into
+    /// the response writer as a single raw array element.
+    /// Staging keeps the response writer between complete entries at all times, so a mid-entry failure
+    /// in <see cref="WriteEntryResponse"/> - notably its validating <see cref="FhirJsonWriter.WriteRawProperty"/>
+    /// call on corrupt <see cref="BundleEntryResponse.ResourceJson"/> - dirties only the scratch buffer,
+    /// leaving the main writer closable.
+    /// </summary>
+    private static void WriteBufferedEntryResponse(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        BundleEntryResponse response)
+    {
+        WriteEntryResponse(entryWriter, response);
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
     }
 
     /// <summary>
