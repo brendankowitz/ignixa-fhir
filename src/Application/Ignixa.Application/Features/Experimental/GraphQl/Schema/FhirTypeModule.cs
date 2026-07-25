@@ -31,9 +31,12 @@ namespace Ignixa.Application.Features.Experimental.GraphQl.Schema;
 public sealed class FhirTypeModule(
     FhirIFhirSchemaProvider schemaProvider,
     ISearchParameterDefinitionManager searchParameterManager,
+    IFhirBaseUriProvider baseUriProvider,
     ILogger<FhirTypeModule> logger) : ITypeModule, IFhirTypeModule
 {
-    private readonly IReferenceSearchValueParser _referenceParser = new ReferenceSearchValueParser(schemaProvider);
+    // Same provider the REST index and query paths use: GraphQL reference resolution has to agree with
+    // them about which absolute URLs are this server's, or a reference resolves over REST and not here.
+    private readonly IReferenceSearchValueParser _referenceParser = new ReferenceSearchValueParser(schemaProvider, baseUriProvider);
     private static readonly string[] ComplexExtensionValueTypes =
     [
         "valueCoding", "valueCodeableConcept", "valueQuantity",

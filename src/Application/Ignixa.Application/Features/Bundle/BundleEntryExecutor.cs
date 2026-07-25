@@ -82,29 +82,18 @@ public class BundleEntryExecutor
                 ?? throw new InvalidOperationException("No parent FHIR request context available for bundle entry execution");
 
             // Create ISOLATED child context for this bundle entry
-            // AsyncLocal ensures concurrent entries don't interfere with each other
-            var entryContext = new FhirRequestContext
-            {
-                // ===== Inherited from Parent =====
-                TenantId = parentContext.TenantId,
-                TenantConfiguration = parentContext.TenantConfiguration,
-                FhirVersion = parentContext.FhirVersion,
-                VersionContext = parentContext.VersionContext,
-                DeferredWriteCoordinator = deferredWriteCoordinator ?? parentContext.DeferredWriteCoordinator,
+            // AsyncLocal ensures concurrent entries don't interfere with each other.
+            // Cloning goes through the factory rather than being hand-rolled here: this used to be a second
+            // copy of the same field list, and it silently stopped inheriting the parent's service base
+            // URIs, so a self-reference inside a bundle indexed as external while the same reference posted
+            // on its own indexed as internal.
+            var entryContext = FhirRequestContextFactory.CreateBundleEntryContext(
+                parentContext,
+                entry.Index,
+                ExtractResourceTypeFromUrl(entry.RequestUrl),
+                entry.AssignedResourceId);
 
-                // ===== Bundle-Specific (Shared) =====
-                ExecutingBatchOrTransaction = true,
-                IsBackgroundTask = parentContext.IsBackgroundTask,
-
-                // ===== Entry-Specific (Unique Per Entry) =====
-                BundleEntryIndex = entry.Index,
-                ResourceType = ExtractResourceTypeFromUrl(entry.RequestUrl),
-                BundleAssignedResourceId = entry.AssignedResourceId
-
-                // Note: BundleIssues and Properties are read-only get-only properties
-                // They are auto-initialized in FhirRequestContext constructor
-                // We'll copy parent properties after initialization
-            };
+            entryContext.DeferredWriteCoordinator = deferredWriteCoordinator ?? parentContext.DeferredWriteCoordinator;
 
             // Copy parent Properties to child context (shallow copy for isolation)
             foreach (var kvp in parentContext.Properties)

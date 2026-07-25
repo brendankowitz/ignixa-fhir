@@ -281,6 +281,47 @@ public class ReferenceLoweringRuleTests
         _ => false,
     };
 
+    [Fact]
+    public void GivenAReferenceNamingATypeTheResolverCouldNotFind_WhenLowered_ThenLowersToADiagnosablePredicateFalse()
+    {
+        // Arrange — subject=Nonexistent/123 where the catalog has never seen that type. Equal(col, -1)
+        // matches nothing but is not reportable; Predicate.False is what SearchCompiler turns into a
+        // KnownMiss, the same treatment an unknown token system already gets.
+        var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var value = new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: "Nonexistent", resourceId: "123");
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, value);
+        var context = new LeafContext(new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 77 },
+            new Dictionary<string, short> { ["Nonexistent"] = SymbolTable.UnmatchableResourceTypeId }));
+
+        // Act
+        var cte = ReferenceLoweringRule.Lower(predicate, value, context, 104);
+
+        // Assert
+        var unsatisfiable = cte.Predicate.ShouldBeOfType<Predicate.False>();
+        unsatisfiable.Reason.ShouldNotBeNull();
+        unsatisfiable.Reason.ShouldContain("Nonexistent");
+    }
+
+    [Fact]
+    public void GivenAnExternalReference_WhenConstructedWithoutABaseUri_ThenTheConstructorRejectsIt()
+    {
+        // Arrange & Act & Assert — (External, null) is a contradiction: External means "that server", and
+        // there is no such thing without its base. Left representable, it reaches ReferenceColumnEquality
+        // and quietly degrades to the InternalOrExternal match set, widening the search with no diagnostic.
+        Should.Throw<ArgumentException>(() =>
+            new ReferenceSearchValue(ReferenceKind.External, baseUri: null!, resourceType: "Patient", resourceId: "123"));
+    }
+
+    [Fact]
+    public void GivenAnInternalReference_WhenConstructedWithABaseUri_ThenTheConstructorRejectsIt()
+    {
+        // Arrange & Act & Assert — the mirror contradiction: Internal means "this server", which the
+        // parser represents by dropping the base entirely.
+        Should.Throw<ArgumentException>(() =>
+            new ReferenceSearchValue(ReferenceKind.Internal, new Uri("http://remote.org/"), resourceType: "Patient", resourceId: "123"));
+    }
+
     private static bool ReferencesBaseUri(Predicate predicate) => predicate switch
     {
         Predicate.And and => ReferencesBaseUri(and.Left) || ReferencesBaseUri(and.Right),

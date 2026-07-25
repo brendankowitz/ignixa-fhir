@@ -61,6 +61,11 @@ public static class ResourceColumnLoweringRule
             throw new NotSupportedException("_type requires a non-empty resource type name.");
         }
 
+        if (context.UnmatchableResourceType(value.Code) is { } unmatchable)
+        {
+            return unmatchable;
+        }
+
         var table = SqlCatalog.Default.Table("Resource");
         return new Predicate.Equal(new SqlColumnRef(table.TableName, "ResourceTypeId"), context.Parameter(context.ResourceTypeId(value.Code)));
     }
@@ -165,16 +170,19 @@ public static class ResourceColumnLoweringRule
     /// the comparison. Saturating is also the semantically correct answer: no stored resource can carry a
     /// lastUpdated beyond that instant, so clamping preserves the result set, and ApproximateDateRange
     /// deliberately saturates its widened endpoints for wide :ap ranges.
+    /// <para>
+    /// The clamp is applied to the <em>instant</em>, not to the encoded result, which is what keeps the
+    /// conversion monotonic. Saturating the result to <c>long.MaxValue - MaxUniquifier</c> instead would
+    /// return a value <em>below</em> the floor of the last encodable millisecond, so
+    /// <c>_lastUpdated=lt9999-12-31</c> would exclude a resource stored in it. Clamping the input cannot
+    /// invert an ordering, and the resulting floor still leaves room for
+    /// <see cref="ToSurrogateIdUpperBound"/>'s <c>+ MaxUniquifier</c> below <see cref="long.MaxValue"/>.
+    /// </para>
     /// </remarks>
     private static long ToSurrogateId(DateTimeOffset dateTimeOffset)
     {
-        if (dateTimeOffset >= MaxEncodableInstant)
-        {
-            return long.MaxValue - MaxUniquifier;
-        }
-
-        var utc = dateTimeOffset.UtcDateTime;
-        var truncatedTicks = utc.Ticks / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond;
+        var clamped = dateTimeOffset >= MaxEncodableInstant ? MaxEncodableInstant : dateTimeOffset;
+        var truncatedTicks = clamped.UtcDateTime.Ticks / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond;
         return truncatedTicks << 3;
     }
 

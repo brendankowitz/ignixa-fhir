@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Shouldly;
 using Xunit;
 
@@ -16,9 +17,13 @@ namespace Ignixa.RepoGuards.Tests;
 /// intended. This asserts every Ignixa-canonical extension URL used by a suite is one the
 /// engine actually implements.
 /// </summary>
-public class ConformanceSuiteExtensionGuardTests
+public partial class ConformanceSuiteExtensionGuardTests
 {
     private const string IgnixaExtensionPrefix = "http://ignixa.io/testscript/";
+    private const string RequiresCapabilityUrl = "http://ignixa.io/testscript/requiresCapability";
+
+    private static readonly string[] SearchResultParameters =
+        ["_sort", "_count", "_total", "_summary", "_elements", "_include", "_revinclude", "_contained"];
 
     // ADR 2607 documents the first four. The last three landed after it was written
     // (assertionAnyOfGroup and assertionWhenResponseStatus in PR #330, waitFor separately)
@@ -55,6 +60,57 @@ public class ConformanceSuiteExtensionGuardTests
             "either implement the extension in Ignixa.TestScript and add it here, or fix the suite.");
     }
 
+    [Fact]
+    public void GivenConformanceSuites_WhenReadingCapabilityGates_ThenNoneAreStructurallyUnsatisfiable()
+    {
+        var gates = EnumerateSuiteFiles()
+            .SelectMany(file => CollectIgnixaExtensions(file)
+                .Where(extension => extension.Url == RequiresCapabilityUrl
+                                    && !string.IsNullOrEmpty(extension.ValueString))
+                .Select(extension => (file, expression: extension.ValueString!)))
+            .ToList();
+
+        // Without this the guard passes green on an empty input set — if RequiresCapabilityUrl
+        // drifts, or the value stops living on valueString, it would report no offenders forever.
+        // That is the same can't-fail mode the guard exists to prevent.
+        gates.ShouldNotBeEmpty(
+            $"Found no {RequiresCapabilityUrl} extensions carrying a valueString. Either the corpus " +
+            "moved, or the extension URL or value element changed and this guard is now inert.");
+
+        var offenders = gates
+            .SelectMany(pair => DescribeUnsatisfiableClauses(pair.expression)
+                .Select(reason => $"{Path.GetFileName(pair.file)}: {reason}"))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        offenders.ShouldBeEmpty(
+            "A requiresCapability gate that can never evaluate true silently skips its test forever, " +
+            "reporting neither pass nor fail. Search result parameters are not SearchParameter " +
+            "resources, so no conformant server advertises them in CapabilityStatement.searchParam. " +
+            "Gate on the resource-level interaction and the ordinary search parameter codes instead.");
+    }
+
+    // Flags result parameters only: those are unsatisfiable against any conformant server, whereas a
+    // rest-level gate on an ordinary parameter is merely unsatisfiable against Ignixa — whose metadata
+    // pipeline never populates that collection — and always sits on the or-branch of a disjunction.
+    // Catches result-parameter gates at rest level and resource level alike. Not airtight: it matches
+    // source text, so a reversed or restructured spelling still slips through.
+    private static IEnumerable<string> DescribeUnsatisfiableClauses(string expression)
+    {
+        // FHIRPath tolerates whitespace around '=' and the corpus already uses both spellings, so
+        // matching the literal source text would let `where(name = '_sort')` through.
+        var normalized = WhitespaceRun().Replace(expression, string.Empty);
+
+        foreach (var resultParameter in SearchResultParameters)
+        {
+            if (normalized.Contains($"searchParam.where(name='{resultParameter}')", StringComparison.Ordinal))
+                yield return $"gates on search result parameter '{resultParameter}'";
+        }
+    }
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRun();
+
     private static IEnumerable<string> EnumerateSuiteFiles()
     {
         var suitesRoot = Path.Combine(
@@ -64,7 +120,12 @@ public class ConformanceSuiteExtensionGuardTests
         return Directory.EnumerateFiles(suitesRoot, "*.json", SearchOption.AllDirectories);
     }
 
-    private static IEnumerable<string> CollectIgnixaExtensionUrls(string filePath)
+    private static IEnumerable<string> CollectIgnixaExtensionUrls(string filePath) =>
+        CollectIgnixaExtensions(filePath).Select(extension => extension.Url);
+
+    // Materialises to strings before the JsonDocument is disposed; JsonElement is only valid
+    // for the lifetime of its document.
+    private static List<(string Url, string? ValueString)> CollectIgnixaExtensions(string filePath)
     {
         using var document = JsonDocument.Parse(File.ReadAllText(filePath));
         return CollectFromElement(document.RootElement).ToList();
@@ -79,7 +140,7 @@ public class ConformanceSuiteExtensionGuardTests
     //     declared on the inline resource body carried by fixture[].resource rather than at
     //     the top level, so a walk limited to TestScript.extension[]/test[].extension[]
     //     would miss it.
-    private static IEnumerable<string> CollectFromElement(JsonElement element)
+    private static IEnumerable<(string Url, string? ValueString)> CollectFromElement(JsonElement element)
     {
         switch (element.ValueKind)
         {
@@ -88,7 +149,7 @@ public class ConformanceSuiteExtensionGuardTests
                 {
                     if (IsExtensionArray(property))
                     {
-                        foreach (var url in ReadExtensionUrls(property.Value))
+                        foreach (var url in ReadIgnixaExtensions(property.Value))
                             yield return url;
                     }
 
@@ -111,7 +172,7 @@ public class ConformanceSuiteExtensionGuardTests
         property.Value.ValueKind == JsonValueKind.Array &&
         property.Name is "extension" or "modifierExtension";
 
-    private static IEnumerable<string> ReadExtensionUrls(JsonElement extensionArray)
+    private static IEnumerable<(string Url, string? ValueString)> ReadIgnixaExtensions(JsonElement extensionArray)
     {
         foreach (var extension in extensionArray.EnumerateArray())
         {
@@ -121,7 +182,12 @@ public class ConformanceSuiteExtensionGuardTests
                 urlElement.GetString() is { } url &&
                 url.StartsWith(IgnixaExtensionPrefix, StringComparison.Ordinal))
             {
-                yield return url;
+                var valueString = extension.TryGetProperty("valueString", out var valueElement) &&
+                                  valueElement.ValueKind == JsonValueKind.String
+                    ? valueElement.GetString()
+                    : null;
+
+                yield return (url, valueString);
             }
         }
     }

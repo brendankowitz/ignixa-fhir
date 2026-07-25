@@ -58,8 +58,8 @@ public class TokenNumberNumberLoweringRuleTests
         var tokenPredicate = inner.Left.ShouldBeOfType<Predicate.Equal>();
         tokenPredicate.Column.Column.ShouldBe("Code1");
         tokenPredicate.Value.Value.ShouldBe("8480-6");
-        // ge constrains the upper bound and le the lower one -- the spec's intersection test names the
-        // bound opposite the operator's direction (see NumericRangeComparison).
+        // ge is High >= S and le is Low <= E, so each slot names the column on the far side of its own
+        // range -- the same relation NumberLoweringRuleTests pins at the leaf.
         var number1Predicate = inner.Right.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
         number1Predicate.Column.Column.ShouldBe("HighValue2");
         var number2Predicate = outer.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();

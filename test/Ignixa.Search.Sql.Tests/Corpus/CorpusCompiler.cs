@@ -26,7 +26,7 @@ public static class CorpusCompiler
         new(Schema, NullLogger<SearchParameterDefinitionManager>.Instance);
 
     private static readonly SearchOptionsBuilder OptionsBuilder = new(
-        new ExpressionParser(() => Definitions, new SearchParameterExpressionParser(new ReferenceSearchValueParser(Schema), Schema), Schema),
+        new ExpressionParser(() => Definitions, new SearchParameterExpressionParser(new ReferenceSearchValueParser(Schema, NullFhirBaseUriProvider.Instance), Schema), Schema),
         Definitions);
 
     // The real R4 compartment definitions -- the same source a server uses to expand a patient

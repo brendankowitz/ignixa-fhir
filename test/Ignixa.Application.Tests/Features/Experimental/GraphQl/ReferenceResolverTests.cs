@@ -22,7 +22,7 @@ public class ReferenceResolverTests
     {
         var schemaProvider = Substitute.For<IFhirSchemaProvider>();
         schemaProvider.ResourceTypeNames.Returns(new HashSet<string> { "Patient", "Observation" });
-        _parser = new ReferenceSearchValueParser(schemaProvider);
+        _parser = new ReferenceSearchValueParser(schemaProvider, NullFhirBaseUriProvider.Instance);
     }
 
     private static JsonElement Resource(string resourceType, string id)

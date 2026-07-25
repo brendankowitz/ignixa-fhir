@@ -365,7 +365,7 @@
         },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists()) and (rest.resource.where(type='HealthcareService').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
         }
       ],
       "action": [
@@ -389,7 +389,7 @@
         },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists()) and (rest.resource.where(type='HealthcareService').searchParam.where(name='_summary').exists() or rest.searchParam.where(name='_summary').exists())"
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
         }
       ],
       "action": [
@@ -410,7 +410,7 @@
         },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists()) and (rest.resource.where(type='HealthcareService').searchParam.where(name='_total').exists() or rest.searchParam.where(name='_total').exists())"
+          "valueString": "(rest.resource.where(type='HealthcareService').searchParam.where(name='_has').exists() or rest.searchParam.where(name='_has').exists())"
         }
       ],
       "action": [

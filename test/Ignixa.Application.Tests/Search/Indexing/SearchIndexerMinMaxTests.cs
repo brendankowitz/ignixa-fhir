@@ -9,6 +9,7 @@ using System.Globalization;
 using Shouldly;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Ignixa.Abstractions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Definition;
@@ -36,7 +37,8 @@ public class SearchIndexerMinMaxTests
         _indexer = SearchIndexerFactory.CreateInstance(
             _schemaProvider,
             loggerFactory,
-            searchParamManager);
+            searchParamManager,
+            NullFhirBaseUriProvider.Instance);
     }
 
     [Fact]

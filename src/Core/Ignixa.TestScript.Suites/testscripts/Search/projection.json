@@ -1,0 +1,175 @@
+{
+  "resourceType": "TestScript",
+  "name": "Search/projection",
+  "description": "_elements and _summary projection conformance tests against a single PUT-upserted Patient fixture (id=ignixa-projection-pat1) that carries a narrative, active, name, gender, and non-summary communication field. All projection searches are scoped by _id=ignixa-projection-pat1 for guaranteed isolation. Covers: _elements=active (field narrowing with SUBSETTED implication), _summary=text (narrative isolation), _summary=data (data-only, narrative absent), _summary=true (summary fields retained, non-summary communication absent), and _summary=count combined with _lastUpdated=ge2000 (count-only, no match entries).",
+  "status": "active",
+  "extension": [
+    { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').updateCreate = true and rest.resource.where(type='Patient').interaction.where(code='delete').exists()" }
+  ],
+  "fixture": [
+    {
+      "id": "pat1",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Patient",
+        "id": "ignixa-projection-pat1",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\">Projection suite fixture: PROJECTION-PAT1, active, female, with communication data</div>"
+        },
+        "identifier": [
+          {
+            "system": "http://ignixa.io/testscript/suite/projection",
+            "value": "PROJECTION-PAT1"
+          }
+        ],
+        "active": true,
+        "name": [
+          {
+            "family": "Projection",
+            "given": ["Pat1"]
+          }
+        ],
+        "gender": "female",
+        "communication": [
+          {
+            "language": {
+              "coding": [
+                {
+                  "system": "urn:ietf:bcp:47",
+                  "code": "en"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "setup": {
+    "action": [
+      {
+        "operation": {
+          "type": { "code": "update" },
+          "url": "Patient/ignixa-projection-pat1",
+          "sourceId": "pat1",
+          "responseId": "setup-response",
+          "description": "PUT Patient/ignixa-projection-pat1 — upsert fixture: active=true, name (Projection/Pat1), gender=female, non-summary communication, and narrative div"
+        }
+      }
+    ]
+  },
+  "test": [
+    {
+      "name": "setup PUT response is 200 or 201",
+      "description": "The fixture PUT must return exactly 200 OK for an update or 201 Created for a create; grouped warningOnly alternatives produce a hard failure when neither status matches.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }
+      ],
+      "action": [
+        { "assert": { "description": "Update alternative: setup PUT returns 200 OK", "sourceId": "setup-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-put-status" }], "responseCode": "200", "warningOnly": true } },
+        { "assert": { "description": "Create alternative: setup PUT returns 201 Created", "sourceId": "setup-response", "extension": [{ "url": "http://ignixa.io/testscript/assertionAnyOfGroup", "valueString": "setup-put-status" }], "responseCode": "201", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_elements=active: active field projected, name omission warningOnly, SUBSETTED implication warningOnly",
+      "description": "GET /Patient?_id=ignixa-projection-pat1&_elements=active must return HTTP 200, a searchset Bundle, and the fixture entry with active=true. Name omission is warningOnly because servers may legitimately return extra elements beyond those requested. If name IS absent the server SHOULD mark the resource SUBSETTED — this is warningOnly per R4/R4B: servers are not obliged to return only requested elements, so the SUBSETTED implication is advisory.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists()" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-projection-pat1&_elements=active", "responseId": "elements-active", "description": "GET /Patient?_id=ignixa-projection-pat1&_elements=active" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Fixture patient must appear in the result set", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').exists()" } },
+        { "assert": { "description": "Fixture patient active element must equal true — _elements=active must retain the requested field", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.where(active = true).exists()" } },
+        { "assert": { "description": "Name should be absent when _elements=active narrows the projection — warningOnly because extras are permitted", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.name.exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "SUBSETTED implication (warningOnly): if name is absent the server omitted data, so meta.tag should carry the SUBSETTED marker; if name is present the implication is vacuously satisfied", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.name.exists() or entry.where(resource.id = 'ignixa-projection-pat1').resource.meta.tag.where(system = 'http://terminology.hl7.org/CodeSystem/v3-ObservationValue' and code = 'SUBSETTED').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_summary=text: narrative present, data omission warningOnly, SUBSETTED conditional warningOnly",
+      "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=text must return HTTP 200, a searchset Bundle, and the fixture entry with text.div present. Ordinary data fields (active, name, gender) should be absent — warningOnly because servers may include extra elements. Communication absence drives a warningOnly SUBSETTED conditional per R4/R4B: either communication is present (server was generous) or the resource should carry the SUBSETTED tag.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists()" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-projection-pat1&_summary=text", "responseId": "summary-text", "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=text" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Fixture patient must appear in the result set", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').exists()" } },
+        { "assert": { "description": "_summary=text must retain the narrative div", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.text.`div`.exists()" } },
+        { "assert": { "description": "_summary=text should omit ordinary data fields (active, name, gender) — warningOnly because servers may include extra elements beyond the required narrative", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.where(active.empty() and name.empty() and gender.empty()).exists()", "warningOnly": true } },
+        { "assert": { "description": "SUBSETTED conditional (warningOnly): communication should be present or the resource should carry the SUBSETTED tag — per R4/R4B servers SHOULD mark subsetted resources but are not obliged to return only requested elements", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.communication.exists() or entry.where(resource.id = 'ignixa-projection-pat1').resource.meta.tag.where(system = 'http://terminology.hl7.org/CodeSystem/v3-ObservationValue' and code = 'SUBSETTED').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_summary=data: data fields present, narrative omission warningOnly, SUBSETTED conditional warningOnly",
+      "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=data must return HTTP 200, a searchset Bundle, and the fixture entry with all data fields (active, name, gender, communication) present. The narrative (text) should be absent — warningOnly because servers may include extra elements. Text absence drives a warningOnly SUBSETTED conditional per R4/R4B: either text is present (server was generous) or the resource should carry the SUBSETTED tag.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists()" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-projection-pat1&_summary=data", "responseId": "summary-data", "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=data" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Fixture patient must appear in the result set", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').exists()" } },
+        { "assert": { "description": "_summary=data must retain active (data field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.where(active = true).exists()" } },
+        { "assert": { "description": "_summary=data must retain name (data field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.name.exists()" } },
+        { "assert": { "description": "_summary=data must retain gender (data field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.gender.exists()" } },
+        { "assert": { "description": "_summary=data must retain communication (non-summary data field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.communication.exists()" } },
+        { "assert": { "description": "_summary=data should omit the narrative (text) — warningOnly because servers may include extra elements beyond the required data fields", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.text.exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "SUBSETTED conditional (warningOnly): text should be present or the resource should carry the SUBSETTED tag — per R4/R4B servers SHOULD mark subsetted resources but are not obliged to return only requested elements", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.text.exists() or entry.where(resource.id = 'ignixa-projection-pat1').resource.meta.tag.where(system = 'http://terminology.hl7.org/CodeSystem/v3-ObservationValue' and code = 'SUBSETTED').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_summary=true: Patient summary fields present, communication omission warningOnly, SUBSETTED conditional warningOnly",
+      "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=true must return HTTP 200, a searchset Bundle, and the fixture entry with known Patient summary fields (active, name, gender) present. Communication should be absent (non-summary Patient field) — warningOnly because servers may include extra elements. Communication absence drives a warningOnly SUBSETTED conditional per R4/R4B. The Patient resource summary flag (defined per the FHIR specification) includes active, name, and gender but excludes communication.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists()" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-projection-pat1&_summary=true", "responseId": "summary-true", "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=true" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Fixture patient must appear in the result set", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').exists()" } },
+        { "assert": { "description": "_summary=true must retain active (Patient summary field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.where(active = true).exists()" } },
+        { "assert": { "description": "_summary=true must retain name (Patient summary field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.name.exists()" } },
+        { "assert": { "description": "_summary=true must retain gender (Patient summary field)", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.gender.exists()" } },
+        { "assert": { "description": "_summary=true should omit communication (non-summary Patient field) — warningOnly because servers may include extra elements", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.communication.exists()", "value": "false", "operator": "equals", "warningOnly": true } },
+        { "assert": { "description": "SUBSETTED conditional (warningOnly): communication should be present or the resource should carry the SUBSETTED tag — per R4/R4B servers SHOULD mark subsetted resources but are not obliged to return only requested elements", "expression": "entry.where(resource.id = 'ignixa-projection-pat1').resource.communication.exists() or entry.where(resource.id = 'ignixa-projection-pat1').resource.meta.tag.where(system = 'http://terminology.hl7.org/CodeSystem/v3-ObservationValue' and code = 'SUBSETTED').exists()", "warningOnly": true } }
+      ]
+    },
+    {
+      "name": "_summary=count with _lastUpdated=ge2000: total=1, no match entries, outcome entries guarded",
+      "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=count&_lastUpdated=ge2000 must return HTTP 200, a searchset Bundle, Bundle.total=1 (the fixture was PUT this century and _id isolates it exactly), an empty match-mode entry list, and — if any entries are present — each must be an OperationOutcome with search.mode='outcome'. The all() assertion is vacuously satisfied when entry is empty.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.resource.where(type='Patient').interaction.where(code='search-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists())" }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "search" }, "resource": "Patient", "params": "?_id=ignixa-projection-pat1&_summary=count&_lastUpdated=ge2000", "responseId": "summary-count", "description": "GET /Patient?_id=ignixa-projection-pat1&_summary=count&_lastUpdated=ge2000" } },
+        { "assert": { "description": "Search must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be searchset", "expression": "Bundle.type", "value": "searchset", "operator": "equals" } },
+        { "assert": { "description": "Bundle.total must equal 1 — the fixture patient was PUT this century and _id isolates it exactly", "expression": "total = 1" } },
+        { "assert": { "description": "_summary=count must return no match-mode entries; outcome entries (OperationOutcome) are allowed", "expression": "entry.where(search.mode = 'match').empty()" } },
+        { "assert": { "description": "Every entry present must be an OperationOutcome with search.mode='outcome' — vacuously satisfied when entry is empty", "expression": "entry.all(resource.ofType(OperationOutcome).exists() and search.mode = 'outcome')" } }
+      ]
+    }
+  ],
+  "teardown": {
+    "action": [
+      { "operation": { "type": { "code": "delete" }, "url": "Patient/ignixa-projection-pat1", "description": "Teardown: delete the projection suite fixture patient" } }
+    ]
+  }
+}

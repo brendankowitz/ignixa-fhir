@@ -184,25 +184,25 @@ public class ReferenceBaseUriNormalizationTests
     }
 
     [Fact]
-    public void GivenAServerBaseConfiguredWithoutATrailingSlash_WhenParsingASelfReference_ThenItIsNotRecognisedAsInternal()
+    public void GivenAServerBaseConfiguredWithoutATrailingSlash_WhenParsingASelfReference_ThenItStillCollapsesToInternal()
     {
-        // Arrange — the base the parser derives from a reference always ends in '/', because it is the
-        // text preceding the resource type. Uri equality compares AbsolutePath exactly, so a configured
-        // base of "http://example.org/fhir" never equals "http://example.org/fhir/". This is a real
-        // deployment hazard rather than a parser defect: the collapse silently stops happening and
-        // self-references start being filed as External.
+        // Arrange — the base the parser derives from a reference always ends in '/', because it is the text
+        // preceding the resource type, whereas a configured base is whatever an operator typed. Uri equality
+        // compares AbsolutePath exactly, so comparing with '==' meant "http://example.org/fhir" never
+        // matched "http://example.org/fhir/" and the collapse silently stopped happening. Recognition now
+        // goes through FhirServiceBaseUri, which treats a service base as the directory it is.
         var value = Parser(new Uri("http://example.org/fhir")).Parse("http://example.org/fhir/Patient/123");
 
         // Assert
-        value.Kind.ShouldBe(ReferenceKind.External);
-        value.BaseUri!.ToString().ShouldBe("http://example.org/fhir/");
+        value.Kind.ShouldBe(ReferenceKind.Internal);
+        value.BaseUri.ShouldBeNull();
     }
 
     [Fact]
     public void GivenNoBaseUriProvider_WhenParsingAnAbsoluteReference_ThenItStaysExternalWithItsNormalizedBase()
     {
-        // Arrange — the provider is optional; without one there is no server base to compare against
-        var parser = new ReferenceSearchValueParser(new FakeSchemaProvider());
+        // Arrange — opting out of a server base explicitly: there is nothing to compare against
+        var parser = new ReferenceSearchValueParser(new FakeSchemaProvider(), NullFhirBaseUriProvider.Instance);
 
         // Act
         var value = parser.Parse("http://example.org:80/fhir/Patient/123");

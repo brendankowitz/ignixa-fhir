@@ -9,6 +9,7 @@ using Ignixa.Application.Features.Metadata.Segments;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Exceptions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Serialization;
 using Medino;
@@ -114,10 +115,12 @@ public class CapabilityEnforcementBehavior<TRequest, TResponse> : IPipelineBehav
                 expression,
                 tenantId);
 
-            // Throw exception - will be caught by FhirExceptionMiddleware
-            // and converted to 403 Forbidden with OperationOutcome
-            throw new InvalidOperationException(
-                $"Server does not support this operation. Check GET /metadata for supported capabilities.");
+            // ForbiddenException carries StatusCode 403 and its own OperationOutcome. A plain
+            // InvalidOperationException would fall through to the middleware's generic handler
+            // and surface as 400 Invalid, telling the caller their request was malformed when it
+            // was well-formed and simply unsupported.
+            throw new ForbiddenException(
+                "Server does not support this operation. Check GET /metadata for supported capabilities.");
         }
 
         // Capability requirement satisfied - continue pipeline

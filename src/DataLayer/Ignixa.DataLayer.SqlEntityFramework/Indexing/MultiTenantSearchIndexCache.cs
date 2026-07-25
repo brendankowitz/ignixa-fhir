@@ -140,6 +140,29 @@ public class MultiTenantSearchIndexCache
     }
 
     /// <summary>
+    /// Drops any recorded "this system is missing" answer for <paramref name="systemUri"/> in every tenant cache.
+    /// </summary>
+    /// <remarks>
+    /// Called by writers that create <c>dbo.System</c> rows outside the reference-data cache and do not know which
+    /// tenant cache to target. Forgetting across all tenants is safe by construction: a negative entry is a pure
+    /// optimization, so dropping one that was still valid costs a single database round trip and never a wrong
+    /// answer, whereas keeping a stale one makes a search report existing terminology as missing.
+    /// </remarks>
+    /// <param name="systemUri">The system URI whose recorded miss should be discarded.</param>
+    public void ForgetMissingSystem(string? systemUri)
+    {
+        if (string.IsNullOrEmpty(systemUri))
+        {
+            return;
+        }
+
+        foreach (var entry in _tenantCaches)
+        {
+            entry.Value.Cache.ForgetMissingSystem(systemUri);
+        }
+    }
+
+    /// <summary>
     /// Gets the number of currently cached tenants.
     /// Useful for monitoring and diagnostics.
     /// </summary>

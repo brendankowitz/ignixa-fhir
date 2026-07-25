@@ -26,6 +26,13 @@ public static class CompartmentLoweringRule
         Predicate? additionalPredicate = null)
     {
         var table = SqlCatalog.Default.Table("ReferenceSearchParam");
+        var resourceTypeIds = resourceTypes.Select(context.ResourceTypeId).ToList();
+
+        if (context.UnmatchableResourceType(compartmentType) is { } unmatchable)
+        {
+            return new CteDefinition.CompartmentSource(resourceTypeIds, context.SearchParamId(parameter), unmatchable);
+        }
+
         Predicate predicate = new Predicate.And(
             new Predicate.Equal(
                 new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"),
@@ -39,7 +46,6 @@ public static class CompartmentLoweringRule
             predicate = new Predicate.And(predicate, additionalPredicate);
         }
 
-        var resourceTypeIds = resourceTypes.Select(context.ResourceTypeId).ToList();
         return new CteDefinition.CompartmentSource(resourceTypeIds, context.SearchParamId(parameter), predicate);
     }
 }
