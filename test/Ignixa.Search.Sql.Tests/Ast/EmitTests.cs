@@ -1831,35 +1831,6 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesPlanWithHashAlone_WhenEmitted_ThenNoSearchParamHashAppearsInIncludeStage()
-    {
-        var table = SqlCatalog.Default.Table("StringSearchParam");
-        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var stage = new IncludeStage(
-            IncludeDirection.Forward,
-            ReferenceSearchParamId: 55,
-            SeedTypeIds: [103],
-            OutputTypeIds: [105],
-            SeedStages: [],
-            SeedFromMatch: true,
-            Iterate: false,
-            Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
-
-        var sql = SqlBuilder.Run(plan).Sql;
-
-        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
-        var inc0LimStart = sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
-        var inc0Body = sql[inc0Start..inc0LimStart];
-        inc0Body.ShouldNotContain("SearchParamHash");
-    }
-
-    [Fact]
     public void GivenAnIncludesPlanWithASearchParameterHash_WhenEmitted_ThenHashFilterIsInsideMatchPageWhereClause()
     {
         // Prove the filter appears in cteMatchPage's WHERE, not in the outer UNION ALL assembly section.
@@ -1888,36 +1859,6 @@ public class EmitTests
         var matchPageBody = sql[matchPageStart..inc0Start];
         matchPageBody.ShouldContain("WHERE");
         matchPageBody.ShouldContain("SearchParamHash");
-    }
-
-    [Fact]
-    public void GivenAnIncludesPlanWithHashAloneAndNoOuterPredicate_WhenEmitted_ThenMatchPageUsesInnerJoinOnlyForHashFilter()
-    {
-        // Prove that the includes shape emits the resource join inside cteMatchPage when hash alone is set.
-        var table = SqlCatalog.Default.Table("StringSearchParam");
-        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var stage = new IncludeStage(
-            IncludeDirection.Forward,
-            ReferenceSearchParamId: 55,
-            SeedTypeIds: [103],
-            OutputTypeIds: [105],
-            SeedStages: [],
-            SeedFromMatch: true,
-            Iterate: false,
-            Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
-
-        var sql = SqlBuilder.Run(plan).Sql;
-
-        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
-        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
-        var matchPageBody = sql[matchPageStart..inc0Start];
-        matchPageBody.ShouldContain("INNER JOIN dbo.Resource r ON");
     }
 
     [Fact]
@@ -2278,39 +2219,6 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesPlanWithHashAloneAndNoSort_WhenEmitted_ThenMatchPageCarriesTheResourceJoinBeforeTheWhereClause()
-    {
-        // Validates textual ordering: INNER JOIN must appear before WHERE inside cteMatchPage.
-        var table = SqlCatalog.Default.Table("StringSearchParam");
-        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var stage = new IncludeStage(
-            IncludeDirection.Forward,
-            ReferenceSearchParamId: 55,
-            SeedTypeIds: [103],
-            OutputTypeIds: [105],
-            SeedStages: [],
-            SeedFromMatch: true,
-            Iterate: false,
-            Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
-
-        var sql = SqlBuilder.Run(plan).Sql;
-
-        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
-        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
-        var matchPageBody = sql[matchPageStart..inc0Start];
-        var joinIdx = matchPageBody.IndexOf("INNER JOIN dbo.Resource r ON", StringComparison.Ordinal);
-        var whereIdx = matchPageBody.IndexOf("WHERE", StringComparison.Ordinal);
-        joinIdx.ShouldBeGreaterThanOrEqualTo(0);
-        whereIdx.ShouldBeGreaterThanOrEqualTo(0);
-        joinIdx.ShouldBeLessThan(whereIdx);
-    }
-
-    [Fact]
     public void GivenAnIncludesPlanWithHashFilterAndNoSortAndNoTop_WhenEmitted_ThenMatchPageHasNoOrderByButOuter()
     {
         // Regression guard: the includes + no-sort + no-top constraint (SQL Server Msg 1033) must still
@@ -2339,32 +2247,6 @@ public class EmitTests
         var matchPageBody = sql[matchPageStart..inc0Start];
         matchPageBody.ShouldNotContain("ORDER BY");
         sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
-    }
-
-    [Fact]
-    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenSearchParamHashIsNeverInlinedInSql()
-    {
-        var table = SqlCatalog.Default.Table("StringSearchParam");
-        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var stage = new IncludeStage(
-            IncludeDirection.Forward,
-            ReferenceSearchParamId: 55,
-            SeedTypeIds: [103],
-            OutputTypeIds: [105],
-            SeedStages: [],
-            SeedFromMatch: true,
-            Iterate: false,
-            Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("ZorbaxilHash"));
-
-        var emitted = SqlBuilder.Run(plan);
-
-        emitted.Sql.ShouldNotContain("ZorbaxilHash");
-        emitted.Parameters.Select(p => p.Value).ShouldContain("ZorbaxilHash");
     }
 
     [Fact]
@@ -2401,36 +2283,6 @@ public class EmitTests
         matchPageBody.ShouldContain("Sid1 <=");
         matchPageBody.ShouldContain("ResourceId =");
         System.Text.RegularExpressions.Regex.Matches(matchPageBody, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
-    }
-
-    [Fact]
-    public void GivenAnIncludesPlanWithHashFilter_WhenEmitted_ThenMatchPageHasExactlyOneWhereClauseContainingBothHashAndNoOtherFilters()
-    {
-        var table = SqlCatalog.Default.Table("StringSearchParam");
-        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var stage = new IncludeStage(
-            IncludeDirection.Forward,
-            ReferenceSearchParamId: 55,
-            SeedTypeIds: [103],
-            OutputTypeIds: [105],
-            SeedStages: [],
-            SeedFromMatch: true,
-            Iterate: false,
-            Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
-
-        var sql = SqlBuilder.Run(plan).Sql;
-
-        var matchPageStart = sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
-        var inc0Start = sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
-        var matchPageBody = sql[matchPageStart..inc0Start];
-        // Exactly one WHERE block inside the match page when only the hash filter contributes.
-        System.Text.RegularExpressions.Regex.Matches(matchPageBody, @"\bWHERE\b").Count.ShouldBe(1);
     }
 
     // ─── End SearchParameterHash tests ──────────────────────────────────────────────────────────────

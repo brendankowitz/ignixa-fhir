@@ -19,6 +19,12 @@ public static class SqlBuilder
     /// CountOnly, a plain (T1, Sid1) select (with optional sort/paging) when there are no includes, or a
     /// match-page CTE plus per-stage include CTEs unioned into a (T1, Sid1, IsMatch, IsPartial) result.
     /// </summary>
+    /// <remarks>
+    /// This method handles three terminal shapes (CountOnly, no-includes, includes) across five orthogonal
+    /// optional features: OuterPredicate, Projection, Sort/Page, SurrogateRange, and SearchParameterHash.
+    /// A sixth optional feature should prompt decomposition into per-shape helpers rather than adding
+    /// another inline block here.
+    /// </remarks>
     public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
     {
         var parameters = new List<EmittedSqlParameter>();
@@ -40,11 +46,7 @@ public static class SqlBuilder
 
             var countWhereClauses = new List<string>();
 
-            // Emit the resource join when any of outer predicate or hash filter needs it — all three
-            // predicates share the same single join; emitting it conditionally per-predicate would
-            // produce duplicate JOINs (a SQL error) or miss it entirely (a silent no-op).
-            var countNeedsResourceJoin = plan.OuterPredicate is not null || plan.SearchParameterHash is not null;
-            if (countNeedsResourceJoin)
+            if (NeedsResourceJoin(plan, includesProjection: false))
             {
                 writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1");
             }
@@ -94,7 +96,7 @@ public static class SqlBuilder
             // Emit the resource join when any of outer predicate, projection, or hash filter needs it —
             // all three share the same single join; emitting it conditionally per-contributor would
             // produce duplicate JOINs (a SQL error) or miss it entirely (a silent no-op).
-            var needsResourceJoin = plan.OuterPredicate is not null || hasActiveProjection || plan.SearchParameterHash is not null;
+            var needsResourceJoin = NeedsResourceJoin(plan, includesProjection: true);
 
             var whereClauses = new List<string>();
             int? seekClauseIndex = null;
@@ -203,12 +205,12 @@ public static class SqlBuilder
             matchWhereClauses.Add($"(r.SearchParamHash IS NULL OR r.SearchParamHash <> {EmitParam(matchHash, parameters)})");
         }
 
-        // Emit the resource join inside cteMatchPage when any of outer predicate or hash filter needs
-        // it — both share the same single join; emitting it conditionally per-contributor would
-        // produce duplicate JOINs (a SQL error) or miss it entirely (a silent no-op).
-        var matchResourceJoin = plan.OuterPredicate is null && plan.SearchParameterHash is null
-            ? string.Empty
-            : "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
+        // Emit the resource join inside cteMatchPage when any plan feature referencing an r. column
+        // requires it. Projection is handled in the UNION ALL assembly rather than here, so
+        // includesProjection is false.
+        var matchResourceJoin = NeedsResourceJoin(plan, includesProjection: false)
+            ? "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1"
+            : string.Empty;
 
         var incBlocks = new List<string>();
         var incLimBlocks = new List<string>();
@@ -316,6 +318,22 @@ public static class SqlBuilder
         clauses.Add($"m.Sid1 >= {EmitParam(range.Start, parameters)}");
         clauses.Add($"m.Sid1 <= {EmitParam(range.End, parameters)}");
     }
+
+    /// <summary>
+    /// Whether a shape must join dbo.Resource: true when any plan feature references an <c>r.</c> column.
+    /// Centralised rather than repeated per shape because a future feature that reads a resource column
+    /// must be added in exactly one place — missing one shape produces a runtime "multi-part identifier
+    /// could not be bound" error rather than a test failure.
+    /// </summary>
+    /// <param name="plan">The query plan being emitted.</param>
+    /// <param name="includesProjection">
+    /// Whether the calling shape emits the projection through this join. False for CountOnly (which has no
+    /// rows to project) and for the includes match arm (which projects in the UNION ALL assembly instead).
+    /// </param>
+    private static bool NeedsResourceJoin(QueryPlan plan, bool includesProjection)
+        => plan.OuterPredicate is not null
+            || plan.SearchParameterHash is not null
+            || (includesProjection && plan.Projection is { Columns.Count: > 0 });
 
     /// <summary>
     /// Joins already-rendered WHERE fragments with " AND ", wrapping the one at <paramref name="seekClauseIndex"/>
