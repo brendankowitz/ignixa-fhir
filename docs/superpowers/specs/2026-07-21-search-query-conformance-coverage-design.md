@@ -248,13 +248,14 @@ DiagnosticReport
 It must assert HTTP 200, `Bundle.type = 'searchset'`, exactly the two expected match entries, both
 entries with `search.mode = 'match'`, non-vacuous status/code/Practitioner-reference criteria, their
 order by the unique `issued` values, and exclusion of every decoy. The operation asserts the exact
-HTTP status code `200`. `_count=10` keeps both matches and every decoy candidate within one response
-page so membership and exclusion are provable. `_count` is present as part of the composed workload,
-not as pagination coverage; standard next-link traversal remains covered by history.
+HTTP status code `200`. `_count=10` is present as part of the composed workload, not as pagination
+coverage: the decoys are excluded by the query itself, so membership and exclusion hold at any page
+size. Standard next-link traversal remains covered by history.
 
 The hard test runs only when the CapabilityStatement narrowly declares DiagnosticReport search,
-`status`, `code`, `results-interpreter`, `issued`, `_lastUpdated`, `_sort`, and `_count`, plus
-Practitioner `identifier` for the typed chain. The typed chain spelling remains exactly
+`status`, `code`, `results-interpreter`, `issued`, and `_lastUpdated`, plus
+Practitioner `identifier` for the typed chain. Per gating rule 5 it does not gate on `_sort` or
+`_count`. The typed chain spelling remains exactly
 `results-interpreter:Practitioner.identifier` in all three target releases.
 
 Add a workload variant that repeats `_lastUpdated` with `ge2000` and `lt2999` while retaining the
@@ -336,8 +337,12 @@ first request makes its targets branch-only by query shape; fixture semantics do
 4. Projection `_summary=count&_lastUpdated=ge2000` still requires resource- or system-level
    `_lastUpdated` advertisement; the exception applies to `_summary`, not the ordinary common
    parameter composed with it.
-5. Preserve query-composition's intentional `_count` capability gate even though `_count` is a
-   control parameter; that narrow gate is part of the approved composed-workload design.
+5. Never gate on `_sort`, `_count`, `_total`, `_summary`, or `_elements` as advertised
+   `searchParam` codes. These are search result parameters, not `SearchParameter` resources, so
+   no conformant server declares them and such a gate is unsatisfiable against any server — it
+   silently disables the test rather than skipping it for a real capability gap. Rule 3 is the
+   general form of this; it is stated separately here because an earlier revision of this design
+   made the opposite call for query-composition and left the suite inert.
 6. For includes, accept the exact advertised include or wildcard only where the existing suite
    already treats wildcard as satisfying that declaration.
 7. Do not infer repeated-key semantics or iterate support from generic search support.

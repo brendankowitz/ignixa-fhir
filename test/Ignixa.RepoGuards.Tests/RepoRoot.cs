@@ -8,9 +8,16 @@ using Shouldly;
 namespace Ignixa.RepoGuards.Tests;
 
 /// <summary>
-/// Locates the repository root from the test output directory. Repo guards assert properties of
-/// the source tree rather than of compiled behaviour, so they all need this.
+/// Locates the repository root by walking up from a given start directory, defaulting to the test
+/// output directory. Repo guards assert properties of the source tree rather than of compiled
+/// behaviour, so they all need this.
 /// </summary>
+/// <remarks>
+/// The walk accepts <c>.git</c> as either a directory or a file. In a git worktree or a submodule
+/// it is a file holding a <c>gitdir:</c> pointer, so a directory-only check walks straight past the
+/// worktree and returns the main checkout instead — silently making every guard assert against the
+/// wrong source tree.
+/// </remarks>
 internal static class RepoRoot
 {
     public static string Find() => Find(AppContext.BaseDirectory);
@@ -25,7 +32,7 @@ internal static class RepoRoot
             dir = dir.Parent;
         }
 
-        dir.ShouldNotBeNull($"Could not find repo root from {startDirectory}");
+        dir.ShouldNotBeNull($"Could not find repo root: no .git file or directory in any ancestor of {startDirectory}");
         return dir!.FullName;
     }
 }

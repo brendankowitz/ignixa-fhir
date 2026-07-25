@@ -195,12 +195,12 @@
     },
     {
       "name": "typed-chain query composes filters, unique sort, and count",
-      "description": "_count=10 keeps both matches and all decoy candidates on one page so match-scoped membership, exclusion, and unique issued ordering are provable; _count is workload composition only, not pagination coverage.",
+      "description": "Composes status and code filters with a typed Practitioner chain on results-interpreter, asserting both matching reports are returned, all three decoys are excluded, and issued ordering is unique under _sort. _count=10 is workload composition only, not pagination coverage — the decoys are excluded by the query, not by paging.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='DiagnosticReport').interaction.where(code='search-type').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='status').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='code').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='results-interpreter').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='issued').exists() and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_count').exists() or rest.searchParam.where(name='_count').exists()) and rest.resource.where(type='Practitioner').searchParam.where(name='identifier').exists()"
+          "valueString": "rest.resource.where(type='DiagnosticReport').interaction.where(code='search-type').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='status').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='code').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='results-interpreter').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='issued').exists() and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists()) and rest.resource.where(type='Practitioner').searchParam.where(name='identifier').exists()"
         }
       ],
       "action": [
@@ -236,7 +236,7 @@
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='DiagnosticReport').interaction.where(code='search-type').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='status').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='code').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='results-interpreter').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='issued').exists() and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists()) and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_count').exists() or rest.searchParam.where(name='_count').exists()) and rest.resource.where(type='Practitioner').searchParam.where(name='identifier').exists()"
+          "valueString": "rest.resource.where(type='DiagnosticReport').interaction.where(code='search-type').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='status').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='code').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='results-interpreter').exists() and rest.resource.where(type='DiagnosticReport').searchParam.where(name='issued').exists() and (rest.resource.where(type='DiagnosticReport').searchParam.where(name='_lastUpdated').exists() or rest.searchParam.where(name='_lastUpdated').exists()) and rest.resource.where(type='Practitioner').searchParam.where(name='identifier').exists()"
         }
       ],
       "action": [

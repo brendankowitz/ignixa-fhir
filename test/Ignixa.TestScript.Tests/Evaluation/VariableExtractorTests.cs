@@ -151,7 +151,7 @@ public class VariableExtractorTests
             {
                 StatusCode = 200,
                 Body = JsonSourceNodeFactory.Parse(
-                    """{"resourceType":"Bundle","id":"history-page-one","link":[{"relation":"next","url":"https://example.test/fhir/Patient/123/_history?_count=1&ct=opaque%2Btoken"}]}""")
+                    $$"""{"resourceType":"Bundle","id":"history-page-one","link":[{"relation":"next","url":"{{requiredAbsoluteUrl}}"}]}""")
             },
             new TestResponse
             {
@@ -201,9 +201,7 @@ public class VariableExtractorTests
         var report = await evaluator.ExecuteAsync(definition, CancellationToken.None);
 
         report.OverallOutcome.ShouldBe(TestScriptOutcome.Pass);
-        // Exactly three provider calls: two setup + one test.
         await _mockProvider.Received(3).ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
-        // Exactly one call carries the required absolute URL — not the decoy.
         await _mockProvider.Received(1).ExecuteAsync(
             Arg.Is<TestRequest>(r => r.Url == requiredAbsoluteUrl),
             Arg.Any<CancellationToken>());

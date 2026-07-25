@@ -274,7 +274,7 @@
       ],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_id=ignixa-inc-obs1&_include=Observation:subject&_include:iterate=Patient:organization", "responseId": "inc-iterate-hop", "description": "GET /Observation with _include + _include:iterate two-hop" } },
-        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Must include obs1", "expression": "entry.where(resource.id = 'ignixa-inc-obs1').exists()", "warningOnly": true } },
         { "assert": { "description": "Must include pat1 (direct include)", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()", "warningOnly": true } },
         { "assert": { "description": "Must include org (iterated include via pat1.managingOrganization)", "expression": "entry.where(resource.id = 'ignixa-inc-org').exists()", "warningOnly": true } }
@@ -295,13 +295,13 @@
       ],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Observation", "params": "?_id=ignixa-inc-obs1&_include=Observation:subject&_include:iterate=Patient:general-practitioner", "responseId": "inc-iterate-gp", "description": "GET /Observation with _include:iterate on generalPractitioner" } },
-        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Must include pat1", "expression": "entry.where(resource.id = 'ignixa-inc-pat1').exists()", "warningOnly": true } },
         { "assert": { "description": "Must include prac1 (iterated hop)", "expression": "entry.where(resource.id = 'ignixa-inc-prac1').exists()", "warningOnly": true } }
       ]
     },
     {
-      "name": "two iterate branches are visible without a direct performer include",
+      "name": "direct subject include is exact with two iterate branches requested; branch visibility informational",
       "description": "The hard direct-subject contract is separated from warning-only branch visibility because base CapabilityStatement has no precise iterate declaration.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
@@ -343,7 +343,7 @@
       ]
     },
     {
-      "name": "direct and iterated include paths deduplicate logical resources",
+      "name": "direct performer includes are returned alongside iterate branches; cross-path deduplication informational",
       "description": "Direct performer includes make Organization and Practitioner presence portable; they do not prove either iterate branch executed. Cross-path counts remain warning-only without a profile.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
@@ -392,7 +392,7 @@
       "extension": [{ "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" }],
       "action": [
         { "operation": { "type": { "code": "search" }, "resource": "Organization", "params": "?_id=ignixa-inc-org-a&_include:iterate=Organization:partof", "responseId": "inc-iterate-chain", "description": "GET /Organization?_id=ignixa-inc-org-a&_include:iterate=Organization:partof" } },
-        { "assert": { "description": "Search must return HTTP 200", "response": "okay", "warningOnly": true } },
+        { "assert": { "description": "Search must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Must include org-a (matched)", "expression": "entry.where(resource.id = 'ignixa-inc-org-a').exists()", "warningOnly": true } },
         { "assert": { "description": "Must include org-b (one iteration of partof)", "expression": "entry.where(resource.id = 'ignixa-inc-org-b').exists()", "warningOnly": true } },
         { "assert": { "description": "Should NOT include org-c (would require a second iteration); behavior may vary by server", "expression": "entry.where(resource.id = 'ignixa-inc-org-c').exists()", "value": "false", "operator": "equals", "warningOnly": true } }
@@ -466,7 +466,7 @@
         },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_summary').exists() or rest.searchParam.where(name='_summary').exists())"
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists()"
         }
       ],
       "action": [
@@ -486,7 +486,7 @@
         },
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_total').exists() or rest.searchParam.where(name='_total').exists())"
+          "valueString": "rest.resource.where(type='Patient').searchInclude.where($this='Patient:organization' or $this='*').exists()"
         }
       ],
       "action": [
@@ -497,7 +497,7 @@
       ]
     },
     {
-      "name": "Invalid target resource type on _include returns a Bad Request",
+      "name": "Invalid target resource type on _include is handled (informational)",
       "description": "Informational handling check: without Prefer: handling=strict, base FHIR does not universally require rejection of an invalid _include target resource type.",
       "extension": [
         {

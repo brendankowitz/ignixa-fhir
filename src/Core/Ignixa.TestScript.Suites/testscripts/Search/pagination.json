@@ -1,7 +1,7 @@
 {
   "resourceType": "TestScript",
   "name": "Search/pagination",
-  "description": "Pagination conformance tests for _count and _total. Does NOT follow next links — absolute-URL link traversal requires an engine enhancement. Five Patients (fhir262-page-p1..p5) share identifier system http://fhir262/pagination so searches can be scoped. Count/total comparisons use inline FHIRPath (entry.count() <= 2, total >= 5) because the engine has no lessOrEquals/greaterOrEquals assert operator.",
+  "description": "Pagination conformance tests for _count and _total. Does NOT follow next links; opaque absolute-URL link traversal is covered by CRUD/history.json. Five Patients (fhir262-page-p1..p5) share identifier system http://fhir262/pagination so searches can be scoped. Count/total comparisons use inline FHIRPath (entry.count() <= 2, total >= 5) because the engine has no lessOrEquals/greaterOrEquals assert operator.",
   "status": "active",
   "fixture": [
     {
