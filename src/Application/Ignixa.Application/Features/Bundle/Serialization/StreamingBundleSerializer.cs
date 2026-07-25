@@ -444,28 +444,120 @@ public static class StreamingBundleSerializer
     /// </summary>
     private static void WriteErrorEntry(FhirJsonWriter writer, Exception exception)
     {
+        WriteErrorEntry(writer, new IssueComponent("fatal", "exception", Diagnostics: $"Streaming serialization failed: {exception.Message}"));
+    }
+
+    /// <summary>
+    /// Writes the batch-response/transaction-response error entry shape: <c>response.status = "500 Internal Server Error"</c>
+    /// plus the OperationOutcome as <c>resource</c>. Shared by both the streaming-exception path and
+    /// <see cref="WriteOperationOutcomeEntry"/> so the shape is defined exactly once.
+    /// </summary>
+    private static void WriteErrorEntry(FhirJsonWriter writer, IssueComponent issue)
+    {
         writer.WriteStartObject();
 
-        // Write response with 500 status
         writer.WriteStartObject("response");
         writer.WriteString("status", "500 Internal Server Error");
         writer.WriteEndObject(); // end response
 
-        // Write OperationOutcome as resource
+        WriteOperationOutcomeResource(writer, issue);
+
+        writer.WriteEndObject(); // end entry
+    }
+
+    /// <summary>
+    /// Writes one fatal OperationOutcome bundle entry into an already-open <c>entry</c> array,
+    /// shaped by <paramref name="bundleType"/> and, for history bundles, <paramref name="fhirVersion"/>.
+    /// Shapes are specified in the mid-stream error handling design (§3) and must not be re-derived.
+    /// </summary>
+    internal static void WriteOperationOutcomeEntry(
+        FhirJsonWriter writer,
+        IssueComponent issue,
+        string bundleType,
+        FhirVersion fhirVersion,
+        string fullUrl,
+        string selfUrl)
+    {
+        switch (bundleType)
+        {
+            case "searchset":
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                WriteOperationOutcomeResource(writer, issue);
+                writer.WriteObject("search", w => w.WriteString("mode", "outcome"));
+                writer.WriteEndObject();
+                break;
+
+            case "history" when fhirVersion >= FhirVersion.R4:
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                writer.WriteObject("request", w => w
+                    .WriteString("method", "GET")
+                    .WriteString("url", selfUrl));
+                writer.WriteObject("response", w =>
+                {
+                    w.WriteString("status", "500");
+                    w.WriteStartObject("outcome");
+                    WriteOperationOutcomeBody(w, issue);
+                    w.WriteEndObject();
+                });
+                writer.WriteEndObject();
+                break;
+
+            case "history":
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                WriteOperationOutcomeResource(writer, issue);
+                writer.WriteObject("request", w => w
+                    .WriteString("method", "GET")
+                    .WriteString("url", selfUrl));
+                writer.WriteEndObject();
+                break;
+
+            case "batch-response":
+            case "transaction-response":
+                WriteErrorEntry(writer, issue);
+                break;
+
+            default:
+                writer.WriteStartObject();
+                writer.WriteString("fullUrl", fullUrl);
+                WriteOperationOutcomeResource(writer, issue);
+                writer.WriteEndObject();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Writes a <c>resource</c> property carrying an OperationOutcome for a single issue.
+    /// </summary>
+    private static void WriteOperationOutcomeResource(FhirJsonWriter writer, IssueComponent issue)
+    {
         writer.WriteStartObject("resource");
+        WriteOperationOutcomeBody(writer, issue);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// Writes the body of an OperationOutcome (resourceType and single-issue array) into the
+    /// currently open object.
+    /// </summary>
+    private static void WriteOperationOutcomeBody(FhirJsonWriter writer, IssueComponent issue)
+    {
         writer.WriteString("resourceType", "OperationOutcome");
 
         writer.WriteStartArray("issue");
         writer.WriteStartObject();
-        writer.WriteString("severity", "fatal");
-        writer.WriteString("code", "exception");
-        writer.WriteString("diagnostics", $"Streaming serialization failed: {exception.Message}");
-        writer.WriteEndObject(); // end issue
-        writer.WriteEndArray(); // end issue array
+        writer.WriteString("severity", issue.Severity);
+        writer.WriteString("code", issue.Code);
 
-        writer.WriteEndObject(); // end resource (OperationOutcome)
+        if (!string.IsNullOrEmpty(issue.Diagnostics))
+        {
+            writer.WriteString("diagnostics", issue.Diagnostics);
+        }
 
-        writer.WriteEndObject(); // end entry
+        writer.WriteEndObject();
+        writer.WriteEndArray();
     }
 
     /// <summary>
