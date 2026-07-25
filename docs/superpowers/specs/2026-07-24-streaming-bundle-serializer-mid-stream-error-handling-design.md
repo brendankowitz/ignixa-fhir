@@ -102,7 +102,7 @@ Tier 2 implies the entry array is open: bytes are only committed from inside the
 
 The exception becomes one `IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}")`.
 
-A new private helper `WriteOperationOutcomeEntry(writer, issue, bundleType, fhirVersion, fullUrl, selfUrl)` writes one balanced entry, shaped by bundle type and — for history only — version. **Every shape includes `fullUrl`** (R5 `bdl-15`):
+A new `internal` helper `WriteOperationOutcomeEntry(writer, issue, bundleType, fhirVersion, fullUrl, selfUrl)` writes one balanced entry, shaped by bundle type and — for history only — version. **Every shape includes `fullUrl` except batch/transaction-response**, which delegates to the existing `WriteErrorEntry` and is exempt from R5 `bdl-15` (that constraint scopes `fullUrl` to bundle types where entries identify resources; batch/transaction-response entries carry only operation results). The `fullUrl` argument is consequently unused on that one branch:
 
 - **`"searchset"`** → OperationOutcome as `resource`, `search.mode = "outcome"`; no `request`/`response`. Satisfies `bdl-2`, R5 `bdl-3a`.
 - **`"history"`, R4/R4B/R5** → `request` (`method: "GET"`, `url: selfUrl`), `response` (`status: "500"`) carrying the OperationOutcome in **`response.outcome`**; no `resource`, no `search`. The placement is load-bearing: R5 `bdl-3b` requires `(request.method in ('POST'|'PATCH'|'PUT')) = resource.exists()`, so `GET` with a `resource` fails while `GET` without one gives `false = false`. Satisfies R4/R4B `bdl-3`+`bdl-4` and R5 `bdl-14`.
