@@ -32,6 +32,8 @@ public static class PlanRowKind
 
     public const string NotReferencedSource = "notReferencedSource";
 
+    public const string MultiTypeResourceSource = "multiTypeResourceSource";
+
     public const string IncludeStage = "includeStage";
 
     public const string SortSpec = "sortSpec";

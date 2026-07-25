@@ -382,6 +382,7 @@ public static class SqlBuilder
         CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters, visibility),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters, visibility),
+        CteDefinition.MultiTypeResourceSource mts => EmitMultiTypeResourceSource(mts, parameters, visibility),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -707,6 +708,32 @@ public static class SqlBuilder
         return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM dbo.Resource\n" +
                $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)}{ResourceRowFilter(visibility, string.Empty)}{predicateClause}";
+    }
+
+    /// <summary>Renders a MultiTypeResourceSource: a dbo.Resource scan across a set of types, or every type when the set is empty.</summary>
+    private static string EmitMultiTypeResourceSource(
+        CteDefinition.MultiTypeResourceSource mts,
+        List<EmittedSqlParameter> parameters,
+        ResourceVisibility visibility)
+    {
+        var predicateClause = mts.Predicate is null ? string.Empty : $" AND {EmitPredicate(mts.Predicate, parameters)}";
+
+        // Type ids are emitted as literals, not bound parameters, matching ParamSource and ChainJoin.
+        // An empty list means "every type" (system-wide scan); do not emit a type filter in that case.
+        // Keeping unresolvable sentinel ids (-1) in the list is intentional: they match no row, which
+        // is the correct answer for an unknown type. Dropping them could collapse a list of all-unknown
+        // types to empty, which would silently widen to a full-table scan instead of matching nothing.
+        var typeClause = mts.ResourceTypeIds.Count == 0
+            ? string.Empty
+            : $" AND ResourceTypeId IN ({string.Join(", ", mts.ResourceTypeIds)})";
+
+        var rowFilter = ResourceRowFilter(visibility, string.Empty);
+        var where = (typeClause + rowFilter + predicateClause).TrimStart();
+        where = where.StartsWith("AND ", StringComparison.Ordinal) ? where[4..] : where;
+
+        return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+               $"    FROM dbo.Resource\n" +
+               (where.Length == 0 ? string.Empty : $"    WHERE {where}");
     }
 
     /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>

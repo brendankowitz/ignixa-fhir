@@ -201,6 +201,33 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
+    /// <summary>
+    /// Lowers a multi-type or system-wide base set. Each name is resolved through the symbol table; an
+    /// unresolvable name yields the sentinel -1, which is kept in the list rather than dropped.
+    /// <para>
+    /// Dropping unresolvable ids would be dangerous: if every requested type is unknown the list would
+    /// collapse to empty, and an empty <see cref="CteDefinition.MultiTypeResourceSource"/> means
+    /// <em>every</em> resource type — a full-table scan instead of an empty match. The sentinel -1
+    /// matches no row, so keeping it produces the correct empty result without widening the query.
+    /// </para>
+    /// <para>
+    /// An empty <paramref name="resourceTypes"/> input is the explicit system-wide contract ("all types").
+    /// The caller at <c>LowerBaseSet</c> deliberately passes an empty list for a bare <c>GET /</c>;
+    /// this is not an accident that falls through silently.
+    /// </para>
+    /// </summary>
+    public CteRef LowerMultiTypeResourceSource(IReadOnlyList<string> resourceTypes)
+    {
+        // Use ResourceTypeIdOrSentinel rather than ResourceTypeId so that a type name not present in the
+        // symbol table (never collected) maps to -1 rather than throwing. This matters for the fail-safe
+        // contract: dropping unresolvable ids would collapse an all-unknown list to empty, which means
+        // "every resource type" — a full-table scan instead of the correct empty result. Keeping -1
+        // produces IN (-1), which matches no row. See also the comment at EmitMultiTypeResourceSource.
+        var resourceTypeIds = resourceTypes.Select(t => _leafContext.ResourceTypeIdOrSentinel(t)).ToList();
+        _ctes.Add(new CteDefinition.MultiTypeResourceSource(resourceTypeIds));
+        return new CteRef(_ctes.Count - 1);
+    }
+
     public CteRef LowerNot(CteRef innerMatch, string resourceType)
         => Except(LowerResourceSource(resourceType), innerMatch);
 

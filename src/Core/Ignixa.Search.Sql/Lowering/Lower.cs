@@ -35,7 +35,8 @@ public static class Lower
         DateTimeOffset? approximationReferenceTime = null,
         ResourceVisibility? visibility = null,
         SurrogateIdRange? surrogateRange = null,
-        SqlParameterRef? searchParameterHash = null)
+        SqlParameterRef? searchParameterHash = null,
+        IReadOnlyList<string>? resourceTypes = null)
     {
         var context = new StructuralContext(symbols, approximationReferenceTime);
         CteRef match;
@@ -43,7 +44,7 @@ public static class Lower
 
         if (expression is null)
         {
-            match = context.LowerResourceSource(RequireResourceType(targetResourceType));
+            match = LowerBaseSet(context, targetResourceType, resourceTypes);
         }
         else
         {
@@ -51,7 +52,7 @@ public static class Lower
             outerPredicate = extractedPredicate;
             match = remaining switch
             {
-                null => context.LowerResourceSource(RequireResourceType(targetResourceType)),
+                null => LowerBaseSet(context, targetResourceType, resourceTypes),
                 CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
                 _ when targetResourceType is null => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
@@ -94,6 +95,18 @@ public static class Lower
             new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly, visibility, SurrogateRange: surrogateRange, SearchParameterHash: searchParameterHash),
             new PlanProvenance(context.Origins));
     }
+
+    /// <summary>
+    /// The base match set when no expression narrows it: a single-type ResourceSource when a target type
+    /// is named, otherwise a MultiTypeResourceSource over the requested types — empty meaning every type.
+    /// </summary>
+    private static CteRef LowerBaseSet(
+        StructuralContext context,
+        string? targetResourceType,
+        IReadOnlyList<string>? resourceTypes)
+        => targetResourceType is { } single
+            ? context.LowerResourceSource(single)
+            : context.LowerMultiTypeResourceSource(resourceTypes ?? []);
 
     /// <summary>Returns the target resource type, or throws if it is null where one is required.</summary>
     private static string RequireResourceType(string? targetResourceType)

@@ -493,4 +493,75 @@ public class EmitSqlGrammarTests
             CountOnly: true,
             SearchParameterHash: StandardHash());
     }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithSeveralIds_WhenParsed_ThenItIsValidTSql()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.MultiTypeResourceSource([103, 104])],
+            new CteRef(0));
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithNoIds_WhenParsed_ThenItIsValidTSql()
+    {
+        // Empty list = system-wide scan; the emitter must produce no WHERE clause, not a dangling AND or
+        // an empty WHERE ().
+        var plan = new QueryPlan(
+            [new CteDefinition.MultiTypeResourceSource([])],
+            new CteRef(0));
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithOneId_WhenParsed_ThenItIsValidTSql()
+    {
+        // Single-element list emits IN (x), which is valid T-SQL.
+        var plan = new QueryPlan(
+            [new CteDefinition.MultiTypeResourceSource([103])],
+            new CteRef(0));
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        // Tests all four visibility flag combinations, exercising the WHERE-clause assembly string juggling
+        // (TrimStart / StartsWith("AND ...")) for multi-type with visibility filters.
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [new CteDefinition.MultiTypeResourceSource([103, 104])],
+            new CteRef(0),
+            Visibility: visibility);
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenASystemWideMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        // System-wide (empty ids) with visibility: validates that rowFilter alone builds a correct
+        // WHERE clause without a leading AND when typeClause is empty.
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [new CteDefinition.MultiTypeResourceSource([])],
+            new CteRef(0),
+            Visibility: visibility);
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
 }

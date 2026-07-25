@@ -62,4 +62,13 @@ public abstract record CteDefinition
         short TargetResourceTypeId,
         short? SourceResourceTypeId,
         short? ReferenceSearchParamId) : CteDefinition;
+
+    /// <summary>
+    /// Current rows of dbo.Resource across several resource types, or across every type when
+    /// <paramref name="ResourceTypeIds"/> is empty — the system-wide search base set. Kept separate from
+    /// <see cref="ResourceSource"/> rather than widening it to a list, because ResourceSource's single
+    /// short is what lets a chain's target scope stay a scalar; conflating them would push an
+    /// "exactly one" assertion into every consumer of that scope.
+    /// </summary>
+    public sealed record MultiTypeResourceSource(IReadOnlyList<short> ResourceTypeIds, Predicate? Predicate = null) : CteDefinition;
 }

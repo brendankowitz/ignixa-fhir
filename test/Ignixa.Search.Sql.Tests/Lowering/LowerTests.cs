@@ -3,6 +3,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -1037,4 +1038,132 @@ public class LowerTests
         plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.NotReferencedSource>();
         plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
     }
+
+    [Fact]
+    public void GivenSeveralResourceTypesAndNoExpression_WhenLowered_ThenTheMatchSetSpansAllOfThem()
+    {
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            resourceTypes: ["Patient", "Observation"]).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("ResourceTypeId IN (103, 104)");
+    }
+
+    [Fact]
+    public void GivenNoResourceTypeAtAll_WhenLowered_ThenTheMatchSetIsEveryType()
+    {
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            resourceTypes: []).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("ResourceTypeId =");
+        sql.ShouldNotContain("ResourceTypeId IN");
+    }
+
+    [Fact]
+    public void GivenAMultiTypeSearchWithAnUnresolvableTypeName_WhenLowered_ThenTheSentinelIsKeptToAvoidWideningToAllTypes()
+    {
+        // An unresolvable name yields the sentinel -1 from _leafContext.ResourceTypeId. The sentinel is
+        // kept in the IN list rather than dropped: dropping it when every name is unresolvable would
+        // collapse the list to empty, which means "all types" — catastrophically wrong. IN (-1) matches
+        // nothing, which is the correct answer for a type the catalog does not know.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            resourceTypes: ["Patient", "NotAType"]).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The sentinel -1 is present; the query matches no row for the unknown type but does not widen.
+        sql.ShouldContain("ResourceTypeId IN (103, -1)");
+    }
+
+    [Fact]
+    public void GivenAllUnresolvableTypeNames_WhenLowered_ThenTheInListContainsSentinelsNotAllTypes()
+    {
+        // When every requested type is unknown, the IN list is IN(-1) rather than empty.
+        // An empty IN list would be dropped, producing a full-table scan — wrong and dangerous.
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            resourceTypes: ["NotAType"]).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("ResourceTypeId IN (-1)");
+        sql.ShouldNotContain("ResourceTypeId IN ()");
+    }
+
+    [Fact]
+    public void GivenASingleResourceTypeInTheList_WhenLowered_ThenEmitsInWithOneElement()
+    {
+        // A single-element list emits IN (x) rather than = x for consistency — IN (x) is equally
+        // valid T-SQL and avoids a special-case branch in the emitter.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            resourceTypes: ["Patient"]).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("ResourceTypeId IN (103)");
+    }
 }
+

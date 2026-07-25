@@ -105,6 +105,7 @@ public static class PlanExplainer
         CteDefinition.ChainJoin => PlanRowKind.ChainJoin,
         CteDefinition.CompartmentSource => PlanRowKind.CompartmentSource,
         CteDefinition.NotReferencedSource => PlanRowKind.NotReferencedSource,
+        CteDefinition.MultiTypeResourceSource => PlanRowKind.MultiTypeResourceSource,
         _ => throw new NotSupportedException($"No Explain() kind for {cte.GetType().Name}."),
     };
 
@@ -125,7 +126,7 @@ public static class PlanExplainer
         CteDefinition.Union u => [.. u.Parts.Select(r => r.Index)],
         CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
         CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
-        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource => [],
+        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource or CteDefinition.MultiTypeResourceSource => [],
         _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
     };
 
@@ -175,6 +176,7 @@ public static class PlanExplainer
         CteDefinition.CompartmentSource cs =>
             $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
         CteDefinition.NotReferencedSource nr => PrintNotReferencedSource(nr, top, ref parameterOrdinal),
+        CteDefinition.MultiTypeResourceSource mts => PrintMultiTypeResourceSource(mts, top),
         _ => throw new NotSupportedException($"No Explain() rendering for {cte.GetType().Name}."),
     };
 
@@ -201,8 +203,17 @@ public static class PlanExplainer
         return $"NotReferencedSource[{nr.TargetResourceTypeId}]{suffix}{PrintTop(top)}";
     }
 
-    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)
+    private static string PrintMultiTypeResourceSource(CteDefinition.MultiTypeResourceSource mts, int? top)
     {
+        // ResourceTypeIds are emitted as literals in SqlBuilder (not bound parameters), so no ordinal is
+        // consumed here — parameter numbering in the plan summary stays aligned with the emitted SQL.
+        var typeList = mts.ResourceTypeIds.Count == 0
+            ? "*"
+            : string.Join(",", mts.ResourceTypeIds);
+        return $"MultiTypeResourceSource[{typeList}]{PrintTop(top)}";
+    }
+
+    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)    {
         // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource), so this must consume
         // an ordinal too -- otherwise Explain()'s @pN numbering silently diverges from the emitted
         // SQL's real parameter numbering for any plan mixing a ResourceSource with another

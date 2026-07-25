@@ -25,6 +25,17 @@ public sealed class LeafContext
 
     public short ResourceTypeId(string resourceType) => _symbols.ResourceTypeId(resourceType);
 
+    /// <summary>
+    /// Attempts to look up a resource type's id without throwing. Maps a type the resolver could not
+    /// find to <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1); returns that same sentinel for
+    /// a type that was never collected at all, so multi-type callers can safely keep the entry rather
+    /// than dropping it (dropping would collapse an all-unknown list to empty, widening to all types).
+    /// </summary>
+    public short ResourceTypeIdOrSentinel(string resourceType)
+        => _symbols.TryGetResourceTypeId(resourceType, out var id)
+            ? id
+            : SymbolTable.UnmatchableResourceTypeId;
+
     public IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)> CompartmentMembership(string compartmentType) => _symbols.CompartmentMembership(compartmentType);
 
     /// <inheritdoc cref="SymbolTable.NotReferencedPath"/>
