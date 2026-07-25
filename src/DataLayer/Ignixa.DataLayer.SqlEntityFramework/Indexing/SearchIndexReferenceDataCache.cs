@@ -554,9 +554,13 @@ public class SearchIndexReferenceDataCache : IDisposable
 
             if (entity == null)
             {
+                // Deliberately NOT cached. dbo.ResourceType is populated as types are first
+                // encountered, so "absent" is a transient state, not a stable fact. Caching the
+                // miss for the process lifetime permanently poisons every later write of that
+                // type -- the row generators drop the resource and the write fails or, worse,
+                // silently loses a bundle entry. A repeated indexed lookup on a rare miss is the
+                // cheaper trade.
                 _logger.LogWarning("ResourceType not found: {ResourceTypeName}", resourceTypeName);
-                // Cache the negative result using sentinel value -1 to avoid repeated database queries
-                _resourceTypeCache.TryAdd(resourceTypeName, -1);
                 return null;
             }
 
@@ -1038,15 +1042,11 @@ public class SearchIndexReferenceDataCache : IDisposable
             {
                 var loadedValue = Task.Run(() => _loadFunc(key)).GetAwaiter().GetResult();
 
-                // Check if loaded value is valid
+                // Invalid means "no such row" (the load func maps that to a sentinel). Not cached:
+                // reference-data rows are created on demand, so absence is transient and caching
+                // it would keep reporting the key as missing long after the row exists.
                 if (_isValidValue != null && !_isValidValue(loadedValue))
                 {
-                    // Loaded value is invalid (e.g., null or sentinel) - cache it but return false
-                    if (loadedValue != null && !EqualityComparer<TValue>.Default.Equals(loadedValue, default))
-                    {
-                        _cache.TryAdd(key, loadedValue);
-                    }
-
                     value = default!;
                     return false;
                 }

@@ -197,9 +197,11 @@ public class SqlMergeRepository
         // Build surrogate ID map (transactionId + entryIndex for each resource)
         var resourceSurrogateIdMap = BuildResourceSurrogateIdMap(transactionId, resources, entryIndices);
 
-        // Generate TVP parameters using row generators
-        // Resource TVP is always required (never null), so materialize to List directly
-        var resourceRecords = _resourceRowGenerator.GenerateSqlDataRecords(transactionId, resources, resourceTypeIdMap, entryIndices).ToList();
+        // Generate TVP parameters using row generators.
+        // Null rather than an empty list when there are no rows: SqlClient rejects an empty
+        // SqlDataRecord enumeration for a structured parameter. The generator throws rather than
+        // skipping an unmappable resource, so an empty result here means an empty input batch.
+        var resourceRecords = MaterializeIfNotEmpty(_resourceRowGenerator.GenerateSqlDataRecords(transactionId, resources, resourceTypeIdMap, entryIndices));
         var resourceWriteClaimRecords = MaterializeIfNotEmpty(_resourceWriteClaimRowGenerator.GenerateSqlDataRecords(resources, resourceSurrogateIdMap));
 
         // Generate SqlDataRecord streams directly (eliminates DataTable intermediate step)

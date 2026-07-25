@@ -66,14 +66,17 @@ public class ResourceRowGenerator
         {
             var resource = resources[index];
 
-            // Look up ResourceTypeId from map
+            // Look up ResourceTypeId from map. Skipping the resource here would drop it from the
+            // ResourceList TVP while the surrounding write still reported success -- for a bundle
+            // that is a silently lost entry, and for a single-resource write it leaves the TVP
+            // empty, which SqlClient rejects with a message that reads like a malformed request.
+            // The resource type row is created on demand, so a miss is an infrastructure fault.
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
             {
-                _logger?.LogWarning(
-                    "ResourceType '{ResourceType}' not found in lookup table, skipping resource {ResourceId}",
-                    resource.ResourceType,
-                    resource.ResourceId);
-                continue;
+                throw new InvalidOperationException(
+                    $"ResourceType '{resource.ResourceType}' is not present in dbo.ResourceType, so " +
+                    $"{resource.ResourceType}/{resource.ResourceId} cannot be written. This is a " +
+                    "reference-data fault, not a problem with the submitted resource.");
             }
 
             var record = new SqlDataRecord(metadata);
