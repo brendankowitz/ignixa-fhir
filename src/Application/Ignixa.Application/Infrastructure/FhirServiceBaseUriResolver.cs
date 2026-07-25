@@ -109,14 +109,19 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
             }
         }
 
-        // Numeric path form is always recognized (and canonical when no hostname is configured), so a
-        // reference stored via /tenant/{id}/ still classifies as internal after the switch to hostnames.
-        bases.Add(new Uri(root, $"tenant/{tenant.TenantId}/"));
-
+        // Canonical precedence: a configured hostname (added above), else the deployment root for a sole tenant,
+        // else the tenant/{id}/ path form. Keeping root canonical for a hostname-less sole tenant preserves the
+        // service base existing single-tenant deployments already emit, so this feature does not silently rewrite
+        // their Location headers and fullUrls.
         if (tenant.IncludeDeploymentRoot)
         {
             bases.Add(root);
         }
+
+        // Numeric path form is always recognized (and canonical when no hostname is configured and no root
+        // applies), so a reference stored via /tenant/{id}/ still classifies as internal after the switch to
+        // hostnames.
+        bases.Add(new Uri(root, $"tenant/{tenant.TenantId}/"));
 
         return bases.Distinct().ToArray();
     }

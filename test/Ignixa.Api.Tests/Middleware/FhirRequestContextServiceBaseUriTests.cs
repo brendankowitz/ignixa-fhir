@@ -135,6 +135,31 @@ public class FhirRequestContextServiceBaseUriTests
         context.ServiceBaseUris.ShouldContain(new Uri("https://example.org/tenant/1/"));
     }
 
+    /// <summary>
+    /// Regression guard: a single-tenant deployment with no hostnames configured must keep emitting the
+    /// deployment root as its canonical base after upgrading to hostname-aware tenant resolution. Before the
+    /// fix, the resolver appended the tenant/{id}/ path form before the deployment root, silently flipping
+    /// Location headers, Bundle.entry.fullUrl, and pagination links for deployments nobody reconfigured.
+    /// </summary>
+    [Fact]
+    public async Task GivenAHostnameLessSoleTenant_WhenBuildingTheRequestContext_ThenTheDeploymentRootIsCanonical()
+    {
+        var resolvedTenant = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Acme",
+            FhirVersion = "4.0",
+            Hostnames = Array.Empty<string>(),
+        };
+
+        var context = await BuildContextAsync(
+            "/Patient",
+            new FhirServiceBaseUriResolver(new Uri("https://example.org/")),
+            resolvedTenant: resolvedTenant);
+
+        context.BaseUri.ShouldBe(new Uri("https://example.org/"));
+    }
+
     private static Task<ReferenceSearchValue> ParseUnderRequestAsync(
         string requestPath,
         string reference,

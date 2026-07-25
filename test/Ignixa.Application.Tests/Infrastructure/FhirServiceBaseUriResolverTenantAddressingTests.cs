@@ -58,6 +58,21 @@ public class FhirServiceBaseUriResolverTenantAddressingTests
     }
 
     [Fact]
+    public void GivenNoHostnameAndSoleTenant_WhenResolving_ThenTheDeploymentRootIsCanonical()
+    {
+        // Arrange
+        var resolver = new FhirServiceBaseUriResolver(Root);
+        var tenant = new TenantAddressing(1, [], IncludeDeploymentRoot: true);
+
+        // Act
+        var bases = resolver.Resolve(requestOrigin: null, tenant);
+
+        // Assert
+        bases[0].ShouldBe(new Uri("https://example.org/"));
+        bases.ShouldContain(new Uri("https://example.org/tenant/1/"));
+    }
+
+    [Fact]
     public void GivenNoConfiguredRootAndNoRequestOrigin_WhenResolving_ThenTheSetIsEmpty()
     {
         // Arrange
