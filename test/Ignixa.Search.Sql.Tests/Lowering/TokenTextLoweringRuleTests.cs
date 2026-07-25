@@ -1,4 +1,6 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
@@ -99,5 +101,51 @@ public class TokenTextLoweringRuleTests
         emitted.Sql.ShouldNotContain("aux");
         // The prefix wildcard belongs in the bound value, not the SQL text -- same as every other LIKE.
         emitted.Parameters.ShouldHaveSingleItem().Value.ShouldBe("aux%");
+    }
+
+    [Fact]
+    public void GivenATextModifiedToken_WhenEmittedWithHistoryIncluded_ThenTheHistoryFilterIsSuppressed()
+    {
+        // dbo.TokenText is the only leaf table that keeps superseded rows (it has its own IsHistory column),
+        // so EmitParamSource adds "AND IsHistory = 0" when the plan's visibility excludes history. When the
+        // caller explicitly opts in to history (IncludeHistory: true), that clause must be absent — otherwise
+        // a history-enabled search would still silently filter it out.
+        var parameter = CodeParameter();
+        var tree = new SearchParameterExpression(
+            parameter,
+            new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
+        var plan = Lower.Run(
+            tree, Symbols(parameter), targetResourceType: "Observation",
+            includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null,
+            visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false)).Plan;
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("FROM dbo.TokenText");
+        emitted.Sql.ShouldNotContain("IsHistory = 0");
+    }
+
+    [Fact]
+    public void GivenATokenSearchParam_WhenEmittedUnderDefaultVisibility_ThenNoIsHistoryClauseIsEmitted()
+    {
+        // dbo.TokenSearchParam has no IsHistory column — it holds only current rows by design. The history
+        // gate in EmitParamSource is catalog-driven: it fires only when the table has the column. This test
+        // pins that: a plain token search must never emit "IsHistory = 0" regardless of visibility, proving
+        // the clause is table-specific rather than emitted for every ParamSource.
+        var parameter = CodeParameter();
+        var tree = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null,
+            new TokenSearchValue(system: null, code: "abc", text: null));
+
+        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldContain("FROM dbo.TokenSearchParam");
+        emitted.Sql.ShouldNotContain("IsHistory = 0");
     }
 }
