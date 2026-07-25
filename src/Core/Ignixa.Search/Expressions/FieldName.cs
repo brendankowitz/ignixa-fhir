@@ -9,17 +9,29 @@ namespace Ignixa.Search.Expressions;
 
 /// <summary>
 /// Represents search field name.
+/// <para>
+/// Numeric, quantity and date-time values are all stored as a range, so each of those types names its two
+/// bounds separately (<see cref="NumberLow"/>/<see cref="NumberHigh"/>,
+/// <see cref="QuantityLow"/>/<see cref="QuantityHigh"/>, <see cref="DateTimeStart"/>/<see cref="DateTimeEnd"/>)
+/// rather than exposing one "the value" field. That is a load-bearing invariant, not a naming preference:
+/// the FHIR prefix table maps <c>gt</c> to the high bound but <c>sa</c> to the low bound (and <c>lt</c> to the
+/// low bound but <c>eb</c> to the high bound), so a single field paired with a comparison operator cannot say
+/// which column the operator belongs to. The builder that knows the comparator picks the bound; the query
+/// generator applies the operator verbatim to the named column.
+/// </para>
 /// </summary>
 [SuppressMessage("Naming", "CA1720:Identifier contains type name", Justification = "Represents a search parameter types for FHIR")]
 public enum FieldName
 {
     DateTimeStart,
     DateTimeEnd,
-    Number,
+    NumberLow,
+    NumberHigh,
     ParamName,
     QuantityCode,
     QuantitySystem,
-    Quantity,
+    QuantityLow,
+    QuantityHigh,
     ReferenceBaseUri,
     ReferenceResourceType,
     ReferenceResourceId,

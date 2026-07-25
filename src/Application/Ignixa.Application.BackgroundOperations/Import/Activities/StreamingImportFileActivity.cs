@@ -10,6 +10,7 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Import.Models;
 using Ignixa.Application.Features.Search;
+using Ignixa.Application.Infrastructure;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -43,6 +44,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly IBlobStorageClient _blobStorageClient;
     private readonly IConfiguration _configuration;
+    private readonly IFhirRequestContextAccessor _fhirContextAccessor;
     private readonly ILogger<StreamingImportFileActivity> _logger;
 
     public StreamingImportFileActivity(
@@ -51,6 +53,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         ITenantConfigurationStore tenantConfigurationStore,
         IBlobStorageClient blobStorageClient,
         IConfiguration configuration,
+        IFhirRequestContextAccessor fhirContextAccessor,
         ILogger<StreamingImportFileActivity> logger)
     {
         _repositoryFactory = repositoryFactory ?? throw new ArgumentNullException(nameof(repositoryFactory));
@@ -58,6 +61,7 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
         _tenantConfigurationStore = tenantConfigurationStore ?? throw new ArgumentNullException(nameof(tenantConfigurationStore));
         _blobStorageClient = blobStorageClient ?? throw new ArgumentNullException(nameof(blobStorageClient));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _fhirContextAccessor = fhirContextAccessor ?? throw new ArgumentNullException(nameof(fhirContextAccessor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -82,6 +86,15 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
 
         var errors = new List<ImportErrorLogEntry>();
         var successCount = 0;
+
+        // Establish the ambient request context for the duration of the activity so search indexing
+        // resolves the same tenant-scoped base URIs the HTTP request path would have. Without this,
+        // self-references are indexed as external here while the request path that first wrote them
+        // collapsed them to internal, and the resource silently drops out of absolute-reference searches.
+        var previousContext = _fhirContextAccessor.RequestContext;
+        _fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(
+            input.TenantId,
+            resourceType: input.ResourceType);
 
         try
         {
@@ -313,6 +326,10 @@ public class StreamingImportFileActivity : AsyncTaskActivity<StreamingImportFile
                 stopwatch.Elapsed.TotalSeconds);
 
             throw;
+        }
+        finally
+        {
+            _fhirContextAccessor.RequestContext = previousContext;
         }
     }
 

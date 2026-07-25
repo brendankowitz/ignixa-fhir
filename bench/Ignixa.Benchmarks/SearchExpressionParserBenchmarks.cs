@@ -31,7 +31,7 @@ public class SearchExpressionParserBenchmarks
     {
         IFhirSchemaProvider schemaProvider = new R4CoreSchemaProvider();
         ISearchParameterDefinitionManager definitionManager = new BenchmarkSearchParameterDefinitionManager();
-        IReferenceSearchValueParser referenceSearchValueParser = new ReferenceSearchValueParser(schemaProvider);
+        IReferenceSearchValueParser referenceSearchValueParser = new ReferenceSearchValueParser(schemaProvider, NullFhirBaseUriProvider.Instance);
         ISearchParameterExpressionParser searchParameterExpressionParser = new SearchParameterExpressionParser(
             referenceSearchValueParser,
             schemaProvider);

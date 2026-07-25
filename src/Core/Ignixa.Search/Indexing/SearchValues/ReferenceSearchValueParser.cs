@@ -27,13 +27,16 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
     private readonly Regex ReferenceRegex;
     private readonly string ResourceTypesPattern;
 
-    public ReferenceSearchValueParser(IFhirSchemaProvider fhirSchema)
-        : this(fhirSchema, baseUriProvider: null)
-    {
-    }
-
+    /// <param name="baseUriProvider">
+    /// Recognizes an absolute reference that points back at this server. Required rather than optional:
+    /// the index path and the query path must be handed the same provider, and a null here silently stores
+    /// self-references in a form the other path will not find. Pass
+    /// <see cref="NullFhirBaseUriProvider.Instance"/> to opt out deliberately.
+    /// </param>
     public ReferenceSearchValueParser(IFhirSchemaProvider fhirSchema, IFhirBaseUriProvider baseUriProvider)
     {
+        ArgumentNullException.ThrowIfNull(baseUriProvider);
+
         _baseUriProvider = baseUriProvider;
         ResourceTypesPattern = string.Join('|', fhirSchema.ResourceTypeNames);
         ReferenceCaptureRegexPattern = $@"(?<{ResourceTypeCapture}>{ResourceTypesPattern})\/(?<{ResourceIdCapture}>[A-Za-z0-9\-\.]{{1,64}})(\/_history\/[A-Za-z0-9\-\.]{{1,64}})?";
@@ -76,8 +79,10 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
 
                 // An absolute URL pointing back at this server is the same resource as the equivalent
                 // relative reference, so it collapses to the relative form. Both the index path and the
-                // query path run this parser, which is what makes the two reconcile.
-                if (_baseUriProvider?.GetBaseUri() is { } serverBaseUri && baseUri == serverBaseUri)
+                // query path run this parser, which is what makes the two reconcile. The provider answers
+                // over every base this server serves under, so the collapse does not depend on which route
+                // form the request arrived on.
+                if (_baseUriProvider.IsServiceBaseUri(baseUri))
                 {
                     return new ReferenceSearchValue(
                         ReferenceKind.Internal,
@@ -105,10 +110,15 @@ public class ReferenceSearchValueParser : IReferenceSearchValueParser
             }
             catch (UriFormatException)
             {
-                // The reference is not a relative reference but is not a valid absolute reference either.
+                // The type/id shape matched but the base segment ahead of it is not a parseable absolute
+                // URI, so there is no base to attach. Fall through to the same unparsed form the regex
+                // miss below produces: indexing records the reference verbatim rather than failing the
+                // write, and both routes into that form agree on what it means.
             }
         }
 
+        // Unparsed: no base and no resource type, the whole input preserved as the id. Reached either
+        // because the reference does not match the type/id shape at all, or because its base did not parse.
         return new ReferenceSearchValue(
             ReferenceKind.InternalOrExternal,
             null,

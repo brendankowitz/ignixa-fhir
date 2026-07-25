@@ -28,22 +28,20 @@ public sealed class SearchOptionsBuilderFactory : ISearchOptionsBuilderFactory, 
     private readonly SemaphoreSlim _creationLock = new(1, 1);
     private bool _disposed;
 
-    private readonly IFhirBaseUriProvider? _baseUriProvider;
-
-    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext)
-        : this(versionContext, baseUriProvider: null)
-    {
-    }
+    private readonly IFhirBaseUriProvider _baseUriProvider;
 
     /// <param name="baseUriProvider">
-    /// Supplies this server's base URI so an absolute self-reference in a search value is recognized as
+    /// Supplies this server's base URIs so an absolute self-reference in a search value is recognized as
     /// internal. Must be the same provider <see cref="Ignixa.Search.Indexing.SearchIndexerFactory"/> is
     /// given; if the query path and the index path disagree about what "internal" means, the two forms
-    /// stop reconciling.
+    /// stop reconciling. Required for that reason — pass
+    /// <see cref="NullFhirBaseUriProvider.Instance"/> to opt out deliberately.
     /// </param>
-    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext, IFhirBaseUriProvider? baseUriProvider)
+    public SearchOptionsBuilderFactory(IFhirVersionContext versionContext, IFhirBaseUriProvider baseUriProvider)
     {
         EnsureArg.IsNotNull(versionContext, nameof(versionContext));
+        ArgumentNullException.ThrowIfNull(baseUriProvider);
+
         _versionContext = versionContext;
         _baseUriProvider = baseUriProvider;
     }

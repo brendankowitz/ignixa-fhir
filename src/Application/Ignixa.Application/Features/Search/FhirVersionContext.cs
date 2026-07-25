@@ -39,19 +39,26 @@ public sealed class FhirVersionContext : IFhirVersionContext, IDisposable
     private readonly ICompositeSchemaProviderRegistry? _compositeProviderRegistry;
     private readonly SearchParameterResolutionOptions _searchParameterResolutionOptions;
     private readonly ConformanceState? _conformanceState;
-    private readonly IFhirBaseUriProvider? _baseUriProvider;
+    private readonly IFhirBaseUriProvider _baseUriProvider;
     private readonly ILogger<FhirVersionContext> _logger;
     private bool _disposed;
 
+    /// <param name="baseUriProvider">
+    /// Supplies this server's base URIs to every search indexer this context creates. Required rather than
+    /// optional: a null here indexes self-references in a form the query path will not find, with no
+    /// diagnostic. Pass <see cref="NullFhirBaseUriProvider.Instance"/> to opt out deliberately.
+    /// </param>
     public FhirVersionContext(
         ILoggerFactory loggerFactory,
         SearchParameterResolutionOptions searchParameterResolutionOptions,
+        IFhirBaseUriProvider baseUriProvider,
         IPackageResourceRepository? packageResourceRepository = null,
         IPackageResourceProvider? packageResourceProvider = null,
         ICompositeSchemaProviderRegistry? compositeProviderRegistry = null,
-        ConformanceState? conformanceState = null,
-        IFhirBaseUriProvider? baseUriProvider = null)
+        ConformanceState? conformanceState = null)
     {
+        ArgumentNullException.ThrowIfNull(baseUriProvider);
+
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _searchParameterResolutionOptions = searchParameterResolutionOptions ?? throw new ArgumentNullException(nameof(searchParameterResolutionOptions));
         _packageResourceRepository = packageResourceRepository;

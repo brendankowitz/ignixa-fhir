@@ -74,7 +74,7 @@ public class CompartmentSearchQueryGenerator
         if (!_compartmentDefinitionManager.TryGetResourceTypes(compartmentTypeEnum, out var allResourceTypes))
         {
             _logger.LogWarning("No resource types found for compartment: {CompartmentType}", compartmentType);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Determine which resource types to search
@@ -85,7 +85,7 @@ public class CompartmentSearchQueryGenerator
         if (resourceTypesToUse.Count == 0)
         {
             _logger.LogWarning("No matching resource types for compartment search");
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         _logger.LogDebug("Resource types for compartment search: [{ResourceTypes}]", string.Join(", ", resourceTypesToUse));
@@ -198,7 +198,7 @@ public class CompartmentSearchQueryGenerator
         if (unionedQuery == null)
         {
             _logger.LogWarning("No search parameters found for compartment search, returning empty result");
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         _logger.LogDebug("Compartment query generation complete, processed {ParameterCount} unique search parameters", searchParamMap.Count);

@@ -53,6 +53,82 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
 | `Storage.Type` | `SqlEntityFramework` (recommended) |
 | `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
 
+### Hostname-based Tenant Resolution
+
+Each tenant may declare a `Hostnames` array to enable resolution by request `Host` header in addition to numeric `/tenant/{id}/` path routing.
+
+#### Configuration
+
+```json
+{
+  "Tenants": {
+    "Configurations": [
+      {
+        "TenantId": 1,
+        "DisplayName": "Production Database",
+        "Hostnames": ["fhir1.example.org", "fhir1-backup.example.org"],
+        "Storage": { "Type": "SqlEntityFramework", "ConnectionString": "..." }
+      }
+    ]
+  }
+}
+```
+
+#### How It Works
+
+**Hostname Semantics:**
+
+- **First hostname** is the **canonical base** for that tenant's absolute references. This hostname is used when the server emits absolute URLs (in `Location` headers, pagination links, `Bundle.entry.fullUrl`, etc.) and when stored internally.
+- **Additional hostnames** (if any) are recognized as valid inbound hosts for the same tenant but are **not** used for outbound references.
+- Hostnames must be **bare DNS names** (lowercase, no scheme, no port, no path). Example: `fhir1.example.org` (valid); `https://fhir1.example.org:8080/fhir` (invalid).
+- Hostnames are **unique across all tenants**. A duplicate hostname is fatal: the server refuses to serve and the error is enforced when the host-index resolver is first used or during host-index build.
+
+**Resolution Precedence:**
+
+1. If the request's `Host` header matches a configured hostname, that tenant is selected.
+2. If the URL path contains `/tenant/{id}/` (numeric), that tenant is selected by ID.
+3. If **both** `Host` header and `/tenant/{id}/` path are present and resolve to **different** tenants, the server returns **400 Bad Request**.
+4. If the `Host` header is not recognized and no `/tenant/{id}/` is in the path, resolution falls through to single-tenant auto-detect (if only one active tenant) or remains unresolved.
+
+**Examples:**
+
+```
+Request: GET http://fhir1.example.org/metadata
+Result: Selects tenant with Hostnames[0] = "fhir1.example.org"
+
+Request: GET http://fhir1-backup.example.org/Patient/123
+Result: Selects same tenant via Hostnames[1] (alternate hostname)
+
+Request: GET http://fhir1.example.org/tenant/2/Patient/123
+Result: 400 Bad Request (Host resolves to Tenant 1, path specifies Tenant 2 — conflict)
+
+Request: GET http://localhost/tenant/1/Patient/123
+Result: Selects Tenant 1 (by path; Host not recognized)
+
+Request: GET http://unrecognized.example.org/Patient/123
+Result: Falls through to auto-detect or single-tenant mode
+```
+
+#### TLS/Certificate Considerations
+
+- **Subdomains under one zone** (e.g., `fhir1.example.org`, `fhir2.example.org`) are covered by a single **wildcard certificate** (`*.example.org`). Wildcards match a single DNS level.
+- **Apex/vanity domains** (different registrable domains like `org1.com`, `org2.com`) require **separate certificates**, each signed for its own domain.
+- For development, self-signed certificates or local DNS overrides (`/etc/hosts` or Windows hosts file) are common.
+
+#### Limitations
+
+**Path-based vanity slugs are not yet supported.** The following forms are **NOT** available:
+
+- `/tenant/{slug}/` (path-based slug routing)
+- `/{slug}/` (bare slug routing)
+
+Currently, only these forms work:
+
+- `/tenant/{id}/` (numeric ID routing) ✅
+- `Host` header routing with `Hostnames` ✅
+
+Path-based slugs (`/tenant/{slug}/`) are planned for a future release and will require relaxing route constraints, slug indexing, and slug format validation across the API layer. Track progress in the project roadmap.
+
 ### SQL Server Connection String
 
 For production SQL Server:
@@ -164,6 +240,45 @@ The SQL Server provider uses the same database as Tenant 0 (system partition), e
   }
 }
 ```
+
+## Service Base URI
+
+`Fhir:BaseUri` is this deployment's public FHIR service root. Set it in every environment that runs
+`$reindex` or `$import`.
+
+```json
+{
+  "Fhir": {
+    "BaseUri": "https://fhir.example.org"
+  }
+}
+```
+
+It is used to recognise a reference written as an absolute URL that points back at this server, so it
+reconciles with the equivalent relative reference. `Patient/p1`, `https://fhir.example.org/Patient/p1` and
+`https://fhir.example.org/tenant/1/Patient/p1` all name the same resource, and all three are stored — and
+searched — the same way. Both the root and each tenant's `/tenant/{id}/` base are recognised, so it does
+not matter which route form a client used to write or to search.
+
+Two things depend on setting it:
+
+- **Background indexing.** `$reindex` and `$import` have no HTTP request to derive a base from. With
+  `Fhir:BaseUri` unset they recognise nothing, so reindexed rows file self-references as external while the
+  rows they replace filed them as internal, and those resources drop out of absolute searches. The server
+  logs a warning at startup when the setting is missing. Recognising the tenant-scoped base also depends on
+  the background activity establishing which tenant it is running for — `$import` does this via
+  `FhirRequestContextFactory.CreateBackgroundContext`, restored on exit so it cannot leak to the next job on
+  a pooled thread. Any future background path that indexes resources (a `$reindex` implementation, for
+  example) must do the same or it will silently reintroduce this gap even with `Fhir:BaseUri` set.
+- **Host header trust.** With `Fhir:BaseUri` unset, the base is derived from the request's `Host` header,
+  which a client controls — a forged `Host` decides whether an inbound reference is stored as internal or
+  external. When it is set, the `Host` header is ignored for this purpose. Independently, set `AllowedHosts`
+  to your real hostnames rather than leaving it at `*`.
+
+:::note
+Only rows written after the setting is in place are affected. References already stored against a
+self-referencing absolute base keep it until a `$reindex`.
+:::
 
 ## Authentication
 
@@ -329,6 +444,9 @@ Override any setting with environment variables:
 ```bash
 # Tenant connection string
 export Tenants__Configurations__1__Storage__ConnectionString="Server=..."
+
+# Public FHIR service root (see "Service Base URI")
+export Fhir__BaseUri="https://fhir.example.org"
 
 # Enable authorization
 export Authorization__Enabled=true

@@ -189,7 +189,7 @@ foreach (var p in emitted.Parameters)      // the values to bind
 |------|-----------|-------|
 | **Boolean composition** | AND, OR, `:not` | Intersect / Union / Except CTEs |
 | **Leaf types** | string (incl. `TextOverflow`), token (bare code, `system\|code`, `\|code`, `system\|`, incl. `CodeOverflow`), reference (relative, same-server absolute, and external; resource version not part of identity), uri (exact, segment-aware `:above` / `:below`), number, quantity (with `system`/`code` identity, including explicitly-absent `\|code`), date | see gaps below |
-| **Comparators** | `eq ne gt lt ge le sa eb ap` | on date / number / quantity; `eq` is containment and `ne` its exact complement; `:ap` is overlap against bounds widened by `max(precision, 10%)` — see [Approximate (`:ap`) matching](#approximate-ap-matching) |
+| **Comparators** | `eq ne gt lt ge le sa eb ap` | on date / number / quantity — see [Comparator semantics](#comparator-semantics) |
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
 | **Chaining** | forward and reverse chains, any nesting depth | 10-level depth guard |
@@ -198,6 +198,43 @@ foreach (var p in emitted.Parameters)      // the values to bind
 | **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, two-phase missing-value sort | |
 | **Counting** | `_summary=count` / `_total=accurate` | `COUNT_BIG(DISTINCT …)` |
 | **Missing** | `:missing` for leaf and composite parameters | |
+
+## Comparator semantics
+
+Every ranged type stores a `[low, high]` pair — `LowValue`/`HighValue` for number and quantity,
+`StartDateTime`/`EndDateTime` for date — and every prefix is a relation between that stored range and
+the parameter's own range `[S, E]`, exactly as the [FHIR search prefix
+table](https://hl7.org/fhir/search.html#prefix) defines it. Number, quantity, and date share one set of
+relations:
+
+| Prefix | Spec relation | Predicate |
+|--------|---------------|-----------|
+| `eq` | parameter range fully contains the stored range | `low >= S AND high <= E` |
+| `ne` | exact negation of `eq` | `low < S OR high > E` |
+| `gt` | the range above `E` overlaps the stored range | `high > E` |
+| `ge` | `[S, +∞)` overlaps the stored range | `high >= S` |
+| `lt` | the range below `S` overlaps the stored range | `low < S` |
+| `le` | `(-∞, E]` overlaps the stored range | `low <= E` |
+| `sa` | stored range starts strictly after the parameter range | `low > E` |
+| `eb` | stored range ends strictly before the parameter range | `high < S` |
+| `ap` | overlap against widened bounds | `low <= E' AND high >= S'` |
+
+Two column choices are easy to get wrong and invisible in testing. `gt` names `high`, not `low`: on a
+row storing `[5, 50]`, `gt10` must match, because part of the row's range does exceed 10. Comparing
+`low > 10` there is the relation `sa` denotes, not `gt`. Likewise `lt` names `low`, and comparing
+`high < S` is `eb`. **Neither collapse is observable on a point-valued row** (`low == high`), which is
+what every plain `valueQuantity` or number indexes to — so only a row storing a genuine `Range`
+element separates them. `RangeComparatorSemanticsTests` evaluates the lowered predicates against such
+rows for that reason.
+
+What `[S, E]` is depends on the prefix, not on the type:
+
+- `eq`/`ne` widen a decimal by its implied-decimal-precision modifier (`5.4` → `[5.35, 5.45]`), and take
+  a date's own partial-precision interval (`2013` → the whole year).
+- `ap` widens further — see [Approximate (`:ap`) matching](#approximate-ap-matching).
+- The ordering comparators do **not** widen a decimal. The spec is explicit: for `lt`/`le`/`gt`/`ge`
+  "the implicit precision of the number is ignored, and they are treated as if they have arbitrarily
+  high precision", so `gt100` means greater than exactly 100 and `S = E = value`.
 
 ## String parameter matching across inline and overflow storage
 
@@ -277,8 +314,10 @@ The tolerance is `max(implied-precision modifier, abs(value) * 0.10)`:
 - **10% floor.** For any value large enough that 10% of it exceeds the implied-precision modifier, the
   10% figure wins.
 
-The widened range is inclusive on both ends: `LowValue >= value - tolerance AND HighValue <= value +
-tolerance`. For `quantity`, this numeric range predicate always comes first; a qualified `system` then
+`:ap` is **overlap** against the widened bounds, not containment: `LowValue <= value + tolerance AND
+HighValue >= value - tolerance`. That is deliberately looser than `eq`, which is containment
+(`LowValue >= value - modifier AND HighValue <= value + modifier`) — every row `eq` matches, `ap` also
+matches, but not the reverse. For `quantity`, this numeric range predicate always comes first; a qualified `system` then
 contributes a `SystemId` equality, and a qualified `code` then contributes a `QuantityCodeId` equality —
 the same system-then-code order every other quantity comparator already uses.
 
@@ -340,18 +379,23 @@ on an external FHIR server.
 The spec requires that "a relative reference resolving to the same value as a specified absolute URL, or
 vice versa, qualifies as a match". That holds here through two mechanisms working together:
 
-1. `ReferenceSearchValueParser` collapses an absolute URL whose base equals this server's base to
+1. `ReferenceSearchValueParser` collapses an absolute URL whose base is one of this server's bases to
    `ReferenceKind.Internal` with a null `BaseUri`. The same parser runs on both the index path and the
    query path, so the two forms converge on one representation before reaching SQL.
 2. A bare relative search value is `ReferenceKind.InternalOrExternal` and emits *no* `BaseUri` predicate,
    so it matches a stored row whether or not that row carries a base.
 
-Two consequences follow. First, the server base comes from `IFhirBaseUriProvider` — the request context
-in-request, falling back to configured `Fhir:BaseUri` for background work such as reindex and `$import`.
-If that fallback is unset or disagrees with what the request path produces, background-indexed rows will
-disagree with request-indexed ones about which references are internal. Second, normalization applies
-only to rows written after this change; references already stored with a self-referencing absolute base
-keep it and need a reindex to become findable by their relative form.
+Two consequences follow. First, the server bases come from `IFhirBaseUriProvider.IsServiceBaseUri`, which
+answers over a *set* rather than one scalar. One tenant answers to two bases — the deployment root
+(`https://host/`) and the tenant-scoped base (`https://host/tenant/1/`) — and this server hands out
+absolute links in both forms depending on which route a request used. Recognising only one made a
+reference ingested via `/Patient` invisible to an absolute search issued via `/tenant/1/Patient`. The set
+is derived by `FhirServiceBaseUriResolver` from the tenant, never from the incoming route, so the request
+path, bundle entries, reindex and `$import` all reach the same answer. `Fhir:BaseUri` supplies the
+deployment root; when it is set, the request `Host` header is ignored for this purpose, and when it is
+unset background indexing has no base at all and will disagree with request-indexed rows. Second,
+normalization applies only to rows written after this change; references already stored with a
+self-referencing absolute base keep it and need a reindex to become findable by their relative form.
 
 **Unknown terminology values lower to `Predicate.False`, not a resolution error.** When a
 system-qualified token or quantity carries a `system` or quantity `code` that has no database row,

@@ -136,6 +136,70 @@ public class CompositeTokenCodeOverflowTests
             $"{scenario}: the whole code was compared against a single column");
     }
 
+    private static readonly string ExactlyInlineWidthCode = new('A', SplitWidth);
+
+    // Exactly 128 characters is the boundary the >128 cases above never reach. It needs the
+    // "CodeOverflow IS NULL" guard: a stored code of 200 characters writes its first 128 into the Code
+    // column, so without the guard a search for those 128 characters false-positive matches it. Testing
+    // only >128 leaves the one case where equality alone is wrong uncovered.
+    public static TheoryData<string, Func<Predicate>, string, string> ExactlyInlineWidthSlots() => new()
+    {
+        {
+            "TokenToken slot 1", () => TokenTokenLoweringRule.Lower(
+                Composite(),
+                [Token("code", ExactlyInlineWidthCode), Token("value-concept", "high")],
+                Context(), 104).Predicate!,
+            "Code1", "CodeOverflow1"
+        },
+        {
+            "TokenToken slot 2", () => TokenTokenLoweringRule.Lower(
+                Composite(),
+                [Token("code", "8480-6"), Token("value-concept", ExactlyInlineWidthCode)],
+                Context(), 104).Predicate!,
+            "Code2", "CodeOverflow2"
+        },
+        {
+            "TokenQuantity slot 1", () => TokenQuantityLoweringRule.Lower(
+                Composite(),
+                [
+                    Token("code", ExactlyInlineWidthCode),
+                    new(Component("value-quantity", SearchParamType.Quantity), SearchComparator.Eq, modifier: null,
+                        new QuantitySearchValue(system: null, code: null, 5.4m)),
+                ],
+                Context(), 104).Predicate!,
+            "Code1", "CodeOverflow1"
+        },
+        {
+            "ReferenceToken slot 2", () => ReferenceTokenLoweringRule.Lower(
+                Composite(),
+                [
+                    new(Component("target", SearchParamType.Reference), SearchComparator.Eq, modifier: null,
+                        new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "DocumentReference", resourceId: "456")),
+                    Token("code", ExactlyInlineWidthCode),
+                ],
+                Context(), 104).Predicate!,
+            "Code2", "CodeOverflow2"
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(ExactlyInlineWidthSlots))]
+    public void GivenATokenCodeOfExactlyTheInlineWidth_WhenLowered_ThenGuardsAgainstMatchingATruncatedLongerCode(
+        string scenario, Func<Predicate> lower, string codeColumn, string overflowColumn)
+    {
+        // Act
+        var predicate = lower();
+
+        // Assert — the whole code goes to the Code column, with an IS NULL on the overflow column
+        var terms = Flatten(predicate).ToList();
+        terms.OfType<Predicate.Equal>().ShouldContain(
+            e => e.Column.Column == codeColumn && Equals(e.Value.Value, ExactlyInlineWidthCode),
+            $"{scenario}: no equality on {codeColumn} against the full 128-char code");
+        terms.OfType<Predicate.IsNull>().ShouldContain(
+            n => n.Column.Column == overflowColumn,
+            $"{scenario}: no '{overflowColumn} IS NULL' guard, so a truncated longer code would match");
+    }
+
     private static IEnumerable<Predicate> Flatten(Predicate predicate)
     {
         yield return predicate;

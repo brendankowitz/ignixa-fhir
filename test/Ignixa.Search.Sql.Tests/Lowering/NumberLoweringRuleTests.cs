@@ -64,106 +64,151 @@ public class NumberLoweringRuleTests
         gt.Value.Value.ShouldBe(5.45m);
     }
 
-    [Fact]
-    public void GivenGeComparator_WhenLowered_ThenComparesHighValue()
+    // The FHIR prefix table (search.html) over parameter range [S,E] and resource range [Low,High]:
+    // gt: High > E, ge: High >= S, lt: Low < S, le: Low <= E, sa: Low > E, eb: High < S. The ordering
+    // comparators do not widen ("treated as if they have arbitrarily high precision"), so S = E = 5.4.
+    // The column each names is the whole content of this test: comparing gt against Low instead of High
+    // silently collapses gt into sa, and the collapse is invisible on a point-valued row.
+    public static TheoryData<SearchComparator, string> OrderingComparatorColumns() => new()
+    {
+        { SearchComparator.Gt, "HighValue" },
+        { SearchComparator.Ge, "HighValue" },
+        { SearchComparator.Lt, "LowValue" },
+        { SearchComparator.Le, "LowValue" },
+        { SearchComparator.Sa, "LowValue" },
+        { SearchComparator.Eb, "HighValue" },
+    };
+
+    [Theory]
+    [MemberData(nameof(OrderingComparatorColumns))]
+    public void GivenAnOrderingComparator_WhenLowered_ThenComparesTheSpecifiedColumnAgainstTheUnwidenedValue(SearchComparator comparator, string expectedColumn)
     {
         // Arrange
         var parameter = Parameter();
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ge, modifier: null, new NumberSearchValue(5.4m));
+        var predicate = new SearchParameterPredicateExpression(parameter, comparator, modifier: null, new NumberSearchValue(5.4m));
 
         // Act
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
         cte.ResourceTypeId.ShouldBe((short)103);
+        var (column, value) = cte.Predicate! switch
+        {
+            Predicate.GreaterThan gt => (gt.Column.Column, gt.Value.Value),
+            Predicate.GreaterThanOrEqual ge => (ge.Column.Column, ge.Value.Value),
+            Predicate.LessThan lt => (lt.Column.Column, lt.Value.Value),
+            Predicate.LessThanOrEqual le => (le.Column.Column, le.Value.Value),
+            var other => throw new ShouldAssertException($"{comparator} lowered to {other.GetType().Name}, not a single column comparison."),
+        };
+
+        column.ShouldBe(expectedColumn);
+        value.ShouldBe(5.4m);
+    }
+
+    [Fact]
+    public void GivenGtAndSaComparators_WhenLowered_ThenTheyAreDifferentRelations()
+    {
+        // Arrange — gt and sa share the > operator, so the only thing distinguishing them is the column.
+        // They were a single switch arm until this test existed.
+        var parameter = Parameter();
+
+        // Act
+        var gt = Lower(SearchComparator.Gt, parameter);
+        var sa = Lower(SearchComparator.Sa, parameter);
+
+        // Assert
+        gt.ShouldBeOfType<Predicate.GreaterThan>().Column.Column.ShouldBe("HighValue");
+        sa.ShouldBeOfType<Predicate.GreaterThan>().Column.Column.ShouldBe("LowValue");
+    }
+
+    [Fact]
+    public void GivenLtAndEbComparators_WhenLowered_ThenTheyAreDifferentRelations()
+    {
+        // Arrange
+        var parameter = Parameter();
+
+        // Act
+        var lt = Lower(SearchComparator.Lt, parameter);
+        var eb = Lower(SearchComparator.Eb, parameter);
+
+        // Assert
+        lt.ShouldBeOfType<Predicate.LessThan>().Column.Column.ShouldBe("LowValue");
+        eb.ShouldBeOfType<Predicate.LessThan>().Column.Column.ShouldBe("HighValue");
+    }
+
+    private static Predicate Lower(SearchComparator comparator, SearchParameterInfo parameter)
+    {
+        var predicate = new SearchParameterPredicateExpression(parameter, comparator, modifier: null, new NumberSearchValue(5.4m));
+        return NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103).Predicate!;
+    }
+
+    // decimal.MaxValue's precision modifier is 0.5, so the eq window's upper edge is not representable.
+    // Computing it throws OverflowException on plain user input (?value-number=eq7922...335), which
+    // surfaces as a 500. The edge is dropped instead: no stored decimal can exceed decimal.MaxValue, so
+    // the constraint it would express holds for every row.
+    [Fact]
+    public void GivenEqComparator_WhenLoweredWithDecimalMaxValue_ThenDropsTheUnrepresentableUpperEdge()
+    {
+        // Arrange
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new NumberSearchValue(decimal.MaxValue));
+
+        // Act
+        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
+
+        // Assert
         var ge = cte.Predicate.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
-        ge.Column.Column.ShouldBe("HighValue");
-        ge.Value.Value.ShouldBe(5.4m);
+        ge.Column.Column.ShouldBe("LowValue");
+        ge.Value.Value.ShouldBe(decimal.MaxValue - 0.5m);
     }
 
     [Fact]
-    public void GivenGtComparator_WhenLowered_ThenComparesHighValue()
+    public void GivenEqComparator_WhenLoweredWithDecimalMinValue_ThenDropsTheUnrepresentableLowerEdge()
     {
         // Arrange
         var parameter = Parameter();
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Gt, modifier: null, new NumberSearchValue(5.4m));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new NumberSearchValue(decimal.MinValue));
 
         // Act
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
-        cte.ResourceTypeId.ShouldBe((short)103);
-        var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
-        gt.Column.Column.ShouldBe("HighValue");
-        gt.Value.Value.ShouldBe(5.4m);
-    }
-
-    [Fact]
-    public void GivenSaComparator_WhenLowered_ThenComparesLowValueUnlikeGt()
-    {
-        // Arrange
-        var parameter = Parameter();
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Sa, modifier: null, new NumberSearchValue(5.4m));
-
-        // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
-
-        // Assert
-        cte.ResourceTypeId.ShouldBe((short)103);
-        var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
-        gt.Column.Column.ShouldBe("LowValue");
-        gt.Value.Value.ShouldBe(5.4m);
-    }
-
-    [Fact]
-    public void GivenLeComparator_WhenLowered_ThenComparesLowValue()
-    {
-        // Arrange
-        var parameter = Parameter();
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Le, modifier: null, new NumberSearchValue(5.4m));
-
-        // Act
-        var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
-
-        // Assert
-        cte.ResourceTypeId.ShouldBe((short)103);
         var le = cte.Predicate.ShouldBeOfType<Predicate.LessThanOrEqual>();
-        le.Column.Column.ShouldBe("LowValue");
-        le.Value.Value.ShouldBe(5.4m);
+        le.Column.Column.ShouldBe("HighValue");
+        le.Value.Value.ShouldBe(decimal.MinValue + 0.5m);
     }
 
     [Fact]
-    public void GivenLtComparator_WhenLowered_ThenComparesLowValue()
+    public void GivenNeComparator_WhenLoweredWithDecimalMaxValue_ThenDropsTheUnsatisfiableDisjunct()
     {
-        // Arrange
+        // Arrange — ne is eq's De Morgan negation, so the edge eq drops as always-true negates to an
+        // always-false disjunct here.
         var parameter = Parameter();
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Lt, modifier: null, new NumberSearchValue(5.4m));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ne, modifier: null, new NumberSearchValue(decimal.MaxValue));
 
         // Act
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
-        cte.ResourceTypeId.ShouldBe((short)103);
         var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
         lt.Column.Column.ShouldBe("LowValue");
-        lt.Value.Value.ShouldBe(5.4m);
+        lt.Value.Value.ShouldBe(decimal.MaxValue - 0.5m);
     }
 
     [Fact]
-    public void GivenEbComparator_WhenLowered_ThenComparesHighValueUnlikeLt()
+    public void GivenNeComparator_WhenLoweredWithDecimalMinValue_ThenDropsTheUnsatisfiableDisjunct()
     {
         // Arrange
         var parameter = Parameter();
-        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Eb, modifier: null, new NumberSearchValue(5.4m));
+        var predicate = new SearchParameterPredicateExpression(parameter, SearchComparator.Ne, modifier: null, new NumberSearchValue(decimal.MinValue));
 
         // Act
         var cte = NumberLoweringRule.Lower(predicate, (NumberSearchValue)predicate.Value, ContextResolving(parameter, 201), 103);
 
         // Assert
-        cte.ResourceTypeId.ShouldBe((short)103);
-        var lt = cte.Predicate.ShouldBeOfType<Predicate.LessThan>();
-        lt.Column.Column.ShouldBe("HighValue");
-        lt.Value.Value.ShouldBe(5.4m);
+        var gt = cte.Predicate.ShouldBeOfType<Predicate.GreaterThan>();
+        gt.Column.Column.ShouldBe("HighValue");
+        gt.Value.Value.ShouldBe(decimal.MinValue + 0.5m);
     }
 
     // :ap — numeric approximation is OVERLAP against the widened bounds, not containment:

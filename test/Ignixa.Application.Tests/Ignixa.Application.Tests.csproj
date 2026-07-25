@@ -26,6 +26,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\src\Application\Ignixa.Application.Operations\Ignixa.Application.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ignixa.Application.BackgroundOperations\Ignixa.Application.BackgroundOperations.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Search.Sql\Ignixa.Search.Sql.csproj" />

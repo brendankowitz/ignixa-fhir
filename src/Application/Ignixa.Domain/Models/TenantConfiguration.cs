@@ -77,6 +77,15 @@ public record TenantConfiguration
     /// Package preload configuration for this tenant.
     /// </summary>
     public TenantPackageConfiguration Packages { get; init; } = new();
+
+    /// <summary>
+    /// Hostnames this tenant answers on (e.g. "fhir1.example.org"). The first entry is the canonical base
+    /// this tenant's absolute references are stored and emitted under; the rest are additional recognized
+    /// inbound forms. Empty means the tenant declares no host-based routing; it is still reached by
+    /// /tenant/{id}/, and on a single-tenant deployment by the bare deployment root. Hostnames are
+    /// unique across all tenants; a host resolves exactly one tenant.
+    /// </summary>
+    public IReadOnlyList<string> Hostnames { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

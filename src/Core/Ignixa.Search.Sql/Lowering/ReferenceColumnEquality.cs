@@ -54,6 +54,11 @@ internal static class ReferenceColumnEquality
             return idPredicate;
         }
 
+        if (context.UnmatchableResourceType(value.ResourceType) is { } unmatchable)
+        {
+            return unmatchable;
+        }
+
         Predicate typePredicate = new Predicate.Equal(
             new SqlColumnRef(table.TableName, resourceTypeColumn),
             context.Parameter(context.ResourceTypeId(value.ResourceType)));
@@ -69,6 +74,13 @@ internal static class ReferenceColumnEquality
     /// The BaseUri constraint, or null when the reference may be internal or external and the base must
     /// therefore be left unconstrained.
     /// </summary>
+    /// <remarks>
+    /// Branches on <see cref="ReferenceSearchValue.Kind"/>, not on BaseUri. Reading BaseUri first and
+    /// consulting Kind only when it is null fails open: an External value carrying no base would emit no
+    /// BaseUri predicate and quietly degrade to the InternalOrExternal match set. That pair is rejected by
+    /// <see cref="ReferenceSearchValue"/>'s constructor, and this switch is written so the compiler does
+    /// not depend on a guard in another assembly staying there.
+    /// </remarks>
     private static Predicate? BuildBaseUriPredicate(
         TableDescriptor table,
         string baseUriColumn,
@@ -77,11 +89,17 @@ internal static class ReferenceColumnEquality
     {
         var column = new SqlColumnRef(table.TableName, baseUriColumn);
 
-        if (value.BaseUri is not null)
+        return value.Kind switch
         {
-            return new Predicate.Equal(column, context.Parameter(value.BaseUri.ToString()));
-        }
-
-        return value.Kind == ReferenceKind.Internal ? new Predicate.IsNull(column) : null;
+            ReferenceKind.Internal => new Predicate.IsNull(column),
+            ReferenceKind.External => value.BaseUri is { } externalBase
+                ? new Predicate.Equal(column, context.Parameter(externalBase.ToString()))
+                : throw new InvalidOperationException(
+                    $"External reference to {value.ResourceType}/{value.ResourceId} carries no base URI."),
+            ReferenceKind.InternalOrExternal => value.BaseUri is not null
+                ? new Predicate.Equal(column, context.Parameter(value.BaseUri.ToString()))
+                : null,
+            _ => throw new NotSupportedException($"Unknown ReferenceKind '{value.Kind}'."),
+        };
     }
 }

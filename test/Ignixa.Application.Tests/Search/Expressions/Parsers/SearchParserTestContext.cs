@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Abstractions;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing;
@@ -24,7 +25,7 @@ internal sealed class SearchParserTestContext
     {
         SchemaProvider = new R4CoreSchemaProvider();
         DefinitionManager = Substitute.For<ISearchParameterDefinitionManager>();
-        ValueParser = new SearchParameterExpressionParser(new ReferenceSearchValueParser(SchemaProvider), SchemaProvider);
+        ValueParser = new SearchParameterExpressionParser(new ReferenceSearchValueParser(SchemaProvider, NullFhirBaseUriProvider.Instance), SchemaProvider);
         Parser = new ExpressionParser(() => DefinitionManager, ValueParser, SchemaProvider);
 
         DefinitionManager.GetSearchParameters(Arg.Any<string>()).Returns(callInfo => GetSearchParameters(callInfo.ArgAt<string>(0)));

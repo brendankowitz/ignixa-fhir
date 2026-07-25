@@ -95,7 +95,7 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
         if (_modifier != null) ThrowModifierNotSupported();
 
         Debug.Assert(number.Low.HasValue && number.Low == number.High, "number low and high should be the same and not null");
-        _outputExpression = GenerateNumberExpression(FieldName.Number, number.Low.Value);
+        _outputExpression = GenerateNumberExpression(FieldName.NumberLow, FieldName.NumberHigh, number.Low.Value);
     }
 
     void ISearchValueVisitor.Visit(QuantitySearchValue quantity)
@@ -115,7 +115,7 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
                 Expression.StringEquals(FieldName.QuantityCode, _componentIndex, quantity.Code, false));
 
         Debug.Assert(quantity.Low.HasValue && quantity.Low == quantity.High, "quantity low and high should be the same and not null");
-        expressions.Add(GenerateNumberExpression(FieldName.Quantity, quantity.Low.Value));
+        expressions.Add(GenerateNumberExpression(FieldName.QuantityLow, FieldName.QuantityHigh, quantity.Low.Value));
 
         if (expressions.Count == 1)
             _outputExpression = expressions[0];
@@ -305,38 +305,39 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
             string.Format(Resources.ComparatorNotSupported, _comparator, _searchParameterName));
     }
 
-    private Expression GenerateNumberExpression(FieldName fieldName, decimal number)
+    /// <summary>
+    /// Mirrors <see cref="SearchValueExpressionBuilderHelper"/>'s ranged-comparator lowering exactly — the
+    /// parity tests compare the two trees, so any divergence here is a bug in the rollback lever, not a
+    /// difference of opinion. See that method for the FHIR prefix table this implements.
+    /// </summary>
+    private Expression GenerateNumberExpression(FieldName lowField, FieldName highField, decimal number)
     {
-        decimal modifierDecimal = number.GetPrescisionModifier();
-
-        decimal lowerBound = number - modifierDecimal;
-        decimal upperBound = number + modifierDecimal;
+        decimal precision = number.GetPrescisionModifier();
 
         switch (_comparator)
         {
-            case SearchComparator.Ap:
-                decimal approximateModifier = Math.Abs(number * ApproximateMultiplier);
-                lowerBound -= approximateModifier;
-                upperBound += approximateModifier;
-                goto case SearchComparator.Eq;
             case SearchComparator.Eq:
-                return Expression.And(
-                    Expression.GreaterThanOrEqual(fieldName, _componentIndex, lowerBound),
-                    Expression.LessThanOrEqual(fieldName, _componentIndex, upperBound));
+                return BuildContainedWithin(lowField, highField, number, precision);
             case SearchComparator.Ne:
-                return Expression.Or(
-                    Expression.LessThan(fieldName, _componentIndex, lowerBound),
-                    Expression.GreaterThan(fieldName, _componentIndex, upperBound));
-            case SearchComparator.Ge:
-                return Expression.GreaterThanOrEqual(fieldName, _componentIndex, number);
+                return BuildNotContainedWithin(lowField, highField, number, precision);
+            case SearchComparator.Ap:
+                return BuildContainedWithin(
+                    lowField,
+                    highField,
+                    number,
+                    Math.Max(precision, Math.Abs(number) * ApproximateMultiplier));
             case SearchComparator.Gt:
-            case SearchComparator.Sa:
-                return Expression.GreaterThan(fieldName, _componentIndex, number);
-            case SearchComparator.Le:
-                return Expression.LessThanOrEqual(fieldName, _componentIndex, number);
+                return Expression.GreaterThan(highField, _componentIndex, number);
+            case SearchComparator.Ge:
+                return Expression.GreaterThanOrEqual(highField, _componentIndex, number);
             case SearchComparator.Lt:
+                return Expression.LessThan(lowField, _componentIndex, number);
+            case SearchComparator.Le:
+                return Expression.LessThanOrEqual(lowField, _componentIndex, number);
+            case SearchComparator.Sa:
+                return Expression.GreaterThan(lowField, _componentIndex, number);
             case SearchComparator.Eb:
-                return Expression.LessThan(fieldName, _componentIndex, number);
+                return Expression.LessThan(highField, _componentIndex, number);
             default:
                 ThrowComparatorNotSupported();
                 break;
@@ -344,4 +345,14 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
 
         return null;
     }
+
+    private Expression BuildContainedWithin(FieldName lowField, FieldName highField, decimal number, decimal tolerance)
+        => Expression.And(
+            Expression.GreaterThanOrEqual(lowField, _componentIndex, number - tolerance),
+            Expression.LessThanOrEqual(highField, _componentIndex, number + tolerance));
+
+    private Expression BuildNotContainedWithin(FieldName lowField, FieldName highField, decimal number, decimal tolerance)
+        => Expression.Or(
+            Expression.LessThan(lowField, _componentIndex, number - tolerance),
+            Expression.GreaterThan(highField, _componentIndex, number + tolerance));
 }

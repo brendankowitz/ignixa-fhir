@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
@@ -23,7 +24,7 @@ public static class CorpusCompiler
         new(Schema, NullLogger<SearchParameterDefinitionManager>.Instance);
 
     private static readonly SearchOptionsBuilder OptionsBuilder = new(
-        new ExpressionParser(() => Definitions, new SearchParameterExpressionParser(new ReferenceSearchValueParser(Schema), Schema), Schema),
+        new ExpressionParser(() => Definitions, new SearchParameterExpressionParser(new ReferenceSearchValueParser(Schema, NullFhirBaseUriProvider.Instance), Schema), Schema),
         Definitions);
 
     public static async Task<CorpusCompilation> CompileAsync(CorpusEntry entry, CancellationToken cancellationToken = default)
