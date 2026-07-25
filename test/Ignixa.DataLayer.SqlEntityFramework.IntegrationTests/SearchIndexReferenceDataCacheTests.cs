@@ -170,7 +170,10 @@ public sealed class SearchIndexReferenceDataCacheTests : IDisposable
     [Fact]
     public void GivenFilteredSentinelValues_WhenAccessingResourceTypeMappings_ThenFiltersSentinelValues()
     {
-        // Arrange: the first miss caches the -1 sentinel in the resource-type cache.
+        // Arrange: a resource type absent from dbo.ResourceType is deliberately NOT cached as a -1 sentinel
+        // in the resource-type cache (see SearchIndexReferenceDataCache.GetResourceTypeIdAsync) -- each miss
+        // re-queries. The wrapper's load function still maps "not found" to -1 and its isValidValue filter
+        // (value > 0) still rejects it, so a repeated miss keeps answering false rather than surfacing -1.
         _ = _cache.ResourceTypeMappings.TryGetValue("NonExistent", out _);
 
         // Act

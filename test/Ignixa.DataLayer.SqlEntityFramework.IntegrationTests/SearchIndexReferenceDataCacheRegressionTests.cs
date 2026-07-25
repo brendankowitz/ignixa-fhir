@@ -322,6 +322,24 @@ public sealed class SearchIndexReferenceDataCacheRegressionTests : IDisposable
         multiTenantCache.InvalidateAllCaches();
     }
 
+    [Fact]
+    public async Task GivenAProbeThatMissedAResourceType_WhenTheTypeIsLaterCreated_ThenTheLookupReturnsItsRealId()
+    {
+        // Arrange: probing before the type is created must NOT cache the -1 sentinel -- dbo.ResourceType is
+        // populated as types are first encountered, so caching the miss would permanently poison every later
+        // write of that type.
+        (await _cache.GetResourceTypeIdAsync("Measure")).ShouldBeNull();
+
+        _context.ResourceTypes.Add(new ResourceTypeEntity { ResourceTypeId = 99, Name = "Measure" });
+        await _context.SaveChangesAsync();
+
+        // Act
+        var result = await _cache.GetResourceTypeIdAsync("Measure");
+
+        // Assert: would fail under pre-fix behavior, which cached the -1 sentinel on the first miss.
+        result.ShouldBe((short)99);
+    }
+
     public void Dispose()
     {
         _cache.Dispose();

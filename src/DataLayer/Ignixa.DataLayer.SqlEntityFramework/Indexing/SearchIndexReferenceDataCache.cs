@@ -131,7 +131,15 @@ public class SearchIndexReferenceDataCache : IDisposable
             if (entity == null)
             {
                 _logger.LogWarning("SearchParam not found for URI: {Uri}", uri);
-                // Cache the negative result using sentinel value -1 to avoid repeated database queries
+
+                // Cache the negative result using sentinel value -1 to avoid repeated database queries.
+                // Unlike GetResourceTypeIdAsync below, search-param misses ARE cached here deliberately:
+                // a package that later registers this URI repairs the sentinel through
+                // SyncSearchParametersToDatabase, which overwrites this entry via the indexer
+                // (`_searchParamCache[url] = ...`, not TryAdd) the moment the parameter is synced.
+                // Resource types have no equivalent runtime repair -- they are preloaded once at startup
+                // with no ongoing sync -- so caching their miss would poison the write path for the process
+                // lifetime, whereas this sentinel self-heals.
                 _searchParamCache.TryAdd(uri, -1);
                 return null;
             }
@@ -1150,9 +1158,12 @@ public class SearchIndexReferenceDataCache : IDisposable
             {
                 var loadedValue = _loadFunc(key).GetAwaiter().GetResult();
 
-                // Invalid means "no such row" (the load func maps that to a sentinel). Not cached:
-                // reference-data rows are created on demand, so absence is transient and caching
-                // it would keep reporting the key as missing long after the row exists.
+                // Invalid means "no such row" (the load func maps that to a sentinel). This wrapper itself
+                // does not cache it. Whether the underlying per-key cache the load function reads from
+                // (e.g. _searchParamCache, _resourceTypeCache) also records the miss is a decision made by
+                // that load function, not by this wrapper -- see the -1 TryAdd call in
+                // GetSearchParamIdAsync and its absence in GetResourceTypeIdAsync for why that differs
+                // between the two.
                 if (_isValidValue != null && !_isValidValue(loadedValue))
                 {
                     value = default!;

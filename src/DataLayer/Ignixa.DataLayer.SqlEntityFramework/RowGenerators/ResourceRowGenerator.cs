@@ -5,6 +5,7 @@
 
 using System.Data;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Microsoft.Data.SqlClient.Server;
 using Microsoft.Extensions.Logging;
@@ -73,7 +74,7 @@ public class ResourceRowGenerator
             // The resource type row is created on demand, so a miss is an infrastructure fault.
             if (!resourceTypeIdMap.TryGetValue(resource.ResourceType, out var resourceTypeId))
             {
-                throw new InvalidOperationException(
+                throw new InternalServerErrorException(
                     $"ResourceType '{resource.ResourceType}' is not present in dbo.ResourceType, so " +
                     $"{resource.ResourceType}/{resource.ResourceId} cannot be written. This is a " +
                     "reference-data fault, not a problem with the submitted resource.");
