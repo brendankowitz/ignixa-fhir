@@ -69,8 +69,10 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
     }
 
     /// <summary>
-    /// Resolves every base URI that identifies this server for a tenant, canonical first. The canonical base
-    /// is the tenant's first configured hostname, or the <c>tenant/{id}/</c> path form when it has none. The
+    /// Resolves every base URI that identifies this server for a tenant, canonical first. Canonical
+    /// precedence is: the tenant's first configured hostname; else the deployment root when this is the sole
+    /// tenant (<see cref="TenantAddressing.IncludeDeploymentRoot"/>), which keeps the base a hostname-less
+    /// single-tenant deployment already emits unchanged; else the <c>tenant/{id}/</c> path form. The
     /// remaining hostnames and the path form are additional recognized inbound bases; the deployment root is
     /// recognized only when <see cref="TenantAddressing.IncludeDeploymentRoot"/> is set. Both the request
     /// path and the background path call this method, so a self-reference classifies identically either way.
