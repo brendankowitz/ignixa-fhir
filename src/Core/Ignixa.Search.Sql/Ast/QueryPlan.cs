@@ -51,7 +51,9 @@ public sealed record QueryPlan(
     /// result while still using it to seed the stages. This is the $includes operation's second page: the
     /// caller already has the match rows and asks only for more included resources.
     /// </summary>
-    bool IncludesOnly = false)
+    bool IncludesOnly = false,
+    OffsetSpec? OffsetPage = null,
+    bool CountPhaseScoped = false)
 {
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;

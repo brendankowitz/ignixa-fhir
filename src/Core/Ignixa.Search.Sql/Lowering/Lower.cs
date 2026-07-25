@@ -36,6 +36,19 @@ public static class Lower
         LowerOptions? options = null)
     {
         options ??= new LowerOptions();
+
+        if (options.OffsetPage is not null && (page is not null || options.Top is not null))
+        {
+            throw new NotSupportedException(
+                "OffsetPage cannot combine with keyset paging or Top: OFFSET/FETCH and TOP are mutually exclusive in T-SQL (error 10741).");
+        }
+
+        if (options.CountPhaseScoped && (!options.CountOnly || sort.Count == 0))
+        {
+            throw new NotSupportedException(
+                "CountPhaseScoped requires CountOnly with at least one sort key: there is no sort phase to scope the count to otherwise.");
+        }
+
         var accessConstraintApplier = new AccessConstraintApplier(options.AccessConstraints);
         var context = new StructuralContext(symbols, options.ApproximationReferenceTime, accessConstraintApplier);
         CteRef match;
@@ -156,7 +169,7 @@ public static class Lower
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly),
+            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped),
             new PlanProvenance(context.Origins));
     }
 

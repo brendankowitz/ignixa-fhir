@@ -52,4 +52,22 @@ public sealed record LowerOptions
     /// caller already has the match rows and asks only for more included resources.
     /// </summary>
     public bool IncludesOnly { get; init; }
+
+    /// <summary>
+    /// Allows typed leaf predicates to lower without a single target resource type, for system-level
+    /// search. Deliberately explicit rather than inferred from a null target type: a null type already
+    /// means "wildcard compartment", and <see cref="ResourceTypes"/> is orthogonal — that shapes the
+    /// base set, this gates cross-type lowering of the leaves themselves. Both together is legal and is
+    /// exactly the <c>GET /?_type=A,B&amp;name=foo</c> case.
+    /// </summary>
+    public bool SystemLevelSearch { get; init; }
+
+    /// <summary>An OFFSET/FETCH page; mutually exclusive with keyset <c>page</c> and <c>Top</c>.</summary>
+    public OffsetSpec? OffsetPage { get; init; }
+
+    /// <summary>
+    /// Scopes a <see cref="CountOnly"/> count to the current sort phase's own join output rather than the
+    /// whole match set. The compiler-side half of two-phase sort execution.
+    /// </summary>
+    public bool CountPhaseScoped { get; init; }
 }
