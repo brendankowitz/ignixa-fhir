@@ -207,6 +207,22 @@ public class StreamingBundleSerializerHistoryTests
     }
 
     [Fact]
+    public async Task GivenCancellationBeforeAnyEntry_WhenSerializingHistory_ThenNothingIsWrittenAndCancellationPropagates()
+    {
+        // Arrange -- history flushes per entry, so tier 1 is reachable only before the first entry,
+        // mirroring GivenAnEnumeratorThatThrowsBeforeAnyEntry above but for the cancellation branch.
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, ThrowAfterAsync(0, new OperationCanceledException()));
+
+        // Assert
+        await act.ShouldThrowAsync<OperationCanceledException>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenCorruptResourceBytesAfterACommittedEntry_WhenSerializingHistory_ThenTheBundleIsValidAndCarriesAFatalOutcome()
     {
         // Arrange -- the mid-entry tier-2 case: without per-entry buffering the response writer is

@@ -16,11 +16,14 @@ using Shouldly;
 namespace Ignixa.Application.Tests.Features.Bundle.Serialization;
 
 /// <summary>
-/// Tests for mid-stream failure handling in StreamingBundleSerializer: per-entry buffering
-/// and the two-tier recovery keyed on Utf8JsonWriter.BytesCommitted.
-/// Tier 1 (nothing committed) discards the buffer and rethrows so the exception middleware
-/// can still produce a status-coded error; tier 2 (response started) completes the bundle
-/// with a fatal OperationOutcome entry and rethrows.
+/// Tests for mid-stream failure handling in StreamingBundleSerializer: per-entry buffering across
+/// SerializeWithPaginationAsync, SerializeAsync, and SerializeStreamAsync.
+/// Most tests cover the two-tier recovery keyed on Utf8JsonWriter.BytesCommitted that
+/// SerializeWithPaginationAsync and SerializeAsync share: tier 1 (nothing committed) discards the
+/// buffer and rethrows so the exception middleware can still produce a status-coded error; tier 2
+/// (response started) completes the bundle with a fatal OperationOutcome entry and rethrows.
+/// SerializeStreamAsync is the exception (design doc Section 8): it gets per-entry buffering but
+/// deliberately has no two-tier recovery -- it never rethrows, because its caller depends on that.
 /// </summary>
 public class StreamingBundleSerializerFailureTests
 {

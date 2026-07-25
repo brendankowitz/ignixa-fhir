@@ -5,23 +5,27 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using Ignixa.Abstractions;
 using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Models;
+using NSubstitute;
 using Shouldly;
 using FhirBundleLink = Ignixa.Models.BundleLink;
 
 namespace Ignixa.Application.Tests.Features.Bundle.Serialization;
 
 /// <summary>
-/// Golden snapshot tests capturing happy-path output from the unmodified
-/// StreamingBundleSerializer, before the mid-stream error handling rewrite.
-/// These fixtures are the regression baseline proving the buffering rewrite
-/// leaves happy-path output byte-identical. Captured with pretty: false --
-/// design doc Section 1 documents that pretty-printed whitespace inside
-/// entries legitimately changes under buffering, so a pretty golden would
-/// pin the wrong thing.
+/// Golden snapshot tests. The searchset and R4 history fixtures capture happy-path output from
+/// the unmodified StreamingBundleSerializer, before the mid-stream error handling rewrite -- they
+/// are the regression baseline proving the buffering rewrite leaves happy-path output byte-identical.
+/// The Stu3 history fixture could not be captured early: Task 5 (design doc Section 4) deliberately
+/// changed that output, suppressing the response element per Stu3 bdl-4, so it is captured post-change
+/// by construction. All captured with pretty: false -- design doc Section 1 documents that
+/// pretty-printed whitespace inside entries legitimately changes under buffering, so a pretty golden
+/// would pin the wrong thing.
 /// </summary>
 public class StreamingBundleSerializerSnapshotTests
 {
@@ -85,6 +89,39 @@ public class StreamingBundleSerializerSnapshotTests
 
         // Assert
         AssertMatchesSnapshot(json, "r4-history-happy-path.json");
+    }
+
+    [Fact]
+    public async Task GivenAStu3HistoryBundle_WhenSerializing_ThenOutputMatchesGoldenSnapshotAndCarriesNoResponseElement()
+    {
+        // Arrange
+        var entries = new List<SearchEntryResult>
+        {
+            CreateHistoryEntry("Patient", "golden-patient-1", versionId: "1", isDeleted: false),
+            CreateHistoryEntry("Patient", "golden-patient-1", versionId: "2", isDeleted: true),
+        };
+        var links = new List<FhirBundleLink> { CreateLink("self", "http://x/Patient/_history") };
+        var outputStream = new MemoryStream();
+        var schemaProvider = Substitute.For<ISchema>();
+        schemaProvider.Version.Returns(FhirVersion.Stu3);
+
+        // Act
+        await StreamingBundleSerializer.SerializeHistoryAsync(
+            outputStream,
+            "history",
+            total: 2,
+            CreateAsyncEnumerable(entries),
+            links,
+            schemaProvider: schemaProvider,
+            pretty: false,
+            pageSize: 20);
+
+        var json = Encoding.UTF8.GetString(outputStream.ToArray());
+
+        // Assert
+        AssertMatchesSnapshot(json, "stu3-history.json");
+        var entryElements = JsonDocument.Parse(json).RootElement.GetProperty("entry").EnumerateArray().ToList();
+        entryElements.Count(e => e.TryGetProperty("response", out _)).ShouldBe(0);
     }
 
     private static void AssertMatchesSnapshot(string actualJson, string fileName)
