@@ -384,7 +384,7 @@ public async Task GivenWarningIssuesAndATierTwoFailure_WhenSerializing_ThenBothO
 - Test: `test/Ignixa.Application.Tests/Features/Bundle/Serialization/StreamingBundleSerializerHistoryTests.cs` (create)
 
 **Interfaces:**
-- Produces: `SerializeHistoryAsync(..., IReadOnlyList<FhirBundleLink>? links = null, ISchema? schemaProvider = null, bool pretty = false, int pageSize = 20, CancellationToken cancellationToken = default)` — insert `schemaProvider` directly after `links`. Optional-with-default, and all three existing call sites use fully named arguments, so they keep compiling untouched until Task 8 threads real values.
+- Produces: `SerializeHistoryAsync(..., IReadOnlyList<FhirBundleLink>? links = null, ISchema? schemaProvider = null, bool pretty = false, int pageSize = 20, CancellationToken cancellationToken = default)` — insert `schemaProvider` directly after `links`. Optional-with-default, so existing call sites keep compiling untouched until Task 8 threads real values. (The three production call sites in `HistoryEndpoints.cs` use fully named arguments; some test call sites pass `links` positionally, which the after-`links` insertion position also keeps safe.)
 
 Three changes in one task, because they share the method's structure and one test cycle:
 1. Per-entry buffering and the two-tier guard, mirroring Task 4. Note this method **flushes per entry** (`:345`), so tier 2 is the common case from the second entry onward.
@@ -404,9 +404,10 @@ public async Task GivenAStu3HistoryBundle_WhenSerializing_ThenNoEntryCarriesARes
     await StreamingBundleSerializer.SerializeHistoryAsync(
         stream, "history", null, TwoEntriesAsync(), links: null, schemaProvider: Stu3Schema());
 
-    // Assert
+    // Assert -- note: an `out` discard cannot appear inside an expression tree,
+    // so ShouldAllBe(e => !e.TryGetProperty("response", out _)) fails to compile (CS8198).
     JsonDocument.Parse(stream.ToArray()).RootElement.GetProperty("entry")
-        .EnumerateArray().ShouldAllBe(e => !e.TryGetProperty("response", out _));
+        .EnumerateArray().Count(e => e.TryGetProperty("response", out _)).ShouldBe(0);
 }
 
 [Fact]
