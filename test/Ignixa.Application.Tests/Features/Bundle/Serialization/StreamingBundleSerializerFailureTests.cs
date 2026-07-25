@@ -270,6 +270,32 @@ public class StreamingBundleSerializerFailureTests
         fullUrls.ShouldBe([WarningEntryFullUrl, ErrorEntryFullUrl]);
     }
 
+    [Fact]
+    public async Task GivenWarningIssuesAndATierTwoFailureOnAnR5Tenant_WhenSerializing_ThenTheBundleCarriesBothTheIssuesPropertyAndTheFatalOutcomeEntry()
+    {
+        // Arrange
+        var options = NewOptions();
+        options.BundleIssues = [new IssueComponent("warning", "incomplete", Diagnostics: "d")];
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+            options, "http://x", "", schemaProvider: R5Schema(), flushThresholdBytes: 1);
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+
+        root.TryGetProperty("issues", out var issues).ShouldBeTrue();
+        issues.GetProperty("resourceType").GetString().ShouldBe("OperationOutcome");
+        issues.GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("warning");
+
+        var errorEntry = root.GetProperty("entry").EnumerateArray().Last();
+        errorEntry.GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        errorEntry.GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+    }
+
     private static SearchOptions NewOptions() => new() { MaxItemCount = 10 };
 
     private static SearchOptions IncludesPendingOptions() => new()

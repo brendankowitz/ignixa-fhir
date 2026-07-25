@@ -229,7 +229,7 @@ public static class StreamingBundleSerializer
                 throw;
             }
 
-            await CloseErrorBundleAsync(writer, selfLink);
+            await CloseErrorBundleAsync(writer, selfLink, searchOptions.BundleIssues, fhirVersion);
             throw;
         }
         catch (Exception ex)
@@ -248,7 +248,7 @@ public static class StreamingBundleSerializer
                 ErrorEntryFullUrl,
                 selfLink);
 
-            await CloseErrorBundleAsync(writer, selfLink);
+            await CloseErrorBundleAsync(writer, selfLink, searchOptions.BundleIssues, fhirVersion);
             throw;
         }
 
@@ -358,13 +358,21 @@ public static class StreamingBundleSerializer
 
     /// <summary>
     /// Completes a bundle whose response has already started, then leaves the caller to rethrow.
-    /// Only the self link is emitted: next and related describe pages this request never produced.
+    /// Mirrors the normal footer's <see cref="WriteBundleIssues"/> call so R5+ tenants still see
+    /// their warning issues on a tier-2 failure. Only the self link is emitted: next and related
+    /// describe pages this request never produced.
     /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
     /// makes FlushAsync throw immediately, which would defeat the body completion.
     /// </summary>
-    private static async Task CloseErrorBundleAsync(FhirJsonWriter writer, string selfLink)
+    private static async Task CloseErrorBundleAsync(
+        FhirJsonWriter writer,
+        string selfLink,
+        IReadOnlyList<IssueComponent>? bundleIssues,
+        FhirVersion fhirVersion)
     {
         writer.WriteEndArray();
+
+        WriteBundleIssues(writer, bundleIssues, fhirVersion);
 
         WriteBundleLinksFromStrings(writer, selfLink, nextLink: null);
 
