@@ -44,8 +44,7 @@ public class RepoRootTests
         }
     }
 
-    // Rooted in the temp directory rather than under bin/, so a process killed mid-test cannot
-    // strand a stray .git marker inside the repository for the other guards to walk into.
+    // Under temp rather than bin/ so a killed run cannot strand a .git marker inside the tree.
     private static string CreateFixtureRoot() =>
         Directory.CreateDirectory(
             Path.Combine(Path.GetTempPath(), $"repo-root-tests-{Guid.NewGuid():N}")).FullName;

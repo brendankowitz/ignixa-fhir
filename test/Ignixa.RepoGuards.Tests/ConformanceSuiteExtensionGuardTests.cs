@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Shouldly;
 using Xunit;
 
@@ -16,7 +17,7 @@ namespace Ignixa.RepoGuards.Tests;
 /// intended. This asserts every Ignixa-canonical extension URL used by a suite is one the
 /// engine actually implements.
 /// </summary>
-public class ConformanceSuiteExtensionGuardTests
+public partial class ConformanceSuiteExtensionGuardTests
 {
     private const string IgnixaExtensionPrefix = "http://ignixa.io/testscript/";
     private const string RequiresCapabilityUrl = "http://ignixa.io/testscript/requiresCapability";
@@ -62,10 +63,20 @@ public class ConformanceSuiteExtensionGuardTests
     [Fact]
     public void GivenConformanceSuites_WhenReadingCapabilityGates_ThenNoneAreStructurallyUnsatisfiable()
     {
-        var offenders = EnumerateSuiteFiles()
+        var gates = EnumerateSuiteFiles()
             .SelectMany(file => CollectIgnixaExtensions(file)
                 .Where(extension => extension.Url == RequiresCapabilityUrl)
                 .Select(extension => (file, expression: extension.ValueString ?? string.Empty)))
+            .ToList();
+
+        // Without this the guard passes green on an empty input set — if RequiresCapabilityUrl
+        // drifts, or the value stops living on valueString, it would report no offenders forever.
+        // That is the same can't-fail mode the guard exists to prevent.
+        gates.ShouldNotBeEmpty(
+            $"Found no {RequiresCapabilityUrl} extensions carrying a valueString. Either the corpus " +
+            "moved, or the extension URL or value element changed and this guard is now inert.");
+
+        var offenders = gates
             .SelectMany(pair => DescribeUnsatisfiableClauses(pair.expression)
                 .Select(reason => $"{Path.GetFileName(pair.file)}: {reason}"))
             .Distinct(StringComparer.Ordinal)
@@ -78,19 +89,25 @@ public class ConformanceSuiteExtensionGuardTests
             "Gate on the resource-level interaction and the ordinary search parameter codes instead.");
     }
 
-    // Only flags result parameters, which are unsatisfiable against ANY conformant server rather
-    // than merely against Ignixa. Deliberately does not flag the "or rest.searchParam..." fallbacks:
-    // Ignixa's metadata pipeline never populates the rest-level collection, but it is a real FHIR
-    // element other servers do populate, and it only ever appears on the or-branch of a disjunction,
-    // so it cannot be the reason a gate fails.
+    // Flags result parameters only: those are unsatisfiable against any conformant server, whereas a
+    // rest-level gate on an ordinary parameter is merely unsatisfiable against Ignixa and always sits
+    // on the or-branch of a disjunction. Both spellings of a result-parameter gate are caught, at
+    // rest level and resource level alike.
     private static IEnumerable<string> DescribeUnsatisfiableClauses(string expression)
     {
+        // FHIRPath tolerates whitespace around '=' and the corpus already uses both spellings, so
+        // matching the literal source text would let `where(name = '_sort')` through.
+        var normalized = WhitespaceRun().Replace(expression, string.Empty);
+
         foreach (var resultParameter in SearchResultParameters)
         {
-            if (expression.Contains($"searchParam.where(name='{resultParameter}')", StringComparison.Ordinal))
+            if (normalized.Contains($"searchParam.where(name='{resultParameter}')", StringComparison.Ordinal))
                 yield return $"gates on search result parameter '{resultParameter}'";
         }
     }
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRun();
 
     private static IEnumerable<string> EnumerateSuiteFiles()
     {
@@ -130,7 +147,7 @@ public class ConformanceSuiteExtensionGuardTests
                 {
                     if (IsExtensionArray(property))
                     {
-                        foreach (var url in ReadExtensionUrls(property.Value))
+                        foreach (var url in ReadIgnixaExtensions(property.Value))
                             yield return url;
                     }
 
@@ -153,7 +170,7 @@ public class ConformanceSuiteExtensionGuardTests
         property.Value.ValueKind == JsonValueKind.Array &&
         property.Name is "extension" or "modifierExtension";
 
-    private static IEnumerable<(string Url, string? ValueString)> ReadExtensionUrls(JsonElement extensionArray)
+    private static IEnumerable<(string Url, string? ValueString)> ReadIgnixaExtensions(JsonElement extensionArray)
     {
         foreach (var extension in extensionArray.EnumerateArray())
         {

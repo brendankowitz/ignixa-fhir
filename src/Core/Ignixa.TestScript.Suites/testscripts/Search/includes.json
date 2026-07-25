@@ -301,7 +301,7 @@
       ]
     },
     {
-      "name": "direct subject include is exact with two iterate branches requested; branch visibility informational",
+      "name": "direct subject include is exact; iterate branch visibility informational",
       "description": "The hard direct-subject contract is separated from warning-only branch visibility because base CapabilityStatement has no precise iterate declaration.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
@@ -343,7 +343,7 @@
       ]
     },
     {
-      "name": "direct performer includes are returned alongside iterate branches; cross-path deduplication informational",
+      "name": "direct performer includes are exact; cross-path deduplication informational",
       "description": "Direct performer includes make Organization and Practitioner presence portable; they do not prove either iterate branch executed. Cross-path counts remain warning-only without a profile.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },

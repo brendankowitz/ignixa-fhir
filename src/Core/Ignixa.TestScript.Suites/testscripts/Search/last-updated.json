@@ -60,7 +60,7 @@
       ]
     },
     {
-      "name": "repeated _lastUpdated ge2000 and lt2999 (broad AND range) is accepted; fixture containment informational",
+      "name": "repeated _lastUpdated ge2000 and lt2999 accepted; fixture containment informational",
       "description": "GET /Patient?identifier=...|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2999 exercises the AND-by-repetition convention for a range that comfortably contains the fixture's lastUpdated. Hard HTTP 200/Bundle/searchset asserts confirm the server responded correctly; the fixture-membership assert is warningOnly because the FHIR specification does not normatively require servers to AND repeated search parameter keys — server behavior for unprofiled repeated-key semantics varies.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
@@ -75,7 +75,7 @@
       ]
     },
     {
-      "name": "contradictory repeated _lastUpdated ge2000 and lt2000 is accepted; empty match informational",
+      "name": "contradictory repeated _lastUpdated ge2000 and lt2000 accepted; empty match informational",
       "description": "GET /Patient?identifier=...|LAST-UPDATED-PAT1&_lastUpdated=ge2000&_lastUpdated=lt2000 combines a lower bound and an equal upper bound that together admit no instants. Hard HTTP 200/Bundle/searchset asserts confirm the server responded correctly; the empty-match assert is warningOnly because the FHIR specification does not normatively require AND semantics for repeated search parameter keys — some servers may apply OR or last-wins semantics and return results.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },

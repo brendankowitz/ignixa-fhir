@@ -57,9 +57,9 @@ An assertion is hard when all of the following are true:
 1. the behavior is required by the applicable FHIR release or by an explicitly declared target
    profile;
 2. the target CapabilityStatement advertises the exact interaction and every capability that is both
-   representable and intentionally gated. Explicit control-parameter exceptions are history
-   `_count`, projection `_elements`/`_summary`, and include `_total`; query-composition `_count`
-   remains intentionally capability-gated as part of that narrowed workload; and
+   representable and intentionally gated. Search result parameters are never gated on — history
+   `_count`, projection `_elements`/`_summary`, include `_total`, and query-composition `_sort`
+   and `_count` alike. See gating rule 5; and
 3. fixtures make the expected result deterministic without relying on server-global data, wall-clock
    timing, or an implementation-specific ordering tie-breaker.
 
@@ -157,13 +157,16 @@ The next-link URL is opaque. Following it is not continuation-token coverage: th
 inspects or asserts the query keys embedded in that URL. This distinction keeps the standard paging
 contract in scope while leaving proprietary continuation-token formats out of scope.
 History `_count` is a control parameter, so the paging test gates on `history-instance` plus the
-`patch` fixture requirement and does not require `_count` as an advertised `searchParam`.
+`patch` interaction its fixture versions depend on, and does not require `_count` as an advertised
+`searchParam`. The version-building patches live in `setup` and are deliberately unasserted: a
+failed setup assertion marks every test in the suite skipped, which would take down the six tests
+that never patch.
 
 The focused evaluator regression exposes an absolute next URL through variable extraction and uses
 `${nextUrl}` as the complete second `operation.url`. It proves the request provider receives that URL
-unchanged. The regression passed, so production evaluator code remains unchanged. The existing stale
-note in `Search/pagination.json` is superseded by this design but is not edited because this effort is
-limited to the five named suite files.
+unchanged. The regression passed, so production evaluator code remains unchanged. The stale note in `Search/pagination.json`
+claiming next-link traversal needs an engine enhancement is superseded by this design and has been
+corrected to point at the history suite instead.
 
 The supported ascending/descending history sort assertions and `_summary=count` total/no-entry
 assertions remain hard. Only unsupported or server-specific rejection expectations, including
@@ -331,18 +334,21 @@ first request makes its targets branch-only by query shape; fixture semantics do
 
 1. Gate at the smallest test scope that can express the requirement.
 2. Require the resource-level interaction and exact ordinary search-parameter codes used by the
-   request, plus any workload control that this design intentionally gates.
+   request. Never a search result parameter — see rule 5.
 3. Do not require CapabilityStatement `searchParam` advertisement for history `_count`, projection
-   `_elements`/`_summary`, or include `_total`; these are explicit control-parameter exceptions.
+   `_elements`/`_summary`, or include `_total`; these are the specific cases rule 5 generalises.
 4. Projection `_summary=count&_lastUpdated=ge2000` still requires resource- or system-level
    `_lastUpdated` advertisement; the exception applies to `_summary`, not the ordinary common
    parameter composed with it.
-5. Never gate on `_sort`, `_count`, `_total`, `_summary`, or `_elements` as advertised
-   `searchParam` codes. These are search result parameters, not `SearchParameter` resources, so
-   no conformant server declares them and such a gate is unsatisfiable against any server — it
-   silently disables the test rather than skipping it for a real capability gap. Rule 3 is the
-   general form of this; it is stated separately here because an earlier revision of this design
-   made the opposite call for query-composition and left the suite inert.
+5. Never gate on `_sort`, `_count`, `_total`, `_summary`, `_elements`, `_include`, `_revinclude`,
+   or `_contained` as advertised `searchParam` codes. These are search result parameters, not
+   `SearchParameter` resources, so no conformant server declares them and such a gate is
+   unsatisfiable against any server — it silently disables the test rather than skipping it for a
+   real capability gap. Rule 3 is a narrower restatement of this for three specific suites. It is
+   stated separately because an earlier revision of this design made the opposite call for
+   query-composition and left that suite inert. `ConformanceSuiteExtensionGuardTests` enforces
+   this list; keep the two in step. For includes, the correct element is `searchInclude` /
+   `searchRevInclude`, not `searchParam`.
 6. For includes, accept the exact advertised include or wildcard only where the existing suite
    already treats wildcard as satisfying that declaration.
 7. Do not infer repeated-key semantics or iterate support from generic search support.

@@ -13,10 +13,10 @@ namespace Ignixa.RepoGuards.Tests;
 /// behaviour, so they all need this.
 /// </summary>
 /// <remarks>
-/// The walk accepts <c>.git</c> as either a directory or a file. In a git worktree or a submodule
-/// it is a file holding a <c>gitdir:</c> pointer, so a directory-only check walks straight past the
-/// worktree and returns the main checkout instead — silently making every guard assert against the
-/// wrong source tree.
+/// The walk accepts <c>.git</c> as either a directory or a file: in a worktree it is a file holding
+/// a <c>gitdir:</c> pointer. Because this repo nests worktrees under <c>.claude/worktrees/</c>, a
+/// directory-only check would walk past the worktree root and reach the main checkout's real
+/// <c>.git</c> directory, silently asserting every guard against the wrong source tree.
 /// </remarks>
 internal static class RepoRoot
 {
