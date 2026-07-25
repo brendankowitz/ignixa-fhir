@@ -76,7 +76,7 @@ public static class StreamingBundleSerializer
         {
             if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                writer.UnderlyingWriter.Reset();
+                DiscardTierOneBuffer(writer);
                 throw;
             }
 
@@ -87,7 +87,7 @@ public static class StreamingBundleSerializer
         {
             if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                writer.UnderlyingWriter.Reset();
+                DiscardTierOneBuffer(writer);
                 throw;
             }
 
@@ -154,6 +154,21 @@ public static class StreamingBundleSerializer
         writer.WriteEndArray();
         writer.WriteEndObject();
         await writer.FlushAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Tier 1: discards everything the main writer has buffered and re-points it at
+    /// <see cref="Stream.Null"/> before the caller rethrows.
+    /// Retargeting is load-bearing, not tidiness: <see cref="Utf8JsonWriter"/> disposal flushes its
+    /// destination stream unconditionally - even with zero bytes pending - and an empty flush on
+    /// <c>Response.Body</c> starts the response in Kestrel. Since disposal runs during the unwind,
+    /// before the exception reaches FhirExceptionMiddleware, a plain <c>Reset()</c> would commit a
+    /// headers-only HTTP 200 and the middleware's <c>HasStarted</c> guard would then decline to
+    /// write the real status-coded error.
+    /// </summary>
+    private static void DiscardTierOneBuffer(FhirJsonWriter writer)
+    {
+        writer.UnderlyingWriter.Reset(Stream.Null);
     }
 
     /// <summary>
@@ -290,7 +305,7 @@ public static class StreamingBundleSerializer
         {
             if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                writer.UnderlyingWriter.Reset();
+                DiscardTierOneBuffer(writer);
                 throw;
             }
 
@@ -301,7 +316,7 @@ public static class StreamingBundleSerializer
         {
             if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                writer.UnderlyingWriter.Reset();
+                DiscardTierOneBuffer(writer);
                 throw;
             }
 
@@ -511,7 +526,7 @@ public static class StreamingBundleSerializer
         {
             if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                writer.UnderlyingWriter.Reset();
+                DiscardTierOneBuffer(writer);
                 throw;
             }
 
@@ -522,7 +537,7 @@ public static class StreamingBundleSerializer
         {
             if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                writer.UnderlyingWriter.Reset();
+                DiscardTierOneBuffer(writer);
                 throw;
             }
 

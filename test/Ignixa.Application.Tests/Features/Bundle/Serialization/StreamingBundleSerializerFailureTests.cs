@@ -371,6 +371,95 @@ public class StreamingBundleSerializerFailureTests
         entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
     }
 
+    [Fact]
+    public async Task GivenATierOneFailure_WhenSerializingWithPagination_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange -- asserting on bytes is not enough. Utf8JsonWriter disposal flushes its
+        // destination unconditionally, and a zero-byte flush on Response.Body starts a Kestrel
+        // response (headers sent, status 200), which defeats tier 1 without writing a single byte.
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new InvalidOperationException("boom")),
+            NewOptions(), "http://x", "");
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenATierOneCancellation_WhenSerializingWithPagination_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, ThrowAfterAsync(2, new OperationCanceledException()),
+            NewOptions(), "http://x", "");
+
+        // Assert
+        await act.ShouldThrowAsync<OperationCanceledException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenATierOneFailure_WhenSerializingSimpleAsync_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange -- SerializeAsync flushes per entry, so tier 1 requires a throw before the first.
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, ThrowAfterAsync(0, new InvalidOperationException("boom")));
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenATierOneFailure_WhenSerializingHistory_ThenTheOutputStreamIsNeverFlushed()
+    {
+        // Arrange -- SerializeHistoryAsync also flushes per entry.
+        var stream = new FlushRecordingStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, ThrowAfterAsync(0, new InvalidOperationException("boom")));
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        stream.FlushCount.ShouldBe(0);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Counts flushes reaching the output stream. A flush is the event that starts an HTTP response,
+    /// so it is the observable a tier-1 assertion must key on - byte counts stay at zero either way.
+    /// </summary>
+    private sealed class FlushRecordingStream : MemoryStream
+    {
+        public int FlushCount { get; private set; }
+
+        public override void Flush()
+        {
+            FlushCount++;
+            base.Flush();
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            FlushCount++;
+            return base.FlushAsync(cancellationToken);
+        }
+    }
+
     private static SearchOptions NewOptions() => new() { MaxItemCount = 10 };
 
     private static SearchOptions IncludesPendingOptions() => new()
