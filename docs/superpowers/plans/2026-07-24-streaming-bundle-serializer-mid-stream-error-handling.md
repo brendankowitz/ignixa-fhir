@@ -362,7 +362,7 @@ public async Task GivenWarningIssuesAndATierTwoFailure_WhenSerializing_ThenBothO
     await act.ShouldThrowAsync<InvalidOperationException>();
     var fullUrls = JsonDocument.Parse(stream.ToArray()).RootElement.GetProperty("entry")
         .EnumerateArray()
-        .Where(e => e.TryGetProperty("fullUrl", out var f) && f.GetString()!.StartsWith("urn:uuid:"))
+        .Where(e => e.TryGetProperty("fullUrl", out var f) && f.GetString()!.StartsWith("urn:uuid:", StringComparison.Ordinal))
         .Select(e => e.GetProperty("fullUrl").GetString())
         .ToList();
     fullUrls.ShouldBe(["urn:uuid:00000000-0000-0000-0000-0000000000d0", "urn:uuid:00000000-0000-0000-0000-0000000000e0"]);
