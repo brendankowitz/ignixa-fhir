@@ -23,8 +23,9 @@ public static class DivergenceBaseline
 
     /// <summary>
     /// Captured queries where the compiler applies a filter the shipping engine does not. Guarded
-    /// because a query that loses its extra filter flips from CompilerDoesMore to Divergent, which
-    /// lowers that count — the same invisible-flip blind spot as <see cref="DivergingQueries"/>.
+    /// because a query that also starts omitting a required legacy filter flips from CompilerDoesMore
+    /// to Divergent, which lowers that count — the same invisible-flip blind spot as
+    /// <see cref="DivergingQueries"/>.
     /// </summary>
     public const int QueriesApplyingAnExtraFilter = 14;
 }

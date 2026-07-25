@@ -104,9 +104,9 @@ public class LegacyCorpusDifferentialTests
         var results = await RunAsync();
         var doesMore = results.Count(r => r.Verdict == ShapeVerdict.CompilerDoesMore);
 
-        // Lower this as extra filters are justified or removed. Never raise it: a query that loses
-        // its extra filter flips from CompilerDoesMore to Divergent, so this ceiling catches that
-        // flip just as DivergingQueries catches the symmetric one.
+        // Lower this as extra filters are justified or removed. Never raise it: a query that also
+        // starts omitting a required legacy filter flips from CompilerDoesMore to Divergent, so this
+        // ceiling catches that flip just as DivergingQueries catches the symmetric one.
         doesMore.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesApplyingAnExtraFilter);
     }
 
