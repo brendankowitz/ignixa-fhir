@@ -14,7 +14,8 @@
 
 - **Build must be 0 warnings, 0 errors** (`dotnet build All.sln`). Warnings are errors in this repo.
 - **Environment:** unset `Platform`, `__DOTNET_PREFERRED_BITNESS`, `__DOTNET_ADD_32BIT` before any `dotnet` command (known net10.0 CS8034 workaround in this repo).
-- **Two pre-existing unrelated failures** in `Ignixa.SqlOnFhir.Tests` (submodule) are expected and are not caused by this work. Everything else must stay green.
+- **Targeting:** `Ignixa.Application` and `Ignixa.Application.Tests` are **net10.0 only**. Only `src/Core/**` multi-targets net9.0/net10.0 (ADR 2607, enforced by `RuntimeMultiTargetingGuardTests`). Do not expect or chase two-TFM results for the Application projects; Tasks 1-7 all live there.
+- **Test baseline — do not chase these.** A bare `dotnet test All.sln` exits nonzero in this environment for reasons unrelated to this work, all confirmed environmental: `Ignixa.SqlOnFhir.Tests` (uninitialized submodule content), `RepoGuards.Tests` (missing conformance suites directory), `Ignixa.DataLayer.SqlServer.IntegrationTests` and `Ignixa.SchemaUpgrade.Cli.Tests` (require `TEST_SQL_CONNECTION_STRING`), `Ignixa.Api.E2ETests` (requires a live environment), and an occasional `Validation.Tests` file-lock race between parallel TFM runs. **The signal that matters for Tasks 1-7 is `Ignixa.Application.Tests` green**, plus `Ignixa.Api.Tests` for Tasks 8-9. Verify any *new* failure is genuinely yours by reading its actual error text before assuming.
 - **Async parameters are named `cancellationToken`**, never `ct` (CLAUDE.md; CA1725 is enforced).
 - **No inline comments** unless explaining a non-obvious invariant (CLAUDE.md).
 - **One type per file.** New public types get their own file.
