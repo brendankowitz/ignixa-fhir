@@ -108,11 +108,6 @@ public static class Lower
             ? context.LowerResourceSource(single)
             : context.LowerMultiTypeResourceSource(resourceTypes ?? []);
 
-    /// <summary>Returns the target resource type, or throws if it is null where one is required.</summary>
-    private static string RequireResourceType(string? targetResourceType)
-        => targetResourceType ?? throw new NotSupportedException(
-            "targetResourceType is required unless the top-level expression is a compartment search with no single target resource type.");
-
     /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).</summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
     {
