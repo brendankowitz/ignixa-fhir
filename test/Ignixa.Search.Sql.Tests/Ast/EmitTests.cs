@@ -1290,4 +1290,65 @@ public class EmitTests
         emitted.Sql.ShouldNotContain("rsp.SearchParamId");
         emitted.Sql.ShouldNotContain("rsp.ResourceTypeId =");
     }
+
+    [Fact]
+    public void GivenAPlanThatIncludesHistory_WhenEmitted_ThenNoIsHistoryFilterIsApplied()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("IsHistory = 0");
+        sql.ShouldContain("IsDeleted = 0");
+    }
+
+    [Fact]
+    public void GivenAPlanWithDefaultVisibility_WhenEmitted_ThenBothCurrentRowFiltersAreApplied()
+    {
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("IsHistory = 0");
+        sql.ShouldContain("IsDeleted = 0");
+    }
+
+    [Fact]
+    public void GivenAForwardChainJoinWithFullyRelaxedVisibility_WhenEmitted_ThenNoRowFiltersAreInTheResourceJoin()
+    {
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
+                new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
+            ],
+            new CteRef(1),
+            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("IsHistory = 0");
+        sql.ShouldNotContain("IsDeleted = 0");
+        // JOIN to Resource and the inner match must still be present
+        sql.ShouldContain("INNER JOIN dbo.Resource r");
+        sql.ShouldContain("INNER JOIN cte0 m");
+    }
+
+    [Fact]
+    public void GivenANotReferencedSourceWithFullyRelaxedVisibility_WhenEmitted_ThenNoRowFiltersAreInTheWhereClause()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.NotReferencedSource(103, 96, 969)],
+            new CteRef(0),
+            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("IsHistory = 0");
+        sql.ShouldNotContain("IsDeleted = 0");
+        sql.ShouldContain("FROM dbo.Resource r");
+        sql.ShouldContain("r.ResourceTypeId = @p0");
+    }
 }

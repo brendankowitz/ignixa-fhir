@@ -105,6 +105,31 @@ public class SearchOptions
     /// Used by the $includes operation to fetch additional included resources.
     /// </summary>
     public string IncludesContinuationToken { get; set; }
+    /// <summary>
+    /// Gets or sets which resource versions the search may return. Defaults to <see cref="ResourceVersionTypes.Latest"/>,
+    /// the only shape an ordinary search wants; _history, $export, and reindex widen it.
+    /// </summary>
+    public ResourceVersionTypes ResourceVersionTypes { get; set; } = ResourceVersionTypes.Latest;
+}
+
+/// <summary>
+/// Which versions of a resource a search may return. A flags enum because _history returns latest and
+/// history together, and $export may additionally need soft-deleted rows.
+/// </summary>
+[Flags]
+public enum ResourceVersionTypes
+{
+    /// <summary>No version selected. Not a valid search input; present so the default is explicit.</summary>
+    None = 0,
+
+    /// <summary>The current version of each resource.</summary>
+    Latest = 1,
+
+    /// <summary>Superseded versions.</summary>
+    History = 2,
+
+    /// <summary>Soft-deleted rows.</summary>
+    SoftDeleted = 4,
 }
 
 /// <summary>

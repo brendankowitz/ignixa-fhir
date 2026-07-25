@@ -23,7 +23,11 @@ public sealed record QueryPlan(
     IReadOnlyList<IncludeStage>? Includes = null,
     SortSpec? Sort = null,
     PageSpec? Page = null,
-    bool CountOnly = false)
+    bool CountOnly = false,
+    ResourceVisibility? Visibility = null)
 {
+    /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
+    public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;
+
     public string Explain() => PlanExplainer.Print(this);
 }

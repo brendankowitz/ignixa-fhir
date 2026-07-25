@@ -24,10 +24,11 @@ public static class SqlBuilder
         var parameters = new List<EmittedSqlParameter>();
         var writer = new SqlTextWriter(options?.IncludeTextRanges ?? false);
         var cteBlocks = new List<string>();
+        var visibility = plan.EffectiveVisibility;
 
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
-            cteBlocks.Add($"{CteLabel(i)} AS (\n{EmitCte(plan.Ctes[i], parameters)}\n)");
+            cteBlocks.Add($"{CteLabel(i)} AS (\n{EmitCte(plan.Ctes[i], parameters, visibility)}\n)");
         }
 
         if (plan.CountOnly)
@@ -140,7 +141,7 @@ public static class SqlBuilder
         for (var i = 0; i < includes.Count; i++)
         {
             var stage = includes[i];
-            incBlocks.Add(EmitIncludeStage(stage));
+            incBlocks.Add(EmitIncludeStage(stage, visibility));
             incLimBlocks.Add(
                 $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
                 $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
@@ -247,30 +248,50 @@ public static class SqlBuilder
     }
 
     /// <summary>Renders one CTE definition's inner SELECT by its node kind.</summary>
-    private static string EmitCte(CteDefinition cte, List<EmittedSqlParameter> parameters) => cte switch
+    private static string EmitCte(CteDefinition cte, List<EmittedSqlParameter> parameters, ResourceVisibility visibility) => cte switch
     {
-        CteDefinition.ParamSource p => EmitParamSource(p, parameters),
+        CteDefinition.ParamSource p => EmitParamSource(p, parameters, visibility),
         CteDefinition.Intersect x =>
             $"    SELECT {CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1\n" +
             $"    FROM {CteLabel(x.Left.Index)}\n" +
             $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1",
         CteDefinition.Union u =>
             string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM {CteLabel(r.Index)}")),
-        CteDefinition.ResourceSource rs => EmitResourceSource(rs, parameters),
+        CteDefinition.ResourceSource rs => EmitResourceSource(rs, parameters, visibility),
         CteDefinition.Except ex =>
             $"    SELECT {CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1\n" +
             $"    FROM {CteLabel(ex.Left.Index)}\n" +
             $"    WHERE NOT EXISTS (\n" +
             $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
             $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
-        CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters),
+        CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters, visibility),
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
-        CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters),
+        CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters, visibility),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
+    /// <summary>
+    /// The current-row filter for a dbo.Resource scan under a given visibility, already prefixed with
+    /// " AND " and the caller's column qualifier, or empty when both relaxations are on.
+    /// </summary>
+    private static string ResourceRowFilter(ResourceVisibility visibility, string qualifier)
+    {
+        var clauses = new List<string>(2);
+        if (!visibility.IncludeHistory)
+        {
+            clauses.Add($"{qualifier}IsHistory = 0");
+        }
+
+        if (!visibility.IncludeDeleted)
+        {
+            clauses.Add($"{qualifier}IsDeleted = 0");
+        }
+
+        return clauses.Count == 0 ? string.Empty : " AND " + string.Join(" AND ", clauses);
+    }
+
     /// <summary>Renders a ParamSource: distinct (type, surrogate id) rows from one search-param table filtered by SearchParamId and its optional predicate.</summary>
-    private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters)
+    private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
         var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
 
@@ -278,7 +299,9 @@ public static class SqlBuilder
         // hydration. dbo.TokenText carries its own IsHistory column and does keep superseded rows, so a
         // query against it has to exclude them itself. Driven off the catalog rather than the table name:
         // the filter is required by any table that has the column, and the catalog is generated from DDL.
-        var historyClause = p.Table.Columns.Any(c => c.Name == "IsHistory") ? " AND IsHistory = 0" : string.Empty;
+        var historyClause = !visibility.IncludeHistory && p.Table.Columns.Any(c => c.Name == "IsHistory")
+            ? " AND IsHistory = 0"
+            : string.Empty;
 
         return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
@@ -286,7 +309,7 @@ public static class SqlBuilder
     }
 
     /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>
-    private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters)
+    private static string EmitChainJoin(CteDefinition.ChainJoin cj, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
         // Deliberately hand-rolled string interpolation, not Predicate.Equal/Predicate.Or routed
         // through EmitPredicate -- Predicate.Equal's Value is a SqlParameterRef, and EmitPredicate's
@@ -302,6 +325,9 @@ public static class SqlBuilder
             outputFilter = $"({outputFilter})";
         }
 
+        var rowFilter = ResourceRowFilter(visibility, "r.");
+        var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
+
         return cj.Direction switch
         {
             ChainDirection.Forward =>
@@ -310,7 +336,7 @@ public static class SqlBuilder
                 $"    INNER JOIN dbo.Resource r\n" +
                 $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                 $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
-                $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+                rowFilterLine +
                 $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
                 $"        ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
                 $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
@@ -325,7 +351,7 @@ public static class SqlBuilder
                 $"    INNER JOIN dbo.Resource r\n" +
                 $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                 $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
-                $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+                rowFilterLine +
                 $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
                 $"      AND rsp.ResourceTypeId = {cj.InnerResourceTypeId}\n" +
                 $"      AND {outputFilter}\n" +
@@ -517,7 +543,7 @@ public static class SqlBuilder
     /// the target type is bound (as ResourceSource binds its own); the inner ids are schema surrogates,
     /// inlined like every other schema id.
     /// </summary>
-    private static string EmitNotReferencedSource(CteDefinition.NotReferencedSource nr, List<EmittedSqlParameter> parameters)
+    private static string EmitNotReferencedSource(CteDefinition.NotReferencedSource nr, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
         var innerFilters = string.Empty;
         if (nr.SourceResourceTypeId is { } sourceTypeId)
@@ -532,7 +558,7 @@ public static class SqlBuilder
 
         return $"    SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
                $"    FROM dbo.Resource r\n" +
-               $"    WHERE r.ResourceTypeId = {EmitParam(new SqlParameterRef(nr.TargetResourceTypeId), parameters)} AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+               $"    WHERE r.ResourceTypeId = {EmitParam(new SqlParameterRef(nr.TargetResourceTypeId), parameters)}{ResourceRowFilter(visibility, "r.")}\n" +
                $"      AND NOT EXISTS (\n" +
                $"        SELECT 1\n" +
                $"        FROM dbo.ReferenceSearchParam rsp\n" +
@@ -541,16 +567,16 @@ public static class SqlBuilder
     }
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
-    private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters)
+    private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
         var predicateClause = rs.Predicate is null ? string.Empty : $" AND {EmitPredicate(rs.Predicate, parameters)}";
         return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM dbo.Resource\n" +
-               $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)} AND IsHistory = 0 AND IsDeleted = 0{predicateClause}";
+               $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)}{ResourceRowFilter(visibility, string.Empty)}{predicateClause}";
     }
 
     /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>
-    private static string EmitIncludeStage(IncludeStage stage)
+    private static string EmitIncludeStage(IncludeStage stage, ResourceVisibility visibility)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, seedCorrelationAlias) = stage.Direction switch
         {
@@ -578,12 +604,15 @@ public static class SqlBuilder
         whereClauses.Add("rsp.BaseUri IS NULL");
         whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias));
 
+        var rowFilter = ResourceRowFilter(visibility, "r.");
+        var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
+
         return $"    SELECT DISTINCT TOP ({stage.Limit + 1}) {selectColumns}\n" +
                $"    FROM dbo.ReferenceSearchParam rsp\n" +
                $"    INNER JOIN dbo.Resource r\n" +
                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
-               $"       AND r.IsHistory = 0 AND r.IsDeleted = 0\n" +
+               rowFilterLine +
                $"    WHERE {string.Join("\n      AND ", whereClauses)}\n" +
                $"    ORDER BY T1 ASC, Sid1 ASC";
     }

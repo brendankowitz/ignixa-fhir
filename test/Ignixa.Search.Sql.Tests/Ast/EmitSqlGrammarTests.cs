@@ -152,4 +152,92 @@ public class EmitSqlGrammarTests
 
         SqlGrammar.Count<LikePredicate>(fragment).ShouldBe(2);
     }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAResourceSourcePlanWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAForwardChainJoinWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(
+                    SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202,
+                    new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
+                new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
+            ],
+            new CteRef(1),
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenANotReferencedSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [new CteDefinition.NotReferencedSource(103, 96, 969)],
+            new CteRef(0),
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAnIncludeStageWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
 }
