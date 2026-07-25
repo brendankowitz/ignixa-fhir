@@ -536,16 +536,47 @@ public static class StreamingBundleSerializer
             return;
         }
 
+        var linksWithUrl = links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).ToList();
+        if (linksWithUrl.Count == 0)
+        {
+            return;
+        }
+
         writer.WriteStartArray("link");
 
-        foreach (var link in links)
+        foreach (var link in linksWithUrl)
         {
             writer.WriteStartObject();
             writer.WriteString("relation", link.GetRelationRaw() ?? "self");
-            writer.WriteString("url", link.Url ?? string.Empty);
+            writer.WriteString("url", link.Url!);
             writer.WriteEndObject();
         }
 
+        writer.WriteEndArray();
+    }
+
+    /// <summary>
+    /// Writes a string array property, skipping null, empty, or whitespace-only values.
+    /// Skips emitting the array entirely if nothing survives the filter.
+    /// </summary>
+    private static void WriteNonEmptyStringArray(FhirJsonWriter writer, string propertyName, IReadOnlyList<string>? values)
+    {
+        if (values == null || values.Count == 0)
+        {
+            return;
+        }
+
+        var nonEmptyValues = values.Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+        if (nonEmptyValues.Count == 0)
+        {
+            return;
+        }
+
+        writer.WriteStartArray(propertyName);
+        foreach (var value in nonEmptyValues)
+        {
+            writer.WriteStringValue(value);
+        }
         writer.WriteEndArray();
     }
 
@@ -673,25 +704,8 @@ public static class StreamingBundleSerializer
                 writer.WriteString("diagnostics", issue.Diagnostics);
             }
 
-            if (issue.Location != null && issue.Location.Count > 0)
-            {
-                writer.WriteStartArray("location");
-                foreach (var location in issue.Location)
-                {
-                    writer.WriteStringValue(location);
-                }
-                writer.WriteEndArray();
-            }
-
-            if (issue.Expression != null && issue.Expression.Count > 0)
-            {
-                writer.WriteStartArray("expression");
-                foreach (var expr in issue.Expression)
-                {
-                    writer.WriteStringValue(expr);
-                }
-                writer.WriteEndArray();
-            }
+            WriteNonEmptyStringArray(writer, "location", issue.Location);
+            WriteNonEmptyStringArray(writer, "expression", issue.Expression);
 
             writer.WriteEndObject();
         }
@@ -725,7 +739,7 @@ public static class StreamingBundleSerializer
         writer.WriteStartObject();
 
         // Full URL: Use a synthetic URL for the outcome entry
-        writer.WriteString("fullUrl", "urn:uuid:operation-outcome");
+        writer.WriteString("fullUrl", "urn:uuid:00000000-0000-0000-0000-0000000000d0");
 
         // Resource: OperationOutcome
         writer.WriteStartObject("resource");
@@ -744,25 +758,8 @@ public static class StreamingBundleSerializer
                 writer.WriteString("diagnostics", issue.Diagnostics);
             }
 
-            if (issue.Location != null && issue.Location.Count > 0)
-            {
-                writer.WriteStartArray("location");
-                foreach (var location in issue.Location)
-                {
-                    writer.WriteStringValue(location);
-                }
-                writer.WriteEndArray();
-            }
-
-            if (issue.Expression != null && issue.Expression.Count > 0)
-            {
-                writer.WriteStartArray("expression");
-                foreach (var expr in issue.Expression)
-                {
-                    writer.WriteStringValue(expr);
-                }
-                writer.WriteEndArray();
-            }
+            WriteNonEmptyStringArray(writer, "location", issue.Location);
+            WriteNonEmptyStringArray(writer, "expression", issue.Expression);
 
             writer.WriteEndObject();
         }
