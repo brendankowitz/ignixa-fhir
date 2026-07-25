@@ -31,7 +31,8 @@ public sealed record QueryPlan(
     PageSpec? Page = null,
     bool CountOnly = false,
     ResourceVisibility? Visibility = null,
-    ProjectionSpec? Projection = null)
+    ProjectionSpec? Projection = null,
+    SurrogateIdRange? SurrogateRange = null)
 {
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;

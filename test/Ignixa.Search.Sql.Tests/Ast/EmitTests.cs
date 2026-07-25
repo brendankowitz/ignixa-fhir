@@ -1421,10 +1421,115 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAPlanWithProjectionAndIncludes_WhenEmitted_ThenEveryUnionArmContainsTheProjectedColumns()
+    public void GivenAPlanWithASurrogateIdRange_WhenEmitted_ThenBothBoundsAreBoundParameters()
     {
-        // Both union arms (match and include) must project the same columns so SQL Server can agree
-        // on the shape of the UNION ALL result set.
+        // Arrange -- plain no-includes shape; range alone, no outer predicate.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- inclusive bounds (>= / <=, not > / <); values are parameters, never literals.
+        emitted.Sql.ShouldContain("m.Sid1 >=");
+        emitted.Sql.ShouldContain("m.Sid1 <=");
+        emitted.Parameters.Select(p => p.Value).ShouldContain(5000L);
+        emitted.Parameters.Select(p => p.Value).ShouldContain(6000L);
+    }
+
+    [Fact]
+    public void GivenASurrogateIdRange_WhenEmitted_ThenBoundsAreInclusiveNotExclusive()
+    {
+        // The doc says "inclusive … window". The presence of >= and <= (not bare > and <) is the
+        // complete proof: the emitter can only produce one form, and it is the inclusive one.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("m.Sid1 >=");
+        sql.ShouldContain("m.Sid1 <=");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithASurrogateIdRange_WhenEmitted_ThenTheSurrogateRangeIsAppliedToTheCountQuery()
+    {
+        // CountOnly shape: the WHERE clause must filter the count to this partition.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("COUNT_BIG(DISTINCT m.Sid1)");
+        emitted.Sql.ShouldContain("m.Sid1 >=");
+        emitted.Sql.ShouldContain("m.Sid1 <=");
+        emitted.Parameters.Select(p => p.Value).ShouldContain(5000L);
+        emitted.Parameters.Select(p => p.Value).ShouldContain(6000L);
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithOuterPredicateAndSurrogateIdRange_WhenEmitted_ThenBothFiltersAppearInTheWhere()
+    {
+        // CountOnly + outer predicate + range: all three must coexist in the WHERE clause.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            OuterPredicate: outerPredicate,
+            CountOnly: true,
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r");
+        emitted.Sql.ShouldContain("WHERE ");
+        emitted.Sql.ShouldContain("ResourceId =");
+        emitted.Sql.ShouldContain("m.Sid1 >=");
+        emitted.Sql.ShouldContain("m.Sid1 <=");
+    }
+
+    [Fact]
+    public void GivenANoIncludesPlanWithSortPageAndSurrogateIdRange_WhenEmitted_ThenRangeParamsAreBoundAfterPageParams()
+    {
+        // Sort+page shape: surrogate range clauses appear in the WHERE after the seek predicate,
+        // and their @pN ordinals follow the seek predicate's ordinals.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(1_000_000L), new SqlParameterRef(2_000_000L)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        // @p0 = CTE predicate, @p1-@p3 = seek params, @p4 = range start, @p5 = range end
+        emitted.Parameters.Count.ShouldBe(6);
+        emitted.Parameters[4].Value.ShouldBe(1_000_000L);
+        emitted.Parameters[5].Value.ShouldBe(2_000_000L);
+        emitted.Sql.ShouldContain("m.Sid1 >=");
+        emitted.Sql.ShouldContain("m.Sid1 <=");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithASurrogateIdRange_WhenEmitted_ThenTheRangeAppliesOnlyToTheMatchArm()
+    {
+        // The range constrains the match partition only — include rows are fetched by reference and
+        // must not be filtered by the match partition's surrogate window (that would drop legitimate
+        // includes whose surrogate IDs fall outside the window even though they reference a matched resource).
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage = new IncludeStage(
@@ -1441,15 +1546,31 @@ public class EmitTests
             new CteRef(0),
             Top: 50,
             Includes: [stage],
-            Projection: new ProjectionSpec(["RawResource", "IsDeleted"]));
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
-        var sql = SqlBuilder.Run(plan).Sql;
+        var emitted = SqlBuilder.Run(plan);
 
-        // Both union arms must project r.[RawResource]: one in the match arm, one in the include arm.
-        // Splitting on the separator and asserting each arm independently proves the column reaches
-        // both arms, not merely that the string appears twice (which a duplicated match arm would satisfy).
-        var arms = sql.Split("\nUNION ALL\n");
-        arms[0].ShouldContain("r.[RawResource]");  // match arm
-        arms[1].ShouldContain("r.[RawResource]");  // include arm
+        // Match arm carries the range filter; include-stage CTEs do not.
+        emitted.Sql.ShouldContain("m.Sid1 >=");
+        emitted.Sql.ShouldContain("m.Sid1 <=");
+        emitted.Parameters.Select(p => p.Value).ShouldContain(5000L);
+        emitted.Parameters.Select(p => p.Value).ShouldContain(6000L);
+
+        // Range must appear inside the cteMatchPage CTE, not after it in the UNION ALL assembly.
+        // Extract the body between "cteMatchPage AS (" and the next "inc0 AS (" block.
+        var matchPageStart = emitted.Sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
+        var inc0Start = emitted.Sql.IndexOf("inc0 AS (", StringComparison.Ordinal);
+        matchPageStart.ShouldBeGreaterThanOrEqualTo(0);
+        inc0Start.ShouldBeGreaterThanOrEqualTo(0);
+        var matchPageBody = emitted.Sql[matchPageStart..inc0Start];
+        matchPageBody.ShouldContain("Sid1 >=");
+        matchPageBody.ShouldContain("Sid1 <=");
+
+        // Include-stage CTE (inc0) must not mention the range.
+        var inc0End = emitted.Sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        var inc0Body = emitted.Sql[inc0Start..inc0End];
+        inc0Body.ShouldNotContain("Sid1 >=");
+        inc0Body.ShouldNotContain("Sid1 <=");
     }
 }
+

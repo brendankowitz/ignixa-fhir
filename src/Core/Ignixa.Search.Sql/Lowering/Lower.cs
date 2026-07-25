@@ -33,7 +33,8 @@ public static class Lower
         bool countOnly = false,
         int? top = null,
         DateTimeOffset? approximationReferenceTime = null,
-        ResourceVisibility? visibility = null)
+        ResourceVisibility? visibility = null,
+        SurrogateIdRange? surrogateRange = null)
     {
         var context = new StructuralContext(symbols, approximationReferenceTime);
         CteRef match;
@@ -89,7 +90,7 @@ public static class Lower
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly, visibility),
+            new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly, visibility, SurrogateRange: surrogateRange),
             new PlanProvenance(context.Origins));
     }
 

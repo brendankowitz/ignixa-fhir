@@ -30,6 +30,10 @@ public class EmitSqlGrammarTests
         yield return ["projection + includes", ProjectionWithIncludesPlan()];
         yield return ["projection + sort", ProjectionWithSortPlan()];
         yield return ["projection + paging", ProjectionWithPagingPlan()];
+        yield return ["surrogate range alone", SurrogateRangeAlonePlan()];
+        yield return ["surrogate range + outer predicate", SurrogateRangeWithOuterPredicatePlan()];
+        yield return ["surrogate range + sort + paging", SurrogateRangeWithSortAndPagingPlan()];
+        yield return ["surrogate range + includes", SurrogateRangeWithIncludesPlan()];
     }
 
     [Theory]
@@ -314,6 +318,63 @@ public class EmitSqlGrammarTests
             Sort: sort,
             Page: page,
             Projection: StandardProjection());
+    }
+
+    private static SurrogateIdRange StandardRange()
+        => new(new SqlParameterRef(5000L), new SqlParameterRef(6000L));
+
+    private static QueryPlan SurrogateRangeAlonePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan SurrogateRangeWithOuterPredicatePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan SurrogateRangeWithSortAndPagingPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan SurrogateRangeWithIncludesPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SurrogateRange: StandardRange());
     }
 
     [Fact]

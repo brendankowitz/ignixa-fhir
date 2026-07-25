@@ -38,13 +38,25 @@ public static class SqlBuilder
             writer.Append("\n");
             writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
 
+            var countWhereClauses = new List<string>();
             if (plan.OuterPredicate is not null)
             {
-                var outerPredicateText = EmitPredicate(plan.OuterPredicate, parameters);
-                writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\nWHERE ");
+                writer.Append("\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1");
+                countWhereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+            }
+
+            if (plan.SurrogateRange is { } countRange)
+            {
+                countWhereClauses.Add($"m.Sid1 >= {EmitParam(countRange.Start, parameters)}");
+                countWhereClauses.Add($"m.Sid1 <= {EmitParam(countRange.End, parameters)}");
+            }
+
+            if (countWhereClauses.Count > 0)
+            {
+                writer.Append("\nWHERE ");
                 using (writer.Section(Where, SqlRangeKind.Where))
                 {
-                    writer.Append(outerPredicateText);
+                    WriteAndJoinedClauses(writer, countWhereClauses, null);
                 }
             }
 
@@ -81,6 +93,12 @@ public static class SqlBuilder
             {
                 seekClauseIndex = whereClauses.Count;
                 whereClauses.Add(EmitSeekPredicate(plan.Sort, page, parameters));
+            }
+
+            if (plan.SurrogateRange is { } range)
+            {
+                whereClauses.Add($"m.Sid1 >= {EmitParam(range.Start, parameters)}");
+                whereClauses.Add($"m.Sid1 <= {EmitParam(range.End, parameters)}");
             }
 
             writer.Append(";WITH ");
@@ -137,6 +155,15 @@ public static class SqlBuilder
         {
             matchSeekClauseIndex = matchWhereClauses.Count;
             matchWhereClauses.Add(EmitSeekPredicate(plan.Sort, matchPage, parameters));
+        }
+
+        // The surrogate range constrains the match arm only. Include rows are fetched by reference
+        // from matched resources, not by surrogate id; applying the partition window to them would
+        // silently drop legitimately-included resources that live outside the partition boundary.
+        if (plan.SurrogateRange is { } matchRange)
+        {
+            matchWhereClauses.Add($"m.Sid1 >= {EmitParam(matchRange.Start, parameters)}");
+            matchWhereClauses.Add($"m.Sid1 <= {EmitParam(matchRange.End, parameters)}");
         }
 
         var matchResourceJoin = plan.OuterPredicate is null
