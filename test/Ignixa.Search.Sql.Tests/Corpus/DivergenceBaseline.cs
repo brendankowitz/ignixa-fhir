@@ -12,4 +12,19 @@ public static class DivergenceBaseline
 
     /// <summary>Captured queries where the shipping engine applies a filter the compiler does not.</summary>
     public const int QueriesOmittingAFilter = 46;
+
+    /// <summary>
+    /// Captured queries where each engine applies something the other does not. Guarded alongside
+    /// <see cref="QueriesOmittingAFilter"/> because a query that gains a spurious filter flips from
+    /// CompilerDoesLess to Divergent, which lowers that count — so without this ceiling the pair of
+    /// guards would pass on exactly the regression they exist to catch.
+    /// </summary>
+    public const int DivergingQueries = 56;
+
+    /// <summary>
+    /// Captured queries where the compiler applies a filter the shipping engine does not. Guarded
+    /// because a query that loses its extra filter flips from CompilerDoesMore to Divergent, which
+    /// lowers that count — the same invisible-flip blind spot as <see cref="DivergingQueries"/>.
+    /// </summary>
+    public const int QueriesApplyingAnExtraFilter = 14;
 }

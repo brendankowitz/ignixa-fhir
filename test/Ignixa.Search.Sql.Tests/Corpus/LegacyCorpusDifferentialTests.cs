@@ -86,6 +86,30 @@ public class LegacyCorpusDifferentialTests
         doesLess.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesOmittingAFilter);
     }
 
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoMoreQueriesDivergeFromTheShippingEngineThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var diverged = results.Count(r => r.Verdict == ShapeVerdict.Divergent);
+
+        // Lower this as divergences are closed. Never raise it: a query that gains a spurious filter
+        // flips from CompilerDoesLess to Divergent, so this ceiling is what stops that flip from
+        // reading as an improvement.
+        diverged.ShouldBeLessThanOrEqualTo(DivergenceBaseline.DivergingQueries);
+    }
+
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoMoreQueriesApplyAnExtraFilterThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var doesMore = results.Count(r => r.Verdict == ShapeVerdict.CompilerDoesMore);
+
+        // Lower this as extra filters are justified or removed. Never raise it: a query that loses
+        // its extra filter flips from CompilerDoesMore to Divergent, so this ceiling catches that
+        // flip just as DivergingQueries catches the symmetric one.
+        doesMore.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesApplyingAnExtraFilter);
+    }
+
     private static async Task<IReadOnlyList<DifferentialResult>> RunAsync()
     {
         var results = new List<DifferentialResult>();
