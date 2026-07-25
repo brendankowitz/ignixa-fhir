@@ -38,6 +38,39 @@ internal static class SearchTraceFixtures
             "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver);
     }
 
+    /// <summary>Observation?status=final compiled with an AccessConstraint("Observation", status eq amended)
+    /// set on the options. The constraint reuses the status parameter the query already resolves, so it lowers
+    /// through SearchCompiler's own Resolve stage; wiring it into Lower.Run intersects the match set with the
+    /// constraint, which is what proves <see cref="SearchOptions.AccessConstraints"/> is forwarded rather than
+    /// silently ignored. Without the forward the match is a bare ParamSource and no Intersect appears.</summary>
+    public static Task<SearchTrace> TraceObservationStatusWithAccessConstraintAsync()
+    {
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(statusParam, predicate);
+
+        // The constraint reuses statusParam (a different code, "amended") so it resolves through the query's
+        // own symbols yet still adds a distinct ParamSource, guaranteeing a real Intersect when wired.
+        var constraintPredicate = new SearchParameterExpression(
+            statusParam,
+            new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "amended", text: null)));
+        var constraint = new AccessConstraint("Observation", constraintPredicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Observation", Expression = expression, AccessConstraints = [constraint] },
+            [new ParameterTrace(0, "status", null, "final", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 220;
+        resolver.ResourceTypeIds["Observation"] = 104;
+
+        return SearchCompiler.CompileAsync(
+            "Observation", [new QueryParameter("status", "final")], builder, resolver);
+    }
+
     public static Task<SearchTrace> TracePatientNameSmithWithTimeProviderAsync(TimeProvider? timeProvider)
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));

@@ -110,6 +110,12 @@ public class SearchOptions
     /// Gets or sets which resource versions the search may return. Defaults to <see cref="ResourceVersionTypes.Latest"/>,
     /// the only shape an ordinary search wants; _history, $export, and reindex widen it.
     /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="AccessConstraints"/>, this property is deliberately not forwarded into the SQL
+    /// compiler: it is read by the consuming data layer, which maps it onto its own
+    /// <c>ResourceVisibility</c> (see the <see cref="ResourceVersionTypes"/> remarks). Its absence from the
+    /// compile path is by design, not the fail-open-by-omission defect a missing forwarder would be.
+    /// </remarks>
     public ResourceVersionTypes ResourceVersionTypes { get; set; } = ResourceVersionTypes.Latest;
 
     /// <summary>

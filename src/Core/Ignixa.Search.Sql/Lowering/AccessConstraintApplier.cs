@@ -20,6 +20,20 @@ namespace Ignixa.Search.Sql.Lowering;
 /// include/:iterate stage, and each chain target — not only the top-level match. Applying a constraint
 /// at the match set alone would let an _include or a chain reach a resource the caller may not see, which
 /// is the failure mode an expression-rewriting approach is prone to and the reason this type exists.
+/// <para>
+/// Adding a new row-producing stage? Pick the enforcement method by what the stage produces — choosing
+/// wrong is an authorization bypass, so this contract is explicit:
+/// <list type="bullet">
+/// <item><description>Rows of one statically known type (a single-type match, a chain target) — call
+/// <see cref="Apply"/>: it intersects directly with that type's constraint.</description></item>
+/// <item><description>A set spanning several types, or an unknown mix (a multi-<c>_type</c> or wildcard
+/// compartment match) — call <see cref="ApplyToTypes"/>: it narrows each constrained type without
+/// dropping the others.</description></item>
+/// <item><description>A stage filtered post-hoc rather than intersected in place (an
+/// include/:iterate stage the emitter guards with an EXISTS) — call <see cref="BindIncludeStage"/>: it
+/// records per-stage bindings and fails closed on a wildcard whose output types are unknown.</description></item>
+/// </list>
+/// </para>
 /// </remarks>
 internal sealed class AccessConstraintApplier
 {
