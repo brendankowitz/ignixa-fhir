@@ -97,9 +97,11 @@ public class AccessConstraintTests
             sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
-        // Assert -- 220 appears only if the include stage carries the constraint; the match set is Patient
-        // and never mentions status.
+        // Assert -- the constraint CTE (220) being emitted is not enough: it must be *joined to* by the
+        // include stage's guard. Assert the wiring, not the presence, so stubbing EmitConstraintGuard to
+        // "1 = 1" (which leaves the CTE in place but joins to nothing) fails here.
         sql.ShouldContain("SearchParamId = 220");
+        AssertReverseIncludeStageGuarded(plan, sql, ObservationTypeId);
     }
 
     [Fact]
@@ -141,10 +143,11 @@ public class AccessConstraintTests
             sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
-        // Assert
+        // Assert -- an :iterate stage is the same IncludeStage record, so it must carry the same guard.
         plan.Includes.ShouldNotBeNull();
         plan.Includes![0].Iterate.ShouldBeTrue();
         sql.ShouldContain("SearchParamId = 220");
+        AssertReverseIncludeStageGuarded(plan, sql, ObservationTypeId);
     }
 
     [Fact]
@@ -163,10 +166,11 @@ public class AccessConstraintTests
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- the wildcard stage carries the Observation constraint even though its output types are
-        // not enumerable.
+        // not enumerable, and the emitted guard actually joins to the constraint CTE.
         plan.Includes.ShouldNotBeNull();
         plan.Includes![0].OutputTypeIds.ShouldBeNull();
         sql.ShouldContain("SearchParamId = 220");
+        AssertReverseIncludeStageGuarded(plan, sql, ObservationTypeId);
     }
 
     [Fact]
@@ -183,7 +187,27 @@ public class AccessConstraintTests
             resourceTypes: ["Observation", "Patient"]).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
-        // Assert -- the constraint is present, and the plan remains valid T-SQL.
+        // Assert -- assert the structural wiring on the lowered CTE graph rather than the presence of the
+        // constraint CTE in the SQL text: the latter passes even when nothing narrows the constrained type.
+        // The match root must be the subtract-then-union shape ApplyToTypes builds -- (base MINUS the
+        // constrained type) UNION (base INTERSECT the constraint) -- so that neutralising ApplyToTypes
+        // (leaving the root as the bare multi-type scan) fails here. AST over SQL because the CTE numbers
+        // shift but the relationship does not.
+        var ctes = plan.Ctes;
+        var root = ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        root.Parts.Count.ShouldBe(2);
+
+        var subtract = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Except>().ShouldHaveSingleItem();
+        var admitted = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Intersect>().ShouldHaveSingleItem();
+
+        // The Except subtracts exactly the constrained type (Observation) from the base set...
+        ctes[subtract.Right.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe(ObservationTypeId);
+        // ...and the Intersect re-admits only the Observation rows the constraint's own predicate (220) allows.
+        ctes[admitted.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe(StatusParamId);
+        // Both sides operate over the one shared base scan, so the other types pass through untouched.
+        subtract.Left.ShouldBe(admitted.Left);
+        ctes[subtract.Left.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+
         sql.ShouldContain("SearchParamId = 220");
         SqlGrammar.AssertValid(sql);
     }
@@ -236,6 +260,50 @@ public class AccessConstraintTests
 
         // Assert -- Observation constraint enforced; no throw despite the unresolved Device parameter.
         sql.ShouldContain("SearchParamId = 220");
+    }
+
+    [Fact]
+    public void GivenAWildcardIncludeWithAnUnresolvableConstraintType_WhenLowered_ThenItRefusesToCompileRatherThanFailOpen()
+    {
+        // Arrange -- a wildcard _revinclude=* (OutputTypeIds null) plus a constraint whose resource type is
+        // absent from the symbol table, so its type id can never be resolved. A wildcard can produce any
+        // type, so the compiler cannot prove the constrained type will not appear, yet it has no type id to
+        // emit a guard for. The only fail-closed answer is to refuse to compile. The existing wildcard test
+        // uses a *resolvable* Observation constraint and so only exercises the conservative-guard branch;
+        // this covers the AccessConstraintApplier refusal path (BindIncludeStage) that had no test.
+        var f = Arrange();
+        var deviceParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Device-status"));
+        var unresolvable = new AccessConstraint("Device", TokenPredicate(deviceParam, "active"));
+        var wildcard = new IncludeExpression(["*"], referenceSearchParameter: null, "*", "Patient", referencedTypes: ["Device"], wildCard: true, reversed: true, iterate: false);
+
+        // Act + Assert -- Device is unresolved and the wildcard output types are unknown: throw, do not
+        // silently drop the constraint.
+        var ex = Should.Throw<InvalidOperationException>(() => Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
+            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [unresolvable]));
+        ex.Message.ShouldContain("Device");
+        ex.Message.ShouldContain("wildcard");
+    }
+
+    /// <summary>
+    /// Asserts the reverse include/:iterate/wildcard stage at index 0 both carries the constraint binding
+    /// (the lowering wired it) and emits a guard that joins to that binding's CTE (the emitter honoured it).
+    /// Reverse stages produce their rows in the <c>rsp</c> columns. Both halves come from the plan binding,
+    /// so stubbing <c>EmitConstraintGuard</c> to <c>"1 = 1"</c> — which erases the discriminator and the
+    /// EXISTS while leaving the CTE in place — fails both assertions.
+    /// </summary>
+    private static void AssertReverseIncludeStageGuarded(QueryPlan plan, string sql, short expectedTypeId)
+    {
+        plan.Includes.ShouldNotBeNull();
+        var binding = plan.Includes![0].Constraints.ShouldNotBeNull().ShouldHaveSingleItem();
+        binding.ConstraintTypeId.ShouldBe(expectedTypeId);
+
+        // Half 1 -- the type discriminator that keeps unconstrained types passing through.
+        sql.ShouldContain($"rsp.ResourceTypeId <> {binding.ConstraintTypeId}");
+        // Half 2 -- the EXISTS correlating a constrained row to the constraint CTE the binding points at.
+        sql.ShouldContain(
+            $"EXISTS (SELECT 1 FROM {SqlLabels.CteLabel(binding.ConstraintCteIndex)} ac " +
+            "WHERE ac.T1 = rsp.ResourceTypeId AND ac.Sid1 = rsp.ResourceSurrogateId)");
     }
 
     private sealed record QueryPlanSql(string Sql);
