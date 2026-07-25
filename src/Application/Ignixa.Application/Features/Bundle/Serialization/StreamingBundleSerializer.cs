@@ -51,44 +51,109 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNullOrEmpty(bundleType, nameof(bundleType));
         EnsureArg.IsNotNull(entries, nameof(entries));
 
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
-        // Write bundle header
-        WriteBundleHeader(writer, bundleType, total);
-
-        // Write links
-        WriteBundleLinksFromStrings(writer, selfLink, nextLink);
-
-        // Write entry array
-        writer.WriteStartArray("entry");
-
-        // Stream entries as they become available (zero-copy from raw bytes)
-        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        try
         {
-            writer.WriteStartObject();
+            WriteBundleHeader(writer, bundleType, total);
 
-            // Write fullUrl
-            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            writer.WriteString("fullUrl", fullUrl);
+            WriteBundleLinksFromStrings(writer, selfLink, nextLink);
 
-            // Write resource using helper
-            WriteResourceBytes(writer, resource);
+            writer.WriteStartArray("entry");
 
-            // Write search metadata - use resource's SearchMode (match, include, or outcome)
-            // CA1308 suppressed: JSON requires lowercase values for FHIR compliance
-#pragma warning disable CA1308
-            writer.WriteObject("search", w => w
-                .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
-#pragma warning restore CA1308
+            // Stream entries as they become available (zero-copy from raw bytes)
+            await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+            {
+                WriteBufferedSimpleEntry(writer, entryWriter, entryBuffer, resource);
 
-            writer.WriteEndObject(); // end entry
+                // Flush periodically to stream data to client
+                await writer.FlushAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                writer.UnderlyingWriter.Reset();
+                throw;
+            }
 
-            // Flush periodically to stream data to client
-            await writer.FlushAsync(cancellationToken);
+            await CloseSimpleErrorBundleAsync(writer);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                writer.UnderlyingWriter.Reset();
+                throw;
+            }
+
+            WriteOperationOutcomeEntry(
+                writer,
+                new IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}"),
+                bundleType,
+                FhirVersion.R4,
+                ErrorEntryFullUrl,
+                string.Empty);
+
+            await CloseSimpleErrorBundleAsync(writer);
+            throw;
         }
 
         // Write bundle footer
         await WriteBundleFooterAsync(writer, cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes one complete entry into the scratch writer, then copies the finished bytes into the
+    /// response writer as a single raw array element. Mirrors <see cref="WriteBufferedEntry"/> without
+    /// the pagination path's element filtering, which <see cref="SerializeAsync"/> does not support.
+    /// Staging keeps the response writer between complete entries at all times, so a mid-entry failure
+    /// dirties only the scratch buffer and the bundle stays closable.
+    /// </summary>
+    private static void WriteBufferedSimpleEntry(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        SearchEntryResult resource)
+    {
+        entryWriter.WriteStartObject();
+
+        string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+        entryWriter.WriteString("fullUrl", fullUrl);
+
+        WriteResourceBytes(entryWriter, resource);
+
+        // CA1308 suppressed: JSON requires lowercase values for FHIR compliance
+#pragma warning disable CA1308
+        entryWriter.WriteObject("search", w => w
+            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+#pragma warning restore CA1308
+
+        entryWriter.WriteEndObject();
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
+    }
+
+    /// <summary>
+    /// Completes a bundle whose response has already started, then leaves the caller to rethrow.
+    /// No links are re-emitted: <see cref="SerializeAsync"/> writes them in the prologue, inside the
+    /// guard, so they already survived by the time a failure reaches this catch.
+    /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
+    /// makes FlushAsync throw immediately, which would defeat the body completion.
+    /// </summary>
+    private static async Task CloseSimpleErrorBundleAsync(FhirJsonWriter writer)
+    {
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        await writer.FlushAsync(CancellationToken.None);
     }
 
     /// <summary>

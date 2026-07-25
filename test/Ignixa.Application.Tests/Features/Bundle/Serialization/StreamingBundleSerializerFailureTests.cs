@@ -296,6 +296,77 @@ public class StreamingBundleSerializerFailureTests
         errorEntry.GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
     }
 
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsBeforeAnyEntry_WhenSerializingSimpleAsync_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+        var boom = new InvalidOperationException("boom");
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, ThrowAfterAsync(0, boom));
+
+        // Assert
+        (await act.ShouldThrowAsync<InvalidOperationException>()).ShouldBeSameAs(boom);
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenCorruptResourceBytesOnTheFirstEntry_WhenSerializingSimpleAsync_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, EntriesWithCorruptResourceJsonAsync(0));
+
+        // Assert
+        await act.ShouldThrowAsync<JsonException>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAnEnumeratorThatThrowsAfterAnEntryIsFlushed_WhenSerializingSimpleAsync_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, ThrowAfterAsync(1, new InvalidOperationException("boom")));
+
+        // Assert
+        await act.ShouldThrowAsync<InvalidOperationException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        entries[^1].GetProperty("search").GetProperty("mode").GetString().ShouldBe("outcome");
+    }
+
+    [Fact]
+    public async Task GivenCorruptResourceBytesAfterAnEntryIsFlushed_WhenSerializingSimpleAsync_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange -- SerializeAsync flushes per entry (design §2), so tier 2 is reachable from the
+        // second entry onward, same as SerializeHistoryAsync. This fails against a non-buffered
+        // implementation: the main writer is left mid-entry and closing the bundle is impossible.
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeAsync(
+            stream, "searchset", null, EntriesWithCorruptResourceJsonAsync(1));
+
+        // Assert
+        await act.ShouldThrowAsync<JsonException>();
+        var root = JsonDocument.Parse(stream.ToArray()).RootElement;
+        var entries = root.GetProperty("entry").EnumerateArray().ToList();
+        entries.Count.ShouldBe(2);
+        entries[^1].GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        entries[^1].GetProperty("resource").GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+    }
+
     private static SearchOptions NewOptions() => new() { MaxItemCount = 10 };
 
     private static SearchOptions IncludesPendingOptions() => new()
