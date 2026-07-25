@@ -274,6 +274,12 @@ public static class SqlBuilder
     /// The current-row filter for a dbo.Resource scan under a given visibility, already prefixed with
     /// " AND " and the caller's column qualifier, or empty when both relaxations are on.
     /// </summary>
+    /// <remarks>
+    /// The leading space is load-bearing for a caller that embeds the result inline after another SQL
+    /// token — dropping it yields <c>= @p0AND IsHistory = 0</c>, which only fails at parse time. A caller
+    /// that instead places the filter on its own line trims it and supplies its own indentation; those
+    /// two modes are the reason this returns a pre-joined string rather than the raw clauses.
+    /// </remarks>
     private static string ResourceRowFilter(ResourceVisibility visibility, string qualifier)
     {
         var clauses = new List<string>(2);
@@ -326,6 +332,9 @@ public static class SqlBuilder
         }
 
         var rowFilter = ResourceRowFilter(visibility, "r.");
+
+        // Own-line placement, so the helper's leading space is replaced by this line's indentation.
+        // An inline caller must not trim it; see ResourceRowFilter's remarks.
         var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
 
         return cj.Direction switch
@@ -605,6 +614,9 @@ public static class SqlBuilder
         whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias));
 
         var rowFilter = ResourceRowFilter(visibility, "r.");
+
+        // Own-line placement, so the helper's leading space is replaced by this line's indentation.
+        // An inline caller must not trim it; see ResourceRowFilter's remarks.
         var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
 
         return $"    SELECT DISTINCT TOP ({stage.Limit + 1}) {selectColumns}\n" +
