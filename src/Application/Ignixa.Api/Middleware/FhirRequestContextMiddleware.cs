@@ -72,11 +72,11 @@ public class FhirRequestContextMiddleware
 
         if (fhirContext.TenantConfiguration is { } resolvedTenant)
         {
-            var soleTenant = (await configStore.GetAllTenantsAsync(httpContext.RequestAborted)).Count == 1;
+            var allTenantCount = (await configStore.GetAllTenantsAsync(httpContext.RequestAborted)).Count;
 
             fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
                 BuildRequestOrigin(httpContext),
-                new TenantAddressing(resolvedTenant.TenantId, resolvedTenant.Hostnames, IncludeDeploymentRoot: soleTenant));
+                TenantAddressing.For(resolvedTenant, allTenantCount));
         }
         else
         {

@@ -70,8 +70,9 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
 
     /// <summary>
     /// Resolves every base URI that identifies this server for a tenant, canonical first. Canonical
-    /// precedence is: the tenant's first configured hostname; else the deployment root when this is the sole
-    /// tenant (<see cref="TenantAddressing.IncludeDeploymentRoot"/>), which keeps the base a hostname-less
+    /// precedence is: the tenant's first VALID configured hostname (a malformed one is skipped, so the next
+    /// valid hostname becomes canonical instead); else the deployment root when this is the sole tenant
+    /// (<see cref="TenantAddressing.IncludeDeploymentRoot"/>), which keeps the base a hostname-less
     /// single-tenant deployment already emits unchanged; else the <c>tenant/{id}/</c> path form. The
     /// remaining hostnames and the path form are additional recognized inbound bases; the deployment root is
     /// recognized only when <see cref="TenantAddressing.IncludeDeploymentRoot"/> is set. Both the request
@@ -99,8 +100,8 @@ public sealed class FhirServiceBaseUriResolver(Uri? configuredServiceRoot = null
                 || candidate.Host.Length == 0)
             {
                 // Malformed config (embedded path, explicit port, or an unparseable authority) is never
-                // admitted into the recognition set. There is no logger here by design; startup validation
-                // (a later task) is the place operator-facing diagnostics for a bad hostname belong.
+                // admitted into the recognition set. There is no logger here by design; TenantHostnameValidator
+                // is the eager startup validation where operator-facing diagnostics for a bad hostname belong.
                 continue;
             }
 

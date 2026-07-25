@@ -6,6 +6,8 @@
 using Ignixa.Abstractions;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Shouldly;
 using Xunit;
@@ -85,5 +87,59 @@ public class FhirRequestContextBaseUriProviderTests
         provider.IsServiceBaseUri(new Uri("https://fhir.example.org/fhir")).ShouldBeTrue();
         provider.IsServiceBaseUri(new Uri("https://FHIR.EXAMPLE.ORG/fhir/")).ShouldBeTrue();
         provider.IsServiceBaseUri(new Uri("https://fhir.example.org/other/")).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The store gates <c>GetTenantConfigurationAsync</c> on IsActive, so a background context that names a
+    /// tenant which has since gone inactive falls through to the numeric path-form fallback silently -- that
+    /// fallback base can diverge from what an active request for the same tenant would resolve to. This pins
+    /// that the divergence is at least observable via a warning rather than swallowed entirely.
+    /// </summary>
+    [Fact]
+    public void GivenAnInactiveTenant_WhenResolvingBaseUris_ThenAWarningNamesTheTenant()
+    {
+        // Arrange
+        var store = Substitute.For<ITenantConfigurationStore>();
+        store.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>((TenantConfiguration?)null));
+
+        var accessor = new FhirRequestContextAccessor
+        {
+            RequestContext = FhirRequestContextFactory.CreateBackgroundContext(tenantId: 1)
+        };
+        var logger = new CapturingLogger<FhirRequestContextBaseUriProvider>();
+
+        IFhirBaseUriProvider provider = new FhirRequestContextBaseUriProvider(
+            accessor, new FhirServiceBaseUriResolver(ServiceRoot), store, logger);
+
+        // Act
+        var bases = provider.GetServiceBaseUris();
+
+        // Assert
+        bases.ShouldNotBeEmpty();
+        logger.Warnings.ShouldHaveSingleItem();
+        logger.Warnings[0].ShouldContain("1");
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Warnings { get; } = [];
+
+        IDisposable? ILogger.BeginScope<TState>(TState state) => null;
+
+        bool ILogger.IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+        void ILogger.Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Warning)
+            {
+                Warnings.Add(formatter(state, exception));
+            }
+        }
     }
 }

@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Domain.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Application.Infrastructure;
 
@@ -20,10 +21,16 @@ namespace Ignixa.Application.Infrastructure;
 /// self-references as external while request-indexed rows collapsed them — see
 /// <see cref="FhirServiceBaseUriResolver"/> for why <c>Fhir:BaseUri</c> is not optional in practice.
 /// </remarks>
+/// <param name="logger">
+/// Optional so existing call sites that construct this type directly (it is registered via a factory lambda,
+/// not reflection) keep compiling; wire a real <see cref="ILogger{TCategoryName}"/> through DI where possible
+/// so the inactive-tenant fallback below is observable.
+/// </param>
 public sealed class FhirRequestContextBaseUriProvider(
     IFhirRequestContextAccessor requestContextAccessor,
     FhirServiceBaseUriResolver resolver,
-    ITenantConfigurationStore configStore) : IFhirBaseUriProvider
+    ITenantConfigurationStore configStore,
+    ILogger<FhirRequestContextBaseUriProvider>? logger = null) : IFhirBaseUriProvider
 {
     /// <inheritdoc />
     public Uri? GetBaseUri() => GetServiceBaseUris() is [var canonical, ..] ? canonical : null;
@@ -46,14 +53,26 @@ public sealed class FhirRequestContextBaseUriProvider(
             // ValueTasks backed by a Lazy array, so this never actually blocks.
 #pragma warning disable CA2012 // Use ValueTasks correctly - store's ValueTasks are already completed
             var tenant = configStore.GetTenantConfigurationAsync(tenantId).GetAwaiter().GetResult();
+            var allTenantCount = tenant is not null
+                ? configStore.GetAllTenantsAsync().GetAwaiter().GetResult().Count
+                : 0;
+#pragma warning restore CA2012
+
             if (tenant is not null)
             {
-                var soleTenant = configStore.GetAllTenantsAsync().GetAwaiter().GetResult().Count == 1;
-#pragma warning restore CA2012
-                return resolver.Resolve(
-                    requestOrigin: null,
-                    new TenantAddressing(tenantId, tenant.Hostnames, IncludeDeploymentRoot: soleTenant));
+                return resolver.Resolve(requestOrigin: null, TenantAddressing.For(tenant, allTenantCount));
             }
+
+            // The store gates GetTenantConfigurationAsync on IsActive, so this branch is reached specifically
+            // when the tenant was deactivated after being addressed. The numeric-form fallback below still
+            // returns a usable base, but it is not necessarily the base an active request for this tenant
+            // would have used (a configured hostname or the deployment root), so background indexing can
+            // silently drift from the request path until this is surfaced.
+            logger?.LogWarning(
+                "Tenant {TenantId} has no active configuration; background service base URI resolution fell " +
+                "back to the numeric tenant-scoped path form, which may not match the canonical base an " +
+                "active request for this tenant would use.",
+                tenantId);
         }
 
         return resolver.Resolve(

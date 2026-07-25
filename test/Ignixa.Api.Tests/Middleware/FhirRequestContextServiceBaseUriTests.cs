@@ -160,6 +160,32 @@ public class FhirRequestContextServiceBaseUriTests
         context.BaseUri.ShouldBe(new Uri("https://example.org/"));
     }
 
+    /// <summary>
+    /// Product decision pin: canonical base for a hostname-less sole tenant is config-derived, not
+    /// route-following. Even an explicit /tenant/1/ request must still resolve the deployment root as
+    /// canonical, because <see cref="TenantAddressing.IncludeDeploymentRoot"/> is set from the tenant count,
+    /// not from which route form the request happened to arrive on. A future change that makes this
+    /// route-following instead of config-canonical must fail this test rather than silently ship.
+    /// </summary>
+    [Fact]
+    public async Task GivenAHostnameLessSoleTenantOnATenantScopedPath_WhenBuildingContext_ThenRootStaysCanonical()
+    {
+        var resolvedTenant = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Acme",
+            FhirVersion = "4.0",
+            Hostnames = Array.Empty<string>(),
+        };
+
+        var fhirContext = await BuildContextAsync(
+            "/tenant/1/Patient",
+            new FhirServiceBaseUriResolver(new Uri("https://example.org/")),
+            resolvedTenant: resolvedTenant);
+
+        fhirContext.BaseUri.ShouldBe(new Uri("https://example.org/"));
+    }
+
     private static Task<ReferenceSearchValue> ParseUnderRequestAsync(
         string requestPath,
         string reference,
