@@ -51,12 +51,21 @@ deliberately erased:
 - **`Patient/$everything`** (3 captured queries). The corpus compiles these as the real operation — it
   builds a `PatientEverythingExpression` from the URL and lowers it through the compartment traversal
   (see `CorpusCompiler`), rather than stripping the `$everything` segment and compiling a bare
-  `GET /Patient?…`. All three land as **Divergent** for a known, benign reason: the honest traversal
-  reads `dbo.ReferenceSearchParam` **once per compartment-membership parameter** (many in real R4),
-  where the shipping engine's captured SQL read it **exactly twice** using a windowed/paged form the
-  compiler does not reproduce. Same semantics, different shape — not a correctness regression. This is
-  why `DivergenceBaseline.DivergingQueries` was raised from 56 to 59 when the harness was wired; per the
-  convention below, the reason is recorded here rather than the count being suppressed.
+  `GET /Patient?…`. All three land as **Divergent**, and the cause is semantic, not merely a different
+  shape. The shipping engine's paged `$everything` reads `dbo.ReferenceSearchParam` **exactly twice**, and
+  both reads follow the seed patient's **outbound** references (`refSource.ResourceTypeId IN (Patient)`,
+  joined through `dbo.Resource` to materialize each target) — referenced-resource inclusion, the resources
+  the patient points to. The compiler instead emits the **inbound** compartment-membership traversal — one
+  `dbo.ReferenceSearchParam` read per Patient-compartment membership parameter (many in real R4), matching
+  resources that point *at* the patient — and emits no referenced-resource union at all. So the divergence
+  is opposite graph direction plus the compiler's omission of referenced-resource inclusion and the
+  paging/hydration machinery, not a windowed-vs-unwound batching of the same membership reads. (The
+  capture's opaque `SearchParamId`s can't be name-mapped, so *which* two patient reference parameters the
+  engine expanded isn't verifiable; the outbound direction and the compiler's omission are.) This is why
+  `DivergenceBaseline.DivergingQueries` was raised from 56 to 59 when the harness was wired; per the
+  convention below, the reason is recorded rather than the count being suppressed. An earlier note here
+  claimed "same semantics, different shape"; reading the captured SQL showed that was wrong, and it has
+  been corrected.
 
 ## What it can't tell you
 

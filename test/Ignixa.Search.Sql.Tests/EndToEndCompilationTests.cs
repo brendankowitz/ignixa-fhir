@@ -1274,9 +1274,13 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
-    public async Task GivenACompartmentSearchThatResolvesToZeroMembershipParameters_WhenLowered_ThenThrowsNotSupportedException()
+    public async Task GivenACompartmentSearchThatResolvesToZeroMembershipParameters_WhenLowered_ThenMatchesNothing()
     {
-        // Arrange -- GET /Patient/123/NotInCompartment (design §2's degenerate case).
+        // Arrange -- GET /Patient/123/NotInCompartment (design §2's degenerate case). A _type/compartment
+        // filter naming only a type outside the compartment is caller input describing something the
+        // compartment cannot contain, so it lowers to an empty match anchored on the compartment's own type
+        // -- the compiler's "not found is data, not an error" convention, the same answer $everything?_type=foo
+        // gives -- rather than throwing a 500 straight out of a user-facing URL.
         var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "NotInCompartment" });
 
         var resolver = new FakeSymbolResolver();
@@ -1292,10 +1296,12 @@ public class EndToEndCompilationTests
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
 
-        // Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
-            .Message.ShouldContain("zero membership");
+        var plan = Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- a single ResourceSource on the compartment's own type carrying the unsatisfiable
+        // predicate (WHERE ResourceTypeId = @p AND 1 = 0), so the query is valid, well-typed SQL that
+        // returns no rows.
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE 1 = 0");
     }
 
     [Fact]

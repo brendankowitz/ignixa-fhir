@@ -325,23 +325,26 @@ public sealed class StructuralContext
     /// ANDing <paramref name="additionalPredicate"/> (e.g. a <c>_since</c> surrogate bound) into each
     /// CompartmentSource. Shared by an ordinary compartment search and by <c>$everything</c> so both reach
     /// the identical CompartmentSource emitter rather than a parallel implementation.
+    /// <para>
+    /// A <paramref name="filteredResourceTypes"/> filter that narrows the membership to zero groups is the
+    /// same situation for both callers -- an ordinary <c>GET /Patient/123/NotInCompartment</c> naming a type
+    /// outside the compartment, or a <c>$everything?_type=foo</c> doing exactly the same -- namely
+    /// caller-supplied input describing something this compartment cannot contain. Both lower to an empty
+    /// match: a <see cref="Predicate.False"/> anchored on the compartment's own type, carrying the reason.
+    /// This follows <see cref="ISymbolResolver"/>'s "not found is data, not an error" convention that the
+    /// rest of the compiler already applies (<c>TokenColumnEquality</c> on an unknown system,
+    /// <c>QuantityColumnPredicate</c> on an unknown unit, an unresolvable resource type); answering the
+    /// compartment case the same way keeps it from being the lone path that turns a can-never-match filter
+    /// into a thrown 500. There is no membership short-circuit ahead of this in the compiler --
+    /// <c>Lower.Run</c> compiles <c>GET /Patient/{id}/{nonMemberType}</c> straight through here -- so a throw
+    /// would be reachable directly from user input.
+    /// </para>
     /// </summary>
-    /// <param name="emptyMatchWhenNoMembers">
-    /// How to treat a <paramref name="filteredResourceTypes"/> filter that narrows the membership to zero
-    /// groups. An ordinary compartment search (<c>false</c>) throws, because its caller
-    /// (CompartmentSearchQueryGenerator) short-circuits that degenerate case before ever reaching Lower.
-    /// A <c>$everything</c> <c>_type</c> filter (<c>true</c>) is caller-supplied input that can legitimately
-    /// name a type outside the compartment; per <see cref="ISymbolResolver"/>'s "not found is data, not an
-    /// error" convention it lowers to an empty match (a <see cref="Predicate.False"/> anchored on the
-    /// compartment's own type) carrying the reason, exactly as an unresolvable symbol does, rather than
-    /// throwing a 500 at the caller.
-    /// </param>
     private CteRef LowerCompartmentCore(
         string compartmentType,
         string compartmentId,
         ISet<string> filteredResourceTypes,
-        Predicate? additionalPredicate,
-        bool emptyMatchWhenNoMembers = false)
+        Predicate? additionalPredicate)
     {
         var membership = _leafContext.CompartmentMembership(compartmentType);
         var groups = filteredResourceTypes.Count == 0
@@ -353,26 +356,17 @@ public sealed class StructuralContext
 
         if (groups.Count == 0)
         {
+            // The compartment/_type filter named only types outside this compartment, so the correct answer
+            // is an empty member set, not an exception -- the same shape an unresolvable token system or
+            // resource type lowers to. Anchor the false predicate on the compartment's own type so the CTE
+            // still emits valid, well-typed SQL (WHERE ResourceTypeId = @p AND 1 = 0), and keep the reason so
+            // the trace reports the known miss.
             var reason =
                 $"Compartment search for '{compartmentType}/{compartmentId}' resolved to " +
                 "zero membership search parameters for the requested resource type(s) -- this compartment/filter " +
                 "combination can never match any row.";
 
-            if (emptyMatchWhenNoMembers)
-            {
-                // $everything's _type filter named only types outside the Patient compartment. That is
-                // caller input describing something that does not exist here, so the correct answer is an
-                // empty member set, not an exception -- the same shape an unresolvable token system or
-                // resource type lowers to. Anchor the false predicate on the compartment's own type so the
-                // CTE still emits valid, well-typed SQL (WHERE ResourceTypeId = @p AND 1 = 0), and keep the
-                // reason so the trace reports the known miss.
-                return LowerResourceSourceWithPredicate(compartmentType, new Predicate.False(reason));
-            }
-
-            throw new NotSupportedException(
-                reason + " Callers should short-circuit this case before calling " +
-                "Lower (matching CompartmentSearchQueryGenerator's own empty-result short-circuit today), not " +
-                "rely on this throw.");
+            return LowerResourceSourceWithPredicate(compartmentType, new Predicate.False(reason));
         }
 
         var refs = groups.Select(g =>
@@ -418,7 +412,7 @@ public sealed class StructuralContext
             : null;
 
         var perPatient = expression.PatientIds
-            .Select(id => LowerCompartmentCore("Patient", id, expression.FilteredResourceTypes, sinceBound, emptyMatchWhenNoMembers: true))
+            .Select(id => LowerCompartmentCore("Patient", id, expression.FilteredResourceTypes, sinceBound))
             .ToList();
 
         return perPatient.Count == 1 ? perPatient[0] : Union(perPatient);
