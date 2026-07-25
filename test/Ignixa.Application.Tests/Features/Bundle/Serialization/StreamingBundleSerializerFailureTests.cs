@@ -251,6 +251,30 @@ public class StreamingBundleSerializerFailureTests
         stream.ToArray().ShouldBeEmpty();
     }
 
+    [Theory]
+    [InlineData("", "incomplete")]
+    [InlineData("   ", "incomplete")]
+    [InlineData("warning", "")]
+    [InlineData("warning", "   ")]
+    public async Task GivenABundleIssueWithAnEmptyOrWhitespaceSeverityOrCodeOnAnR5Tenant_WhenSerializing_ThenNothingIsWrittenAndTheExceptionPropagates(string severity, string code)
+    {
+        // Arrange -- on R5, WriteBundleIssues (not the pre-R5 prologue helper) writes Severity/Code,
+        // and it runs after the guard closes, outside any try/catch in this method. Before the
+        // ValidateBundleIssues guard-region check, this exception escaped the recovery entirely and
+        // resurrected the dispose-flush truncation bug instead of being tier-1 recoverable.
+        var options = NewOptions();
+        options.BundleIssues = [new IssueComponent(severity, code, Diagnostics: "d")];
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeWithPaginationAsync(
+            stream, "searchset", null, TwoEntriesAsync(), options, "http://x", "", schemaProvider: R5Schema());
+
+        // Assert
+        await act.ShouldThrowAsync<Exception>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task GivenWarningIssuesAndATierTwoFailure_WhenSerializing_ThenBothOutcomeEntriesHaveDistinctFullUrls()
     {

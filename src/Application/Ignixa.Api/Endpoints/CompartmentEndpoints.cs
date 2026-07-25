@@ -254,7 +254,7 @@ public static class CompartmentEndpoints
         var queryParameters = queryParser.Parse(context.Request.Query);
 
         // Build SearchOptions
-        var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters);
+        var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
         // Create SearchCompartmentQuery
         var query = new SearchCompartmentQuery(

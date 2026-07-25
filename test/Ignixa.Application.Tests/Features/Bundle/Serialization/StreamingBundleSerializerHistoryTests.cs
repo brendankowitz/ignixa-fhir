@@ -191,6 +191,44 @@ public class StreamingBundleSerializerHistoryTests
     }
 
     [Fact]
+    public async Task GivenNoEntriesAndALaterLinkWithAMalformedRelation_WhenSerializingHistory_ThenNothingIsWrittenAndTheExceptionPropagates()
+    {
+        // Arrange -- ResolveHistorySelfUrl short-circuits at the first "self" match, so the malformed
+        // relation on the later link survives self-url resolution untouched and is only read when the
+        // footer resolves links. With zero entries nothing has been flushed, so this must be tier 1.
+        var links = new[] { CreateLink("self", "http://x/_history"), CreateMalformedRelationLink("http://x/other") };
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, EmptyEntriesAsync(), links);
+
+        // Assert
+        await act.ShouldThrowAsync<Exception>();
+        stream.ToArray().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenACommittedEntryAndALaterLinkWithAMalformedRelation_WhenSerializingHistory_ThenTheBundleIsValidAndCarriesAFatalOutcome()
+    {
+        // Arrange -- history flushes per entry, so one entry is enough to make this tier 2: the
+        // response has already started by the time link resolution throws.
+        var links = new[] { CreateLink("self", "http://x/_history"), CreateMalformedRelationLink("http://x/other") };
+        var stream = new MemoryStream();
+
+        // Act
+        var act = () => StreamingBundleSerializer.SerializeHistoryAsync(
+            stream, "history", null, TwoEntriesAsync(), links);
+
+        // Assert
+        await act.ShouldThrowAsync<Exception>();
+        var entries = ParseEntries(stream);
+        entries[^1].GetProperty("fullUrl").GetString().ShouldBe(ErrorEntryFullUrl);
+        entries[^1].GetProperty("response").GetProperty("outcome")
+            .GetProperty("issue")[0].GetProperty("severity").GetString().ShouldBe("fatal");
+    }
+
+    [Fact]
     public async Task GivenAnEnumeratorThatThrowsBeforeAnyEntry_WhenSerializingHistory_ThenNothingIsWrittenAndTheExceptionPropagates()
     {
         // Arrange -- history flushes per entry, so tier 1 is reachable only before the first entry.
@@ -286,6 +324,23 @@ public class StreamingBundleSerializerHistoryTests
         var link = new FhirBundleLink { Url = url };
         link.SetProperty("relation", JsonValue.Create(relation));
         return link;
+    }
+
+    /// <summary>
+    /// Bypasses SetRelationRaw(string) via the low-level SetProperty escape hatch to store a
+    /// non-string relation, reproducing the only way GetRelationRaw() can throw (design §10).
+    /// </summary>
+    private static FhirBundleLink CreateMalformedRelationLink(string url)
+    {
+        var link = new FhirBundleLink { Url = url };
+        link.SetProperty("relation", JsonValue.Create(123));
+        return link;
+    }
+
+    private static async IAsyncEnumerable<SearchEntryResult> EmptyEntriesAsync()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 
     private static SearchEntryResult CreateEntry(string id)

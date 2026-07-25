@@ -240,6 +240,12 @@ public static class StreamingBundleSerializer
 
         try
         {
+            // Validated here, before any writing, so an empty Severity/Code fails inside the guard on
+            // every FHIR version. Without this, an R5 tenant hits the identical throw in the unguarded
+            // WriteBundleIssues call after the entry array closes (design §6/§9), resurrecting the
+            // dispose-flush truncation bug.
+            ValidateBundleIssues(searchOptions.BundleIssues);
+
             if (!string.IsNullOrWhiteSpace(searchOptions.IncludesContinuationToken)
                 && IncludesContinuationToken.TryDecode(searchOptions.IncludesContinuationToken, out int includesTokenOffset, out _))
             {
@@ -490,6 +496,7 @@ public static class StreamingBundleSerializer
         int entryCount = 0;
         bool hasMore = false;
         var fhirVersion = schemaProvider != null ? (FhirVersion)schemaProvider.Version : FhirVersion.R4;
+        List<FhirBundleLink>? resolvedLinks = null;
 
         // Resolved before any writer exists: unlike the pagination path, the error entry's url comes
         // from a caller-supplied parameter, so a throw here must not be able to land mid-bundle.
@@ -521,6 +528,12 @@ public static class StreamingBundleSerializer
                 // from the second entry onward the response has already started.
                 await writer.FlushAsync(cancellationToken);
             }
+
+            // GetRelationRaw() reads a possibly malformed JSON node and can throw; resolving links
+            // while the entry array is still open keeps that throw inside the guard, so an error entry
+            // can still be appended. Once the array is closed a throw here would resurrect the
+            // dispose-flush truncation bug (design §6/§10).
+            resolvedLinks = ResolveHistoryLinks(links, hasMore, entryCount);
         }
         catch (OperationCanceledException)
         {
@@ -555,14 +568,9 @@ public static class StreamingBundleSerializer
 
         writer.WriteEndArray();
 
-        if (links != null)
+        if (resolvedLinks != null)
         {
-            if (!hasMore || entryCount == 0)
-            {
-                links = links.Where(x => x.GetRelationRaw() != "next").ToList();
-            }
-
-            WriteBundleLinks(writer, links);
+            WriteBundleLinks(writer, resolvedLinks);
         }
 
         writer.WriteEndObject(); // end bundle
@@ -629,6 +637,47 @@ public static class StreamingBundleSerializer
             .FirstOrDefault(link => string.Equals(link.GetRelationRaw(), "self", StringComparison.Ordinal))?.Url;
 
         return string.IsNullOrEmpty(selfUrl) ? "_history" : selfUrl;
+    }
+
+    /// <summary>
+    /// Resolves the "next"-suppression and empty-URL filtering that the happy-path footer applies to
+    /// <paramref name="links"/>, returning freshly-built links whose relation was already read via
+    /// <see cref="Ignixa.Models.BundleLink.GetRelationRaw"/> here. That read can throw on a malformed
+    /// relation node; calling it here, before the entry array closes, keeps the throw inside the guard
+    /// (design §6/§10) instead of in the post-guard footer. The returned links carry relations set via
+    /// <see cref="CreateLink"/>, so the footer's own <c>GetRelationRaw()</c> call can never throw.
+    /// </summary>
+    private static List<FhirBundleLink>? ResolveHistoryLinks(
+        IReadOnlyList<FhirBundleLink>? links,
+        bool hasMore,
+        int entryCount)
+    {
+        if (links == null)
+        {
+            return null;
+        }
+
+        bool suppressNext = !hasMore || entryCount == 0;
+        var resolved = new List<FhirBundleLink>();
+
+        foreach (var link in links)
+        {
+            string relation = link.GetRelationRaw() ?? "self";
+
+            if (suppressNext && relation == "next")
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(link.Url))
+            {
+                continue;
+            }
+
+            resolved.Add(CreateLink(relation, link.Url));
+        }
+
+        return resolved;
     }
 
     /// <summary>
@@ -764,6 +813,12 @@ public static class StreamingBundleSerializer
         string fullUrl,
         string selfUrl)
     {
+        // Falls back to the same "_history" literal ResolveHistorySelfUrl uses: selfUrl is
+        // caller-supplied (SerializeAsync always passes string.Empty, inert only because it never
+        // reaches "history" today), and WriteString rejects empty values -- which would otherwise
+        // throw inside the catch and replace the original exception.
+        string resolvedSelfUrl = string.IsNullOrEmpty(selfUrl) ? "_history" : selfUrl;
+
         switch (bundleType)
         {
             case "searchset":
@@ -779,7 +834,7 @@ public static class StreamingBundleSerializer
                 writer.WriteString("fullUrl", fullUrl);
                 writer.WriteObject("request", w => w
                     .WriteString("method", "GET")
-                    .WriteString("url", selfUrl));
+                    .WriteString("url", resolvedSelfUrl));
                 writer.WriteObject("response", w =>
                 {
                     w.WriteString("status", "500");
@@ -796,7 +851,7 @@ public static class StreamingBundleSerializer
                 WriteOperationOutcomeResource(writer, issue);
                 writer.WriteObject("request", w => w
                     .WriteString("method", "GET")
-                    .WriteString("url", selfUrl));
+                    .WriteString("url", resolvedSelfUrl));
                 writer.WriteEndObject();
                 break;
 
@@ -1057,6 +1112,26 @@ public static class StreamingBundleSerializer
         {
             // Zero-copy fast path: write raw bytes directly
             writer.WriteRawProperty("resource", resource.ResourceBytes);
+        }
+    }
+
+    /// <summary>
+    /// Validates that every issue's Severity/Code is present. Both are written through
+    /// <see cref="FhirJsonWriter.WriteString"/>, which rejects empty values; calling this before any
+    /// writing keeps that throw inside the guarded region (recoverable) instead of letting it surface
+    /// from <see cref="WriteBundleIssues"/>, which runs after the guard closes on R5 tenants.
+    /// </summary>
+    private static void ValidateBundleIssues(IReadOnlyList<IssueComponent>? issues)
+    {
+        if (issues == null)
+        {
+            return;
+        }
+
+        foreach (var issue in issues)
+        {
+            EnsureArg.IsNotNullOrWhiteSpace(issue.Severity, nameof(issue.Severity));
+            EnsureArg.IsNotNullOrWhiteSpace(issue.Code, nameof(issue.Code));
         }
     }
 

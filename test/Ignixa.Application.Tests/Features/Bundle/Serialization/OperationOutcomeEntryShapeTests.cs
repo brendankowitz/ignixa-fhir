@@ -145,13 +145,28 @@ public class OperationOutcomeEntryShapeTests
         entry.TryGetProperty("search", out _).ShouldBeFalse();
     }
 
-    private static JsonElement WriteSingleEntry(string bundleType, FhirVersion version)
+    [Theory]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.Stu3)]
+    public void GivenHistoryBundleTypeWithAnEmptySelfUrl_WhenWritingEntry_ThenTheRequestUrlFallsBackToHistory(FhirVersion version)
+    {
+        // Arrange & Act -- SerializeAsync always passes string.Empty as selfUrl. Harmless today because
+        // it never reaches "history", but a future history caller would otherwise hit the
+        // empty-rejecting WriteString inside the catch, replacing the original exception (design
+        // follow-up item 4).
+        var entry = WriteSingleEntry("history", version, selfUrl: string.Empty);
+
+        // Assert
+        entry.GetProperty("request").GetProperty("url").GetString().ShouldBe("_history");
+    }
+
+    private static JsonElement WriteSingleEntry(string bundleType, FhirVersion version, string selfUrl = SelfUrl)
     {
         var buffer = new ArrayBufferWriter<byte>();
         using var writer = FhirJsonWriter.Create(buffer);
 
         writer.UnderlyingWriter.WriteStartArray();
-        StreamingBundleSerializer.WriteOperationOutcomeEntry(writer, Issue, bundleType, version, FullUrl, SelfUrl);
+        StreamingBundleSerializer.WriteOperationOutcomeEntry(writer, Issue, bundleType, version, FullUrl, selfUrl);
         writer.UnderlyingWriter.WriteEndArray();
         writer.UnderlyingWriter.Flush();
 
