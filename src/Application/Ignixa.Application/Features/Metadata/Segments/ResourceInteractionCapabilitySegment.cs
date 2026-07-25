@@ -22,6 +22,8 @@ namespace Ignixa.Application.Features.Metadata.Segments;
 /// </summary>
 public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 {
+    private const int InteractionSetRevision = 2;
+
     private readonly IFhirVersionContext _versionContext;
     private readonly ILogger<ResourceInteractionCapabilitySegment> _logger;
 
@@ -125,7 +127,10 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
             .OrderBy(rt => rt)
             .ToList();
 
-        var hashInput = $"{context.FhirVersion}|{string.Join(",", resourceTypes)}";
+        // InteractionSetRevision participates so that changing the declared interaction set
+        // invalidates statements cached under the old hash; the resource type list alone would
+        // not move. Bump it whenever BuildResourceInteractions or BuildSystemInteractions changes.
+        var hashInput = $"{context.FhirVersion}|{string.Join(",", resourceTypes)}|{InteractionSetRevision}";
 
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(hashInput));
         return ValueTask.FromResult(Convert.ToBase64String(hashBytes));
@@ -133,17 +138,24 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
 
     private IReadOnlyList<ResourceInteractionJsonNode> BuildResourceInteractions(string resourceType)
     {
+        // History is served by HistoryEndpoints for every resource type. Undeclared interactions
+        // are indistinguishable from unimplemented ones to a conformance client, which silently
+        // skips the corresponding tests rather than reporting them. Vread stays undeclared
+        // because no endpoint serves it.
         var interactions = new List<ResourceInteractionJsonNode>
         {
             new() { Code = TypeRestfulInteraction.Read },
             new() { Code = TypeRestfulInteraction.Create },
             new() { Code = TypeRestfulInteraction.SearchType },
+            new() { Code = TypeRestfulInteraction.HistoryInstance },
+            new() { Code = TypeRestfulInteraction.HistoryType },
         };
 
-        // AuditEvent special case: no update or delete (per FHIR spec)
+        // AuditEvent special case: no mutating interactions (per FHIR spec)
         if (resourceType != "AuditEvent")
         {
             interactions.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Update });
+            interactions.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Patch });
             interactions.Add(new ResourceInteractionJsonNode { Code = TypeRestfulInteraction.Delete });
         }
 
@@ -156,6 +168,7 @@ public class ResourceInteractionCapabilitySegment : ICapabilitySegment
         {
             new() { Code = SystemRestfulInteraction.Transaction },
             new() { Code = SystemRestfulInteraction.Batch },
+            new() { Code = SystemRestfulInteraction.HistorySystem },
         };
     }
 }
