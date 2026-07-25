@@ -68,9 +68,17 @@ public static class Lower
         // caller cannot reach a hidden resource by navigating a reference rather than searching for it.
         if (!accessConstraintApplier.IsEmpty)
         {
-            match = targetResourceType is { } matchType
-                ? accessConstraintApplier.Apply(match, matchType, context, LowerScopedExpression)
-                : accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression);
+            // $everything's match set spans several types (the patient row unioned with its compartment
+            // members) even though its target type is "Patient". A single-type Apply would intersect the
+            // whole union down to Patient-admitted rows -- dropping every compartment member and, worse,
+            // never enforcing a constraint on a member type (an authorization bypass). ApplyToTypes narrows
+            // each constrained type in place, exactly as it does for a multi-_type or wildcard match.
+            match = (targetResourceType, expression) switch
+            {
+                (_, PatientEverythingExpression) => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
+                ({ } matchType, _) => accessConstraintApplier.Apply(match, matchType, context, LowerScopedExpression),
+                _ => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
+            };
         }
 
         if (targetResourceType is null && sort.Count > 0)
@@ -168,6 +176,7 @@ public static class Lower
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
+        PatientEverythingExpression everything => EverythingLoweringRule.Lower(everything, context, resourceType),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };

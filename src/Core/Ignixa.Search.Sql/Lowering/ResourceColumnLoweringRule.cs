@@ -179,6 +179,15 @@ public static class ResourceColumnLoweringRule
     }
 
     /// <summary>
+    /// The inclusive lower-bound surrogate id for <paramref name="instant"/> — the same floor
+    /// <see cref="ToSurrogateId"/> computes for a <c>_lastUpdated ge</c> comparison. Exposed for
+    /// <c>$everything</c>'s <c>_since</c>, which bounds compartment members on
+    /// <c>meta.lastUpdated &gt;= _since</c> exactly as a <c>_lastUpdated ge _since</c> search would, so both
+    /// paths agree on the boundary millisecond rather than each transcribing the shift independently.
+    /// </summary>
+    internal static long ToInclusiveLowerSurrogateId(DateTimeOffset instant) => ToSurrogateId(instant);
+
+    /// <summary>
     /// Converts an instant to the <em>inclusive upper</em> surrogate id for the millisecond containing it.
     /// Comparing against the bare floor would match only the single resource that happened to draw
     /// uniquifier 0, silently dropping up to 79,999 rows per boundary millisecond. The upstream

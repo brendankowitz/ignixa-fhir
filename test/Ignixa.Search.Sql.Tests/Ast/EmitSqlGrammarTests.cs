@@ -51,6 +51,10 @@ public class EmitSqlGrammarTests
         yield return ["includes-only, two stages", IncludesOnlyTwoStagesPlan()];
         yield return ["includes-only, :iterate", IncludesOnlyWithIteratePlan()];
         yield return ["includes-only, with projection", IncludesOnlyWithProjectionPlan()];
+        yield return ["patient $everything alone", EverythingAlonePlan()];
+        yield return ["patient $everything with _since", EverythingWithSincePlan()];
+        yield return ["patient $everything with _type", EverythingWithTypePlan()];
+        yield return ["patient $everything with projection", EverythingWithProjectionPlan()];
     }
 
     [Theory]
@@ -269,6 +273,36 @@ public class EmitSqlGrammarTests
     }
 
     private static ProjectionSpec StandardProjection() => new(["ResourceId", "Version", "RawResource", "IsDeleted"]);
+
+    /// <summary>
+    /// A symbol table whose Patient compartment reaches Observation and Encounter through the "subject"
+    /// reference parameter — the shape Resolve produces from an ICompartmentDefinitionManager — so a
+    /// $everything search lowers to a real compartment traversal rather than a bare Patient scan.
+    /// </summary>
+    private static SymbolTable EverythingSymbols(IReadOnlyList<string>? memberTypes = null)
+    {
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var membership = new Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>
+        {
+            ["Patient"] = new List<(SearchParameterInfo, IReadOnlyList<string>)> { (subjectParam, memberTypes ?? ["Observation", "Encounter"]) },
+        };
+
+        return new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url!.ToString()] = 77 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104, ["Encounter"] = 105 },
+            compartmentMembership: membership);
+    }
+
+    private static QueryPlan EverythingPlan(PatientEverythingExpression expression)
+        => Lower.Run(expression, EverythingSymbols(), "Patient", includes: [], revIncludes: [], includeLimit: 100, sort: [], SortPhase.Valued, page: null).Plan;
+
+    private static QueryPlan EverythingAlonePlan() => EverythingPlan(new PatientEverythingExpression("pat-1"));
+
+    private static QueryPlan EverythingWithSincePlan() => EverythingPlan(new PatientEverythingExpression("pat-1", sinceDate: new DateTimeOffset(2021, 6, 1, 0, 0, 0, TimeSpan.Zero)));
+
+    private static QueryPlan EverythingWithTypePlan() => EverythingPlan(new PatientEverythingExpression("pat-1", filteredResourceTypes: new HashSet<string> { "Encounter" }));
+
+    private static QueryPlan EverythingWithProjectionPlan() => EverythingAlonePlan() with { Projection = StandardProjection() };
 
     private static QueryPlan ProjectionAlonePlan()
     {

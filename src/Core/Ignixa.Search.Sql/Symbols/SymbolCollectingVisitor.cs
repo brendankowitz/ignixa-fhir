@@ -140,6 +140,22 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
+    /// Records a <c>$everything</c> operation as a Patient-compartment search for Resolve to expand, so its
+    /// member types reach the SymbolTable through the identical ICompartmentDefinitionManager path an
+    /// ordinary <c>Patient/{id}/*</c> compartment search uses -- not a second mechanism. The <c>_type</c>
+    /// filter (<see cref="PatientEverythingExpression.FilteredResourceTypes"/>) rides along as the
+    /// compartment's filter. Like <see cref="VisitCompartment"/>, it does no I/O and no further recursion
+    /// (a PatientEverythingExpression has no child expression).
+    /// </summary>
+    public override Expression VisitPatientEverything(PatientEverythingExpression expression, object? context)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        AddResourceType("Patient");
+        Compartments.Add(("Patient", expression.FilteredResourceTypes));
+        return expression;
+    }
+
+    /// <summary>
     /// The (source resource type, reference path) pairs of every <c>_not-referenced=Type:path</c> in the
     /// tree, for Resolve to resolve to a reference search parameter. The wildcard forms (<c>*:*</c>,
     /// <c>Type:*</c>) contribute no pair — they need no parameter lookup — but a named source type is

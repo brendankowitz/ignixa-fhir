@@ -317,19 +317,33 @@ public sealed class StructuralContext
     }
 
     public CteRef LowerCompartment(CompartmentSearchExpression expression)
+        => LowerCompartmentCore(expression.CompartmentType, expression.CompartmentId, expression.FilteredResourceTypes, additionalPredicate: null);
+
+    /// <summary>
+    /// Lowers a compartment membership set to a Union of one CompartmentSource per membership search
+    /// parameter, narrowing member types to <paramref name="filteredResourceTypes"/> when non-empty and
+    /// ANDing <paramref name="additionalPredicate"/> (e.g. a <c>_since</c> surrogate bound) into each
+    /// CompartmentSource. Shared by an ordinary compartment search and by <c>$everything</c> so both reach
+    /// the identical CompartmentSource emitter rather than a parallel implementation.
+    /// </summary>
+    private CteRef LowerCompartmentCore(
+        string compartmentType,
+        string compartmentId,
+        ISet<string> filteredResourceTypes,
+        Predicate? additionalPredicate)
     {
-        var membership = _leafContext.CompartmentMembership(expression.CompartmentType);
-        var groups = expression.FilteredResourceTypes.Count == 0
+        var membership = _leafContext.CompartmentMembership(compartmentType);
+        var groups = filteredResourceTypes.Count == 0
             ? membership
             : membership
-                .Select(m => (m.Parameter, ResourceTypes: (IReadOnlyList<string>)m.ResourceTypes.Where(expression.FilteredResourceTypes.Contains).ToList()))
+                .Select(m => (m.Parameter, ResourceTypes: (IReadOnlyList<string>)m.ResourceTypes.Where(filteredResourceTypes.Contains).ToList()))
                 .Where(m => m.ResourceTypes.Count > 0)
                 .ToList();
 
         if (groups.Count == 0)
         {
             throw new NotSupportedException(
-                $"Compartment search for '{expression.CompartmentType}/{expression.CompartmentId}' resolved to " +
+                $"Compartment search for '{compartmentType}/{compartmentId}' resolved to " +
                 "zero membership search parameters for the requested resource type(s) -- this compartment/filter " +
                 "combination can never match any row. Callers should short-circuit this case before calling " +
                 "Lower (matching CompartmentSearchQueryGenerator's own empty-result short-circuit today), not " +
@@ -338,11 +352,50 @@ public sealed class StructuralContext
 
         var refs = groups.Select(g =>
         {
-            var cte = CompartmentLoweringRule.Lower(g.Parameter, g.ResourceTypes, expression.CompartmentType, expression.CompartmentId, _leafContext);
+            var cte = CompartmentLoweringRule.Lower(g.Parameter, g.ResourceTypes, compartmentType, compartmentId, _leafContext, additionalPredicate);
             _ctes.Add(cte);
             return new CteRef(_ctes.Count - 1);
         }).ToList();
 
         return Union(refs);
+    }
+
+    /// <summary>
+    /// Lowers a single resource of <paramref name="resourceType"/> identified by <paramref name="resourceId"/>
+    /// to a ResourceSource whose nested-scope predicate pins <c>dbo.Resource.ResourceId</c>. Used by
+    /// <c>$everything</c> to seed the patient's own row before its compartment members are unioned in.
+    /// </summary>
+    public CteRef LowerResourceSourceForId(string resourceType, string resourceId)
+    {
+        var table = SqlCatalog.Default.Table("Resource");
+        var predicate = new Predicate.Equal(
+            new SqlColumnRef(table.TableName, "ResourceId"),
+            _leafContext.Parameter(resourceId));
+        return LowerResourceSourceWithPredicate(resourceType, predicate);
+    }
+
+    /// <summary>
+    /// Lowers the patient compartment traversal for a <see cref="PatientEverythingExpression"/>: for each
+    /// patient id, the Patient compartment's members (narrowed by <c>_type</c> via
+    /// <see cref="PatientEverythingExpression.FilteredResourceTypes"/> and bounded by <c>_since</c> on the
+    /// member rows' <c>ResourceSurrogateId</c>), unioned across patients. Reuses the same compartment
+    /// membership the resolver populated for an ordinary compartment search -- no second mechanism, no
+    /// hardcoded member list.
+    /// </summary>
+    public CteRef LowerPatientCompartment(PatientEverythingExpression expression)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+
+        Predicate? sinceBound = expression.SinceDate is { } since
+            ? new Predicate.GreaterThanOrEqual(
+                new SqlColumnRef(SqlCatalog.Default.Table("ReferenceSearchParam").TableName, "ResourceSurrogateId"),
+                _leafContext.Parameter(ResourceColumnLoweringRule.ToInclusiveLowerSurrogateId(since)))
+            : null;
+
+        var perPatient = expression.PatientIds
+            .Select(id => LowerCompartmentCore("Patient", id, expression.FilteredResourceTypes, sinceBound))
+            .ToList();
+
+        return perPatient.Count == 1 ? perPatient[0] : Union(perPatient);
     }
 }
