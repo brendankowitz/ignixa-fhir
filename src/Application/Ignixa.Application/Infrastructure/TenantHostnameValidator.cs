@@ -17,6 +17,18 @@ public static partial class TenantHostnameValidator
     [GeneratedRegex(@"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")]
     private static partial Regex HostnameShape();
 
+    /// <summary>
+    /// True when <paramref name="host"/> is a bare lowercase DNS hostname -- no scheme, port, path, or
+    /// invalid label. This is the single source of truth for hostname shape: both <see cref="Validate"/>
+    /// (startup diagnostics) and <c>AppSettingsTenantConfigurationStore.BuildHostIndex</c> (inbound routing)
+    /// call it, so a hostname the index would refuse to serve is exactly the one this reports as a problem.
+    /// </summary>
+    public static bool IsValidHostname(string host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        return HostnameShape().IsMatch(host);
+    }
+
     public static IReadOnlyList<HostnameProblem> Validate(IReadOnlyList<TenantConfiguration> tenants)
     {
         ArgumentNullException.ThrowIfNull(tenants);
@@ -30,7 +42,7 @@ public static partial class TenantHostnameValidator
             {
                 var value = host.Trim();
 
-                if (!HostnameShape().IsMatch(value))
+                if (!IsValidHostname(value))
                 {
                     problems.Add(new HostnameProblem(
                         HostnameProblemKind.Format,

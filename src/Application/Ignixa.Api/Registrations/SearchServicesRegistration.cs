@@ -79,9 +79,15 @@ public static class SearchServicesRegistration
         {
             var loggerFactory = c.Resolve<ILoggerFactory>();
             var configuredServiceRoot = ReadConfiguredServiceRoot(configuration, loggerFactory);
-            ValidateTenantHostnames(configuration, loggerFactory);
             return new FhirServiceBaseUriResolver(configuredServiceRoot);
         }).AsSelf().SingleInstance();
+
+        // Eager by construction: RegisterBuildCallback runs at builder.Build(), before app.Run() accepts any
+        // connection. A registration inside a lazy SingleInstance factory only runs on first resolution --
+        // that would let a duplicate or malformed hostname boot "healthy" and fail on the first request
+        // instead of at startup.
+        builder.RegisterBuildCallback(container =>
+            ValidateTenantHostnames(container.Resolve<IConfiguration>(), container.Resolve<ILoggerFactory>()));
 
         // Used to recognize an absolute reference that points back at this server so it reconciles with the
         // equivalent relative reference. Must be a singleton: the consumers (FhirVersionContext,
@@ -161,13 +167,19 @@ public static class SearchServicesRegistration
     }
 
     /// <summary>
-    /// Validates tenant hostname configuration at startup. Binds tenants directly from configuration --
-    /// mirroring <c>AppSettingsTenantConfigurationStore.LoadTenants</c> -- because the container is still
-    /// being built here and <see cref="Ignixa.Domain.Abstractions.ITenantConfigurationStore"/> is not yet
-    /// resolvable. A duplicate hostname across tenants is fatal (the cross-tenant-confusion case); a
-    /// malformed hostname is logged but non-fatal since the host simply won't route.
+    /// Validates tenant hostname configuration at startup. Runs eagerly via <c>RegisterBuildCallback</c>
+    /// (see <see cref="RegisterSearchServices"/>), so every problem is logged and a duplicate configuration
+    /// is refused before the server accepts its first request. Binds tenants directly from configuration --
+    /// mirroring <c>AppSettingsTenantConfigurationStore.LoadTenants</c> -- because the build callback still
+    /// runs during container construction and <see cref="Ignixa.Domain.Abstractions.ITenantConfigurationStore"/>
+    /// (an Autofac-resolved singleton) is not a dependency this method should force-resolve. A duplicate
+    /// hostname across tenants is fatal (the cross-tenant-confusion case): it throws here, which
+    /// <c>RegisterBuildCallback</c> propagates out of <c>ContainerBuilder.Build()</c>, aborting startup. A
+    /// malformed hostname is logged at Error but non-fatal: <c>AppSettingsTenantConfigurationStore</c>
+    /// excludes it from the host index (it never routes), so one operator typo does not take every tenant
+    /// down with it.
     /// </summary>
-    private static void ValidateTenantHostnames(IConfiguration configuration, ILoggerFactory loggerFactory)
+    internal static void ValidateTenantHostnames(IConfiguration configuration, ILoggerFactory loggerFactory)
     {
         var logger = loggerFactory.CreateLogger(typeof(TenantHostnameValidator).FullName!);
         var tenants = configuration.GetSection("Tenants:Configurations").Get<List<TenantConfiguration>>() ?? new List<TenantConfiguration>();

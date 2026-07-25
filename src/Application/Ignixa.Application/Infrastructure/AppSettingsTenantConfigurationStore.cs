@@ -108,7 +108,14 @@ public class AppSettingsTenantConfigurationStore : ITenantConfigurationStore
             foreach (var host in tenant.Hostnames)
             {
                 var normalized = host.Trim();
-                if (normalized.Length == 0)
+
+                // A malformed hostname (scheme, port, path, bad label) is never indexed, matching
+                // FhirServiceBaseUriResolver's admission rule for the same shapes. Indexing it here while
+                // the resolver refuses to recognize it would make the host resolve a tenant on inbound
+                // routing yet never match on the way back out -- a silent dead route. Startup validation
+                // (TenantHostnameValidator, via SearchServicesRegistration.ValidateTenantHostnames) is where
+                // the operator-facing diagnostic for this lives; there is no logger here by design.
+                if (!TenantHostnameValidator.IsValidHostname(normalized))
                 {
                     continue;
                 }

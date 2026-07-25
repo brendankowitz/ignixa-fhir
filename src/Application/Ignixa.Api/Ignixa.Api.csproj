@@ -34,6 +34,8 @@
     <!-- Expose internal types to compatibility and E2E tests -->
     <InternalsVisibleTo Include="Ignixa.Tests.Compatibility.E2E" />
     <InternalsVisibleTo Include="Ignixa.Api.E2ETests" />
+    <!-- Expose internal types to unit tests (e.g. SearchServicesRegistration.ValidateTenantHostnames) -->
+    <InternalsVisibleTo Include="Ignixa.Api.Tests" />
     <!-- Expose internal types to Ignixa.Web hosting layer -->
     <InternalsVisibleTo Include="Ignixa.Web" />
   </ItemGroup>
