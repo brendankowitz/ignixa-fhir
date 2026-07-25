@@ -36,6 +36,10 @@ public static partial class TenantHostnameValidator
         var problems = new List<HostnameProblem>();
         var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
+        // Duplicate detection intentionally spans every configured tenant, including inactive and system
+        // ones -- broader than the runtime host index (which skips those). A hostname shared with an
+        // inactive tenant could never route both at runtime, but reusing it is a config mistake worth
+        // failing the boot over rather than silently ignoring until that tenant is activated.
         foreach (var tenant in tenants)
         {
             foreach (var host in tenant.Hostnames)

@@ -118,7 +118,8 @@ public class FhirRequestContextBaseUriProviderTests
         // Assert
         bases.ShouldNotBeEmpty();
         logger.Warnings.ShouldHaveSingleItem();
-        logger.Warnings[0].ShouldContain("1");
+        logger.Warnings[0].ShouldContain("Tenant 1");
+        logger.Warnings[0].ShouldContain("no active configuration");
     }
 
     private sealed class CapturingLogger<T> : ILogger<T>
