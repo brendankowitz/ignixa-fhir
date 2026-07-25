@@ -389,6 +389,7 @@ public static class StreamingBundleSerializer
     /// <param name="total">Total number of matching resources (optional).</param>
     /// <param name="entries">Async stream of search entry results (raw bytes) to include in the bundle.</param>
     /// <param name="links">Pagination links (self, first, prev, next, last).</param>
+    /// <param name="schemaProvider">Optional FHIR schema provider; supplies the version that shapes version-sensitive output.</param>
     /// <param name="pretty">Whether to format JSON with indentation.</param>
     /// <param name="pageSize"></param>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -397,6 +398,7 @@ public static class StreamingBundleSerializer
         int? total,
         IAsyncEnumerable<SearchEntryResult> entries,
         IReadOnlyList<FhirBundleLink>? links = null,
+        ISchema? schemaProvider = null,
         bool pretty = false,
         int pageSize = 20,
         CancellationToken cancellationToken = default)
@@ -407,58 +409,68 @@ public static class StreamingBundleSerializer
 
         int entryCount = 0;
         bool hasMore = false;
+        var fhirVersion = schemaProvider != null ? (FhirVersion)schemaProvider.Version : FhirVersion.R4;
 
+        // Resolved before any writer exists: unlike the pagination path, the error entry's url comes
+        // from a caller-supplied parameter, so a throw here must not be able to land mid-bundle.
+        string selfUrl = ResolveHistorySelfUrl(links);
+
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
-        // Write bundle header
-        WriteBundleHeader(writer, bundleType, total);
-
-        // Write links
-        //WriteBundleLinks(writer, links);
-
-        // Write entry array
-        writer.WriteStartArray("entry");
-
-        // Stream entries as they become available (zero-copy from raw bytes)
-        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        try
         {
-            entryCount++;
+            WriteBundleHeader(writer, bundleType, total);
 
-            if (entryCount > pageSize)
+            writer.WriteStartArray("entry");
+
+            await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
             {
-                hasMore = true;
-                continue;
+                entryCount++;
+
+                if (entryCount > pageSize)
+                {
+                    hasMore = true;
+                    continue;
+                }
+
+                WriteBufferedHistoryEntry(writer, entryWriter, entryBuffer, resource, fhirVersion);
+
+                // Flush per entry to stream data to the client. This makes tier 2 the common case:
+                // from the second entry onward the response has already started.
+                await writer.FlushAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
+            {
+                writer.UnderlyingWriter.Reset();
+                throw;
             }
 
-            writer.WriteStartObject();
-
-            // Write fullUrl with version for history bundles
-            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            if (!string.IsNullOrEmpty(resource.VersionId))
+            await CloseHistoryErrorBundleAsync(writer);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                fullUrl = $"{fullUrl}/_history/{resource.VersionId}";
+                writer.UnderlyingWriter.Reset();
+                throw;
             }
-            writer.WriteString("fullUrl", fullUrl);
 
-            // Write resource using helper
-            WriteResourceBytes(writer, resource);
+            WriteOperationOutcomeEntry(
+                writer,
+                new IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}"),
+                bundleType,
+                fhirVersion,
+                ErrorEntryFullUrl,
+                selfUrl);
 
-            // Write request metadata for history bundles
-            writer.WriteObject("request", w => w
-                .WriteString("method", resource.Request?.Method ?? "PUT")
-                .WriteString("url", $"{resource.ResourceType}/{resource.ResourceId}"));
-
-            // Write response metadata for history bundles
-            writer.WriteObject("response", w => w
-                .WriteString("status", resource.IsDeleted ? "204" : "200")
-                .WriteString("lastModified", resource.LastModified.ToString("o"))
-                .Condition(!string.IsNullOrEmpty(resource.VersionId), w2 => w2
-                    .WriteString("etag", $"W/\"{resource.VersionId}\"")));
-
-            writer.WriteEndObject(); // end entry
-
-            // Flush periodically to stream data to client
-            await writer.FlushAsync(cancellationToken);
+            await CloseHistoryErrorBundleAsync(writer);
+            throw;
         }
 
         writer.WriteEndArray();
@@ -475,6 +487,82 @@ public static class StreamingBundleSerializer
 
         writer.WriteEndObject(); // end bundle
         await writer.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes one complete history entry into the scratch writer, then copies the finished bytes into
+    /// the response writer as a single raw array element.
+    /// Staging keeps the response writer between complete entries at all times, so a mid-entry failure
+    /// dirties only the scratch buffer and the bundle stays closable.
+    /// </summary>
+    private static void WriteBufferedHistoryEntry(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        SearchEntryResult resource,
+        FhirVersion fhirVersion)
+    {
+        entryWriter.WriteStartObject();
+
+        string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+        if (!string.IsNullOrEmpty(resource.VersionId))
+        {
+            fullUrl = $"{fullUrl}/_history/{resource.VersionId}";
+        }
+        entryWriter.WriteString("fullUrl", fullUrl);
+
+        WriteResourceBytes(entryWriter, resource);
+
+        entryWriter.WriteObject("request", w => w
+            .WriteString("method", resource.Request?.Method ?? "PUT")
+            .WriteString("url", $"{resource.ResourceType}/{resource.ResourceId}"));
+
+        // Stu3 bdl-4 prohibits entry.response in a history bundle; R4 reversed this and R4B/R5 carry
+        // the reversal forward, so the element is required from R4 on and must be suppressed for Stu3.
+        // A Stu3 deleted version consequently loses lastModified: its resource stub carries no meta,
+        // and a conformant Stu3 history bundle has nowhere else to put it.
+        if (fhirVersion >= FhirVersion.R4)
+        {
+            entryWriter.WriteObject("response", w => w
+                .WriteString("status", resource.IsDeleted ? "204" : "200")
+                .WriteString("lastModified", resource.LastModified.ToString("o"))
+                .Condition(!string.IsNullOrEmpty(resource.VersionId), w2 => w2
+                    .WriteString("etag", $"W/\"{resource.VersionId}\"")));
+        }
+
+        entryWriter.WriteEndObject();
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
+    }
+
+    /// <summary>
+    /// Resolves the url carried by the history error entry's <c>request</c>: the self link's url, or the
+    /// literal <c>_history</c> when there is no self link or it carries no usable url.
+    /// </summary>
+    private static string ResolveHistorySelfUrl(IReadOnlyList<FhirBundleLink>? links)
+    {
+        string? selfUrl = links?
+            .FirstOrDefault(link => string.Equals(link.GetRelationRaw(), "self", StringComparison.Ordinal))?.Url;
+
+        return string.IsNullOrEmpty(selfUrl) ? "_history" : selfUrl;
+    }
+
+    /// <summary>
+    /// Completes a history bundle whose response has already started, then leaves the caller to rethrow.
+    /// No link array is emitted: the guard exits before the link region, and no history invariant in any
+    /// supported version requires links (bdl-18's self-link rule is searchset-only).
+    /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
+    /// makes FlushAsync throw immediately, which would defeat the body completion.
+    /// </summary>
+    private static async Task CloseHistoryErrorBundleAsync(FhirJsonWriter writer)
+    {
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        await writer.FlushAsync(CancellationToken.None);
     }
 
     /// <summary>
