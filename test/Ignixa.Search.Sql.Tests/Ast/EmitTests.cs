@@ -1351,4 +1351,101 @@ public class EmitTests
         sql.ShouldContain("FROM dbo.Resource r");
         sql.ShouldContain("r.ResourceTypeId = @p0");
     }
+
+    [Fact]
+    public void GivenAPlanWithAProjection_WhenEmitted_ThenTheTerminalSelectReturnsTheNamedResourceColumns()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Projection: new ProjectionSpec(["ResourceId", "Version", "RawResource", "IsDeleted"]));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("r.ResourceId");
+        sql.ShouldContain("r.RawResource");
+        sql.ShouldContain("INNER JOIN dbo.Resource r");
+    }
+
+    [Fact]
+    public void GivenAPlanWithNoProjection_WhenEmitted_ThenTheTerminalSelectReturnsIdentityColumnsOnly()
+    {
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("RawResource");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithAProjection_WhenEmitted_ThenTheProjectionIsIgnored()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            Projection: new ProjectionSpec(["RawResource"]));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("COUNT_BIG(DISTINCT");
+        sql.ShouldNotContain("RawResource");
+    }
+
+    [Fact]
+    public void GivenAPlanWithProjectionAndOuterPredicate_WhenEmitted_ThenTheResourceJoinAppearsExactlyOnce()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")),
+            Projection: new ProjectionSpec(["RawResource", "IsDeleted"]));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        System.Text.RegularExpressions.Regex.Matches(sql, "INNER JOIN dbo.Resource r").Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAPlanWithAnEmptyProjection_WhenEmitted_ThenItBehavesAsIfNoProjectionWasSpecified()
+    {
+        // An empty column list is treated as equivalent to null — projecting zero columns is the same
+        // as asking for identity-only output, and avoids emitting a dangling comma in the SELECT list.
+        var planWithEmpty = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), Projection: new ProjectionSpec([]));
+        var planWithNull = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+
+        var sqlWithEmpty = SqlBuilder.Run(planWithEmpty).Sql;
+        var sqlWithNull = SqlBuilder.Run(planWithNull).Sql;
+
+        sqlWithEmpty.ShouldBe(sqlWithNull);
+    }
+
+    [Fact]
+    public void GivenAPlanWithProjectionAndIncludes_WhenEmitted_ThenEveryUnionArmContainsTheProjectedColumns()
+    {
+        // Both union arms (match and include) must project the same columns so SQL Server can agree
+        // on the shape of the UNION ALL result set.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            Projection: new ProjectionSpec(["RawResource", "IsDeleted"]));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Both union arms must contain r.RawResource (once in match arm, once in include arm).
+        System.Text.RegularExpressions.Regex.Matches(sql, @"r\.RawResource").Count.ShouldBe(2);
+    }
 }

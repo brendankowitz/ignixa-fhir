@@ -2,6 +2,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Builders;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
+using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
 
 namespace Ignixa.Search.Sql.Tests.Ast;
 
@@ -24,6 +25,11 @@ public class EmitSqlGrammarTests
         yield return ["contains (LIKE)", LikePlan()];
         yield return ["prefix of parameter", PrefixOfParameterPlan()];
         yield return ["dual-column contains (IsNull guard + overflow)", DualColumnContainsPlan()];
+        yield return ["projection alone", ProjectionAlonePlan()];
+        yield return ["projection + outer predicate", ProjectionWithOuterPredicatePlan()];
+        yield return ["projection + includes", ProjectionWithIncludesPlan()];
+        yield return ["projection + sort", ProjectionWithSortPlan()];
+        yield return ["projection + paging", ProjectionWithPagingPlan()];
     }
 
     [Theory]
@@ -239,5 +245,74 @@ public class EmitSqlGrammarTests
         var emitted = SqlBuilder.Run(plan);
 
         SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    private static ProjectionSpec StandardProjection() => new(["ResourceId", "Version", "RawResource", "IsDeleted"]);
+
+    private static QueryPlan ProjectionAlonePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithOuterPredicatePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithIncludesPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithSortPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithPagingPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            Projection: StandardProjection());
     }
 }

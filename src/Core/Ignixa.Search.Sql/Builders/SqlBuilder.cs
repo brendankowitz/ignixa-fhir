@@ -53,11 +53,17 @@ public static class SqlBuilder
 
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
 
+        var projectionCols = ProjectionColumns(plan.Projection);
+        var hasActiveProjection = projectionCols.Length > 0;
+        var projectionJoinFilter = hasActiveProjection ? ResourceRowFilter(visibility, "r.") : string.Empty;
+
         if (plan.Includes is not { Count: > 0 } includes)
         {
             var sortJoins = EmitSortJoins(plan.Sort);
             var sortColumns = EmitSortSelectColumns(plan.Sort);
             var orderByText = EmitOrderBy(plan.Sort);
+
+            var needsResourceJoin = plan.OuterPredicate is not null || hasActiveProjection;
 
             var whereClauses = new List<string>();
             int? seekClauseIndex = null;
@@ -80,14 +86,15 @@ public static class SqlBuilder
             writer.Append(";WITH ");
             writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
             writer.Append("\n");
-            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
+            writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns}{projectionCols} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
+
+            if (needsResourceJoin)
+            {
+                writer.Append($"\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1{projectionJoinFilter}");
+            }
 
             if (whereClauses.Count > 0)
             {
-                var resourceJoin = plan.OuterPredicate is null
-                    ? string.Empty
-                    : "\nINNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1";
-                writer.Append(resourceJoin);
                 writer.Append("\nWHERE ");
                 using (writer.Section(Where, SqlRangeKind.Where))
                 {
@@ -154,13 +161,19 @@ public static class SqlBuilder
 
         var unionBlocks = new List<string>
         {
-            $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}",
+            hasActiveProjection
+                ? $"SELECT m.T1, m.Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs}{projectionCols} FROM {MatchPage} m\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1{projectionJoinFilter}"
+                : $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}",
         };
         for (var i = 0; i < includes.Count; i++)
         {
-            unionBlocks.Add(
-                $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
-                $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+            unionBlocks.Add(hasActiveProjection
+                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns}{projectionCols} FROM {IncludeLimitLabel(i)} i\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
+                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)"
+                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
+                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 
         writer.Append(";WITH ");
@@ -269,6 +282,16 @@ public static class SqlBuilder
         CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters, visibility),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
+
+    /// <summary>The projected column list, prefixed with ", " and qualified with the terminal join alias, or empty.</summary>
+    /// <remarks>
+    /// An empty column list is treated as equivalent to a null projection — projecting zero columns is
+    /// the same as asking for identity-only output, and avoids emitting a dangling comma in the SELECT list.
+    /// </remarks>
+    private static string ProjectionColumns(ProjectionSpec? projection)
+        => projection is null || projection.Columns.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", projection.Columns.Select(c => $"r.{c}"));
 
     /// <summary>
     /// The current-row filter for a dbo.Resource scan under a given visibility, already prefixed with

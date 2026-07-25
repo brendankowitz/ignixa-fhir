@@ -14,6 +14,12 @@ namespace Ignixa.Search.Sql.Ast;
 /// shape; <see cref="CountOnly"/> replaces every row-returning shape with a single
 /// COUNT_BIG(DISTINCT Sid1) SELECT.
 /// </para>
+/// <para>
+/// A non-null <see cref="Projection"/> appends dbo.Resource columns after the identity (and flag)
+/// columns, turning the emitted statement into a self-contained row-returning query. When
+/// <see cref="Projection"/> is null the historical identity-only shape is preserved and the caller
+/// fetches resource rows itself.
+/// </para>
 /// </summary>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,
@@ -24,7 +30,8 @@ public sealed record QueryPlan(
     SortSpec? Sort = null,
     PageSpec? Page = null,
     bool CountOnly = false,
-    ResourceVisibility? Visibility = null)
+    ResourceVisibility? Visibility = null,
+    ProjectionSpec? Projection = null)
 {
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;
