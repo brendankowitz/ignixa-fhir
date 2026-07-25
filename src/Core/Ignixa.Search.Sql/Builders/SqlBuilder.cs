@@ -291,7 +291,7 @@ public static class SqlBuilder
     private static string ProjectionColumns(ProjectionSpec? projection)
         => projection is null || projection.Columns.Count == 0
             ? string.Empty
-            : ", " + string.Join(", ", projection.Columns.Select(c => $"r.{c}"));
+            : ", " + string.Join(", ", projection.Columns.Select(c => $"r.[{c.Replace("]", "]]", StringComparison.Ordinal)}]"));
 
     /// <summary>
     /// The current-row filter for a dbo.Resource scan under a given visibility, already prefixed with

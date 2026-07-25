@@ -1362,8 +1362,8 @@ public class EmitTests
 
         var sql = SqlBuilder.Run(plan).Sql;
 
-        sql.ShouldContain("r.ResourceId");
-        sql.ShouldContain("r.RawResource");
+        sql.ShouldContain("r.[ResourceId]");
+        sql.ShouldContain("r.[RawResource]");
         sql.ShouldContain("INNER JOIN dbo.Resource r");
     }
 
@@ -1445,7 +1445,11 @@ public class EmitTests
 
         var sql = SqlBuilder.Run(plan).Sql;
 
-        // Both union arms must contain r.RawResource (once in match arm, once in include arm).
-        System.Text.RegularExpressions.Regex.Matches(sql, @"r\.RawResource").Count.ShouldBe(2);
+        // Both union arms must project r.[RawResource]: one in the match arm, one in the include arm.
+        // Splitting on the separator and asserting each arm independently proves the column reaches
+        // both arms, not merely that the string appears twice (which a duplicated match arm would satisfy).
+        var arms = sql.Split("\nUNION ALL\n");
+        arms[0].ShouldContain("r.[RawResource]");  // match arm
+        arms[1].ShouldContain("r.[RawResource]");  // include arm
     }
 }

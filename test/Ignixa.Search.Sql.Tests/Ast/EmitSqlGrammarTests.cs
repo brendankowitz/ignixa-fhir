@@ -315,4 +315,23 @@ public class EmitSqlGrammarTests
             Page: page,
             Projection: StandardProjection());
     }
+
+    [Fact]
+    public void GivenAProjectionColumnNameContainingAClosingBracket_WhenEmitted_ThenItIsDoubledAndTheSqlIsValid()
+    {
+        // Proves the bracket-escaping path: a name containing ']' must emit ']]' so the quoted identifier
+        // is well-formed and SQL Server's grammar accepts it.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Projection: new ProjectionSpec(["Raw]Resource"]));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("r.[Raw]]Resource]");
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
 }
