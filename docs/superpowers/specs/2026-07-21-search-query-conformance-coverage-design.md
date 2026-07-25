@@ -59,7 +59,7 @@ An assertion is hard when all of the following are true:
 2. the target CapabilityStatement advertises the exact interaction and every capability that is both
    representable and intentionally gated. Search result parameters are never gated on — history
    `_count`, projection `_elements`/`_summary`, include `_total`, and query-composition `_sort`
-   and `_count` alike. See gating rule 5; and
+   and `_count` alike, per gating rule 5; and
 3. fixtures make the expected result deterministic without relying on server-global data, wall-clock
    timing, or an implementation-specific ordering tie-breaker.
 
@@ -158,9 +158,16 @@ inspects or asserts the query keys embedded in that URL. This distinction keeps 
 contract in scope while leaving proprietary continuation-token formats out of scope.
 History `_count` is a control parameter, so the paging test gates on `history-instance` plus the
 `patch` interaction its fixture versions depend on, and does not require `_count` as an advertised
-`searchParam`. The version-building patches live in `setup` and are deliberately unasserted: a
-failed setup assertion marks every test in the suite skipped, which would take down the six tests
-that never patch.
+`searchParam`. The extra versions are built with FHIRPath Patch rather than PUT because the Patient
+is created with a server-assigned id, which a static fixture body cannot be made to match. They live
+in `setup` and are deliberately unasserted. When the setup phase fails — through a failed assertion
+*or* an operation that throws — every test in the file is abandoned, and `ConformanceReportMapper`
+republishes them all under the setup phase's own status, so they reach the matrix as failures rather
+than as skips. Asserting the patches would hand a server that rejects PATCH the power to take down
+the six tests that never patch. A patch accepted but not applied is still caught, by the hard
+version-count, next-link and sort-order assertions in the four tests that consume the versions.
+Setup asserts `id.exists()` on the create because a server may legitimately answer 201 with an empty
+body, which would leave `histAId` unset and make the following patch throw on URL resolution.
 
 The focused evaluator regression exposes an absolute next URL through variable extraction and uses
 `${nextUrl}` as the complete second `operation.url`. It proves the request provider receives that URL
@@ -376,7 +383,8 @@ only the standard `relation = 'next'` contract.
 Implementation uses the existing TestScript engine:
 
 1. **Static suite checks:** parse every changed JSON TestScript and run repository guards for allowed
-   extension URLs and supported FHIR-version declarations. If worktree execution exposes repository
+   extension URLs, supported FHIR-version declarations, and gates that name a search result parameter
+   and so can never be satisfied (rule 5). If worktree execution exposes repository
    root discovery as the blocker, use the proven-minimal TDD change only: focused `RepoRootTests`
    cover `.git` as a file and as a directory, and `RepoRoot` accepts either marker.
 2. **Engine unit boundary:** the absolute variable-extracted URL regression passes; keep evaluator and
@@ -434,9 +442,13 @@ does not justify an engine change without an independently reproducible correctn
 
 ## Completion criteria
 
-- Only the two approved docs, five named suite files, focused `VariableExtractorTests.cs` regression,
-  and focused `RepoRoot.cs`/`RepoRootTests.cs` worktree guard are changed; evaluator, model, and parser
-  production files remain unchanged.
+- Changes are confined to the two approved docs, seven suite files, and three test files; evaluator,
+  model, and parser production files remain unchanged. The seven suites are the five named above plus
+  two touched by rule-5 remediation: `Search/chaining-and-sort.json`, whose `_sort`, `_summary` and
+  `_total` gates had left three tests inert, and `Search/pagination.json`, whose note claiming
+  next-link traversal needed an engine enhancement this effort disproved. The three test files are
+  the focused `VariableExtractorTests.cs` regression, the `RepoRoot.cs`/`RepoRootTests.cs` worktree
+  guard, and `ConformanceSuiteExtensionGuardTests.cs`, which gained the rule-5 enforcement.
 - Every new hard assertion is deterministic and narrowly capability-gated.
 - Every warning-only assertion states why it is not portable hard conformance.
 - All five explicit exclusion groups remain absent.

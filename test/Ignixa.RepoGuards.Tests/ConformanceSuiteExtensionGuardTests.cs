@@ -65,8 +65,9 @@ public partial class ConformanceSuiteExtensionGuardTests
     {
         var gates = EnumerateSuiteFiles()
             .SelectMany(file => CollectIgnixaExtensions(file)
-                .Where(extension => extension.Url == RequiresCapabilityUrl)
-                .Select(extension => (file, expression: extension.ValueString ?? string.Empty)))
+                .Where(extension => extension.Url == RequiresCapabilityUrl
+                                    && !string.IsNullOrEmpty(extension.ValueString))
+                .Select(extension => (file, expression: extension.ValueString!)))
             .ToList();
 
         // Without this the guard passes green on an empty input set — if RequiresCapabilityUrl
@@ -90,9 +91,10 @@ public partial class ConformanceSuiteExtensionGuardTests
     }
 
     // Flags result parameters only: those are unsatisfiable against any conformant server, whereas a
-    // rest-level gate on an ordinary parameter is merely unsatisfiable against Ignixa and always sits
-    // on the or-branch of a disjunction. Both spellings of a result-parameter gate are caught, at
-    // rest level and resource level alike.
+    // rest-level gate on an ordinary parameter is merely unsatisfiable against Ignixa — whose metadata
+    // pipeline never populates that collection — and always sits on the or-branch of a disjunction.
+    // Catches result-parameter gates at rest level and resource level alike. Not airtight: it matches
+    // source text, so a reversed or restructured spelling still slips through.
     private static IEnumerable<string> DescribeUnsatisfiableClauses(string expression)
     {
         // FHIRPath tolerates whitespace around '=' and the corpus already uses both spellings, so

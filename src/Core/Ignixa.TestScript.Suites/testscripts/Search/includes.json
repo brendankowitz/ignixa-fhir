@@ -343,7 +343,7 @@
       ]
     },
     {
-      "name": "direct performer includes are exact; cross-path deduplication informational",
+      "name": "direct performer includes are returned; cross-path deduplication informational",
       "description": "Direct performer includes make Organization and Practitioner presence portable; they do not prove either iterate branch executed. Cross-path counts remain warning-only without a profile.",
       "extension": [
         { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
