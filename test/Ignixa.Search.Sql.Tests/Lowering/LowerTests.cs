@@ -50,7 +50,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -594,7 +594,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
         // Assert
         plan.CountOnly.ShouldBeTrue();
@@ -813,7 +813,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: fixedTime).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = fixedTime }).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -1055,8 +1055,7 @@ public class LowerTests
             includeLimit: 0,
             sort: [],
             SortPhase.Valued,
-            page: null,
-            resourceTypes: ["Patient", "Observation"]).Plan;
+            page: null, new LowerOptions { ResourceTypes = ["Patient", "Observation"] }).Plan;
 
         // Assert against the AST node: the type mapping is what is under test, not emitter formatting.
         var mts = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
@@ -1077,8 +1076,7 @@ public class LowerTests
             includeLimit: 0,
             sort: [],
             SortPhase.Valued,
-            page: null,
-            resourceTypes: []).Plan;
+            page: null, new LowerOptions { ResourceTypes = [] }).Plan;
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1106,8 +1104,7 @@ public class LowerTests
             includeLimit: 0,
             sort: [],
             SortPhase.Valued,
-            page: null,
-            resourceTypes: ["Patient", "NotAType"]).Plan;
+            page: null, new LowerOptions { ResourceTypes = ["Patient", "NotAType"] }).Plan;
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1131,8 +1128,7 @@ public class LowerTests
             includeLimit: 0,
             sort: [],
             SortPhase.Valued,
-            page: null,
-            resourceTypes: ["NotAType"]).Plan;
+            page: null, new LowerOptions { ResourceTypes = ["NotAType"] }).Plan;
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1158,8 +1154,7 @@ public class LowerTests
             includeLimit: 0,
             sort: [],
             SortPhase.Valued,
-            page: null,
-            resourceTypes: ["Patient"]).Plan;
+            page: null, new LowerOptions { ResourceTypes = ["Patient"] }).Plan;
 
         // Assert the AST mapping first; then confirm the emitter path uses IN rather than = for a
         // one-element list (this is the one emitted-SQL assertion kept to cover the emitter path).

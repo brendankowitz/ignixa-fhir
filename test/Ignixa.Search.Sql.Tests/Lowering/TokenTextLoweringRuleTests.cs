@@ -116,8 +116,7 @@ public class TokenTextLoweringRuleTests
             new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
         var plan = Lower.Run(
             tree, Symbols(parameter), targetResourceType: "Observation",
-            includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null,
-            visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false)).Plan;
+            includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Visibility = new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false) }).Plan;
 
         // Act
         var emitted = SqlBuilder.Run(plan);

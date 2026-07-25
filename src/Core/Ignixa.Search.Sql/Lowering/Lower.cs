@@ -19,7 +19,9 @@ public static class Lower
     /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source when there is none) into the CTE graph,
     /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed only
-    /// for a wildcard compartment search; combining it with typed leaves, includes, or sort throws.
+    /// for a wildcard compartment search; combining it with typed leaves, includes, or sort throws. The
+    /// optional inputs -- paging caps, visibility, surrogate range, hash gating, the base-set types, and the
+    /// access constraints -- are grouped on <see cref="LowerOptions"/> so each is passed by name.
     /// </summary>
     public static LoweredPlan Run(
         Expression? expression,
@@ -31,23 +33,17 @@ public static class Lower
         IReadOnlyList<SortExpression> sort,
         SortPhase sortPhase,
         PageSpec? page,
-        bool countOnly = false,
-        int? top = null,
-        DateTimeOffset? approximationReferenceTime = null,
-        ResourceVisibility? visibility = null,
-        SurrogateIdRange? surrogateRange = null,
-        SqlParameterRef? searchParameterHash = null,
-        IReadOnlyList<string>? resourceTypes = null,
-        IReadOnlyList<AccessConstraint>? accessConstraints = null)
+        LowerOptions? options = null)
     {
-        var accessConstraintApplier = new AccessConstraintApplier(accessConstraints);
-        var context = new StructuralContext(symbols, approximationReferenceTime, accessConstraintApplier);
+        options ??= new LowerOptions();
+        var accessConstraintApplier = new AccessConstraintApplier(options.AccessConstraints);
+        var context = new StructuralContext(symbols, options.ApproximationReferenceTime, accessConstraintApplier);
         CteRef match;
         Predicate? outerPredicate = null;
 
         if (expression is null)
         {
-            match = LowerBaseSet(context, targetResourceType, resourceTypes);
+            match = LowerBaseSet(context, targetResourceType, options.ResourceTypes);
         }
         else
         {
@@ -55,7 +51,7 @@ public static class Lower
             outerPredicate = extractedPredicate;
             match = remaining switch
             {
-                null => LowerBaseSet(context, targetResourceType, resourceTypes),
+                null => LowerBaseSet(context, targetResourceType, options.ResourceTypes),
                 CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
                 _ when targetResourceType is null => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
@@ -121,7 +117,7 @@ public static class Lower
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, countOnly, visibility, SurrogateRange: surrogateRange, SearchParameterHash: searchParameterHash),
+            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash),
             new PlanProvenance(context.Origins));
     }
 

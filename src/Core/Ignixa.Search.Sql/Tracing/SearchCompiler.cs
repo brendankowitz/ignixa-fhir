@@ -109,8 +109,11 @@ public static class SearchCompiler
                     options.Sort,
                     SortPhase.Valued,
                     page: null,
-                    approximationReferenceTime: approximationReferenceTime,
-                    accessConstraints: options.AccessConstraints);
+                    new LowerOptions
+                    {
+                        ApproximationReferenceTime = approximationReferenceTime,
+                        AccessConstraints = options.AccessConstraints,
+                    });
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
                 MarkKnownMisses(outcomes, lowered);

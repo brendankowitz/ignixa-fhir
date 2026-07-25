@@ -75,7 +75,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- the status=final constraint (SearchParamId 220) is intersected into the match set.
@@ -94,7 +94,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [revinclude], includeLimit: 1000,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- the constraint CTE (220) being emitted is not enough: it must be *joined to* by the
@@ -121,7 +121,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             chain, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- both the inner predicate and the constraint are present on the chain target.
@@ -140,7 +140,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [iterate], includeLimit: 1000,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- an :iterate stage is the same IncludeStage record, so it must carry the same guard.
@@ -162,7 +162,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- the wildcard stage carries the Observation constraint even though its output types are
@@ -183,8 +183,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             expression: null, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint],
-            resourceTypes: ["Observation", "Patient"]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint], ResourceTypes = ["Observation", "Patient"] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- assert the structural wiring on the lowered CTE graph rather than the presence of the
@@ -220,7 +219,7 @@ public class AccessConstraintTests
 
         QueryPlanSql Build(IReadOnlyList<AccessConstraint>? constraints) => new(SqlBuilder.Run(Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: constraints).Plan).Sql);
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = constraints }).Plan).Sql);
 
         // Act + Assert -- null and empty must both be inert.
         Build(null).Sql.ShouldBe(Build(Array.Empty<AccessConstraint>()).Sql);
@@ -237,7 +236,7 @@ public class AccessConstraintTests
         // Act + Assert
         var ex = Should.Throw<ArgumentException>(() => Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint, duplicate]));
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint, duplicate] }));
         ex.Message.ShouldContain("Observation");
     }
 
@@ -255,7 +254,7 @@ public class AccessConstraintTests
         // Act
         var plan = Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.ObservationConstraint, deviceConstraint]).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint, deviceConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Assert -- Observation constraint enforced; no throw despite the unresolved Device parameter.
@@ -280,7 +279,7 @@ public class AccessConstraintTests
         // silently drop the constraint.
         var ex = Should.Throw<InvalidOperationException>(() => Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
-            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [unresolvable]));
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [unresolvable] }));
         ex.Message.ShouldContain("Device");
         ex.Message.ShouldContain("wildcard");
     }
