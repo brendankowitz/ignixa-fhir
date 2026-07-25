@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
@@ -182,4 +183,108 @@ public class ReferenceLoweringRuleTests
         Predicate.Equal equal => equal.Column.Column == "BaseUri",
         _ => false,
     };
+
+    [Fact]
+    public void GivenAnUntypedReferenceValue_WhenLowered_ThenItIsNarrowedToTheParametersDeclaredTargetTypes()
+    {
+        var parameter = new SearchParameterInfo(
+            "organization",
+            "organization",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: null!, resourceId: "org-123"));
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url!.ToString()] = 210 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111 });
+
+        var plan = Lower.Run(
+            predicate,
+            symbols,
+            "Patient",
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("ReferenceResourceTypeId");
+    }
+
+    [Fact]
+    public void GivenAnUntypedReferenceValueWithMultipleDeclaredTargets_WhenLowered_ThenAllTargetsAreOrdered()
+    {
+        // A parameter with two declared target types must OR both type ids into the predicate.
+        var parameter = new SearchParameterInfo(
+            "general-practitioner",
+            "general-practitioner",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-general-practitioner"),
+            targetResourceTypes: ["Organization", "Practitioner"]);
+
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: null!, resourceId: "gp-456"));
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url!.ToString()] = 211 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111, ["Practitioner"] = 114 });
+
+        var plan = Lower.Run(
+            predicate,
+            symbols,
+            "Patient",
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null).Plan;
+
+        var emitted = SqlBuilder.Run(plan);
+
+        // Both type ids must be present as bound parameters.
+        emitted.Sql.ShouldContain("ReferenceResourceTypeId");
+        emitted.Parameters.Select(p => p.Value).ShouldContain((short)111);
+        emitted.Parameters.Select(p => p.Value).ShouldContain((short)114);
+    }
+
+    [Fact]
+    public void GivenAnUntypedReferenceValueOnParameterWithNoTargets_WhenLowered_ThenNoReferenceResourceTypeIdFilter()
+    {
+        // A parameter with no declared target types must not add a ReferenceResourceTypeId constraint.
+        var parameter = new SearchParameterInfo(
+            "subject",
+            "subject",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        // No targetResourceTypes — default is empty.
+
+        var predicate = new SearchParameterPredicateExpression(
+            parameter,
+            SearchComparator.Eq,
+            modifier: null,
+            new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: null!, resourceId: "any-123"));
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url!.ToString()] = 77 },
+            new Dictionary<string, short> { ["Observation"] = 104 });
+
+        var cte = ReferenceLoweringRule.Lower(predicate, (ReferenceSearchValue)predicate.Value, new LeafContext(symbols), 104);
+
+        // With no declared targets, falls back to id-only — no ReferenceResourceTypeId column touched.
+        var idEqual = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
+        idEqual.Column.Column.ShouldBe("ReferenceResourceId");
+    }
 }

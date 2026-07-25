@@ -36,5 +36,31 @@ public sealed class LeafContext
     /// <inheritdoc cref="SymbolTable.QuantityCodeId"/>
     public int? QuantityCodeId(string code) => _symbols.QuantityCodeId(code);
 
+    /// <summary>
+    /// The ResourceTypeIds a reference parameter declares it may point at, skipping any the symbol table
+    /// could not resolve. Empty when the parameter declares no targets, which leaves the reference
+    /// unconstrained by type.
+    /// </summary>
+    public IReadOnlyList<short> DeclaredTargetResourceTypeIds(SearchParameterInfo parameter)
+    {
+        ArgumentNullException.ThrowIfNull(parameter);
+
+        if (parameter.TargetResourceTypes is not { Count: > 0 } targets)
+        {
+            return [];
+        }
+
+        var ids = new List<short>(targets.Count);
+        foreach (var target in targets)
+        {
+            if (_symbols.TryGetResourceTypeId(target, out var id))
+            {
+                ids.Add(id);
+            }
+        }
+
+        return ids;
+    }
+
     public SqlParameterRef Parameter(object value) => new(value);
 }

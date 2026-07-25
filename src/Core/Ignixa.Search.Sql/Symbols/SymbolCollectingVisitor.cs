@@ -45,9 +45,24 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     public override Expression VisitSearchParameterPredicate(SearchParameterPredicateExpression expression, object? context)
     {
         AddParameter(expression.Parameter);
-        if (expression.Value is ReferenceSearchValue { ResourceType: { Length: > 0 } resourceType })
+        if (expression.Value is ReferenceSearchValue referenceValue)
         {
-            ResourceTypes.Add(resourceType);
+            if (referenceValue.ResourceType is { Length: > 0 } resourceType)
+            {
+                ResourceTypes.Add(resourceType);
+            }
+            else
+            {
+                // Untyped reference: the value carries no type, so collect the parameter's declared
+                // target types. Lower uses them to narrow to the declared types, matching the shipping
+                // engine. If the value has an explicit type the declared-target narrowing is skipped, so
+                // collecting them here for that case is harmless — a few extra resolver round-trips at
+                // most.
+                foreach (var targetType in expression.Parameter.TargetResourceTypes)
+                {
+                    AddResourceType(targetType);
+                }
+            }
         }
 
         if (expression.Parameter.Code == "_type" && expression.Value is TokenSearchValue { Code: { Length: > 0 } typeCode })

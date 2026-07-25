@@ -78,6 +78,14 @@ public sealed class SymbolTable
            : throw new KeyNotFoundException($"SymbolTable has no ResourceTypeId for '{resourceType}'.");
 
     /// <summary>
+    /// Attempts to resolve a resource type's ResourceTypeId without throwing. Returns false when the type
+    /// was never collected, which is appropriate when scanning declared-target lists — an unresolved
+    /// target should be skipped rather than raise an invariant violation.
+    /// </summary>
+    public bool TryGetResourceTypeId(string resourceType, out short id)
+        => _resourceTypeIds.TryGetValue(resourceType, out id);
+
+    /// <summary>
     /// Looks up a compartment type's full membership map — every Reference-type search parameter that
     /// establishes membership in the compartment, grouped by parameter, each with the resource types that
     /// use it. Holds names, not resolved ids (Lower resolves those through the methods above), and the

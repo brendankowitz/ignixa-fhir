@@ -7,8 +7,8 @@
 | Verdict | Count |
 |---|---:|
 | NotCompiled | 0 |
-| Match | 69 |
-| CompilerDoesLess | 46 |
+| Match | 75 |
+| CompilerDoesLess | 40 |
 | CompilerDoesMore | 14 |
 | Divergent | 56 |
 
@@ -21,14 +21,13 @@ None.
 ### CompilerDoesLess: `/DocumentReference/$docref?patient=ignixa-docref-pat0`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x4)`
-- `filter col:ReferenceResourceTypeId is-null`
+- `filter ReferenceResourceTypeId = <v> (x2)`
 
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op distinct`
 - `legacy: op inner-join`
-- `legacy: op or (x4)`
+- `legacy: op or (x2)`
 - `legacy: op order-by`
 - `legacy: op top`
 
@@ -42,7 +41,7 @@ cte1 = <-cte0  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte0  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 ```
 
 </details>
@@ -50,13 +49,12 @@ cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> Searc
 ### CompilerDoesLess: `/DocumentReference/$docref?patient=ignixa-docref-pat0&type=http://loinc.org%7C55107-7`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x4)`
-- `filter col:ReferenceResourceTypeId is-null`
+- `filter ReferenceResourceTypeId = <v> (x2)`
 
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op exists`
-- `legacy: op or (x4)`
+- `legacy: op or (x2)`
 - `legacy: op order-by`
 - `legacy: op top`
 
@@ -71,7 +69,7 @@ cte2 = <-cte1  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
@@ -81,14 +79,13 @@ cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ### CompilerDoesLess: `/DocumentReference/$docref?patient=ignixa-docref-pat0&unknown=unknownvalue`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x4)`
-- `filter col:ReferenceResourceTypeId is-null`
+- `filter ReferenceResourceTypeId = <v> (x2)`
 
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op distinct`
 - `legacy: op inner-join`
-- `legacy: op or (x4)`
+- `legacy: op or (x2)`
 - `legacy: op order-by`
 - `legacy: op top`
 
@@ -102,7 +99,7 @@ cte1 = <-cte0  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte0  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 ```
 
 </details>
@@ -856,184 +853,6 @@ compiler:
 select0 = <-cte2  [order-by]
 cte0 = Resource+sub:ReferenceSearchParam  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p  [correlate,correlate,exists,not]
 cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?general-practitioner=ignixa-impsrch-ref-pract-untyped&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x3)`
-- `filter col:ReferenceResourceTypeId is-null`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op or (x3)`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [or,or,or]
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?general-practitioner=ignixa-ref-p2&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x3)`
-- `filter col:ReferenceResourceTypeId is-null`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op or (x3)`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [or,or,or]
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=ignixa-impsrch-ref-org-untyped&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=ignixa-ref-ijk&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=organization/ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
 
@@ -2139,8 +1958,7 @@ inc0lim = <-inc0  [count-big,order-by,top]
 ### Divergent: `/DocumentReference/$docref?patient=ignixa-docref-pat0,ignixa-docref-pat1`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x8)`
-- `filter col:ReferenceResourceTypeId is-null (x2)`
+- `filter ReferenceResourceTypeId = <v> (x4)`
 
 Only the compiler does:
 - `table ReferenceSearchParam`
@@ -2150,7 +1968,7 @@ Only the compiler does:
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op inner-join`
-- `legacy: op or (x9)`
+- `legacy: op or (x5)`
 - `legacy: op order-by`
 - `legacy: op top`
 - `compiler: op union`
@@ -2165,8 +1983,8 @@ cte1 = <-cte0  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
+cte1 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 cte2 = <-cte0,cte1  [union]
 ```
 
