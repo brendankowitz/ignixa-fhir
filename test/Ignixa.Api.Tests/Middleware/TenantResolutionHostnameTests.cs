@@ -71,6 +71,64 @@ public class TenantResolutionHostnameTests
     }
 
     [Fact]
+    public async Task GivenAForgedHostInAMultiTenantDeployment_WhenResolved_ThenNoTenantIsSelected()
+    {
+        // Arrange — forged host resolves no tenant, and TWO active tenants exist, so the agnostic route is
+        // ambiguous. This is discriminating: if the host branch wrongly admitted the forged host, a tenant
+        // would be set and `next` would be called instead of the request being rejected.
+        var store = Substitute.For<ITenantConfigurationStore>();
+        store.ResolveByHostAsync("forged.example.org", Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>((TenantConfiguration?)null));
+        store.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>(new[] { Tenant(1), Tenant(2) }));
+
+        var ctx = new DefaultHttpContext();
+        ctx.Response.Body = new MemoryStream();
+        ctx.Request.Host = new HostString("forged.example.org");
+        ctx.Request.Path = "/Patient";
+        ctx.Request.Method = "GET";
+        var nextCalled = false;
+        var mw = new TenantResolutionMiddleware(_ => { nextCalled = true; return Task.CompletedTask; }, store, NullLogger<TenantResolutionMiddleware>.Instance);
+
+        // Act
+        await mw.InvokeAsync(ctx);
+
+        // Assert
+        ctx.Items.ContainsKey("TenantId").ShouldBeFalse();
+        ctx.Response.StatusCode.ShouldBe(StatusCodes.Status400BadRequest);
+        nextCalled.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenAHostAndPathNamingTheSameTenant_WhenResolved_ThenItProceeds()
+    {
+        // Arrange — host and path agree on tenant 2. Guards against the conflict check over-firing on
+        // agreement (it must only reject when host and path name *different* tenants).
+        var store = Substitute.For<ITenantConfigurationStore>();
+        store.ResolveByHostAsync("fhir2.example.org", Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>(Tenant(2, "fhir2.example.org")));
+        store.GetTenantConfigurationAsync(2, Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>(Tenant(2, "fhir2.example.org")));
+
+        var ctx = new DefaultHttpContext();
+        ctx.Response.Body = new MemoryStream();
+        ctx.Request.Host = new HostString("fhir2.example.org");
+        ctx.Request.Path = "/tenant/2/Patient";
+        ctx.Request.RouteValues["tenantId"] = "2";
+        ctx.Request.Method = "GET";
+        var nextCalled = false;
+        var mw = new TenantResolutionMiddleware(_ => { nextCalled = true; return Task.CompletedTask; }, store, NullLogger<TenantResolutionMiddleware>.Instance);
+
+        // Act
+        await mw.InvokeAsync(ctx);
+
+        // Assert
+        nextCalled.ShouldBeTrue();
+        ctx.Items["TenantId"].ShouldBe(2);
+        ctx.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+    }
+
+    [Fact]
     public async Task GivenAnUnknownHostAndNoRoute_WhenResolved_ThenFallsThroughToAutoDetect()
     {
         // Arrange — unknown host must not resolve a tenant; single active tenant auto-detects.

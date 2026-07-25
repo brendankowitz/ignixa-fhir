@@ -55,4 +55,45 @@ public class BackgroundContextHostBaseUriTests
         // Assert
         bases[0].ShouldBe(new Uri("https://fhir1.example.org/"));
     }
+
+    [Fact]
+    public void GivenAHostnameConfiguredTenant_WhenComparingRequestAndBackgroundPaths_ThenTheFullRecognitionSetsAreEqual()
+    {
+        // Arrange -- the drift invariant this feature exists to guarantee is that a self-reference classifies
+        // identically regardless of which path indexed it. Asserting only bases[0] (the canonical element)
+        // would miss a divergence in the remaining recognized bases; this pins full ordered-sequence equality.
+        var store = Substitute.For<ITenantConfigurationStore>();
+        var tenantConfiguration = new TenantConfiguration
+        {
+            TenantId = 1,
+            DisplayName = "Acme",
+            FhirVersion = "4.0",
+            Hostnames = ["fhir1.example.org"],
+        };
+        IReadOnlyList<TenantConfiguration> allTenants =
+        [
+            tenantConfiguration,
+            new TenantConfiguration { TenantId = 2, DisplayName = "Beta", FhirVersion = "4.0" },
+        ];
+        store.GetTenantConfigurationAsync(1, Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>(tenantConfiguration));
+        store.GetAllTenantsAsync(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IReadOnlyList<TenantConfiguration>>(allTenants));
+
+        var accessor = new FhirRequestContextAccessor
+        {
+            RequestContext = FhirRequestContextFactory.CreateBackgroundContext(1),
+        };
+        var resolver = new FhirServiceBaseUriResolver(new Uri("https://example.org/"));
+        var provider = new FhirRequestContextBaseUriProvider(accessor, resolver, store);
+
+        // Act
+        var backgroundPath = provider.GetServiceBaseUris();
+        var requestPath = resolver.Resolve(
+            requestOrigin: null,
+            TenantAddressing.For(tenantConfiguration, allTenants.Count));
+
+        // Assert
+        backgroundPath.ShouldBe(requestPath);
+    }
 }

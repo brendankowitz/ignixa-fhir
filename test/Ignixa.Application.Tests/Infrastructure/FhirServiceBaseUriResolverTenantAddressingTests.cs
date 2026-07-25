@@ -147,4 +147,22 @@ public class FhirServiceBaseUriResolverTenantAddressingTests
         bases.ShouldNotContain(b => !b.IsDefaultPort);
         bases.ShouldContain(new Uri("https://fhir1.example.org/"));
     }
+
+    [Fact]
+    public void GivenAnUppercaseHostname_WhenResolving_ThenItIsExcludedFromTheRecognitionSet()
+    {
+        // Arrange -- an uppercase-configured hostname is excluded from the routing index by
+        // TenantHostnameValidator.IsValidHostname (used in AppSettingsTenantConfigurationStore.BuildHostIndex),
+        // so the resolver must exclude it too; otherwise a tenant would emit self-references under a base it
+        // will never recognize inbound. With the uppercase-only host skipped and no deployment root included,
+        // canonical precedence falls through to the tenant/{id}/ path form.
+        var resolver = new FhirServiceBaseUriResolver(Root);
+        var tenant = new TenantAddressing(1, ["FHIR1.EXAMPLE.ORG"], IncludeDeploymentRoot: false);
+
+        // Act
+        var bases = resolver.Resolve(requestOrigin: null, tenant);
+
+        // Assert
+        bases.ShouldBe([new Uri("https://example.org/tenant/1/")]);
+    }
 }
