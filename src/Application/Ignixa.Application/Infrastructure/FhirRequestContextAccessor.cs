@@ -19,6 +19,13 @@ public class FhirRequestContextAccessor : IFhirRequestContextAccessor
 {
     // AsyncLocal ensures each async context (bundle entry) has isolated state
     // This is the same pattern currently used for BundleEntryIndex in HttpContextExtensions.cs:68
+    //
+    // The field is static on purpose and singletons depend on it. IFhirBaseUriProvider is consumed by
+    // singletons (FhirVersionContext, SearchOptionsBuilderFactory, the GraphQL type modules), so it must
+    // itself be a singleton, and it only observes the calling request's context because every instance of
+    // this accessor shares this one slot. Making the field instance-scoped would leave those singletons
+    // holding a permanently empty context and silently stop reference reconciliation.
+    // FhirRequestContextAccessorTests pins this.
     private static readonly AsyncLocal<IFhirRequestContext?> _context = new();
 
     /// <summary>
@@ -49,9 +56,14 @@ public class FhirRequestContext : IFhirRequestContext
     public TenantConfiguration? TenantConfiguration { get; set; }
 
     /// <summary>
-    /// Service base URI for this request, including the tenant route segment in multi-tenant mode.
+    /// Canonical service base URI for this request (the form matching the route it arrived on).
     /// </summary>
     public Uri? BaseUri { get; set; }
+
+    /// <summary>
+    /// Every base URI that identifies this server for this request's tenant, canonical first.
+    /// </summary>
+    public IReadOnlyList<Uri> ServiceBaseUris { get; set; } = [];
 
     /// <summary>
     /// FHIR version extracted from Content-Type/Accept headers.

@@ -24,6 +24,12 @@ namespace Ignixa.DataLayer.SqlEntityFramework.IntegrationTests;
 /// no hand-rolled catalog-seeding SQL), then resolves it through the real
 /// <see cref="Resolve.RunAsync"/> pipeline (Phase 3 Task 4) and this real resolver, asserting the
 /// returned <c>SearchParamId</c> matches the row that was actually seeded.
+/// <para>
+/// THIS IS A MANUAL HARNESS, NOT CI COVERAGE. Every test that touches the database is
+/// <c>[Fact(Skip = ...)]</c> and runs only when a developer sets <c>TEST_SQL_CONNECTION_STRING</c> and
+/// removes the skip. A green CI run says nothing about this file, so do not count it when judging
+/// whether <see cref="SqlEntityFrameworkSymbolResolver"/> is covered.
+/// </para>
 /// </summary>
 public class SqlEntityFrameworkSymbolResolverTests
 {
@@ -220,8 +226,10 @@ public class SqlEntityFrameworkSymbolResolverTests
     [Fact]
     public async Task GivenACancelledToken_WhenGetSystemIdAsyncCalled_ThenThrowsOperationCanceledException()
     {
-        // Arrange: the cancellation check fires before any database access, so any valid
-        // DbContextOptions works here -- the connection is never actually opened.
+        // Arrange: no database access happens on this path, so any valid DbContextOptions works here --
+        // the connection is never opened. What stops it on a cold cache is the semaphore wait, not a
+        // cancellation check; the check that short-circuits a *warm* cache hit is pinned separately by
+        // SearchIndexReferenceDataCacheRegressionTests, which this test cannot distinguish.
         var options = new DbContextOptionsBuilder<FhirDbContext>()
             .UseSqlServer("Server=.;Database=FakeCancelCheck;Trusted_Connection=True;")
             .Options;
@@ -242,8 +250,8 @@ public class SqlEntityFrameworkSymbolResolverTests
     [Fact]
     public async Task GivenACancelledToken_WhenGetQuantityCodeIdAsyncCalled_ThenThrowsOperationCanceledException()
     {
-        // Arrange: the cancellation check fires before any database access, so any valid
-        // DbContextOptions works here -- the connection is never actually opened.
+        // Arrange: as above -- no database access on this path, and the semaphore wait rather than a
+        // cancellation check is what this particular test observes.
         var options = new DbContextOptionsBuilder<FhirDbContext>()
             .UseSqlServer("Server=.;Database=FakeCancelCheck;Trusted_Connection=True;")
             .Options;

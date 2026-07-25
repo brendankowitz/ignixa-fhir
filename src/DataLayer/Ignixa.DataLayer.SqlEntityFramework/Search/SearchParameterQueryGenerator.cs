@@ -173,7 +173,7 @@ public class SearchParameterQueryGenerator
                 "Composite parameter {Code} requires at least 2 components, found {Count}",
                 searchParameter.Code,
                 componentExpressions.Count);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Route to appropriate composite query generator method based on type
@@ -194,7 +194,7 @@ public class SearchParameterQueryGenerator
             CompositeType.TokenDateTime => await _compositeQueryGenerator.GenerateTokenDateTimeQueryAsync(
                 resourceTypeId, searchParamId, componentExpressions[0], componentExpressions[1], ct),
 
-            _ => Enumerable.Empty<long>().AsQueryable()
+            _ => _context.EmptyResourceIds()
         };
     }
 
@@ -372,7 +372,7 @@ public class SearchParameterQueryGenerator
     {
         if (multiaryExpr.Expressions.Count == 0)
         {
-            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+            return Task.FromResult(_context.EmptyResourceIds());
         }
 
         // CRITICAL FIX: Extract all resource IDs into a List for SQL IN clause generation.
@@ -390,7 +390,7 @@ public class SearchParameterQueryGenerator
 
         if (resourceIds.Count == 0)
         {
-            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+            return Task.FromResult(_context.EmptyResourceIds());
         }
 
         // For OR operations (typical for _id parameter), use Contains() to generate SQL IN clause.
@@ -538,7 +538,7 @@ public class SearchParameterQueryGenerator
     {
         if (multiaryExpr.Expressions.Count == 0)
         {
-            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+            return Task.FromResult(_context.EmptyResourceIds());
         }
 
         var queries = new List<IQueryable<long>>();
@@ -596,7 +596,7 @@ public class SearchParameterQueryGenerator
 
         if (queries.Count == 0)
         {
-            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+            return Task.FromResult(_context.EmptyResourceIds());
         }
 
         // Combine based on operator
@@ -726,7 +726,7 @@ public class SearchParameterQueryGenerator
     {
         if (multiaryExpr.Expressions.Count == 0)
         {
-            return Task.FromResult(Enumerable.Empty<long>().AsQueryable());
+            return Task.FromResult(_context.EmptyResourceIds());
         }
 
         var queries = new List<IQueryable<long>>();
@@ -837,7 +837,7 @@ public class SearchParameterQueryGenerator
                         resourceTypeId.Value,
                         stringExpr.Value,
                         typeId.Value);
-                    return Enumerable.Empty<long>().AsQueryable();
+                    return _context.EmptyResourceIds();
                 }
 
                 var query = _context.Resources
@@ -848,7 +848,7 @@ public class SearchParameterQueryGenerator
                 return await Task.FromResult(query);
             }
 
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Handle MultiaryExpression for multiple resource types with OR/AND
@@ -877,7 +877,7 @@ public class SearchParameterQueryGenerator
     {
         if (multiaryExpr.Expressions.Count == 0)
         {
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         var resourceTypeIds = new List<short>();
@@ -903,7 +903,7 @@ public class SearchParameterQueryGenerator
             _logger.LogDebug(
                 "No matching resource types found for _type filter. Query constrained to ResourceTypeId={ConstrainedTypeId}",
                 resourceTypeId);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Return query: WHERE ResourceTypeId IN (...)
@@ -1007,7 +1007,7 @@ public class SearchParameterQueryGenerator
             _logger.LogDebug(
                 "No matching resource types found for _type IN filter. Query constrained to ResourceTypeId={ConstrainedTypeId}",
                 resourceTypeId);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Return query: WHERE ResourceTypeId IN (...)
@@ -1024,7 +1024,7 @@ public class SearchParameterQueryGenerator
     {
         if (multiaryExpr.Expressions.Count == 0)
         {
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         _logger.LogDebug(
@@ -1148,7 +1148,7 @@ public class SearchParameterQueryGenerator
             var conditionQuery = BuildSingleConditionDateTimeQuery(query, c);
             result = result == null ? conditionQuery : result.Union(conditionQuery);
         }
-        return result ?? Enumerable.Empty<long>().AsQueryable();
+        return result ?? _context.EmptyResourceIds();
     }
 
     /// <summary>
@@ -1171,7 +1171,7 @@ public class SearchParameterQueryGenerator
                 BinaryOperator.GreaterThanOrEqual => baseQuery.Where(sp => sp.StartDateTime >= value).Select(sp => sp.ResourceSurrogateId),
                 BinaryOperator.LessThan => baseQuery.Where(sp => sp.StartDateTime < value).Select(sp => sp.ResourceSurrogateId),
                 BinaryOperator.LessThanOrEqual => baseQuery.Where(sp => sp.StartDateTime <= value).Select(sp => sp.ResourceSurrogateId),
-                _ => Enumerable.Empty<long>().AsQueryable()
+                _ => baseQuery.Where(_ => false).Select(sp => sp.ResourceSurrogateId)
             };
         }
         else // DateTimeEnd
@@ -1184,7 +1184,7 @@ public class SearchParameterQueryGenerator
                 BinaryOperator.GreaterThanOrEqual => baseQuery.Where(sp => sp.EndDateTime >= value).Select(sp => sp.ResourceSurrogateId),
                 BinaryOperator.LessThan => baseQuery.Where(sp => sp.EndDateTime < value).Select(sp => sp.ResourceSurrogateId),
                 BinaryOperator.LessThanOrEqual => baseQuery.Where(sp => sp.EndDateTime <= value).Select(sp => sp.ResourceSurrogateId),
-                _ => Enumerable.Empty<long>().AsQueryable()
+                _ => baseQuery.Where(_ => false).Select(sp => sp.ResourceSurrogateId)
             };
         }
     }
@@ -1240,10 +1240,10 @@ public class SearchParameterQueryGenerator
         // A Quantity AND expression will contain some combination of:
         // - StringExpression with FieldName.QuantitySystem
         // - StringExpression with FieldName.QuantityCode
-        // - BinaryExpression with FieldName.Quantity
+        // - BinaryExpression with FieldName.QuantityLow or FieldName.QuantityHigh
         return multiaryExpr.Expressions.Any(e =>
             (e is StringExpression se && (se.FieldName == FieldName.QuantitySystem || se.FieldName == FieldName.QuantityCode)) ||
-            (e is BinaryExpression be && be.FieldName == FieldName.Quantity));
+            (e is BinaryExpression be && be.FieldName is FieldName.QuantityLow or FieldName.QuantityHigh));
     }
 
     /// <summary>
@@ -1258,30 +1258,47 @@ public class SearchParameterQueryGenerator
     {
         _logger.LogDebug("Using optimized Quantity AND query generation");
 
-        // Extract the components from the AND expression
+        // Extract the components from the AND expression. Expression.And does not flatten, so the value
+        // window arrives as a MultiaryExpression child rather than as top-level siblings: eq/ap as an And of
+        // its two bounds, ne as an Or. Inspecting only the top level found no value constraint while the
+        // system and code siblings still matched, so the whole value filter was dropped and the search
+        // returned every row carrying that system and code regardless of value. Conjuncts are collected by
+        // descending And groups; a disjunction (ne) is kept whole for the Union pass below, because it cannot
+        // be flattened into the conjunctive list without changing its meaning.
         string? systemUri = null;
         string? code = null;
-        BinaryExpression? valueExpr = null;
+        var valueConjuncts = new List<BinaryExpression>();
+        var valueDisjunctions = new List<MultiaryExpression>();
 
-        foreach (var expr in multiaryExpr.Expressions)
+        void CollectConstraints(MultiaryExpression group)
         {
-            if (expr is StringExpression stringExpr)
+            foreach (var expr in group.Expressions)
             {
-                switch (stringExpr.FieldName)
+                switch (expr)
                 {
-                    case FieldName.QuantitySystem:
-                        systemUri = stringExpr.Value;
+                    case StringExpression { FieldName: FieldName.QuantitySystem } systemExpr:
+                        systemUri = systemExpr.Value;
                         break;
-                    case FieldName.QuantityCode:
-                        code = stringExpr.Value;
+                    case StringExpression { FieldName: FieldName.QuantityCode } codeExpr:
+                        code = codeExpr.Value;
                         break;
+                    case BinaryExpression { FieldName: FieldName.QuantityLow or FieldName.QuantityHigh } binaryExpr:
+                        valueConjuncts.Add(binaryExpr);
+                        break;
+                    case MultiaryExpression { MultiaryOperation: MultiaryOperator.And } nested:
+                        CollectConstraints(nested);
+                        break;
+                    case MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } disjunction:
+                        valueDisjunctions.Add(disjunction);
+                        break;
+                    default:
+                        throw new NotSupportedException(
+                            $"Unexpected expression {expr.GetType().Name} in a Quantity AND search; a dropped value constraint would silently widen the result.");
                 }
             }
-            else if (expr is BinaryExpression binaryExpr && binaryExpr.FieldName == FieldName.Quantity)
-            {
-                valueExpr = binaryExpr;
-            }
         }
+
+        CollectConstraints(multiaryExpr);
 
         // Build base query with resource type and search param filters
         var query = _context.QuantitySearchParams
@@ -1291,11 +1308,11 @@ public class SearchParameterQueryGenerator
         // Add system filter if specified
         if (!string.IsNullOrEmpty(systemUri))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri, ct);
+            var systemId = await _cache.GetSystemIdAsync(systemUri, ct);
             if (!systemId.HasValue)
             {
                 _logger.LogDebug("Quantity system not found: {SystemUri}", systemUri);
-                return Enumerable.Empty<long>().AsQueryable();
+                return _context.EmptyResourceIds();
             }
             query = query.Where(sp => sp.SystemId == systemId.Value);
         }
@@ -1303,40 +1320,77 @@ public class SearchParameterQueryGenerator
         // Add code filter if specified
         if (!string.IsNullOrEmpty(code))
         {
-            var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code, ct);
+            var quantityCodeId = await _cache.GetQuantityCodeIdAsync(code, ct);
             if (!quantityCodeId.HasValue)
             {
                 _logger.LogDebug("Quantity code not found: {Code}", code);
-                return Enumerable.Empty<long>().AsQueryable();
+                return _context.EmptyResourceIds();
             }
             query = query.Where(sp => sp.QuantityCodeId == quantityCodeId.Value);
         }
 
-        // Add value comparison if specified
-        if (valueExpr != null)
+        // The conjuncts (a single ordering bound, or the two bounds of an eq/ap window) narrow the same
+        // row set, so each is applied in turn.
+        foreach (var valueExpr in valueConjuncts)
         {
-            var value = Convert.ToDecimal(valueExpr.Value);
-
-            _logger.LogDebug(
-                "Quantity AND query: System={System}, Code={Code}, Value={Value}, Op={Op}",
-                systemUri,
-                code,
-                value,
-                valueExpr.BinaryOperator);
-
-            query = valueExpr.BinaryOperator switch
-            {
-                BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-                BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-                BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-                BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-                BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
-                BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
-                _ => throw new NotSupportedException($"BinaryOperator {valueExpr.BinaryOperator} is not supported for Quantity")
-            };
+            query = ApplyQuantityValueConstraint(query, valueExpr);
         }
 
-        return query.Select(sp => sp.ResourceSurrogateId);
+        var result = query.Select(sp => sp.ResourceSurrogateId);
+
+        // ne lowers to "Low < lower OR High > upper" -- a disjunction over the already-narrowed row set.
+        // Each disjunct is the same query with one bound applied, unioned; intersecting that with the
+        // conjunctive result keeps any co-occurring conjuncts in effect. Matches the Union idiom the
+        // DateTime ne path uses rather than composing an || lambda over two different columns.
+        foreach (var disjunction in valueDisjunctions)
+        {
+            IQueryable<long>? branchUnion = null;
+
+            foreach (var disjunct in disjunction.Expressions)
+            {
+                if (disjunct is not BinaryExpression { FieldName: FieldName.QuantityLow or FieldName.QuantityHigh } binary)
+                {
+                    throw new NotSupportedException(
+                        $"Unexpected disjunct {disjunct.GetType().Name} in a Quantity ne search.");
+                }
+
+                var branch = ApplyQuantityValueConstraint(query, binary).Select(sp => sp.ResourceSurrogateId);
+                branchUnion = branchUnion is null ? branch : branchUnion.Union(branch);
+            }
+
+            if (branchUnion is not null)
+            {
+                result = result.Intersect(branchUnion);
+            }
+        }
+
+        return result;
+    }
+
+    private static IQueryable<Entities.QuantitySearchParamEntity> ApplyQuantityValueConstraint(
+        IQueryable<Entities.QuantitySearchParamEntity> query,
+        BinaryExpression valueExpr)
+    {
+        var value = Convert.ToDecimal(valueExpr.Value);
+
+        return (valueExpr.FieldName, valueExpr.BinaryOperator) switch
+        {
+            (FieldName.QuantityLow, BinaryOperator.GreaterThan) => query.Where(sp => sp.LowValue > value),
+            (FieldName.QuantityLow, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.LowValue >= value),
+            (FieldName.QuantityLow, BinaryOperator.LessThan) => query.Where(sp => sp.LowValue < value),
+            (FieldName.QuantityLow, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.LowValue <= value),
+            (FieldName.QuantityLow, BinaryOperator.Equal) => query.Where(sp => sp.LowValue == value),
+            (FieldName.QuantityLow, BinaryOperator.NotEqual) => query.Where(sp => sp.LowValue != value),
+
+            (FieldName.QuantityHigh, BinaryOperator.GreaterThan) => query.Where(sp => sp.HighValue > value),
+            (FieldName.QuantityHigh, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.HighValue >= value),
+            (FieldName.QuantityHigh, BinaryOperator.LessThan) => query.Where(sp => sp.HighValue < value),
+            (FieldName.QuantityHigh, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.HighValue <= value),
+            (FieldName.QuantityHigh, BinaryOperator.Equal) => query.Where(sp => sp.HighValue == value),
+            (FieldName.QuantityHigh, BinaryOperator.NotEqual) => query.Where(sp => sp.HighValue != value),
+
+            _ => throw new NotSupportedException($"Quantity search with FieldName {valueExpr.FieldName} and BinaryOperator {valueExpr.BinaryOperator} is not supported")
+        };
     }
 
     /// <summary>
@@ -1411,11 +1465,11 @@ public class SearchParameterQueryGenerator
         // Add system filter if specified
         if (!string.IsNullOrEmpty(system))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(system, ct);
+            var systemId = await _cache.GetSystemIdAsync(system, ct);
             if (!systemId.HasValue)
             {
                 _logger.LogDebug("Token system not found: {System}", system);
-                return Enumerable.Empty<long>().AsQueryable();
+                return _context.EmptyResourceIds();
             }
             query = query.Where(sp => sp.SystemId == systemId.Value);
         }
@@ -1428,11 +1482,11 @@ public class SearchParameterQueryGenerator
         // Handle identifier type for :of-type modifier
         if (!string.IsNullOrEmpty(identifierTypeSystem))
         {
-            var identifierTypeSystemId = await _cache.GetOrCreateSystemIdAsync(identifierTypeSystem, ct);
+            var identifierTypeSystemId = await _cache.GetSystemIdAsync(identifierTypeSystem, ct);
             if (!identifierTypeSystemId.HasValue)
             {
                 _logger.LogDebug("Identifier type system not found: {System}", identifierTypeSystem);
-                return Enumerable.Empty<long>().AsQueryable();
+                return _context.EmptyResourceIds();
             }
             query = query.Where(sp => sp.IdentifierTypeSystemId == identifierTypeSystemId.Value);
         }
@@ -1502,9 +1556,9 @@ public class SearchParameterQueryGenerator
         // Determine which table to query based on FieldName
         return binaryExpr.FieldName switch
         {
-            FieldName.Number => GenerateNumberQuery(resourceTypeId, searchParamId, binaryExpr),
+            FieldName.NumberLow or FieldName.NumberHigh => GenerateNumberQuery(resourceTypeId, searchParamId, binaryExpr),
             FieldName.DateTimeStart or FieldName.DateTimeEnd => GenerateDateTimeQuery(resourceTypeId, searchParamId, binaryExpr),
-            FieldName.Quantity => await GenerateQuantityQueryAsync(resourceTypeId, searchParamId, binaryExpr, ct),
+            FieldName.QuantityLow or FieldName.QuantityHigh => await GenerateQuantityQueryAsync(resourceTypeId, searchParamId, binaryExpr, ct),
             _ => throw new NotSupportedException($"BinaryExpression with FieldName {binaryExpr.FieldName} is not supported")
         };
     }
@@ -1655,7 +1709,15 @@ public class SearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(system))
         {
-            systemId = await _cache.GetOrCreateSystemIdAsync(system, ct);
+            systemId = await _cache.GetSystemIdAsync(system, ct);
+
+            // A system that has no row cannot match any indexed token. Falling through with a null systemId
+            // would drop the system filter from the predicate below and widen the search to every system.
+            if (!systemId.HasValue)
+            {
+                _logger.LogDebug("Token system not found: {System}", system);
+                return _context.EmptyResourceIds();
+            }
         }
 
         var baseQuery = _context.TokenSearchParams
@@ -1737,15 +1799,26 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        query = binaryExpr.BinaryOperator switch
+        // The expression builder has already chosen the bound each comparator belongs to (see
+        // SearchValueExpressionBuilderHelper.GenerateNumberExpression); apply the operator verbatim to the
+        // named column. Re-deriving the column from the operator here is what collapsed gt into sa.
+        query = (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
         {
-            BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-            BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-            BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-            BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-            BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
-            BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
-            _ => throw new NotSupportedException($"BinaryOperator {binaryExpr.BinaryOperator} is not supported for Number")
+            (FieldName.NumberLow, BinaryOperator.GreaterThan) => query.Where(sp => sp.LowValue > value),
+            (FieldName.NumberLow, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.LowValue >= value),
+            (FieldName.NumberLow, BinaryOperator.LessThan) => query.Where(sp => sp.LowValue < value),
+            (FieldName.NumberLow, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.LowValue <= value),
+            (FieldName.NumberLow, BinaryOperator.Equal) => query.Where(sp => sp.LowValue == value),
+            (FieldName.NumberLow, BinaryOperator.NotEqual) => query.Where(sp => sp.LowValue != value),
+
+            (FieldName.NumberHigh, BinaryOperator.GreaterThan) => query.Where(sp => sp.HighValue > value),
+            (FieldName.NumberHigh, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.HighValue >= value),
+            (FieldName.NumberHigh, BinaryOperator.LessThan) => query.Where(sp => sp.HighValue < value),
+            (FieldName.NumberHigh, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.HighValue <= value),
+            (FieldName.NumberHigh, BinaryOperator.Equal) => query.Where(sp => sp.HighValue == value),
+            (FieldName.NumberHigh, BinaryOperator.NotEqual) => query.Where(sp => sp.HighValue != value),
+
+            _ => throw new NotSupportedException($"Number search with FieldName {binaryExpr.FieldName} and BinaryOperator {binaryExpr.BinaryOperator} is not supported")
         };
 
         return query.Select(sp => sp.ResourceSurrogateId);
@@ -1824,15 +1897,24 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
-        query = binaryExpr.BinaryOperator switch
+        // Same contract as GenerateNumberQuery: the builder named the bound, so apply the operator verbatim.
+        query = (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
         {
-            BinaryOperator.Equal => query.Where(sp => sp.LowValue <= value && sp.HighValue >= value),
-            BinaryOperator.GreaterThan => query.Where(sp => sp.LowValue > value),
-            BinaryOperator.GreaterThanOrEqual => query.Where(sp => sp.LowValue >= value),
-            BinaryOperator.LessThan => query.Where(sp => sp.HighValue < value),
-            BinaryOperator.LessThanOrEqual => query.Where(sp => sp.HighValue <= value),
-            BinaryOperator.NotEqual => query.Where(sp => sp.HighValue < value || sp.LowValue > value),
-            _ => throw new NotSupportedException($"BinaryOperator {binaryExpr.BinaryOperator} is not supported for Quantity")
+            (FieldName.QuantityLow, BinaryOperator.GreaterThan) => query.Where(sp => sp.LowValue > value),
+            (FieldName.QuantityLow, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.LowValue >= value),
+            (FieldName.QuantityLow, BinaryOperator.LessThan) => query.Where(sp => sp.LowValue < value),
+            (FieldName.QuantityLow, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.LowValue <= value),
+            (FieldName.QuantityLow, BinaryOperator.Equal) => query.Where(sp => sp.LowValue == value),
+            (FieldName.QuantityLow, BinaryOperator.NotEqual) => query.Where(sp => sp.LowValue != value),
+
+            (FieldName.QuantityHigh, BinaryOperator.GreaterThan) => query.Where(sp => sp.HighValue > value),
+            (FieldName.QuantityHigh, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.HighValue >= value),
+            (FieldName.QuantityHigh, BinaryOperator.LessThan) => query.Where(sp => sp.HighValue < value),
+            (FieldName.QuantityHigh, BinaryOperator.LessThanOrEqual) => query.Where(sp => sp.HighValue <= value),
+            (FieldName.QuantityHigh, BinaryOperator.Equal) => query.Where(sp => sp.HighValue == value),
+            (FieldName.QuantityHigh, BinaryOperator.NotEqual) => query.Where(sp => sp.HighValue != value),
+
+            _ => throw new NotSupportedException($"Quantity search with FieldName {binaryExpr.FieldName} and BinaryOperator {binaryExpr.BinaryOperator} is not supported")
         };
 
         return Task.FromResult(query.Select(sp => sp.ResourceSurrogateId));
@@ -1853,15 +1935,15 @@ public class SearchParameterQueryGenerator
         string systemUri,
         CancellationToken ct)
     {
-        // Look up SystemId from System table via cache
-        // Note: GetOrCreateSystemIdAsync will find existing systems first (won't create during search)
-        var systemId = await _cache.GetOrCreateSystemIdAsync(systemUri, ct);
+        // Read-only lookup: the query path must never create terminology rows. Creating one here would
+        // both write on a GET and suppress the "known miss" diagnostic for a typo'd system.
+        var systemId = await _cache.GetSystemIdAsync(systemUri, ct);
 
         if (!systemId.HasValue)
         {
             // System not found - return empty result (no matches possible)
             _logger.LogDebug("Quantity system not found: {SystemUri}", systemUri);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Query QuantitySearchParams filtered by SystemId
@@ -1891,15 +1973,14 @@ public class SearchParameterQueryGenerator
         string code,
         CancellationToken ct)
     {
-        // Look up QuantityCodeId from QuantityCode table via cache
-        // Note: GetOrCreateQuantityCodeIdAsync will find existing codes first (won't create during search)
-        var quantityCodeId = await _cache.GetOrCreateQuantityCodeIdAsync(code, ct);
+        // Read-only lookup: see GenerateQuantitySystemQueryAsync.
+        var quantityCodeId = await _cache.GetQuantityCodeIdAsync(code, ct);
 
         if (!quantityCodeId.HasValue)
         {
             // Code not found - return empty result (no matches possible)
             _logger.LogDebug("Quantity code not found: {Code}", code);
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // Query QuantitySearchParams filtered by QuantityCodeId
@@ -1944,7 +2025,7 @@ public class SearchParameterQueryGenerator
         if (referenceResourceTypeEntity == null)
         {
             // Resource type not found - return empty query
-            return Enumerable.Empty<long>().AsQueryable();
+            return _context.EmptyResourceIds();
         }
 
         // When resourceTypeId is null (system-wide search), don't filter by resource type
@@ -2020,7 +2101,7 @@ public class SearchParameterQueryGenerator
             if (!sourceTypeId.HasValue)
             {
                 _logger.LogWarning("Source resource type not found: {Type}", expression.SourceResourceType);
-                return Enumerable.Empty<long>().AsQueryable();
+                return _context.EmptyResourceIds();
             }
         }
 
@@ -2108,4 +2189,5 @@ public class SearchParameterQueryGenerator
 
         return query.Select(sp => sp.ResourceSurrogateId);
     }
+
 }

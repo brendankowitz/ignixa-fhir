@@ -172,14 +172,112 @@ public class RangeComparatorSemanticsTests
         var apPredicate = LowerNumber(SearchComparator.Ap, 5.4m);
 
         // Act & Assert
+        var matchedByEq = 0;
         foreach (var (scenario, low, high) in NumericRows().Select(r => ((string)r[0]!, (decimal)r[1]!, (decimal)r[2]!)))
         {
             var row = NumericRow(low, high);
             if (PredicateRowEvaluator.Matches(eqPredicate, row))
             {
+                matchedByEq++;
                 PredicateRowEvaluator.Matches(apPredicate, row).ShouldBeTrue($"{scenario}: eq matched but ap did not");
             }
         }
+
+        // A subset claim over an empty set is vacuously true, so the loop above proves nothing unless eq
+        // actually matched something. Five of the twelve rows are contained by [5.35, 5.45].
+        matchedByEq.ShouldBe(5);
+    }
+
+    // The FHIR prefix table over parameter range [S,E] and resource range [Low,High]: gt is High > E,
+    // ge is High >= S, lt is Low < S, le is Low <= E, sa is Low > E, eb is High < S. Numeric ordering
+    // comparators do not widen, so S = E = 5.4.
+    //
+    // The [5.0, 6.0] row is the one that separates them: it straddles 5.4, so gt/ge/lt/le must all match
+    // it while sa/eb must not. Comparing gt against Low (which collapses gt into sa) or ge against Low
+    // (which inverts it) fails exactly there and nowhere on a point-valued row — which is why plain
+    // valueQuantity coverage never caught it.
+    public static TheoryData<string, decimal, decimal, SearchComparator, bool> OrderingComparatorRows()
+    {
+        var data = new TheoryData<string, decimal, decimal, SearchComparator, bool>();
+
+        void Row(string scenario, decimal low, decimal high, bool gt, bool ge, bool lt, bool le, bool sa, bool eb)
+        {
+            data.Add(scenario, low, high, SearchComparator.Gt, gt);
+            data.Add(scenario, low, high, SearchComparator.Ge, ge);
+            data.Add(scenario, low, high, SearchComparator.Lt, lt);
+            data.Add(scenario, low, high, SearchComparator.Le, le);
+            data.Add(scenario, low, high, SearchComparator.Sa, sa);
+            data.Add(scenario, low, high, SearchComparator.Eb, eb);
+        }
+
+        //                                                gt     ge     lt     le     sa     eb
+        Row("range straddling the search value", 5.0m, 6.0m, true, true, true, true, false, false);
+        Row("range entirely above", 6.0m, 7.0m, true, true, false, false, true, false);
+        Row("range entirely below", 4.0m, 5.0m, false, false, true, true, false, true);
+        Row("range touching from above", 5.4m, 7.0m, true, true, false, true, false, false);
+        Row("range touching from below", 4.0m, 5.4m, false, true, true, true, false, false);
+        Row("point at the search value", 5.4m, 5.4m, false, true, false, true, false, false);
+        Row("point above", 6.0m, 6.0m, true, true, false, false, true, false);
+        Row("point below", 5.0m, 5.0m, false, false, true, true, false, true);
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(OrderingComparatorRows))]
+    public void GivenANumericRow_WhenLoweredWithAnOrderingComparator_ThenItMatchesExactlyWhenTheSpecRelationHolds(
+        string scenario, decimal low, decimal high, SearchComparator comparator, bool expected)
+    {
+        // Arrange
+        var row = NumericRow(low, high);
+
+        // Act
+        var matched = PredicateRowEvaluator.Matches(LowerNumber(comparator, 5.4m), row);
+
+        // Assert
+        matched.ShouldBe(expected, $"{scenario}: [{low}, {high}] {comparator} 5.4");
+    }
+
+    [Fact]
+    public void GivenARangeRowStraddlingTheSearchValue_WhenLoweredWithGtAndSa_ThenOnlyGtMatches()
+    {
+        // Arrange — gt and sa both emit GreaterThan, so a shared switch arm between them produces two
+        // predicates that are textually plausible and semantically identical. Only a straddling row tells
+        // them apart. Same for lt versus eb.
+        var row = NumericRow(5.0m, 6.0m);
+
+        // Act & Assert
+        PredicateRowEvaluator.Matches(LowerNumber(SearchComparator.Gt, 5.4m), row).ShouldBeTrue();
+        PredicateRowEvaluator.Matches(LowerNumber(SearchComparator.Sa, 5.4m), row).ShouldBeFalse();
+        PredicateRowEvaluator.Matches(LowerNumber(SearchComparator.Lt, 5.4m), row).ShouldBeTrue();
+        PredicateRowEvaluator.Matches(LowerNumber(SearchComparator.Eb, 5.4m), row).ShouldBeFalse();
+    }
+
+    // The same relations over a date row, proving the two types really do share one table. date=2023 has
+    // parameter range [2023-01-01, 2023-12-31T23:59:59].
+    public static TheoryData<string, SearchComparator, bool> DateOrderingRows() => new()
+    {
+        { "gt", SearchComparator.Gt, true },
+        { "ge", SearchComparator.Ge, true },
+        { "lt", SearchComparator.Lt, true },
+        { "le", SearchComparator.Le, true },
+        { "sa", SearchComparator.Sa, false },
+        { "eb", SearchComparator.Eb, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(DateOrderingRows))]
+    public void GivenADateRowEnclosingTheSearchYear_WhenLoweredWithAnOrderingComparator_ThenItAgreesWithTheNumericTable(
+        string scenario, SearchComparator comparator, bool expected)
+    {
+        // Arrange — [2022, 2024] straddles the whole of 2023, the date analogue of the [5.0, 6.0] row
+        var row = DateRow(Instant(2022, 1, 1), Instant(2024, 1, 1));
+
+        // Act
+        var matched = PredicateRowEvaluator.Matches(LowerDate(comparator, Year2023()), row);
+
+        // Assert
+        matched.ShouldBe(expected, scenario);
     }
 
     private static DateTimeOffset Instant(int year, int month, int day)

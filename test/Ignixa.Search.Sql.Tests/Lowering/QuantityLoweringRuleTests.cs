@@ -121,6 +121,74 @@ public class QuantityLoweringRuleTests
     }
 
     [Fact]
+    public void GivenANeQuantityValue_WhenLowered_ThenNegatesTheEqContainment()
+    {
+        // Arrange — quantity had no ne coverage at any level, so nothing pinned that it reaches the same
+        // NumericRangeComparison branch the number leaf does. eq is And(Low >= 5.35, High <= 5.45); ne is
+        // its De Morgan negation.
+        var parameter = Parameter();
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Ne, modifier: null, new QuantitySearchValue(system: null!, code: null!, 5.4m));
+
+        // Act
+        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202), 103);
+
+        // Assert
+        var or = cte.Predicate.ShouldBeOfType<Predicate.Or>();
+        var lt = or.Left.ShouldBeOfType<Predicate.LessThan>();
+        lt.Column.Column.ShouldBe("LowValue");
+        lt.Value.Value.ShouldBe(5.35m);
+        var gt = or.Right.ShouldBeOfType<Predicate.GreaterThan>();
+        gt.Column.Column.ShouldBe("HighValue");
+        gt.Value.Value.ShouldBe(5.45m);
+    }
+
+    [Fact]
+    public void GivenAFullyQualifiedNeQuantity_WhenLowered_ThenTheSystemAndCodeStayConjoinedOutsideTheNegation()
+    {
+        // Arrange — the ne negation applies to the numeric range only. Distributing it over SystemId or
+        // QuantityCodeId would make "?value-quantity=ne5.4|http://unitsofmeasure.org|mg" match rows in
+        // other units entirely, which is the failure mode an Or at the wrong level produces.
+        var parameter = Parameter();
+        var systemIds = new Dictionary<string, int?> { ["http://unitsofmeasure.org"] = 42 };
+        var quantityCodeIds = new Dictionary<string, int?> { ["mg"] = 77 };
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Ne, modifier: null, new QuantitySearchValue("http://unitsofmeasure.org", "mg", 5.4m));
+
+        // Act
+        var cte = QuantityLoweringRule.Lower(predicate, (QuantitySearchValue)predicate.Value, ContextResolving(parameter, 202, systemIds, quantityCodeIds), 103);
+
+        // Assert — And(And(Or(numeric), Equal(SystemId, 42)), Equal(QuantityCodeId, 77))
+        var outer = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var middle = outer.Left.ShouldBeOfType<Predicate.And>();
+        middle.Left.ShouldBeOfType<Predicate.Or>();
+        middle.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("SystemId");
+        outer.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("QuantityCodeId");
+    }
+
+    [Fact]
+    public void GivenAQuantityRow_WhenLoweredWithEqAndNe_ThenExactlyOneMatchesIt()
+    {
+        // Arrange — the partition property RangeComparatorSemanticsTests proves for number, asserted for
+        // quantity so the shared comparator is pinned from both call sites. [5.0, 6.0] encloses the eq
+        // window without being contained by it, the row that separates containment from overlap.
+        var parameter = Parameter();
+        var row = new Dictionary<string, object> { ["LowValue"] = 5.0m, ["HighValue"] = 6.0m };
+
+        // Act
+        var eq = QuantityLoweringRule.Lower(
+            new SearchParameterPredicateExpression(parameter, SearchComparator.Eq, modifier: null, new QuantitySearchValue(system: null!, code: null!, 5.4m)),
+            new QuantitySearchValue(system: null!, code: null!, 5.4m), ContextResolving(parameter, 202), 103);
+        var ne = QuantityLoweringRule.Lower(
+            new SearchParameterPredicateExpression(parameter, SearchComparator.Ne, modifier: null, new QuantitySearchValue(system: null!, code: null!, 5.4m)),
+            new QuantitySearchValue(system: null!, code: null!, 5.4m), ContextResolving(parameter, 202), 103);
+
+        // Assert
+        PredicateRowEvaluator.Matches(eq.Predicate!, row).ShouldBeFalse();
+        PredicateRowEvaluator.Matches(ne.Predicate!, row).ShouldBeTrue();
+    }
+
+    [Fact]
     public void GivenAnEmptySystemQuantity_WhenLowered_ThenMatchesTheTokenPathsEmptySystemShape()
     {
         // Arrange — quantity's system follows the token pattern, so an empty system must lower to the

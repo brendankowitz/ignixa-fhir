@@ -33,12 +33,21 @@ public interface IFhirRequestContext
     TenantConfiguration? TenantConfiguration { get; set; }
 
     /// <summary>
-    /// Service base URI for this request, including the tenant route segment in multi-tenant mode
-    /// (e.g. "https://host/tenant/1/"). Used to recognize an absolute reference that points back at this
-    /// server so it can be reconciled with the equivalent relative reference.
+    /// Canonical service base URI for this request — the form matching the route it arrived on, so it
+    /// agrees with the Location headers and pagination links the same request emits.
     /// Null for background work that has no request to derive it from.
+    /// Use <see cref="ServiceBaseUris"/> to recognize a self-reference; this one is for emitting.
     /// </summary>
     Uri? BaseUri { get; set; }
+
+    /// <summary>
+    /// Every base URI that identifies this server for this request's tenant, canonical first — both the
+    /// deployment root and the tenant-scoped base, because this server hands out absolute links in both
+    /// forms. Recognition must span the set: matching only the route's own form made an absolute reference
+    /// ingested via /Patient invisible to a search issued via /tenant/1/Patient and vice versa.
+    /// Empty when no base can be determined.
+    /// </summary>
+    IReadOnlyList<Uri> ServiceBaseUris { get; set; }
 
     /// <summary>
     /// FHIR version extracted from Content-Type/Accept headers.

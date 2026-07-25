@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using Ignixa.Abstractions;
 using Ignixa.Search.Exceptions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
@@ -49,7 +50,7 @@ public class SearchParserOldVsNewParityTests
     private static IExpressionParser BuildOldParser(SearchParserTestContext context)
     {
         var legacyValueParser = new LegacySearchParameterExpressionParser(
-            new ReferenceSearchValueParser(context.SchemaProvider),
+            new ReferenceSearchValueParser(context.SchemaProvider, NullFhirBaseUriProvider.Instance),
             context.SchemaProvider);
 
         return new LegacyExpressionParser(() => context.DefinitionManager, legacyValueParser, context.SchemaProvider);

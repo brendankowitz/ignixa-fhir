@@ -6,6 +6,7 @@
 using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Terminology.Models;
+using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.Domain.Models;
@@ -42,13 +43,23 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
         using var scope = _serviceProvider.CreateScope();
         var repositoryFactory = scope.ServiceProvider.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
         var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
+        var fhirContextAccessor = scope.ServiceProvider.GetRequiredService<IFhirRequestContextAccessor>();
 
         await using var fhirDbContext = await repositoryFactory.GetDbContextAsync(input.TenantId, CancellationToken.None);
-        var systemRepository = new SqlSystemRepository(fhirDbContext, loggerFactory.CreateLogger<SqlSystemRepository>());
+        var systemRepository = new SqlSystemRepository(
+            fhirDbContext,
+            loggerFactory.CreateLogger<SqlSystemRepository>(),
+            scope.ServiceProvider.GetService<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>());
         ITerminologyImporter terminologyImporter = new SqlCodeSystemImporter(
             fhirDbContext,
             systemRepository,
             loggerFactory.CreateLogger<SqlCodeSystemImporter>());
+
+        // Establish the ambient request context for the duration of the activity so any reference
+        // resolution the importer performs resolves the same tenant-scoped base URIs the HTTP request
+        // path would have. See ImportBatchActivity for the failure mode this prevents.
+        var previousContext = fhirContextAccessor.RequestContext;
+        fhirContextAccessor.RequestContext = FhirRequestContextFactory.CreateBackgroundContext(input.TenantId);
 
         try
         {
@@ -175,6 +186,10 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
                 Success: false,
                 ConceptCount: 0,
                 ErrorMessage: ex.Message);
+        }
+        finally
+        {
+            fhirContextAccessor.RequestContext = previousContext;
         }
     }
 

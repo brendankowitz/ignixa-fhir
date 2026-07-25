@@ -54,7 +54,8 @@ public class CompositeSearchIndexingDiagnosticTests
         _indexer = SearchIndexerFactory.CreateInstance(
             _schemaProvider,
             _loggerFactory,
-            _searchParamManager);
+            _searchParamManager,
+            NullFhirBaseUriProvider.Instance);
     }
 
     /// <summary>
@@ -395,7 +396,7 @@ public class CompositeSearchIndexingDiagnosticTests
 
         // Create the expression parser
         var parser = new SearchParameterExpressionParser(
-            new ReferenceSearchValueParser(_schemaProvider),
+            new ReferenceSearchValueParser(_schemaProvider, NullFhirBaseUriProvider.Instance),
             _schemaProvider);
 
         // Act: Parse the composite search expression

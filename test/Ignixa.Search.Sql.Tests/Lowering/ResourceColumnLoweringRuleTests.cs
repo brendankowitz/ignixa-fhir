@@ -68,6 +68,24 @@ public class ResourceColumnLoweringRuleTests
     }
 
     [Fact]
+    public void GivenATypeParameterNamingATypeTheResolverCouldNotFind_WhenTried_ThenLowersToADiagnosablePredicateFalse()
+    {
+        // Arrange — Resolve records an unfound type as UnmatchableResourceTypeId (-1). Equal(col, -1) is
+        // already unsatisfiable, but only Predicate.False carries the reason SearchCompiler reports as a
+        // KnownMiss; anything else leaves the miss discoverable only by spotting a magic -1 in the SQL.
+        var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Nonexistent", text: null));
+        var context = ContextResolving("Nonexistent", SymbolTable.UnmatchableResourceTypeId);
+
+        // Act
+        var result = ResourceColumnLoweringRule.TryLower(predicate, context);
+
+        // Assert
+        var unsatisfiable = result.ShouldBeOfType<Predicate.False>();
+        unsatisfiable.Reason.ShouldNotBeNull();
+        unsatisfiable.Reason.ShouldContain("Nonexistent");
+    }
+
+    [Fact]
     public void GivenAnIdParameterWithANotModifier_WhenTried_ThenThrowsRatherThanSilentlyDroppingTheNegation()
     {
         // Arrange -- _id:not=123. Without this guard, the modifier would be silently discarded and
@@ -272,6 +290,50 @@ public class ResourceColumnLoweringRuleTests
         // Assert
         CollectParameterValues(eq.ShouldNotBeNull()).OrderBy(v => v)
             .ShouldBe(CollectParameterValues(ne.ShouldNotBeNull()).OrderBy(v => v));
+    }
+
+    // Surrogate ids stop being encodable around year 3653 (ticks are shifted left 3 bits into an Int64),
+    // so anything past that saturates. Saturation has to preserve ordering: the clamp is applied to the
+    // instant, not to the encoded result. Clamping the result to long.MaxValue - 79999 lands *below* the
+    // floor of the last encodable millisecond, so _lastUpdated=lt9999-12-31 would exclude a resource
+    // stored in it -- a lower bound that decreases as the instant increases.
+    [Fact]
+    public void GivenLastUpdatedInstantsSpanningTheEncodableLimit_WhenLowered_ThenTheSurrogateBoundsAreMonotonic()
+    {
+        // Arrange — year 3000 encodes normally; years 4000 and DateTimeOffset.MaxValue both saturate
+        var withinRange = LastUpdatedLowerBound(new DateTimeOffset(3000, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var pastLimit = LastUpdatedLowerBound(new DateTimeOffset(4000, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var atMax = LastUpdatedLowerBound(DateTimeOffset.MaxValue);
+
+        // Assert
+        pastLimit.ShouldBeGreaterThanOrEqualTo(withinRange);
+        atMax.ShouldBe(pastLimit);
+    }
+
+    [Fact]
+    public void GivenALastUpdatedInstantPastTheEncodableLimit_WhenLowered_ThenTheUpperBoundStillFitsInInt64()
+    {
+        // Arrange — the saturated floor plus the 79999 uniquifier must not wrap. Wrapping produces a
+        // negative upper bound, which inverts every between-style comparison built on it.
+        var predicate = new SearchParameterPredicateExpression(
+            LastUpdatedParameter(), SearchComparator.Le, modifier: null, new DateTimeSearchValue(DateTimeOffset.MaxValue));
+
+        // Act
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        // Assert
+        var le = result.ShouldBeOfType<Predicate.LessThanOrEqual>();
+        var upperBound = (long)le.Value.Value!;
+        upperBound.ShouldBeGreaterThan(0);
+        upperBound.ShouldBe(LastUpdatedLowerBound(DateTimeOffset.MaxValue) + 79999);
+    }
+
+    private static long LastUpdatedLowerBound(DateTimeOffset instant)
+    {
+        var predicate = new SearchParameterPredicateExpression(
+            LastUpdatedParameter(), SearchComparator.Ge, modifier: null, new DateTimeSearchValue(instant));
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+        return (long)result.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Value.Value!;
     }
 
     private static IEnumerable<long> CollectParameterValues(Predicate predicate) => predicate switch

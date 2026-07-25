@@ -17,16 +17,19 @@ namespace Ignixa.Search.Indexing;
 public static class SearchIndexerFactory
 {
     /// <param name="baseUriProvider">
-    /// Supplies this server's base URI so an absolute self-reference is indexed in the same form as the
+    /// Supplies this server's base URIs so an absolute self-reference is indexed in the same form as the
     /// equivalent relative one. Must be the same provider the query path uses; if the two disagree, a
-    /// reference stored under one form will not be found by a search issued in the other.
+    /// reference stored under one form will not be found by a search issued in the other. Required for that
+    /// reason — pass <see cref="NullFhirBaseUriProvider.Instance"/> to opt out deliberately.
     /// </param>
     public static ISearchIndexer CreateInstance(
         IFhirSchemaProvider fhirSchemaProvider,
         ILoggerFactory loggerProvider,
-        ISearchParameterDefinitionManager searchParameterDefinitionManager = null,
-        IFhirBaseUriProvider baseUriProvider = null)
+        ISearchParameterDefinitionManager searchParameterDefinitionManager,
+        IFhirBaseUriProvider baseUriProvider)
     {
+        ArgumentNullException.ThrowIfNull(baseUriProvider);
+
         // If no manager provided, create new instance (backward compatibility)
         var definitionManager = searchParameterDefinitionManager
             ?? new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());

@@ -41,7 +41,7 @@ public class ReplaceOperationExecutorTests
         var compiler = new FhirPathParser();
         var loggerFactory = Substitute.For<ILoggerFactory>();
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
-        var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions);
+        var versionContext = new FhirVersionContext(loggerFactory, searchParamOptions, NullFhirBaseUriProvider.Instance);
 
         // Schema provider factory for tests (always returns R4)
         var schemaProviderFactory = () => versionContext.GetBaseSchemaProvider(FhirVersion.R4);

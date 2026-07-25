@@ -79,8 +79,9 @@ public static class ExperimentalServicesRegistration
                 var versionContext = sp.GetRequiredService<IFhirVersionContext>();
                 var schemaProvider = versionContext.GetBaseSchemaProvider(capturedVersion);
                 var searchParamManager = versionContext.GetSearchParameterDefinitionManager(capturedVersion);
+                var baseUriProvider = sp.GetRequiredService<IFhirBaseUriProvider>();
                 var logger = sp.GetRequiredService<ILogger<FhirTypeModule>>();
-                return (IFhirTypeModule)new FhirTypeModule(schemaProvider, searchParamManager, logger);
+                return (IFhirTypeModule)new FhirTypeModule(schemaProvider, searchParamManager, baseUriProvider, logger);
             });
 
             var maxDepth = graphQlOptions.MaxQueryDepth;

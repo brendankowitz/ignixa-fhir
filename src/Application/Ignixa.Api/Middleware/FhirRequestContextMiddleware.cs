@@ -5,6 +5,7 @@
 
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization;
 using Microsoft.AspNetCore.Http;
@@ -39,7 +40,9 @@ public class FhirRequestContextMiddleware
     public async Task InvokeAsync(
         HttpContext httpContext,
         IFhirRequestContextAccessor contextAccessor,
-        IFhirVersionContext versionContext)
+        IFhirVersionContext versionContext,
+        FhirServiceBaseUriResolver serviceBaseUriResolver,
+        ITenantConfigurationStore configStore)
     {
         // Skip if context already set (e.g., bundle entry created isolated context)
         if (contextAccessor.RequestContext != null)
@@ -53,9 +56,11 @@ public class FhirRequestContextMiddleware
         var fhirContext = new FhirRequestContext();
 
         // Extract tenant information (if available from TenantResolutionMiddleware)
+        int? resolvedTenantId = null;
         if (httpContext.Items.TryGetValue("TenantId", out var tenantIdObj) &&
             tenantIdObj is int tenantId)
         {
+            resolvedTenantId = tenantId;
             fhirContext.TenantId = tenantId;
             fhirContext.TenantConfiguration =
                 httpContext.Items["TenantConfiguration"] as TenantConfiguration;
@@ -65,7 +70,24 @@ public class FhirRequestContextMiddleware
                 tenantId);
         }
 
-        fhirContext.BaseUri = BuildBaseUri(httpContext, fhirContext.TenantId);
+        var requestOrigin = BuildRequestOrigin(httpContext);
+        if (fhirContext.TenantConfiguration is { } resolvedTenant)
+        {
+            var allTenantCount = (await configStore.GetAllTenantsAsync(httpContext.RequestAborted)).Count;
+
+            fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
+                requestOrigin,
+                TenantAddressing.For(resolvedTenant, allTenantCount));
+        }
+        else
+        {
+            fhirContext.ServiceBaseUris = serviceBaseUriResolver.Resolve(
+                requestOrigin,
+                resolvedTenantId,
+                CanonicalFormFor(httpContext));
+        }
+
+        fhirContext.BaseUri = fhirContext.ServiceBaseUris is [var canonical, ..] ? canonical : null;
 
         // Extract FHIR version from Content-Type/Accept headers
         fhirContext.FhirVersion = FhirVersionExtractor.ExtractFhirVersion(httpContext);
@@ -98,22 +120,28 @@ public class FhirRequestContextMiddleware
     }
 
     /// <summary>
-    /// Builds the service base URI for this request. Tenant-explicit routes carry the "/tenant/{id}"
-    /// segment; agnostic single-tenant routes do not. Mirrors the base-URL form the endpoints already use
-    /// when emitting Location headers and pagination links, so a reference written against a link this
-    /// server handed out is recognized as internal.
+    /// Scheme, host and path base of this request, used as the deployment root only when
+    /// <c>Fhir:BaseUri</c> is not configured. <see cref="FhirServiceBaseUriResolver"/> ignores it when it
+    /// is, which is what stops a forged Host header from deciding how references are stored.
     /// </summary>
-    private static Uri? BuildBaseUri(HttpContext httpContext, int tenantId)
+    private static Uri? BuildRequestOrigin(HttpContext httpContext)
     {
         if (!httpContext.Request.Host.HasValue)
         {
             return null;
         }
 
-        var isTenantExplicitRoute = httpContext.Request.Path.Value?.StartsWith("/tenant/", StringComparison.OrdinalIgnoreCase) == true;
         var origin = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}";
-        var baseUrl = isTenantExplicitRoute ? $"{origin}/tenant/{tenantId}/" : $"{origin}/";
 
-        return Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) ? baseUri : null;
+        return Uri.TryCreate(origin, UriKind.Absolute, out var originUri) ? originUri : null;
     }
+
+    /// <summary>
+    /// Picks the base to emit: the form the request arrived on, so Location headers and pagination links
+    /// stay in the shape the caller used. Which bases are <em>recognized</em> does not depend on this.
+    /// </summary>
+    private static FhirServiceBaseUriForm CanonicalFormFor(HttpContext httpContext)
+        => httpContext.Request.Path.Value?.StartsWith("/tenant/", StringComparison.OrdinalIgnoreCase) == true
+            ? FhirServiceBaseUriForm.TenantScoped
+            : FhirServiceBaseUriForm.Root;
 }

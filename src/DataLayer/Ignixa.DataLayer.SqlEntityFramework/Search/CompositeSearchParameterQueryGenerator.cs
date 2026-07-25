@@ -141,12 +141,22 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token1.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token1.System, cancellationToken);
+            systemId1 = await _cache.GetSystemIdAsync(token1.System, cancellationToken);
+
+            if (systemId1 is null)
+            {
+                return _context.EmptyResourceIds();
+            }
         }
 
         if (!string.IsNullOrEmpty(token2.System))
         {
-            systemId2 = await _cache.GetOrCreateSystemIdAsync(token2.System, cancellationToken);
+            systemId2 = await _cache.GetSystemIdAsync(token2.System, cancellationToken);
+
+            if (systemId2 is null)
+            {
+                return _context.EmptyResourceIds();
+            }
         }
 
         // Build query against TokenTokenCompositeSearchParam table
@@ -212,7 +222,12 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
+            systemId1 = await _cache.GetSystemIdAsync(token.System, cancellationToken);
+
+            if (systemId1 is null)
+            {
+                return _context.EmptyResourceIds();
+            }
         }
 
         // Build base query
@@ -263,7 +278,12 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
+            systemId1 = await _cache.GetSystemIdAsync(token.System, cancellationToken);
+
+            if (systemId1 is null)
+            {
+                return _context.EmptyResourceIds();
+            }
         }
 
         // Build base query
@@ -354,7 +374,12 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId2 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
+            systemId2 = await _cache.GetSystemIdAsync(token.System, cancellationToken);
+
+            if (systemId2 is null)
+            {
+                return _context.EmptyResourceIds();
+            }
         }
 
         // Build base query
@@ -449,7 +474,12 @@ public class CompositeSearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(token.System))
         {
-            systemId1 = await _cache.GetOrCreateSystemIdAsync(token.System, cancellationToken);
+            systemId1 = await _cache.GetSystemIdAsync(token.System, cancellationToken);
+
+            if (systemId1 is null)
+            {
+                return _context.EmptyResourceIds();
+            }
         }
 
         // Build base query
@@ -590,110 +620,128 @@ public class CompositeSearchParameterQueryGenerator
         CancellationToken cancellationToken)
     {
         // Extract quantity components (value, system, code)
-        // For equality comparisons, the expression builder creates a range with two BinaryExpressions:
-        // - GreaterThanOrEqual with lowerBound
-        // - LessThanOrEqual with upperBound
-        // For single comparators (ge, le, gt, lt), only ONE expression is created.
-        // We need to count BinaryExpressions to distinguish between range (eq) and single (ge/le).
+        // The expression builder names the bound each comparator belongs to (QuantityLow/QuantityHigh), so
+        // every constraint is applied verbatim to that column rather than inferred from the operator: eq/ap
+        // contribute one constraint per bound, the ordering comparators exactly one.
+        // eq/ap contribute their two bounds nested in an And, ne nests them in an Or. Descending into every
+        // MultiaryExpression indiscriminately flattened the Or's disjuncts into the conjunctive list, so ne
+        // ("Low < lower OR High > upper") became "Low < lower AND High > upper" -- unsatisfiable for a point
+        // row, inverting ne into "matches nothing". Conjuncts are collected by descending And groups; a
+        // disjunction is kept whole for the Union pass below.
         string? quantitySystem = null;
         string? quantityCode = null;
-        var quantityBinaryExpressions = new List<(BinaryOperator Op, decimal Value)>();
+        var conjuncts = new List<(FieldName Field, BinaryOperator Op, decimal Value)>();
+        var disjunctions = new List<MultiaryExpression>();
 
         void ProcessExpression(Expression expr)
         {
-            if (expr is BinaryExpression binaryExpr && binaryExpr.FieldName == FieldName.Quantity)
+            switch (expr)
             {
-                var value = Convert.ToDecimal(binaryExpr.Value);
-                quantityBinaryExpressions.Add((binaryExpr.BinaryOperator, value));
-            }
-            else if (expr is StringExpression stringExpr)
-            {
-                if (stringExpr.FieldName == FieldName.QuantitySystem)
-                {
-                    quantitySystem = stringExpr.Value;
-                }
-                else if (stringExpr.FieldName == FieldName.QuantityCode)
-                {
-                    quantityCode = stringExpr.Value;
-                }
-            }
-            else if (expr is MultiaryExpression multiary)
-            {
-                foreach (var subExpr in multiary.Expressions)
-                {
-                    ProcessExpression(subExpr);
-                }
+                case BinaryExpression { FieldName: FieldName.QuantityLow or FieldName.QuantityHigh } binaryExpr:
+                    conjuncts.Add((binaryExpr.FieldName, binaryExpr.BinaryOperator, Convert.ToDecimal(binaryExpr.Value)));
+                    break;
+                case StringExpression { FieldName: FieldName.QuantitySystem } systemExpr:
+                    quantitySystem = systemExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.QuantityCode } codeExpr:
+                    quantityCode = codeExpr.Value;
+                    break;
+                case MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and:
+                    foreach (var subExpr in and.Expressions)
+                    {
+                        ProcessExpression(subExpr);
+                    }
+
+                    break;
+                case MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or:
+                    disjunctions.Add(or);
+                    break;
             }
         }
 
         ProcessExpression(expression);
 
-        _logger.LogDebug(
-            "ApplyQuantityFilterAsync: Found {Count} binary expressions, System={System}, Code={Code}",
-            quantityBinaryExpressions.Count,
-            quantitySystem ?? "<null>",
-            quantityCode ?? "<null>");
-
-        foreach (var (op, val) in quantityBinaryExpressions)
-        {
-            _logger.LogDebug("  BinaryExpression: Op={Op}, Value={Value}", op, val);
-        }
-
-        // Apply system filter
+        // Apply system filter. A miss means no indexed row carries this system, so the result is empty --
+        // it must not fall through leaving the filter unapplied, which would match every system instead.
         if (!string.IsNullOrEmpty(quantitySystem))
         {
-            var systemId = await _cache.GetOrCreateSystemIdAsync(quantitySystem, cancellationToken);
-            if (systemId.HasValue)
+            var systemId = await _cache.GetSystemIdAsync(quantitySystem, cancellationToken);
+            if (systemId is null)
             {
-                query = query.Where(q => q.SystemId2 == systemId.Value);
+                return query.Where(_ => false);
             }
+
+            query = query.Where(q => q.SystemId2 == systemId.Value);
         }
 
-        // Apply code filter
+        // Apply code filter -- same reasoning as the system filter above.
         if (!string.IsNullOrEmpty(quantityCode))
         {
-            var codeId = await _cache.GetOrCreateQuantityCodeIdAsync(quantityCode, cancellationToken);
-            if (codeId.HasValue)
+            var codeId = await _cache.GetQuantityCodeIdAsync(quantityCode, cancellationToken);
+            if (codeId is null)
             {
-                query = query.Where(q => q.QuantityCodeId == codeId.Value);
+                return query.Where(_ => false);
             }
+
+            query = query.Where(q => q.QuantityCodeId == codeId.Value);
         }
 
-        // Apply value filter based on what was extracted:
-        // - Two BinaryExpressions (eq/ap): Range query - stored range must overlap search range
-        // - One BinaryExpression: Single comparator (ge, le, gt, lt)
-        if (quantityBinaryExpressions.Count == 2)
+        foreach (var conjunct in conjuncts)
         {
-            // Range query (equality/approximate): both GreaterThanOrEqual and LessThanOrEqual present
-            var lowerBound = quantityBinaryExpressions.FirstOrDefault(e => e.Op == BinaryOperator.GreaterThanOrEqual).Value;
-            var upperBound = quantityBinaryExpressions.FirstOrDefault(e => e.Op == BinaryOperator.LessThanOrEqual).Value;
-
-            // Range overlap: stored range must overlap with search range
-            // For exact match with stored value X: lowerBound <= X <= upperBound
-            query = query.Where(q => q.LowValue <= upperBound && q.HighValue >= lowerBound);
+            query = ApplyCompositeQuantityConstraint(query, conjunct.Field, conjunct.Op, conjunct.Value);
         }
-        else if (quantityBinaryExpressions.Count == 1)
+
+        // ne's disjunction: union one branch per disjunct off the narrowed query, then intersect so any
+        // co-occurring conjuncts stay in force.
+        foreach (var disjunction in disjunctions)
         {
-            // Single comparator
-            var (op, value) = quantityBinaryExpressions[0];
-            query = op switch
+            IQueryable<Entities.TokenQuantityCompositeSearchParamEntity>? branchUnion = null;
+
+            foreach (var disjunct in disjunction.Expressions)
             {
-                // ge: stored value must be >= search value (check HighValue for range overlap)
-                BinaryOperator.GreaterThanOrEqual => query.Where(q => q.HighValue >= value),
-                // le: stored value must be <= search value (check LowValue for range overlap)
-                BinaryOperator.LessThanOrEqual => query.Where(q => q.LowValue <= value),
-                // gt: stored value must be > search value
-                BinaryOperator.GreaterThan => query.Where(q => q.LowValue > value),
-                // lt: stored value must be < search value
-                BinaryOperator.LessThan => query.Where(q => q.HighValue < value),
-                // ne: stored value must not equal search value
-                BinaryOperator.NotEqual => query.Where(q => q.HighValue < value || q.LowValue > value),
-                _ => query
-            };
+                if (disjunct is not BinaryExpression { FieldName: FieldName.QuantityLow or FieldName.QuantityHigh } binary)
+                {
+                    throw new NotSupportedException(
+                        $"Unexpected disjunct {disjunct.GetType().Name} in a composite Quantity ne search.");
+                }
+
+                var branch = ApplyCompositeQuantityConstraint(query, binary.FieldName, binary.BinaryOperator, Convert.ToDecimal(binary.Value));
+                branchUnion = branchUnion is null ? branch : branchUnion.Union(branch);
+            }
+
+            if (branchUnion is not null)
+            {
+                query = query.Intersect(branchUnion);
+            }
         }
 
         return query;
     }
+
+    private static IQueryable<Entities.TokenQuantityCompositeSearchParamEntity> ApplyCompositeQuantityConstraint(
+        IQueryable<Entities.TokenQuantityCompositeSearchParamEntity> query,
+        FieldName field,
+        BinaryOperator op,
+        decimal value) =>
+        (field, op) switch
+        {
+            (FieldName.QuantityLow, BinaryOperator.GreaterThan) => query.Where(q => q.LowValue > value),
+            (FieldName.QuantityLow, BinaryOperator.GreaterThanOrEqual) => query.Where(q => q.LowValue >= value),
+            (FieldName.QuantityLow, BinaryOperator.LessThan) => query.Where(q => q.LowValue < value),
+            (FieldName.QuantityLow, BinaryOperator.LessThanOrEqual) => query.Where(q => q.LowValue <= value),
+            (FieldName.QuantityLow, BinaryOperator.Equal) => query.Where(q => q.LowValue == value),
+            (FieldName.QuantityLow, BinaryOperator.NotEqual) => query.Where(q => q.LowValue != value),
+
+            (FieldName.QuantityHigh, BinaryOperator.GreaterThan) => query.Where(q => q.HighValue > value),
+            (FieldName.QuantityHigh, BinaryOperator.GreaterThanOrEqual) => query.Where(q => q.HighValue >= value),
+            (FieldName.QuantityHigh, BinaryOperator.LessThan) => query.Where(q => q.HighValue < value),
+            (FieldName.QuantityHigh, BinaryOperator.LessThanOrEqual) => query.Where(q => q.HighValue <= value),
+            (FieldName.QuantityHigh, BinaryOperator.Equal) => query.Where(q => q.HighValue == value),
+            (FieldName.QuantityHigh, BinaryOperator.NotEqual) => query.Where(q => q.HighValue != value),
+
+            _ => throw new NotSupportedException(
+                $"Composite Quantity search with FieldName {field} and BinaryOperator {op} is not supported."),
+        };
 
     private IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> ApplyDateTimeFilter(
         IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> query,

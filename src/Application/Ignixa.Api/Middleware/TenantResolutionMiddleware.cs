@@ -7,6 +7,7 @@ using Ignixa.Api.Extensions;
 using Ignixa.Api.Http;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
+using Ignixa.Domain.Models;
 using Ignixa.Models;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -49,11 +50,44 @@ public class TenantResolutionMiddleware : IDisposable
 
     public async Task InvokeAsync(HttpContext context)
     {
+        // Host-based tenant selection. A host resolves a tenant only if it is in the configured index;
+        // an unknown host resolves nothing and the request falls through to the route/auto-detect branches.
+        TenantConfiguration? hostTenant = null;
+        if (context.Request.Host.HasValue)
+        {
+            hostTenant = await _configStore.ResolveByHostAsync(context.Request.Host.Host, context.RequestAborted);
+        }
+
         // Extract tenantId from route
         if (context.Request.RouteValues.TryGetValue("tenantId", out var tenantIdObj) &&
             int.TryParse(tenantIdObj?.ToString(), out var tenantId))
         {
             _logger.LogTrace("Extracted tenantId {TenantId} from route", tenantId);
+
+            // Host and path must not name different tenants; a silent pick would be a cross-tenant leak.
+            if (hostTenant is not null && hostTenant.TenantId != tenantId)
+            {
+                _logger.LogWarning(
+                    "Host/path tenant conflict: host {HostTenant} vs path {PathTenant} for {Method} {Path}",
+                    hostTenant.TenantId,
+                    tenantId,
+                    context.Request.Method.SanitizeForLog(),
+                    context.Request.Path.Value.SanitizeForLog());
+
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                context.Response.ContentType = KnownContentTypes.ApplicationFhirJson;
+
+                var conflict = new OperationOutcome();
+                conflict.Issue.Add(new OperationOutcomeIssue
+                {
+                    SeverityCode = OperationOutcomeIssue.IssueSeverityCode.Error,
+                    IssueTypeCode = OperationOutcomeIssue.IssueTypeCommon.BusinessRule,
+                    Diagnostics = "The request host and the /tenant/{id}/ path resolve to different tenants."
+                });
+
+                await context.Response.Body.WriteAsync(conflict.SerializeToBytes(), context.RequestAborted);
+                return;
+            }
 
             // CRITICAL: Partition 0 is reserved for system operations (ADR-2523 Phase 20)
             // Regular API requests to /tenant/0/ routes are rejected to protect system partition
@@ -116,6 +150,19 @@ public class TenantResolutionMiddleware : IDisposable
                 "Resolved tenant {TenantId} ({DisplayName}) for request {Method} {Path}",
                 tenantId,
                 tenantConfig.DisplayName,
+                context.Request.Method.SanitizeForLog(),
+                context.Request.Path.Value.SanitizeForLog());
+        }
+        else if (hostTenant is not null)
+        {
+            context.Items["TenantId"] = hostTenant.TenantId;
+            context.Items["TenantConfiguration"] = hostTenant;
+
+            _logger.LogDebug(
+                "Resolved tenant {TenantId} ({DisplayName}) from host {Host} for {Method} {Path}",
+                hostTenant.TenantId,
+                hostTenant.DisplayName,
+                context.Request.Host.Host.SanitizeForLog(),
                 context.Request.Method.SanitizeForLog(),
                 context.Request.Path.Value.SanitizeForLog());
         }

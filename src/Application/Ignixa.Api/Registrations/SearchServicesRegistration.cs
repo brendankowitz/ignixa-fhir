@@ -10,6 +10,7 @@ using Ignixa.Application.Features.Search;
 using Ignixa.Application.Features.Specification;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Parsing;
 using Ignixa.Specification;
@@ -63,30 +64,45 @@ public static class SearchServicesRegistration
             return new FhirVersionContext(
                 c.Resolve<ILoggerFactory>(),
                 options,
+                c.Resolve<IFhirBaseUriProvider>(),
                 c.Resolve<IPackageResourceRepository>(),
                 c.Resolve<IPackageResourceProvider>(),
                 c.Resolve<ICompositeSchemaProviderRegistry>(),
-                c.Resolve<ConformanceState>(),
-                c.Resolve<IFhirBaseUriProvider>());
+                c.Resolve<ConformanceState>());
         }).SingleInstance();
 
-        // Service base URI, used to recognize an absolute reference that points back at this server so it
-        // reconciles with the equivalent relative reference. Safe as a singleton despite depending on the
-        // scoped accessor: FhirRequestContextAccessor is backed by a static AsyncLocal, so one instance
-        // still observes the calling request's context. "Fhir:BaseUri" is the fallback for background
-        // indexing (reindex, $import), which has no request to derive a base from -- it must agree with
-        // what the request path produces or the two will store references in different forms.
-        builder.Register<IFhirBaseUriProvider>(c =>
+        // The single authority for a tenant's service base URIs. "Fhir:BaseUri" is the deployment's public
+        // FHIR root; when set it overrides the request origin entirely, which both pins the answer for
+        // background indexing (reindex, $import -- no request to derive one from) and stops a forged Host
+        // header from deciding whether a reference is stored as internal or external.
+        builder.Register(c =>
         {
-            var configuredBaseUri = configuration["Fhir:BaseUri"] is { Length: > 0 } value
-                && Uri.TryCreate(value, UriKind.Absolute, out var parsed)
-                    ? parsed
-                    : null;
+            var loggerFactory = c.Resolve<ILoggerFactory>();
+            var configuredServiceRoot = ReadConfiguredServiceRoot(configuration, loggerFactory);
+            return new FhirServiceBaseUriResolver(configuredServiceRoot);
+        }).AsSelf().SingleInstance();
 
-            return new FhirRequestContextBaseUriProvider(
+        // Eager by construction: RegisterBuildCallback runs at builder.Build(), before app.Run() accepts any
+        // connection. A registration inside a lazy SingleInstance factory only runs on first resolution --
+        // that would let a duplicate or malformed hostname boot "healthy" and fail on the first request
+        // instead of at startup.
+        builder.RegisterBuildCallback(container =>
+            ValidateTenantHostnames(container.Resolve<IConfiguration>(), container.Resolve<ILoggerFactory>()));
+
+        // Used to recognize an absolute reference that points back at this server so it reconciles with the
+        // equivalent relative reference. Must be a singleton: the consumers (FhirVersionContext,
+        // SearchOptionsBuilderFactory, the GraphQL type modules) are singletons, so a shorter lifetime
+        // would only be honoured for whichever scope resolved them first. It still observes the calling
+        // request because FhirRequestContextAccessor stores the context in a static AsyncLocal --
+        // FhirRequestContextAccessorTests pins that, since a plausible "fix" to the static field would
+        // silently strand this instance on an empty context.
+        builder.Register<IFhirBaseUriProvider>(c =>
+            new FhirRequestContextBaseUriProvider(
                 c.Resolve<IFhirRequestContextAccessor>(),
-                configuredBaseUri);
-        }).SingleInstance();
+                c.Resolve<FhirServiceBaseUriResolver>(),
+                c.Resolve<ITenantConfigurationStore>(),
+                c.Resolve<ILogger<FhirRequestContextBaseUriProvider>>()))
+            .SingleInstance();
 
         // SearchOptionsBuilderFactory
         builder.RegisterType<SearchOptionsBuilderFactory>()
@@ -118,6 +134,68 @@ public static class SearchServicesRegistration
             .SingleInstance();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Reads and validates "Fhir:BaseUri". An unusable or absent value is reported at startup rather than
+    /// left to surface as references that reconcile on the request path and not on the reindex path.
+    /// </summary>
+    private static Uri? ReadConfiguredServiceRoot(IConfiguration configuration, ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger(typeof(FhirServiceBaseUriResolver).FullName!);
+        var value = configuration["Fhir:BaseUri"];
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            logger.LogWarning(
+                "Fhir:BaseUri is not configured. Absolute references that point back at this server will be "
+                + "reconciled using the request's Host header, and background indexing ($reindex, $import) "
+                + "cannot reconcile them at all. Set Fhir:BaseUri to this deployment's public FHIR root.");
+            return null;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) ||
+            (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
+        {
+            logger.LogError(
+                "Fhir:BaseUri is not an absolute http(s) URL and will be ignored. Value: {ConfiguredBaseUri}",
+                value);
+            return null;
+        }
+
+        logger.LogInformation("Using configured FHIR service base {ConfiguredBaseUri}", FhirServiceBaseUri.Normalize(parsed));
+        return parsed;
+    }
+
+    /// <summary>
+    /// Validates tenant hostname configuration at startup. Runs eagerly via <c>RegisterBuildCallback</c>
+    /// (see <see cref="RegisterSearchServices"/>), so every problem is logged and a duplicate configuration
+    /// is refused before the server accepts its first request. Binds tenants directly from configuration --
+    /// mirroring <c>AppSettingsTenantConfigurationStore.LoadTenants</c> -- because the build callback still
+    /// runs during container construction and <see cref="Ignixa.Domain.Abstractions.ITenantConfigurationStore"/>
+    /// (an Autofac-resolved singleton) is not a dependency this method should force-resolve. A duplicate
+    /// hostname across tenants is fatal (the cross-tenant-confusion case): it throws here, which
+    /// <c>RegisterBuildCallback</c> propagates out of <c>ContainerBuilder.Build()</c>, aborting startup. A
+    /// malformed hostname is logged at Error but non-fatal: <c>AppSettingsTenantConfigurationStore</c>
+    /// excludes it from the host index (it never routes), so one operator typo does not take every tenant
+    /// down with it.
+    /// </summary>
+    internal static void ValidateTenantHostnames(IConfiguration configuration, ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger(typeof(TenantHostnameValidator).FullName!);
+        var tenants = configuration.GetSection("Tenants:Configurations").Get<List<TenantConfiguration>>() ?? [];
+        var hostnameProblems = TenantHostnameValidator.Validate(tenants);
+
+        foreach (var problem in hostnameProblems)
+        {
+            logger.LogError("Tenant hostname configuration problem: {Problem}", problem.Message);
+        }
+
+        if (hostnameProblems.Any(p => p.Kind == HostnameProblemKind.Duplicate))
+        {
+            throw new InvalidOperationException(
+                "Duplicate tenant hostname configuration; refusing to start. See preceding log entries.");
+        }
     }
 
     private static void RegisterSearchParameterDefinitionManagers(ContainerBuilder builder)
