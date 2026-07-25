@@ -1,7 +1,7 @@
 {
   "resourceType": "TestScript",
   "name": "CRUD/history",
-  "description": "History (GET /_history, /{type}/_history, /{type}/{id}/_history) conformance tests: non-empty system/type/instance Bundles, correct default and explicit sort order, well-formed entry.response.status, and _summary=count/_since/_before/_sort parameter handling (from HistoryTests). The second version needed by the multi-entry/sort-order tests is produced via a FHIRPath Patch rather than a PUT, to guarantee an actual content change and avoid requiring the body id to match the URL.",
+  "description": "History (GET /_history, /{type}/_history, /{type}/{id}/_history) conformance tests: non-empty system/type/instance Bundles, correct default and explicit sort order, well-formed entry.response.status, and _summary=count/_since/_before/_sort parameter handling (from HistoryTests). The instance-history suite creates three content-changing versions (create, FHIRPath Patch adding active=true, and FHIRPath Patch replacing it with active=false) and covers _count=1 paging by extracting and following an opaque next URL and proving distinct version IDs across pages.",
   "status": "active",
   "extension": [
     { "url": "http://ignixa.io/testscript/requiresCapability", "valueString": "rest.interaction.where(code='history-system').exists() or rest.resource.where(type='Patient').interaction.where(code='history-type' or code='history-instance').exists()" }
@@ -45,16 +45,39 @@
           }
         ]
       }
+    },
+    {
+      "id": "patch-replace-active",
+      "autocreate": false,
+      "autodelete": false,
+      "resource": {
+        "resourceType": "Parameters",
+        "parameter": [
+          {
+            "name": "operation",
+            "part": [
+              { "name": "type", "valueString": "replace" },
+              { "name": "path", "valueString": "Patient.active" },
+              { "name": "value", "valueBoolean": false }
+            ]
+          }
+        ]
+      }
     }
   ],
   "variable": [
     { "name": "histAId", "sourceId": "hista-create-response", "path": "id", "description": "server-assigned id of the Patient used for the instance-history/sort-order tests" },
-    { "name": "histStatusId", "sourceId": "histstatus-create-response", "path": "id", "description": "server-assigned id of the dedicated Patient used for the response.status test" }
+    { "name": "histStatusId", "sourceId": "histstatus-create-response", "path": "id", "description": "server-assigned id of the dedicated Patient used for the response.status test" },
+    { "name": "histANextUrl", "sourceId": "hista-page-one-response", "expression": "Bundle.link.where(relation = 'next').url", "description": "absolute next-page URL extracted from the first history page; used to test opaque-URL following" },
+    { "name": "histAFirstVersionId", "sourceId": "hista-page-one-response", "expression": "Bundle.entry.first().resource.meta.versionId", "description": "versionId of the first entry on page 1 of the paged history; used to assert page 2 returns a different version" }
   ],
   "setup": {
     "action": [
       { "operation": { "type": { "code": "create" }, "resource": "Patient", "sourceId": "patient-hist-a", "responseId": "hista-create-response", "description": "Create the Patient used for the instance-history and sort-order tests" } },
-      { "assert": { "description": "Create must return HTTP 201", "response": "created" } }
+      { "assert": { "description": "Create must return HTTP 201", "response": "created" } },
+      { "assert": { "description": "Create response must carry an id; a 201 with an empty body leaves histAId unset and makes the patches below throw", "expression": "id.exists()" } },
+      { "operation": { "type": { "code": "patch" }, "url": "Patient/${histAId}", "contentType": "application/fhir+json", "sourceId": "patch-add-active", "responseId": "hista-update-response", "description": "FHIRPath Patch (add active=true) for a second version; patch not PUT because the id is server-assigned" } },
+      { "operation": { "type": { "code": "patch" }, "url": "Patient/${histAId}", "contentType": "application/fhir+json", "sourceId": "patch-replace-active", "responseId": "hista-update2-response", "description": "FHIRPath Patch (replace active with false) for a third version; unasserted by design, see the gating notes in the coverage design doc" } }
     ]
   },
   "test": [
@@ -91,15 +114,14 @@
       ]
     },
     {
-      "name": "instance history reflects create then update, newest first by default",
-      "description": "After updating the Patient created in setup, GET /Patient/{id}/_history must return at least two entries with the newest version first (default order).",
+      "name": "instance history reflects three versions, newest first by default",
+      "description": "Setup gives the Patient three content-changing versions (create, then a FHIRPath Patch adding active=true, then one replacing it with active=false). GET /Patient/{id}/_history must return at least three entries with the newest version first (default order).",
       "action": [
-        { "operation": { "type": { "code": "patch" }, "url": "Patient/${histAId}", "contentType": "application/fhir+json", "sourceId": "patch-add-active", "responseId": "hista-update-response", "description": "FHIRPath Patch the Patient (add Patient.active=true) to produce a second version." } },
-        { "assert": { "description": "Patch must return a 2xx success status", "response": "okay" } },
         { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history", "responseId": "hista-history-response", "description": "GET instance-level history for the Patient" } },
         { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
         { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
-        { "assert": { "description": "Must contain at least two entries (the create and the update)", "expression": "entry.count()", "value": "1", "operator": "greaterThan" } },
+        { "assert": { "description": "Bundle type must be 'history'", "expression": "type = 'history'" } },
+        { "assert": { "description": "Must contain at least three entries (the create and two patches)", "expression": "entry.count()", "value": "2", "operator": "greaterThan" } },
         { "assert": { "description": "Default order must be newest first (entry[0] lastUpdated >= entry[1] lastUpdated)", "expression": "entry[0].resource.meta.lastUpdated >= entry[1].resource.meta.lastUpdated" } }
       ],
       "extension": [
@@ -110,8 +132,35 @@
       ]
     },
     {
+      "name": "instance history paging: _count=1 returns at most one entry per page and follows the opaque next link",
+      "description": "The Patient has three versions from setup, so a page size of one must leave more to fetch. GET /Patient/{id}/_history?_count=1 must return HTTP 200, a history Bundle with at most one entry, and a next link. Following that next link (treated as opaque — no token inspection) must yield a second page whose first entry has a different versionId than the first page.",
+      "extension": [
+        { "url": "http://ignixa.io/testscript/fhirVersions", "valueString": "4.0,4.3,5.0" },
+        {
+          "url": "http://ignixa.io/testscript/requiresCapability",
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists()"
+        }
+      ],
+      "action": [
+        { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history?_count=1", "responseId": "hista-page-one-response", "description": "GET first page of instance history with page size 1" } },
+        { "assert": { "description": "Must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be 'history'", "expression": "type = 'history'" } },
+        { "assert": { "description": "Page 1 must contain at least one entry", "expression": "entry.exists()" } },
+        { "assert": { "description": "Page 1 must contain at most one entry (_count=1)", "expression": "entry.count() <= 1" } },
+        { "assert": { "description": "A next link with a URL must be present (there are more versions beyond page 1)", "expression": "link.where(relation = 'next').url.exists()" } },
+        { "operation": { "type": { "code": "history" }, "url": "${histANextUrl}", "responseId": "hista-page-two-response", "description": "Follow the opaque next link to fetch page 2 of the instance history" } },
+        { "assert": { "description": "Must return HTTP 200", "responseCode": "200" } },
+        { "assert": { "description": "Response must be a Bundle", "resource": "Bundle" } },
+        { "assert": { "description": "Bundle type must be 'history'", "expression": "type = 'history'" } },
+        { "assert": { "description": "Page 2 must contain at least one entry", "expression": "entry.exists()" } },
+        { "assert": { "description": "Page 2 must contain at most one entry (_count=1)", "expression": "entry.count() <= 1" } },
+        { "assert": { "description": "First entry on page 2 must have a different versionId than page 1 (confirming distinct history versions)", "expression": "entry.first().resource.meta.versionId != '${histAFirstVersionId}'" } }
+      ]
+    },
+    {
       "name": "instance history with explicit ascending sort returns oldest first",
-      "description": "GET /Patient/{id}/_history?_sort=_lastUpdated on the (now two-version) Patient must return entries oldest first.",
+      "description": "GET /Patient/{id}/_history?_sort=_lastUpdated on the (now three-version) Patient must return entries oldest first.",
       "action": [
         { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history", "params": "?_sort=_lastUpdated", "responseId": "hista-asc-response", "description": "GET instance history sorted ascending by _lastUpdated" } },
         { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
@@ -121,13 +170,13 @@
       "extension": [
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists()"
         }
       ]
     },
     {
       "name": "instance history with explicit descending sort matches default order",
-      "description": "GET /Patient/{id}/_history?_sort=-_lastUpdated on the (now two-version) Patient must return entries newest first, matching the default order.",
+      "description": "GET /Patient/{id}/_history?_sort=-_lastUpdated on the (now three-version) Patient must return entries newest first, matching the default order.",
       "action": [
         { "operation": { "type": { "code": "history" }, "url": "Patient/${histAId}/_history", "params": "?_sort=-_lastUpdated", "responseId": "hista-desc-response", "description": "GET instance history sorted descending by _lastUpdated" } },
         { "assert": { "description": "Must return HTTP 200", "response": "okay" } },
@@ -137,7 +186,7 @@
       "extension": [
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-instance').exists() and rest.resource.where(type='Patient').interaction.where(code='patch').exists()"
         }
       ]
     },
@@ -179,7 +228,7 @@
       "extension": [
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_summary').exists() or rest.searchParam.where(name='_summary').exists())"
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists()"
         }
       ]
     },
@@ -223,7 +272,7 @@
       "extension": [
         {
           "url": "http://ignixa.io/testscript/requiresCapability",
-          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists() and (rest.resource.where(type='Patient').searchParam.where(name='_sort').exists() or rest.searchParam.where(name='_sort').exists())"
+          "valueString": "rest.resource.where(type='Patient').interaction.where(code='history-type').exists()"
         }
       ]
     }
