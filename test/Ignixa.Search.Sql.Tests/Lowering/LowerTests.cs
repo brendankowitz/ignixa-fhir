@@ -1171,5 +1171,53 @@ public class LowerTests
         // rather than a full-table scan.
         Should.Throw<ArgumentException>(() => CteDefinition.MultiTypeResourceSource.ForTypes([]));
     }
+
+    // ─── IncludesOnly Lower.Run guard tests ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndNoIncludes_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // IncludesOnly with no _include/_revinclude parameters can only ever return empty — a caller
+        // error rather than a legitimate empty result.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludesOnly = true }));
+    }
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndCountOnly_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // IncludesOnly asks for include rows; CountOnly counts match rows — these are contradictory.
+        // The guard fires before include stages are built, so even an expression with no includes throws.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludesOnly = true, CountOnly = true }));
+    }
 }
 

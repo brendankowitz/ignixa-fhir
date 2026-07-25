@@ -27,6 +27,20 @@ public static class SqlBuilder
     /// </remarks>
     public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
     {
+        if (plan.IncludesOnly && plan.CountOnly)
+        {
+            throw new NotSupportedException(
+                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
+                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
+        }
+
+        if (plan.IncludesOnly && plan.Includes is not { Count: > 0 })
+        {
+            throw new NotSupportedException(
+                "IncludesOnly was requested with no include stages, which can only ever return an empty " +
+                "result. This is a caller error rather than a query that legitimately matches nothing.");
+        }
+
         var parameters = new List<EmittedSqlParameter>();
         var writer = new SqlTextWriter(options?.IncludeTextRanges ?? false);
         var cteBlocks = new List<string>();
@@ -228,20 +242,26 @@ public static class SqlBuilder
         var nullSortColumns = string.Concat(Enumerable.Repeat(", NULL", activeSortKeyCount));
         var matchSortColumnRefs = string.Concat(Enumerable.Range(0, activeSortKeyCount).Select(o => $", SortValue{o}"));
 
-        var unionBlocks = new List<string>
-        {
-            hasActiveProjection
-                ? $"SELECT m.T1, m.Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs}{projectionCols} FROM {MatchPage} m\n" +
-                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1{projectionJoinFilter}"
-                : $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}",
-        };
-        for (var i = 0; i < includes.Count; i++)
+        var unionBlocks = new List<string>();
+
+        if (!plan.IncludesOnly)
         {
             unionBlocks.Add(hasActiveProjection
-                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns}{projectionCols} FROM {IncludeLimitLabel(i)} i\n" +
+                ? $"SELECT m.T1, m.Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs}{projectionCols} FROM {MatchPage} m\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1{projectionJoinFilter}"
+                : $"SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial{matchSortColumnRefs} FROM {MatchPage}");
+        }
+
+        for (var i = 0; i < includes.Count; i++)
+        {
+            // When IncludesOnly, the first include SELECT defines result column names for the UNION ALL;
+            // give IsMatch an explicit alias so it remains addressable by name (e.g., in ORDER BY).
+            var isMatchAlias = plan.IncludesOnly && i == 0 ? " AS IsMatch" : string.Empty;
+            unionBlocks.Add(hasActiveProjection
+                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns}{projectionCols} FROM {IncludeLimitLabel(i)} i\n" +
                   $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
                   $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)"
-                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
+                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
                   $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
         }
 

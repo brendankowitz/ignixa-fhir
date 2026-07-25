@@ -2336,5 +2336,189 @@ public class EmitTests
         inc0Body.ShouldNotContain("Sid1 >=");
         inc0Body.ShouldNotContain("Sid1 <=");
     }
+
+    // ─── IncludesOnly tests ──────────────────────────────────────────────────────────────────────────
+
+    private static IncludeStage ForwardIncludeStage(short seedType, short outputType, int limit)
+        => new(IncludeDirection.Forward, ReferenceSearchParamId: 210, SeedTypeIds: [seedType], OutputTypeIds: [outputType],
+               SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: limit);
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlan_WhenEmitted_ThenMatchRowsAreExcludedFromTheResult()
+    {
+        // Arrange -- the $includes second-page scenario: caller already has the match rows.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludesOnly: true);
+
+        // Act
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert -- IsMatch column is still present (from the include arm's explicit alias),
+        // but the match arm that emits CAST(1 AS bit) AS IsMatch must be absent.
+        sql.ShouldContain("IsMatch");
+        sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlan_WhenEmitted_ThenMatchPageCteIsStillEmittedAndIncludeStagesCorrelateToIt()
+    {
+        // The match CTE must survive — the include stages' EXISTS/NOT EXISTS correlate against it.
+        // Dropping it would either break the SQL or silently change which rows the include stages produce.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("cteMatchPage AS (");
+        sql.ShouldContain("SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+        sql.ShouldContain("WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlan_WhenEmitted_ThenResultShapeIsStillFourColumnsAndIsMatchIsZeroOnAllRows()
+    {
+        // A caller reads columns by ordinal; dropping the match arm must not collapse the shape to 3
+        // columns or change the IsMatch ordinal position.  Every row in an includes-only result has
+        // IsMatch = 0 because there are no match rows.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // First (and only) SELECT in the assembly section: the include arm must carry an explicit alias.
+        sql.ShouldContain("CAST(0 AS bit) AS IsMatch");
+        // The match arm (IsMatch = 1) must be entirely absent.
+        sql.ShouldNotContain("CAST(1 AS bit)");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenOnlyFirstIncludeArmNamesIsMatch()
+    {
+        // In a UNION ALL, column names come from the first SELECT.  The first include arm must name
+        // IsMatch explicitly; subsequent arms must not double-alias it (which SQL Server would accept
+        // but which would make the assertion below brittle rather than structural).
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Exactly one "AS IsMatch" alias must appear in the whole statement — on the first include arm.
+        var count = System.Text.RegularExpressions.Regex.Matches(sql, " AS IsMatch").Count;
+        count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanAndIncludesOnlyIgnored_ThenIsMatchOneRowsWouldBePresent()
+    {
+        // Non-vacuity proof: this test is specifically written to FAIL if IncludesOnly is ignored
+        // (i.e., if the match arm is still emitted). With IncludesOnly properly respected, the
+        // match arm (CAST(1 AS bit) AS IsMatch ... FROM cteMatchPage) must be absent.
+        //
+        // Failure message when flag is ignored:
+        //   "sql" should not contain "CAST(1 AS bit) AS IsMatch" but does.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // This assertion is the discriminating one: it passes only if the match arm is absent.
+        sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
+        // And the include arm must be present (ensures the plan is non-empty).
+        sql.ShouldContain("CAST(0 AS bit) AS IsMatch");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithCountOnly_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // IncludesOnly requests include rows; CountOnly requests a count of match rows.
+        // The two are self-contradictory and the emitter must refuse rather than emitting
+        // something arbitrary (which would silently return the wrong answer).
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludesOnly: true,
+            CountOnly: true);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithNoIncludeStages_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // IncludesOnly with no include stages can only ever return empty, which is a caller error
+        // not a legitimate empty result.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            IncludesOnly: true);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithProjection_WhenEmitted_ThenProjectionColumnsAppearInIncludeArm()
+    {
+        // Projection must still work in IncludesOnly mode. Include rows are fetched from dbo.Resource;
+        // the projection columns are added to the include arm, not the (absent) match arm.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Projection: new ProjectionSpec(["RawResource", "IsDeleted"]),
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("r.[RawResource]");
+        sql.ShouldContain("r.[IsDeleted]");
+        // The match arm (which also projects) must be absent.
+        sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAccessConstraints_WhenEmitted_ThenConstraintsArePreservedOnIncludeStages()
+    {
+        // Access constraints are a security control.  IncludesOnly must not weaken them:
+        // a stage with Constraints must still emit the type-guarded EXISTS guard even in this mode.
+        var constraint = new IncludeConstraint(ConstraintTypeId: 111, ConstraintCteIndex: 0);
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 210,
+            SeedTypeIds: [(short)103],
+            OutputTypeIds: [(short)111],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 10,
+            Constraints: [constraint]);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The constraint guard must appear in the inc0 CTE (type-guarded EXISTS / <> check).
+        sql.ShouldContain($"r.ResourceTypeId <> {constraint.ConstraintTypeId} OR EXISTS (SELECT 1 FROM cte0 ac");
+        // The match arm must still be absent.
+        sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
+    }
 }
 

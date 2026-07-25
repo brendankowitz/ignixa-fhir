@@ -114,10 +114,25 @@ public static class Lower
                 .ToList();
         }
 
+        if (options.IncludesOnly && options.CountOnly)
+        {
+            throw new NotSupportedException(
+                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
+                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
+        }
+
+        if (options.IncludesOnly && includeStages is not { Count: > 0 })
+        {
+            throw new NotSupportedException(
+                "IncludesOnly was requested with no _include or _revinclude stages, which can only ever " +
+                "return an empty result. This is a caller error rather than a query that legitimately " +
+                "matches nothing, so it is reported rather than silently emitted.");
+        }
+
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash),
+            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly),
             new PlanProvenance(context.Origins));
     }
 

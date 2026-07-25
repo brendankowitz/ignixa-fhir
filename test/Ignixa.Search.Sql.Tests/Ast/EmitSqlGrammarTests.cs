@@ -47,6 +47,10 @@ public class EmitSqlGrammarTests
         yield return ["search parameter hash + projection + outer predicate + surrogate range", SearchParameterHashAllFourPlan()];
         yield return ["search parameter hash + includes", SearchParameterHashWithIncludesPlan()];
         yield return ["search parameter hash + count only", SearchParameterHashCountOnlyPlan()];
+        yield return ["includes-only, single stage", IncludesOnlyPlan()];
+        yield return ["includes-only, two stages", IncludesOnlyTwoStagesPlan()];
+        yield return ["includes-only, :iterate", IncludesOnlyWithIteratePlan()];
+        yield return ["includes-only, with projection", IncludesOnlyWithProjectionPlan()];
     }
 
     [Theory]
@@ -704,5 +708,62 @@ public class EmitSqlGrammarTests
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
         SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    // ─── IncludesOnly grammar plan factories ────────────────────────────────────────────────────────
+
+    private static QueryPlan IncludesOnlyPlan()
+    {
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyTwoStagesPlan()
+    {
+        var stage0 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(
+            IncludeDirection.Reverse, ReferenceSearchParamId: 88, SeedTypeIds: [103], OutputTypeIds: [107],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage0, stage1],
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyWithIteratePlan()
+    {
+        var stage0 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 88, SeedTypeIds: [105], OutputTypeIds: [105],
+            SeedStages: [0], SeedFromMatch: true, Iterate: true, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage0, stage1],
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyWithProjectionPlan()
+    {
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            Projection: StandardProjection(),
+            IncludesOnly: true);
     }
 }

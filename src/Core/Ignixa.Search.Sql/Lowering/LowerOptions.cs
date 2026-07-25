@@ -45,4 +45,11 @@ public sealed record LowerOptions
     /// means unrestricted. This is an authorization input; keeping it name-only is the point of this record.
     /// </summary>
     public IReadOnlyList<AccessConstraint>? AccessConstraints { get; init; }
+
+    /// <summary>
+    /// When true, the emitted statement returns include-stage rows only, omitting the match page from the
+    /// result while still using it to seed the stages. This is the $includes operation's second page: the
+    /// caller already has the match rows and asks only for more included resources.
+    /// </summary>
+    public bool IncludesOnly { get; init; }
 }

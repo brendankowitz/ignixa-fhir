@@ -44,7 +44,13 @@ public sealed record QueryPlan(
     /// value — the resources reindex must revisit because their indexed parameters predate the current
     /// definition set. A row with a NULL hash has never been indexed and always qualifies.
     /// </summary>
-    SqlParameterRef? SearchParameterHash = null)
+    SqlParameterRef? SearchParameterHash = null,
+    /// <summary>
+    /// When true, the emitted statement returns include-stage rows only, omitting the match page from the
+    /// result while still using it to seed the stages. This is the $includes operation's second page: the
+    /// caller already has the match rows and asks only for more included resources.
+    /// </summary>
+    bool IncludesOnly = false)
 {
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;
