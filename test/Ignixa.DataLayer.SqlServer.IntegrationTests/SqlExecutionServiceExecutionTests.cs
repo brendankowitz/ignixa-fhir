@@ -30,6 +30,9 @@ public class SqlExecutionServiceExecutionTests
 
         public ValueTask<IReadOnlyList<TenantConfiguration>> GetAllTenantsAsync(CancellationToken ct = default)
             => new((IReadOnlyList<TenantConfiguration>)new List<TenantConfiguration> { _tenant });
+
+        public ValueTask<TenantConfiguration?> ResolveByHostAsync(string host, CancellationToken cancellationToken = default)
+            => new(_tenant.Hostnames.Contains(host, StringComparer.OrdinalIgnoreCase) ? _tenant : null);
     }
 
     private static string GetConnectionString()
@@ -188,5 +191,7 @@ public class SqlExecutionServiceExecutionTests
             => new(tenantId == _tenant.TenantId ? _tenant : null);
         public ValueTask<IReadOnlyList<TenantConfiguration>> GetAllTenantsAsync(CancellationToken ct = default)
             => new((IReadOnlyList<TenantConfiguration>)new List<TenantConfiguration> { _tenant });
+        public ValueTask<TenantConfiguration?> ResolveByHostAsync(string host, CancellationToken cancellationToken = default)
+            => new(_tenant.Hostnames.Contains(host, StringComparer.OrdinalIgnoreCase) ? _tenant : null);
     }
 }
