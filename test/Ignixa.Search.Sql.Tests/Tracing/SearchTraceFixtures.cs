@@ -144,7 +144,7 @@ internal static class SearchTraceFixtures
 
         return SearchCompiler.CompileAsync(
             "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
-            null, null, cancellationToken);
+            null, null, cancellationToken: cancellationToken);
     }
 
     public static Task<SearchTrace> TracePatientNameSmithWithCancellationCheckAsync(CancellationToken cancellationToken)
@@ -166,7 +166,7 @@ internal static class SearchTraceFixtures
 
         return SearchCompiler.CompileAsync(
             "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
-            null, null, cancellationToken);
+            null, null, cancellationToken: cancellationToken);
     }
 
     public static Task<SearchTrace> TraceUnregisteredParameterAsync()

@@ -46,6 +46,18 @@ deliberately erased:
 | Column-to-column comparisons | Row correlation plumbing, which the two dialects do differently for identical semantics. |
 | Set operators | Reported, never verdict-deciding: `EXISTS` vs `INNER JOIN`, `NOT IN` vs `NOT EXISTS`. |
 
+## Known divergences worth keeping
+
+- **`Patient/$everything`** (3 captured queries). The corpus compiles these as the real operation — it
+  builds a `PatientEverythingExpression` from the URL and lowers it through the compartment traversal
+  (see `CorpusCompiler`), rather than stripping the `$everything` segment and compiling a bare
+  `GET /Patient?…`. All three land as **Divergent** for a known, benign reason: the honest traversal
+  reads `dbo.ReferenceSearchParam` **once per compartment-membership parameter** (many in real R4),
+  where the shipping engine's captured SQL read it **exactly twice** using a windowed/paged form the
+  compiler does not reproduce. Same semantics, different shape — not a correctness regression. This is
+  why `DivergenceBaseline.DivergingQueries` was raised from 56 to 59 when the harness was wired; per the
+  convention below, the reason is recorded here rather than the count being suppressed.
+
 ## What it can't tell you
 
 - **Search-parameter identity.** Legacy ids are opaque integers with no name map in the capture, so

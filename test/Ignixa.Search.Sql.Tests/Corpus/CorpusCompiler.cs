@@ -1,4 +1,7 @@
+using System.Globalization;
+using Ignixa.Abstractions;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Parsing;
@@ -26,6 +29,11 @@ public static class CorpusCompiler
         new ExpressionParser(() => Definitions, new SearchParameterExpressionParser(new ReferenceSearchValueParser(Schema), Schema), Schema),
         Definitions);
 
+    // The real R4 compartment definitions -- the same source a server uses to expand a patient
+    // compartment into its membership search parameters. Resolve needs this to lower a
+    // PatientEverythingExpression; without it the operation cannot name its compartment members.
+    private static readonly CompartmentDefinitionManager Compartments = new(FhirVersion.R4);
+
     public static async Task<CorpusCompilation> CompileAsync(CorpusEntry entry, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -40,6 +48,13 @@ public static class CorpusCompiler
             return CorpusCompilation.Failed(entry, "query-parse", exception.Message);
         }
 
+        // A captured /Patient/{id}/$everything URL is a FHIR operation, not a query-string search. The
+        // corpus previously dropped the $everything segment and compiled it as a bare GET /Patient?...,
+        // so the operation was never exercised here. Rebuild the real PatientEverythingExpression and hand
+        // it to the compiler as an operation override so Resolve/Lower run the honest compartment traversal.
+        var operationExpression = TryBuildEverythingExpression(entry, parameters);
+        var compartmentDefinitionManager = operationExpression is null ? null : Compartments;
+
         try
         {
             var trace = await SearchCompiler.CompileAsync(
@@ -47,8 +62,9 @@ public static class CorpusCompiler
                 parameters,
                 OptionsBuilder,
                 new CorpusSymbolResolver(),
-                compartmentDefinitionManager: null,
+                compartmentDefinitionManager: compartmentDefinitionManager,
                 searchParameterDefinitionManager: Definitions,
+                operationExpression: operationExpression,
                 cancellationToken);
 
             if (trace.Sql is null)
@@ -92,4 +108,62 @@ public static class CorpusCompiler
         KeyNotFoundException => "unresolved-symbol",
         _ => "build:" + exception.GetType().Name,
     };
+
+    /// <summary>
+    /// Rebuilds the <see cref="PatientEverythingExpression"/> a captured <c>/Patient/{id}/$everything</c>
+    /// URL stands for, or null when the entry is an ordinary search. The patient id comes from the path;
+    /// <c>_since</c> and <c>_type</c> come from the already-parsed query parameters. A <c>_since</c> value
+    /// that is not a parseable instant is left unset rather than failing -- the point is to exercise the
+    /// operation's compartment traversal, and an unparseable bound would only be dropped downstream anyway.
+    /// </summary>
+    private static PatientEverythingExpression? TryBuildEverythingExpression(
+        CorpusEntry entry,
+        IReadOnlyList<QueryParameter> parameters)
+    {
+        var path = entry.Url;
+        var queryIndex = path.IndexOf('?', StringComparison.Ordinal);
+        if (queryIndex >= 0)
+        {
+            path = path[..queryIndex];
+        }
+
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length != 3
+            || !segments[0].Equals("Patient", StringComparison.Ordinal)
+            || !segments[2].Equals("$everything", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var patientId = segments[1];
+
+        DateTimeOffset? sinceDate = null;
+        HashSet<string>? filteredResourceTypes = null;
+
+        foreach (var parameter in parameters)
+        {
+            if (parameter.Name.Equals("_since", StringComparison.Ordinal)
+                && DateTimeOffset.TryParse(
+                    parameter.Value,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out var since))
+            {
+                sinceDate = since;
+            }
+            else if (parameter.Name.Equals("_type", StringComparison.Ordinal))
+            {
+                filteredResourceTypes ??= new HashSet<string>(StringComparer.Ordinal);
+                foreach (var type in parameter.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    filteredResourceTypes.Add(type);
+                }
+            }
+        }
+
+        return new PatientEverythingExpression(
+            patientId,
+            sinceDate: sinceDate,
+            filteredResourceTypes: filteredResourceTypes);
+    }
 }

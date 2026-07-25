@@ -161,5 +161,56 @@ public class EverythingLoweringRuleTests
 
         sql.ShouldContain("SearchParamId = 220");
     }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithAnUnknownTypeFilter_WhenLowered_ThenTheCompartmentMatchesNothingRatherThanThrowing()
+    {
+        // _type=foo names a type that is not a member of the Patient compartment, so the membership set
+        // narrows to zero groups. Per ISymbolResolver's "not found is data, not an error" convention this
+        // must lower to an empty match (a Predicate.False), the same way an unresolvable token system or
+        // resource type does -- not throw a NotSupportedException the caller would surface as a 500.
+        var symbols = BuildSymbols(["Observation"]);
+        var expression = new PatientEverythingExpression("pat-1", filteredResourceTypes: new HashSet<string> { "foo" });
+
+        var plan = Lowered(expression, symbols);
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The compartment member scan collapsed to an unsatisfiable predicate: no ReferenceSearchParam is
+        // read, and the plan carries the false predicate that emits `1 = 0` as valid SQL.
+        plan.Ctes.OfType<CteDefinition.CompartmentSource>().ShouldBeEmpty();
+        sql.ShouldNotContain("dbo.ReferenceSearchParam");
+        sql.ShouldContain("1 = 0");
+
+        var miss = plan.Ctes
+            .OfType<CteDefinition.ResourceSource>()
+            .Select(rs => rs.Predicate)
+            .OfType<Predicate.False>()
+            .ShouldHaveSingleItem();
+        miss.Reason.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithAMixOfKnownAndUnknownTypes_WhenLowered_ThenOnlyTheKnownTypesAreTraversed()
+    {
+        // _type=Encounter,foo: Encounter is a compartment member, foo is not. The unknown type must drop
+        // out while the known one is still traversed -- narrowing to zero is a per-type decision, not an
+        // all-or-nothing throw.
+        var symbols = BuildSymbols(["Observation", "Encounter"]);
+        var expression = new PatientEverythingExpression(
+            "pat-1",
+            filteredResourceTypes: new HashSet<string> { "Encounter", "foo" });
+
+        var plan = Lowered(expression, symbols);
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var compartmentSource = plan.Ctes.OfType<CteDefinition.CompartmentSource>().ShouldHaveSingleItem();
+        compartmentSource.ResourceTypeIds.ShouldBe([EncounterTypeId]);
+        compartmentSource.ResourceTypeIds.ShouldNotContain(ObservationTypeId);
+
+        // The known type still produces a real compartment traversal, and the unknown one added no
+        // unsatisfiable branch.
+        sql.ShouldContain("dbo.ReferenceSearchParam");
+        sql.ShouldNotContain("1 = 0");
+    }
 }
 

@@ -36,8 +36,9 @@ public static class SearchCompiler
         ISymbolResolver resolver,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
+        Expression? operationExpression = null,
         CancellationToken cancellationToken = default)
-        => CompileWithTimeProviderAsync(resourceType, parameters, optionsBuilder, resolver, compartmentDefinitionManager, searchParameterDefinitionManager, null, cancellationToken);
+        => CompileWithTimeProviderAsync(resourceType, parameters, optionsBuilder, resolver, compartmentDefinitionManager, searchParameterDefinitionManager, null, operationExpression, cancellationToken);
 
     /// <summary>
     /// Overload that accepts an explicit <see cref="TimeProvider"/> for deterministic approximation-time
@@ -52,6 +53,7 @@ public static class SearchCompiler
         ICompartmentDefinitionManager? compartmentDefinitionManager,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager,
         TimeProvider? timeProvider,
+        Expression? operationExpression = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resourceType);
@@ -63,6 +65,15 @@ public static class SearchCompiler
 
         var outcomes = new List<ParameterTrace>();
         var options = optionsBuilder.Build(resourceType, parameters, schemaProvider: null, outcomes);
+
+        // A FHIR operation such as Patient/$everything is not expressible as a query-string search: its
+        // root is a PatientEverythingExpression the builder never produces. When the caller supplies that
+        // operation expression, it replaces the search expression the builder derived from the query string
+        // so Resolve and Lower run against the real operation, not a bare-resource fallback.
+        if (operationExpression is not null)
+        {
+            options.Expression = operationExpression;
+        }
 
         var resolved = await Resolve.RunAsync(
             options.Expression,
