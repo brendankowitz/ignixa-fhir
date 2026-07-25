@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Buffers;
 using System.Text;
 using System.Text.Json;
 using EnsureThat;
@@ -97,6 +98,13 @@ public static class StreamingBundleSerializer
     private const int FlushThresholdBytes = 50 * 1024 * 1024; // 50 MB
 
     /// <summary>
+    /// fullUrl carried by the mid-stream fatal OperationOutcome entry. A well-formed UUID URN, distinct
+    /// from the warning entry's ...d0 so a bundle carrying both still satisfies bdl-7 uniqueness.
+    /// At most one error entry is written per serialization, so a constant is safe.
+    /// </summary>
+    private const string ErrorEntryFullUrl = "urn:uuid:00000000-0000-0000-0000-0000000000e0";
+
+    /// <summary>
     /// Serializes a search result bundle with count-as-render pagination pattern.
     /// Streams entries from result set, counting as rendering, and generates pagination links at the end.
     /// Uses zero-copy serialization with SearchEntryResult (raw bytes from repository).
@@ -131,7 +139,9 @@ public static class StreamingBundleSerializer
         EnsureArg.IsNotNull(entries, nameof(entries));
         EnsureArg.IsNotNull(searchOptions, nameof(searchOptions));
 
+        var entryBuffer = new ArrayBufferWriter<byte>();
         await using FhirJsonWriter writer = FhirJsonWriter.Create(outputStream, pretty);
+        await using FhirJsonWriter entryWriter = FhirJsonWriter.Create(entryBuffer, pretty);
 
         int pageSize = searchOptions.MaxItemCount;
         int entryCount = 0;
@@ -144,124 +154,222 @@ public static class StreamingBundleSerializer
         int includesOffset = 0;
         bool hasMoreIncludes = false;
 
-        if (!string.IsNullOrWhiteSpace(searchOptions.IncludesContinuationToken))
-        {
-            if (IncludesContinuationToken.TryDecode(searchOptions.IncludesContinuationToken, out int tokenOffset, out _))
-            {
-                includesOffset = tokenOffset;
-            }
-        }
+        string selfLink = string.Empty;
+        string? nextLink = null;
+        string? relatedLink = null;
 
-        if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken))
+        try
         {
-            if (ContinuationToken.TryDecode(searchOptions.ContinuationToken, out int tokenOffset, out _))
+            if (!string.IsNullOrWhiteSpace(searchOptions.IncludesContinuationToken)
+                && IncludesContinuationToken.TryDecode(searchOptions.IncludesContinuationToken, out int includesTokenOffset, out _))
+            {
+                includesOffset = includesTokenOffset;
+            }
+
+            if (!string.IsNullOrWhiteSpace(searchOptions.ContinuationToken)
+                && ContinuationToken.TryDecode(searchOptions.ContinuationToken, out int tokenOffset, out _))
             {
                 currentOffset = tokenOffset;
             }
+
+            WriteBundleHeader(writer, bundleType, total);
+
+            string filteredQueryString = FilterUnsupportedParams(queryString, searchOptions.UnsupportedParams);
+
+            selfLink = $"{baseUrl}{filteredQueryString}";
+
+            writer.WriteStartArray("entry");
+
+            WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
+
+            await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+            {
+                if (resource.SearchMode == SearchEntryMode.Match)
+                {
+                    if (entryCount >= pageSize)
+                    {
+                        hasMore = true;
+                        continue;
+                    }
+
+                    entryCount++;
+                }
+                else if (resource.SearchMode == SearchEntryMode.Include)
+                {
+                    if (includesMaxCount.HasValue && includesCount >= includesMaxCount.Value)
+                    {
+                        hasMoreIncludes = true;
+                        continue;
+                    }
+
+                    includesCount++;
+                }
+
+                WriteBufferedEntry(writer, entryWriter, entryBuffer, resource, searchOptions, schemaProvider);
+
+                // Flush to the HTTP response stream once the buffer exceeds the threshold.
+                // This keeps memory bounded for large result sets while avoiding the overhead
+                // of flushing (a syscall + potential TCP segment) on every single entry.
+                if (writer.UnderlyingWriter.BytesPending >= flushThresholdBytes)
+                {
+                    await writer.FlushAsync(cancellationToken);
+                }
+            }
+
+            // Link building parses baseUrl and can throw, so it is computed while the entry array is
+            // still open - an error entry cannot be appended once the array has been closed.
+            nextLink = BuildNextLink(hasMore, currentOffset, pageSize, filteredQueryString, baseUrl);
+            relatedLink = BuildRelatedLink(searchOptions, includesMaxCount, includesOffset, includesCount, hasMoreIncludes, filteredQueryString, baseUrl);
         }
-
-        WriteBundleHeader(writer, bundleType, total);
-
-        string filteredQueryString = FilterUnsupportedParams(queryString, searchOptions.UnsupportedParams);
-
-        string selfLink = $"{baseUrl}{filteredQueryString}";
-
-        writer.WriteStartArray("entry");
-
-        WriteBundleIssuesPreR5(writer, searchOptions.BundleIssues, fhirVersion);
-
-        await foreach (SearchEntryResult resource in entries.WithCancellation(cancellationToken))
+        catch (OperationCanceledException)
         {
-            if (resource.SearchMode == SearchEntryMode.Match)
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                if (entryCount >= pageSize)
-                {
-                    hasMore = true;
-                    continue;
-                }
-
-                entryCount++;
-            }
-            else if (resource.SearchMode == SearchEntryMode.Include)
-            {
-                if (includesMaxCount.HasValue && includesCount >= includesMaxCount.Value)
-                {
-                    hasMoreIncludes = true;
-                    continue;
-                }
-
-                includesCount++;
+                writer.UnderlyingWriter.Reset();
+                throw;
             }
 
-            writer.WriteStartObject();
-
-            string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
-            writer.WriteString("fullUrl", fullUrl);
-
-            WriteResourceBytes(writer, resource, searchOptions, schemaProvider);
-
-#pragma warning disable CA1308
-            writer.WriteObject("search", w => w
-                .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
-#pragma warning restore CA1308
-
-            writer.WriteEndObject();
-
-            // Flush to the HTTP response stream once the buffer exceeds the threshold.
-            // This keeps memory bounded for large result sets while avoiding the overhead
-            // of flushing (a syscall + potential TCP segment) on every single entry.
-            if (writer.UnderlyingWriter.BytesPending >= flushThresholdBytes)
+            await CloseErrorBundleAsync(writer, selfLink);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (writer.UnderlyingWriter.BytesCommitted == 0)
             {
-                await writer.FlushAsync(cancellationToken);
+                writer.UnderlyingWriter.Reset();
+                throw;
             }
+
+            WriteOperationOutcomeEntry(
+                writer,
+                new IssueComponent("fatal", "exception", Diagnostics: $"Bundle serialization failed: {ex.Message}"),
+                bundleType,
+                fhirVersion,
+                ErrorEntryFullUrl,
+                selfLink);
+
+            await CloseErrorBundleAsync(writer, selfLink);
+            throw;
         }
 
         writer.WriteEndArray();
 
         WriteBundleIssues(writer, searchOptions.BundleIssues, fhirVersion);
 
-        string? continuationToken = null;
-        if (hasMore)
-        {
-            int nextOffset = currentOffset + pageSize;
-            continuationToken = ContinuationToken.Encode(nextOffset, pageSize);
-        }
-
-        string? nextLink = null;
-        if (hasMore && !string.IsNullOrWhiteSpace(continuationToken))
-        {
-            var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
-            parsedQuery["after"] = continuationToken;
-            nextLink = $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
-        }
-
-        string? relatedLink = null;
-        if (hasMoreIncludes && includesMaxCount.HasValue && searchOptions.ResourceType is not null)
-        {
-            int nextIncludesOffset = includesOffset + includesCount;
-            string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
-
-            string includesBaseUrl;
-            if (baseUrl.Contains("/$includes", StringComparison.Ordinal))
-            {
-                includesBaseUrl = baseUrl;
-            }
-            else
-            {
-                var uri = new Uri(baseUrl, UriKind.Absolute);
-                string pathWithOperation = uri.AbsolutePath.TrimEnd('/') + "/$includes";
-                includesBaseUrl = $"{uri.Scheme}://{uri.Authority}{pathWithOperation}";
-            }
-
-            var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
-            parsedQuery["_includesContinuationToken"] = includesContinuationToken;
-            relatedLink = $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
-        }
-
         WriteBundleLinksFromStrings(writer, selfLink, nextLink, relatedLink);
 
         writer.WriteEndObject();
         await writer.FlushAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Writes one complete entry into the scratch writer, then copies the finished bytes into the
+    /// response writer as a single raw array element.
+    /// Staging is load-bearing rather than tidy: it keeps the response writer between complete entries
+    /// at all times, so a mid-entry failure dirties only the scratch buffer and the bundle stays closable.
+    /// </summary>
+    private static void WriteBufferedEntry(
+        FhirJsonWriter writer,
+        FhirJsonWriter entryWriter,
+        ArrayBufferWriter<byte> entryBuffer,
+        SearchEntryResult resource,
+        SearchOptions searchOptions,
+        ISchema? schemaProvider)
+    {
+        entryWriter.WriteStartObject();
+
+        string fullUrl = $"{resource.ResourceType}/{resource.ResourceId}";
+        entryWriter.WriteString("fullUrl", fullUrl);
+
+        WriteResourceBytes(entryWriter, resource, searchOptions, schemaProvider);
+
+#pragma warning disable CA1308
+        entryWriter.WriteObject("search", w => w
+            .WriteString("mode", resource.SearchMode.ToString().ToLowerInvariant()));
+#pragma warning restore CA1308
+
+        entryWriter.WriteEndObject();
+
+        // The scratch buffer holds nothing until the writer is flushed into it.
+        entryWriter.UnderlyingWriter.Flush();
+        writer.UnderlyingWriter.WriteRawValue(entryBuffer.WrittenSpan, skipInputValidation: true);
+        entryBuffer.Clear();
+        entryWriter.UnderlyingWriter.Reset(entryBuffer);
+    }
+
+    /// <summary>
+    /// Builds the <c>next</c> pagination link, or null when there is no further page.
+    /// </summary>
+    private static string? BuildNextLink(bool hasMore, int currentOffset, int pageSize, string filteredQueryString, string baseUrl)
+    {
+        if (!hasMore)
+        {
+            return null;
+        }
+
+        string continuationToken = ContinuationToken.Encode(currentOffset + pageSize, pageSize);
+        if (string.IsNullOrWhiteSpace(continuationToken))
+        {
+            return null;
+        }
+
+        var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
+        parsedQuery["after"] = continuationToken;
+        return $"{baseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
+    }
+
+    /// <summary>
+    /// Builds the <c>related</c> link pointing at the $includes continuation, or null when no
+    /// included resources remain.
+    /// </summary>
+    private static string? BuildRelatedLink(
+        SearchOptions searchOptions,
+        int? includesMaxCount,
+        int includesOffset,
+        int includesCount,
+        bool hasMoreIncludes,
+        string filteredQueryString,
+        string baseUrl)
+    {
+        if (!hasMoreIncludes || !includesMaxCount.HasValue || searchOptions.ResourceType is null)
+        {
+            return null;
+        }
+
+        int nextIncludesOffset = includesOffset + includesCount;
+        string includesContinuationToken = IncludesContinuationToken.Encode(nextIncludesOffset, includesMaxCount.Value);
+
+        string includesBaseUrl;
+        if (baseUrl.Contains("/$includes", StringComparison.Ordinal))
+        {
+            includesBaseUrl = baseUrl;
+        }
+        else
+        {
+            var uri = new Uri(baseUrl, UriKind.Absolute);
+            string pathWithOperation = uri.AbsolutePath.TrimEnd('/') + "/$includes";
+            includesBaseUrl = $"{uri.Scheme}://{uri.Authority}{pathWithOperation}";
+        }
+
+        var parsedQuery = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(filteredQueryString);
+        parsedQuery["_includesContinuationToken"] = includesContinuationToken;
+        return $"{includesBaseUrl}?{string.Join("&", parsedQuery.SelectMany(kvp => kvp.Value.Select(v => $"{kvp.Key}={Uri.EscapeDataString(v ?? string.Empty)}")))}";
+    }
+
+    /// <summary>
+    /// Completes a bundle whose response has already started, then leaves the caller to rethrow.
+    /// Only the self link is emitted: next and related describe pages this request never produced.
+    /// The flush deliberately uses <see cref="CancellationToken.None"/> - an already-canceled token
+    /// makes FlushAsync throw immediately, which would defeat the body completion.
+    /// </summary>
+    private static async Task CloseErrorBundleAsync(FhirJsonWriter writer, string selfLink)
+    {
+        writer.WriteEndArray();
+
+        WriteBundleLinksFromStrings(writer, selfLink, nextLink: null);
+
+        writer.WriteEndObject();
+        await writer.FlushAsync(CancellationToken.None);
     }
 
     /// <summary>
