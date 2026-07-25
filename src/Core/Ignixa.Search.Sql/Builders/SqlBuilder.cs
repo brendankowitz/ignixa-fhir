@@ -716,24 +716,42 @@ public static class SqlBuilder
         List<EmittedSqlParameter> parameters,
         ResourceVisibility visibility)
     {
-        var predicateClause = mts.Predicate is null ? string.Empty : $" AND {EmitPredicate(mts.Predicate, parameters)}";
-
+        // Build the WHERE from an explicit clause list rather than concatenating prefix-" AND " strings
+        // and stripping the leading AND. The concatenate-then-strip idiom works only because every piece
+        // uses the " AND " prefix convention; any future clause that does not would silently corrupt the
+        // SQL. A clause list is the pattern the rest of the file already uses and composes correctly.
+        //
         // Type ids are emitted as literals, not bound parameters, matching ParamSource and ChainJoin.
-        // An empty list means "every type" (system-wide scan); do not emit a type filter in that case.
-        // Keeping unresolvable sentinel ids (-1) in the list is intentional: they match no row, which
-        // is the correct answer for an unknown type. Dropping them could collapse a list of all-unknown
+        // An empty list means "every type" (AllTypes factory); do not emit a type filter in that case.
+        // Keeping unresolvable sentinel ids (-1) in the list is intentional: they match no row, which is
+        // the correct answer for an unknown type. Dropping them could collapse a list of all-unknown
         // types to empty, which would silently widen to a full-table scan instead of matching nothing.
-        var typeClause = mts.ResourceTypeIds.Count == 0
-            ? string.Empty
-            : $" AND ResourceTypeId IN ({string.Join(", ", mts.ResourceTypeIds)})";
+        var clauses = new List<string>(4);
+        if (mts.ResourceTypeIds.Count > 0)
+        {
+            clauses.Add($"ResourceTypeId IN ({string.Join(", ", mts.ResourceTypeIds)})");
+        }
 
-        var rowFilter = ResourceRowFilter(visibility, string.Empty);
-        var where = (typeClause + rowFilter + predicateClause).TrimStart();
-        where = where.StartsWith("AND ", StringComparison.Ordinal) ? where[4..] : where;
+        if (!visibility.IncludeHistory)
+        {
+            clauses.Add("IsHistory = 0");
+        }
+
+        if (!visibility.IncludeDeleted)
+        {
+            clauses.Add("IsDeleted = 0");
+        }
+
+        if (mts.Predicate is not null)
+        {
+            clauses.Add(EmitPredicate(mts.Predicate, parameters));
+        }
+
+        var whereClause = clauses.Count == 0 ? string.Empty : $"    WHERE {string.Join(" AND ", clauses)}";
 
         return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM dbo.Resource\n" +
-               (where.Length == 0 ? string.Empty : $"    WHERE {where}");
+               whereClause;
     }
 
     /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>

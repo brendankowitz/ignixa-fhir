@@ -1058,9 +1058,9 @@ public class LowerTests
             page: null,
             resourceTypes: ["Patient", "Observation"]).Plan;
 
-        var sql = SqlBuilder.Run(plan).Sql;
-
-        sql.ShouldContain("ResourceTypeId IN (103, 104)");
+        // Assert against the AST node: the type mapping is what is under test, not emitter formatting.
+        var mts = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+        mts.ResourceTypeIds.ShouldBe([103, 104]);
     }
 
     [Fact]
@@ -1161,9 +1161,20 @@ public class LowerTests
             page: null,
             resourceTypes: ["Patient"]).Plan;
 
-        var sql = SqlBuilder.Run(plan).Sql;
+        // Assert the AST mapping first; then confirm the emitter path uses IN rather than = for a
+        // one-element list (this is the one emitted-SQL assertion kept to cover the emitter path).
+        var mts = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+        mts.ResourceTypeIds.ShouldBe([103]);
+        SqlBuilder.Run(plan).Sql.ShouldContain("ResourceTypeId IN (103)");
+    }
 
-        sql.ShouldContain("ResourceTypeId IN (103)");
+    [Fact]
+    public void GivenAnEmptyTypeListPassedToForTypes_WhenConstructed_ThenThrows()
+    {
+        // ForTypes([]) must throw rather than silently producing an AllTypes scan. This is the
+        // API-level protection: a caller that filters a type list down to nothing gets an error
+        // rather than a full-table scan.
+        Should.Throw<ArgumentException>(() => CteDefinition.MultiTypeResourceSource.ForTypes([]));
     }
 }
 

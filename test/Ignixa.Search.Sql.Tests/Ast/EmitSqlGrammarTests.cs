@@ -498,7 +498,7 @@ public class EmitSqlGrammarTests
     public void GivenAMultiTypeResourceSourceWithSeveralIds_WhenParsed_ThenItIsValidTSql()
     {
         var plan = new QueryPlan(
-            [new CteDefinition.MultiTypeResourceSource([103, 104])],
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
             new CteRef(0));
 
         SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
@@ -510,7 +510,7 @@ public class EmitSqlGrammarTests
         // Empty list = system-wide scan; the emitter must produce no WHERE clause, not a dangling AND or
         // an empty WHERE ().
         var plan = new QueryPlan(
-            [new CteDefinition.MultiTypeResourceSource([])],
+            [CteDefinition.MultiTypeResourceSource.AllTypes()],
             new CteRef(0));
 
         SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
@@ -521,7 +521,7 @@ public class EmitSqlGrammarTests
     {
         // Single-element list emits IN (x), which is valid T-SQL.
         var plan = new QueryPlan(
-            [new CteDefinition.MultiTypeResourceSource([103])],
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103])],
             new CteRef(0));
 
         SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
@@ -535,11 +535,11 @@ public class EmitSqlGrammarTests
     public void GivenAMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
         bool includeHistory, bool includeDeleted, string _)
     {
-        // Tests all four visibility flag combinations, exercising the WHERE-clause assembly string juggling
-        // (TrimStart / StartsWith("AND ...")) for multi-type with visibility filters.
+        // Tests all four visibility flag combinations, exercising the WHERE-clause assembly for multi-type
+        // with visibility filters.
         var visibility = new ResourceVisibility(includeHistory, includeDeleted);
         var plan = new QueryPlan(
-            [new CteDefinition.MultiTypeResourceSource([103, 104])],
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
             new CteRef(0),
             Visibility: visibility);
 
@@ -554,14 +554,60 @@ public class EmitSqlGrammarTests
     public void GivenASystemWideMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
         bool includeHistory, bool includeDeleted, string _)
     {
-        // System-wide (empty ids) with visibility: validates that rowFilter alone builds a correct
-        // WHERE clause without a leading AND when typeClause is empty.
+        // System-wide (AllTypes) with visibility: validates that the visibility clauses alone build a
+        // correct WHERE clause when there is no type filter.
         var visibility = new ResourceVisibility(includeHistory, includeDeleted);
         var plan = new QueryPlan(
-            [new CteDefinition.MultiTypeResourceSource([])],
+            [CteDefinition.MultiTypeResourceSource.AllTypes()],
             new CteRef(0),
             Visibility: visibility);
 
         SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    // Multi-type WHERE text for all four visibility combinations, verified against the expected output.
+    // These lock in that the clause-list emitter produces byte-identical output to the former
+    // concatenate-then-strip approach. Any future refactor that changes WHERE formatting will fail here.
+    [Theory]
+    [InlineData(false, false, "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0 AND IsDeleted = 0")]
+    [InlineData(true,  false, "    WHERE ResourceTypeId IN (103, 104) AND IsDeleted = 0")]
+    [InlineData(false, true,  "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0")]
+    [InlineData(true,  true,  "    WHERE ResourceTypeId IN (103, 104)")]
+    public void GivenAMultiTypeResourceSourceAcrossAllVisibilityCombinations_TheWhereClauseIsExact(
+        bool includeHistory, bool includeDeleted, string expectedWhereClause)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
+            new CteRef(0),
+            Visibility: visibility);
+
+        SqlBuilder.Run(plan).Sql.ShouldContain(expectedWhereClause);
+    }
+
+    // AllTypes (system-wide) WHERE text for all four visibility combinations.
+    [Theory]
+    [InlineData(false, false, "    WHERE IsHistory = 0 AND IsDeleted = 0")]
+    [InlineData(true,  false, "    WHERE IsDeleted = 0")]
+    [InlineData(false, true,  "    WHERE IsHistory = 0")]
+    [InlineData(true,  true,  null)]  // fully relaxed: no WHERE clause
+    public void GivenAnAllTypesResourceSourceAcrossAllVisibilityCombinations_TheWhereClauseIsExact(
+        bool includeHistory, bool includeDeleted, string? expectedWhereClause)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.AllTypes()],
+            new CteRef(0),
+            Visibility: visibility);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+        if (expectedWhereClause is null)
+        {
+            sql.ShouldNotContain("WHERE");
+        }
+        else
+        {
+            sql.ShouldContain(expectedWhereClause);
+        }
     }
 }

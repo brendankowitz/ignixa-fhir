@@ -211,9 +211,9 @@ public sealed class StructuralContext
     /// matches no row, so keeping it produces the correct empty result without widening the query.
     /// </para>
     /// <para>
-    /// An empty <paramref name="resourceTypes"/> input is the explicit system-wide contract ("all types").
-    /// The caller at <c>LowerBaseSet</c> deliberately passes an empty list for a bare <c>GET /</c>;
-    /// this is not an accident that falls through silently.
+    /// An empty <paramref name="resourceTypes"/> input is the explicit system-wide contract ("all types"):
+    /// <see cref="CteDefinition.MultiTypeResourceSource.AllTypes"/> is called in that case so the intent
+    /// is named rather than inferred from an empty list.
     /// </para>
     /// </summary>
     public CteRef LowerMultiTypeResourceSource(IReadOnlyList<string> resourceTypes)
@@ -223,8 +223,17 @@ public sealed class StructuralContext
         // contract: dropping unresolvable ids would collapse an all-unknown list to empty, which means
         // "every resource type" — a full-table scan instead of the correct empty result. Keeping -1
         // produces IN (-1), which matches no row. See also the comment at EmitMultiTypeResourceSource.
-        var resourceTypeIds = resourceTypes.Select(t => _leafContext.ResourceTypeIdOrSentinel(t)).ToList();
-        _ctes.Add(new CteDefinition.MultiTypeResourceSource(resourceTypeIds));
+        //
+        // An empty resourceTypes input is the explicit system-wide contract ("all types"): the caller at
+        // LowerBaseSet deliberately passes an empty list for a bare GET /. Use AllTypes() in that case to
+        // make the intent unambiguous; use ForTypes() for every non-empty list so the guard in ForTypes
+        // enforces that no future caller can accidentally pass an empty list and silently widen.
+        CteDefinition.MultiTypeResourceSource source = resourceTypes.Count == 0
+            ? CteDefinition.MultiTypeResourceSource.AllTypes()
+            : CteDefinition.MultiTypeResourceSource.ForTypes(
+                resourceTypes.Select(t => _leafContext.ResourceTypeIdOrSentinel(t)).ToList());
+
+        _ctes.Add(source);
         return new CteRef(_ctes.Count - 1);
     }
 

@@ -354,7 +354,7 @@ public class PlanExplainerTests
     public void GivenAMultiTypeResourceSourceWithSeveralTypes_WhenExplained_ThenPrintsAllTypeIds()
     {
         // Arrange -- GET /?_type=Patient,Observation
-        var plan = new QueryPlan([new CteDefinition.MultiTypeResourceSource([103, 104])], new CteRef(0));
+        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])], new CteRef(0));
 
         // Act
         var explained = plan.Explain();
@@ -367,7 +367,7 @@ public class PlanExplainerTests
     public void GivenAMultiTypeResourceSourceWithNoTypes_WhenExplained_ThenPrintsStarForSystemWide()
     {
         // Arrange -- bare GET / (no _type filter)
-        var plan = new QueryPlan([new CteDefinition.MultiTypeResourceSource([])], new CteRef(0));
+        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.AllTypes()], new CteRef(0));
 
         // Act
         var explained = plan.Explain();
@@ -384,7 +384,7 @@ public class PlanExplainerTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var plan = new QueryPlan(
         [
-            new CteDefinition.MultiTypeResourceSource([103, 104]),
+            CteDefinition.MultiTypeResourceSource.ForTypes([103, 104]),
             new CteDefinition.ParamSource(table, 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
             new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
         ],
