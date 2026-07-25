@@ -47,8 +47,7 @@ public static class SqlBuilder
 
             if (plan.SurrogateRange is { } countRange)
             {
-                countWhereClauses.Add($"m.Sid1 >= {EmitParam(countRange.Start, parameters)}");
-                countWhereClauses.Add($"m.Sid1 <= {EmitParam(countRange.End, parameters)}");
+                AppendSurrogateRangeClauses(countWhereClauses, countRange, parameters);
             }
 
             if (countWhereClauses.Count > 0)
@@ -97,8 +96,7 @@ public static class SqlBuilder
 
             if (plan.SurrogateRange is { } range)
             {
-                whereClauses.Add($"m.Sid1 >= {EmitParam(range.Start, parameters)}");
-                whereClauses.Add($"m.Sid1 <= {EmitParam(range.End, parameters)}");
+                AppendSurrogateRangeClauses(whereClauses, range, parameters);
             }
 
             writer.Append(";WITH ");
@@ -162,8 +160,7 @@ public static class SqlBuilder
         // silently drop legitimately-included resources that live outside the partition boundary.
         if (plan.SurrogateRange is { } matchRange)
         {
-            matchWhereClauses.Add($"m.Sid1 >= {EmitParam(matchRange.Start, parameters)}");
-            matchWhereClauses.Add($"m.Sid1 <= {EmitParam(matchRange.End, parameters)}");
+            AppendSurrogateRangeClauses(matchWhereClauses, matchRange, parameters);
         }
 
         var matchResourceJoin = plan.OuterPredicate is null
@@ -258,6 +255,23 @@ public static class SqlBuilder
         }
 
         return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
+    }
+
+    /// <summary>
+    /// Appends the inclusive surrogate-id window to a shape's WHERE clause list. Extracted rather than
+    /// inlined at each shape because omitting it in one shape is silent: an $export worker would read
+    /// outside its partition, and since partitions are disjoint the only symptom is duplicated exported
+    /// resources — no error anywhere. A new shape that needs the window must call this; one that
+    /// deliberately does not (an include stage, whose rows are reached by reference rather than by
+    /// surrogate id) is then visibly making that choice.
+    /// </summary>
+    private static void AppendSurrogateRangeClauses(
+        List<string> clauses,
+        SurrogateIdRange range,
+        List<EmittedSqlParameter> parameters)
+    {
+        clauses.Add($"m.Sid1 >= {EmitParam(range.Start, parameters)}");
+        clauses.Add($"m.Sid1 <= {EmitParam(range.End, parameters)}");
     }
 
     /// <summary>

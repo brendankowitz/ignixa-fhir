@@ -1516,10 +1516,15 @@ public class EmitTests
 
         var emitted = SqlBuilder.Run(plan);
 
-        // @p0 = CTE predicate, @p1-@p3 = seek params, @p4 = range start, @p5 = range end
-        emitted.Parameters.Count.ShouldBe(6);
-        emitted.Parameters[4].Value.ShouldBe(1_000_000L);
-        emitted.Parameters[5].Value.ShouldBe(2_000_000L);
+        // Range params must be bound *after* the seek params. The seek predicate allocates @p1-@p3;
+        // the range must follow, not precede, them — verified by comparing value indices rather than
+        // relying on absolute ordinals (which would break if seek param count ever changes).
+        var allValues = emitted.Parameters.Select(p => p.Value).ToList();
+        var rangeStartIdx = allValues.IndexOf(1_000_000L);
+        var seekParamIdx = allValues.IndexOf("Adams"); // first seek param value
+        rangeStartIdx.ShouldBeGreaterThan(seekParamIdx);
+        emitted.Parameters.Select(p => p.Value).ShouldContain(1_000_000L);
+        emitted.Parameters.Select(p => p.Value).ShouldContain(2_000_000L);
         emitted.Sql.ShouldContain("m.Sid1 >=");
         emitted.Sql.ShouldContain("m.Sid1 <=");
     }
@@ -1568,6 +1573,7 @@ public class EmitTests
 
         // Include-stage CTE (inc0) must not mention the range.
         var inc0End = emitted.Sql.IndexOf("inc0lim AS (", StringComparison.Ordinal);
+        inc0End.ShouldBeGreaterThanOrEqualTo(0);
         var inc0Body = emitted.Sql[inc0Start..inc0End];
         inc0Body.ShouldNotContain("Sid1 >=");
         inc0Body.ShouldNotContain("Sid1 <=");
