@@ -41,6 +41,20 @@ public static class SqlBuilder
                 "result. This is a caller error rather than a query that legitimately matches nothing.");
         }
 
+        if (plan.IncludesOnly && plan.Sort is not null)
+        {
+            // Dropping the match arm leaves the include arm's projected sort columns unaliased while the
+            // outer ORDER BY still references SortValueN, so the emitted SQL would bind to a nonexistent
+            // column (SQL Server error 207) -- and the grammar tests cannot catch it because an unbound
+            // identifier is grammatically valid. A sort orders match rows; an includes-only page returns
+            // none and pages its include rows by (T1, Sid1), so the sort key is meaningless here. Refuse
+            // it rather than silently emit invalid SQL.
+            throw new NotSupportedException(
+                "IncludesOnly was requested together with a sort, but an includes-only page returns no match " +
+                "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
+                "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
+        }
+
         var parameters = new List<EmittedSqlParameter>();
         var writer = new SqlTextWriter(options?.IncludeTextRanges ?? false);
         var cteBlocks = new List<string>();
@@ -725,6 +739,14 @@ public static class SqlBuilder
     }
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>
+    /// <remarks>
+    /// Note: this emitter binds its type id as a parameter (EmitParam), where the sibling emitters
+    /// (ParamSource, ChainJoin, CompartmentSource, MultiTypeResourceSource) render type ids as literals.
+    /// The binding predates the current design (commit ce8c0860) and is functionally correct -- a bound
+    /// int works. Converging on literals would be the consistent choice, but doing so would shift the
+    /// parameter ordinals every downstream emitter and its tests depend on (see the ChainJoin remark on
+    /// keeping ordinals stable), so it is deliberately left as-is rather than churned for no functional gain.
+    /// </remarks>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
         var predicateClause = rs.Predicate is null ? string.Empty : $" AND {EmitPredicate(rs.Predicate, parameters)}";

@@ -2480,6 +2480,24 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenAnIncludesOnlyPlanWithASort_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // Dropping the match arm leaves the include arm's projected sort columns unaliased (bare ", NULL")
+        // while the outer ORDER BY still references SortValueN, so the emitted SQL would bind SortValueN to
+        // a nonexistent column. A sort orders match rows; an includes-only page returns none and pages its
+        // include rows by (T1, Sid1), so the sort key is meaningless here. The emitter refuses the
+        // combination rather than emitting SQL that fails only at execution time.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
+            IncludesOnly: true);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
     public void GivenAnIncludesOnlyPlanWithProjection_WhenEmitted_ThenProjectionColumnsAppearInIncludeArm()
     {
         // Projection must still work in IncludesOnly mode. Include rows are fetched from dbo.Resource;

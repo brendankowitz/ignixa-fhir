@@ -1220,5 +1220,35 @@ public class LowerTests
                 page: null,
                 new LowerOptions { IncludesOnly = true, CountOnly = true }));
     }
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // _sort orders the match rows, but an IncludesOnly page drops the match arm and pages its include
+        // rows by (T1, Sid1). The sort key has nothing to order, so the combination is refused rather than
+        // silently dropped -- mirroring the IncludesOnly + CountOnly and IncludesOnly + no-stages guards.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [include],
+                revIncludes: [],
+                includeLimit: 1000,
+                sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludesOnly = true }));
+    }
 }
 

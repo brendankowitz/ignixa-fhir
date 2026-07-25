@@ -18,7 +18,8 @@ namespace Ignixa.Search.Sql.Ast;
 /// A non-null <see cref="Projection"/> appends dbo.Resource columns after the identity (and flag)
 /// columns, turning the emitted statement into a self-contained row-returning query. When
 /// <see cref="Projection"/> is null the historical identity-only shape is preserved and the caller
-/// fetches resource rows itself.
+/// fetches resource rows itself. It is ignored when <see cref="CountOnly"/> is set: a count is a
+/// single scalar with no row to project onto, so no resource join is forced and no columns are emitted.
 /// </para>
 /// <para>
 /// A non-null <see cref="SearchParameterHash"/> restricts the match set to rows whose

@@ -800,4 +800,26 @@ public class EmitSqlGrammarTests
             Projection: StandardProjection(),
             IncludesOnly: true);
     }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithASort_WhenEmitted_ThenItIsRefusedRatherThanEmittingUnboundSql()
+    {
+        // Dropping the match arm leaves the include arm's projected sort columns unaliased (bare ", NULL")
+        // while the outer ORDER BY still references SortValueN, so the emitted SQL would bind to a
+        // nonexistent column (SQL Server error 207 at execution). The grammar tests cannot catch it -- an
+        // unbound identifier is grammatically valid -- so the combination is guarded in SqlBuilder.Run the
+        // same way IncludesOnly + CountOnly and IncludesOnly + no-stages already are.
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            Sort: sort,
+            IncludesOnly: true);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
 }

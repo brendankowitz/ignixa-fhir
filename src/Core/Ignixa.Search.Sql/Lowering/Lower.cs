@@ -140,6 +140,19 @@ public static class Lower
                 "matches nothing, so it is reported rather than silently emitted.");
         }
 
+        // _sort orders the match rows; an IncludesOnly page returns include-stage rows only and drops the
+        // match arm, so there is no match row for the sort key to order and the remaining include rows are
+        // ordered by (T1, Sid1) for keyset paging, not by the sort key. The combination is therefore
+        // meaningless -- and silently dropping the sort would be worse than refusing it -- so it is
+        // reported rather than silently emitted.
+        if (options.IncludesOnly && sort.Count > 0)
+        {
+            throw new NotSupportedException(
+                "IncludesOnly was requested together with _sort, but an includes-only page returns no match " +
+                "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
+                "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
+        }
+
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
