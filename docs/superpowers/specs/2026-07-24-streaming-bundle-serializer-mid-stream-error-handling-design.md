@@ -193,6 +193,8 @@ Round 5 surfaced two further pre-existing conformance defects in the history hap
 
 Both are happy-path FHIR conformance bugs unrelated to error handling, both change history output for every version rather than one, and both need their own design work on version identity for deleted entries. Bundling them here would widen the blast radius of a truncation fix without improving it. Tracked as a follow-up.
 
+- **`BundleLink.GetRelationRaw()` is an unclassified post-guard throw source.** It reads `MutableNode["relation"]?.GetValue<string>()` and can throw if `relation` is not a string. `ResolveHistorySelfUrl` short-circuits at the first self link, so a malformed `relation` on a *later* link would not throw during resolution but would throw in the post-guard link filter — the dispose-flush truncation path. Reaching it requires bypassing `SetRelationRaw(string)` via the low-level `SetProperty` escape hatch, which no production caller does, so this is theoretical. Noted because §6's inventory of post-guard throw sources did not classify it, and the claim that the post-guard region "genuinely contains no throw source" is therefore very slightly weaker than stated.
+
 Also unchanged: the flush cadence of any method, and the `_pretty` whitespace deviation (§1).
 
 ## Testing
