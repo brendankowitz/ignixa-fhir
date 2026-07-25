@@ -757,10 +757,10 @@ public static class SqlBuilder
     /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>
     private static string EmitIncludeStage(IncludeStage stage, ResourceVisibility visibility)
     {
-        var (selectColumns, seedTypeColumn, outputTypeColumn, seedCorrelationAlias) = stage.Direction switch
+        var (selectColumns, seedTypeColumn, outputTypeColumn, outputSurrogateColumn, seedCorrelationAlias) = stage.Direction switch
         {
-            IncludeDirection.Forward => ("r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1", "rsp.ResourceTypeId", "r.ResourceTypeId", "rsp"),
-            IncludeDirection.Reverse => ("rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1", "r.ResourceTypeId", "rsp.ResourceTypeId", "r"),
+            IncludeDirection.Forward => ("r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1", "rsp.ResourceTypeId", "r.ResourceTypeId", "r.ResourceSurrogateId", "rsp"),
+            IncludeDirection.Reverse => ("rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1", "r.ResourceTypeId", "rsp.ResourceTypeId", "rsp.ResourceSurrogateId", "r"),
             _ => throw new NotSupportedException($"Unknown IncludeDirection '{stage.Direction}'."),
         };
 
@@ -782,6 +782,14 @@ public static class SqlBuilder
 
         whereClauses.Add("rsp.BaseUri IS NULL");
         whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias));
+
+        if (stage.Constraints is { Count: > 0 } constraints)
+        {
+            foreach (var constraint in constraints)
+            {
+                whereClauses.Add(EmitConstraintGuard(constraint, outputTypeColumn, outputSurrogateColumn));
+            }
+        }
 
         var rowFilter = ResourceRowFilter(visibility, "r.");
 
@@ -822,6 +830,18 @@ public static class SqlBuilder
 
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";
     }
+
+    /// <summary>
+    /// Renders one access-constraint guard on an include stage: a row of the constrained type must appear
+    /// in the constraint CTE, while a row of any other type the stage produces passes untouched. The
+    /// leading "type &lt;&gt; id OR" is what keeps a multi-type or wildcard stage from dropping the rows the
+    /// constraint does not govern — without it the EXISTS would reject every row whose type has no matching
+    /// constraint row, silently narrowing types the caller is fully entitled to see.
+    /// </summary>
+    private static string EmitConstraintGuard(IncludeConstraint constraint, string outputTypeColumn, string outputSurrogateColumn)
+        => $"({outputTypeColumn} <> {constraint.ConstraintTypeId} OR EXISTS (" +
+           $"SELECT 1 FROM {CteLabel(constraint.ConstraintCteIndex)} ac " +
+           $"WHERE ac.T1 = {outputTypeColumn} AND ac.Sid1 = {outputSurrogateColumn}))";
 
     /// <summary>Renders a predicate tree to a WHERE fragment, fully parenthesizing And/Or so operator precedence never depends on the surrounding context.</summary>
     private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch

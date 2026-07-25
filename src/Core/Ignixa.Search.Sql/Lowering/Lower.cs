@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -36,9 +37,11 @@ public static class Lower
         ResourceVisibility? visibility = null,
         SurrogateIdRange? surrogateRange = null,
         SqlParameterRef? searchParameterHash = null,
-        IReadOnlyList<string>? resourceTypes = null)
+        IReadOnlyList<string>? resourceTypes = null,
+        IReadOnlyList<AccessConstraint>? accessConstraints = null)
     {
-        var context = new StructuralContext(symbols, approximationReferenceTime);
+        var accessConstraintApplier = new AccessConstraintApplier(accessConstraints);
+        var context = new StructuralContext(symbols, approximationReferenceTime, accessConstraintApplier);
         CteRef match;
         Predicate? outerPredicate = null;
 
@@ -61,6 +64,17 @@ public static class Lower
                     "which this phase does not support."),
                 _ => LowerNode(remaining, context, targetResourceType!), // non-null: the prior arm already threw otherwise.
             };
+        }
+
+        // Every stage that produces rows is constrained, starting with the match set. A single-type match
+        // is intersected directly; a multi-type match narrows only the constrained types (see ApplyToTypes).
+        // Later stages -- includes, :iterate, and chain targets -- are constrained at their own sites so a
+        // caller cannot reach a hidden resource by navigating a reference rather than searching for it.
+        if (!accessConstraintApplier.IsEmpty)
+        {
+            match = targetResourceType is { } matchType
+                ? accessConstraintApplier.Apply(match, matchType, context, LowerScopedExpression)
+                : accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression);
         }
 
         if (targetResourceType is null && sort.Count > 0)
@@ -87,6 +101,21 @@ public static class Lower
         else
         {
             includeStages = BuildIncludeStages(includes, revIncludes, symbols, targetResourceType, includeLimit);
+        }
+
+        // Bind constraints to each include/:iterate stage. This lowers the constraint predicates into
+        // context.Ctes (emitted before any include CTE, so no forward reference) and records per-stage
+        // bindings the emitter turns into type-guarded EXISTS filters. A wildcard stage whose output types
+        // are unknown is constrained conservatively; see AccessConstraintApplier.BindIncludeStage.
+        if (includeStages is { Count: > 0 } && !accessConstraintApplier.IsEmpty)
+        {
+            includeStages = includeStages
+                .Select(stage =>
+                {
+                    var bindings = accessConstraintApplier.BindIncludeStage(stage.OutputTypeIds, symbols, context, LowerScopedExpression);
+                    return bindings is null ? stage : stage with { Constraints = bindings };
+                })
+                .ToList();
         }
 
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);

@@ -610,4 +610,93 @@ public class EmitSqlGrammarTests
             sql.ShouldContain(expectedWhereClause);
         }
     }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Access-constraint shapes. Built through Lower.Run (the real production path) rather than hand-assembled
+    // QueryPlans, because a constraint's CTE and its type-guarded EXISTS are wired up by the lowerer -- these
+    // prove that the emitted SQL for a constrained match, include, :iterate, and chain all parse as valid
+    // T-SQL under the SQL Server grammar.
+    // -----------------------------------------------------------------------------------------------------
+
+    private const short AcObservationTypeId = 104;
+    private const short AcPatientTypeId = 103;
+    private const short AcStatusParamId = 220;
+    private const short AcSubjectParamId = 230;
+
+    private static (Ignixa.Search.Sql.Symbols.SymbolTable Symbols, Ignixa.Search.Models.AccessConstraint Constraint, Ignixa.Search.Models.SearchParameterInfo SubjectParam, Ignixa.Search.Models.SearchParameterInfo StatusParam) AccessConstraintFixture()
+    {
+        var statusParam = new Ignixa.Search.Models.SearchParameterInfo("status", "status", Ignixa.Specification.ValueSets.Normative.SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new Ignixa.Search.Models.SearchParameterInfo("subject", "subject", Ignixa.Specification.ValueSets.Normative.SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var symbols = new Ignixa.Search.Sql.Symbols.SymbolTable(
+            new Dictionary<string, short>
+            {
+                [statusParam.Url!.ToString()] = AcStatusParamId,
+                [subjectParam.Url!.ToString()] = AcSubjectParamId,
+            },
+            new Dictionary<string, short> { ["Observation"] = AcObservationTypeId, ["Patient"] = AcPatientTypeId });
+
+        return (symbols, new Ignixa.Search.Models.AccessConstraint("Observation", AcTokenPredicate(statusParam, "final")), subjectParam, statusParam);
+    }
+
+    private static Ignixa.Search.Expressions.Expression AcTokenPredicate(Ignixa.Search.Models.SearchParameterInfo parameter, string code)
+        => new Ignixa.Search.Expressions.SearchParameterExpression(
+            parameter,
+            new Ignixa.Search.Expressions.SearchParameterPredicateExpression(
+                parameter,
+                Ignixa.Specification.ValueSets.Normative.SearchComparator.Eq,
+                modifier: null,
+                new Ignixa.Search.Indexing.SearchValues.TokenSearchValue(system: null, code: code, text: null)));
+
+    [Fact]
+    public void GivenAConstrainedMatchOnlyPlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var plan = Ignixa.Search.Sql.Lowering.Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.Constraint]).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAConstrainedRevIncludePlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var revinclude = new Ignixa.Search.Expressions.IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false);
+        var plan = Ignixa.Search.Sql.Lowering.Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [revinclude], includeLimit: 1000,
+            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.Constraint]).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAConstrainedIteratePlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var iterate = new Ignixa.Search.Expressions.IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: true);
+        var plan = Ignixa.Search.Sql.Lowering.Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [iterate], includeLimit: 1000,
+            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.Constraint]).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAConstrainedChainPlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var chain = new Ignixa.Search.Expressions.ChainedExpression(
+            resourceTypes: ["Observation"],
+            referenceSearchParameter: f.SubjectParam,
+            targetResourceTypes: ["Patient"],
+            reversed: true,
+            expression: AcTokenPredicate(f.StatusParam, "final"));
+        var plan = Ignixa.Search.Sql.Lowering.Lower.Run(
+            chain, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, accessConstraints: [f.Constraint]).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
 }

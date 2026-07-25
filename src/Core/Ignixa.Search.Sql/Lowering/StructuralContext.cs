@@ -19,13 +19,20 @@ public sealed class StructuralContext
     private readonly List<CteDefinition> _ctes = [];
     private readonly List<CteOrigin> _origins = [];
     private readonly LeafContext _leafContext;
+    private readonly AccessConstraintApplier _accessConstraints;
     private int _chainDepth;
 
     private const int MaxChainDepth = 10;
 
     public StructuralContext(SymbolTable symbols, DateTimeOffset? approximationReferenceTime = null)
+        : this(symbols, approximationReferenceTime, accessConstraints: null)
+    {
+    }
+
+    internal StructuralContext(SymbolTable symbols, DateTimeOffset? approximationReferenceTime, AccessConstraintApplier? accessConstraints)
     {
         _leafContext = new LeafContext(symbols, approximationReferenceTime);
+        _accessConstraints = accessConstraints ?? new AccessConstraintApplier(null);
     }
 
     public IReadOnlyList<CteDefinition> Ctes => _ctes;
@@ -276,6 +283,7 @@ public sealed class StructuralContext
                 };
 
                 var innerMatch = lowerNode(chain.Expression, this, referencingResourceType);
+                innerMatch = _accessConstraints.Apply(innerMatch, referencingResourceType, this, lowerNode);
                 var referenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
                 var innerResourceTypeId = _leafContext.ResourceTypeId(referencingResourceType);
                 var outputResourceTypeIds = chain.TargetResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
@@ -294,6 +302,7 @@ public sealed class StructuralContext
             };
 
             var forwardInnerMatch = lowerNode(chain.Expression, this, targetResourceType);
+            forwardInnerMatch = _accessConstraints.Apply(forwardInnerMatch, targetResourceType, this, lowerNode);
             var forwardReferenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
             var forwardInnerResourceTypeId = _leafContext.ResourceTypeId(targetResourceType);
             var forwardOutputResourceTypeIds = chain.ResourceTypes.Select(_leafContext.ResourceTypeId).ToList();

@@ -111,6 +111,12 @@ public class SearchOptions
     /// the only shape an ordinary search wants; _history, $export, and reindex widen it.
     /// </summary>
     public ResourceVersionTypes ResourceVersionTypes { get; set; } = ResourceVersionTypes.Latest;
+
+    /// <summary>
+    /// Restrictions on which resources the caller may see, at most one per resource type. Empty means
+    /// unrestricted. Enforced structurally by the compiler, not by rewriting the search expression.
+    /// </summary>
+    public IReadOnlyList<AccessConstraint> AccessConstraints { get; set; } = Array.Empty<AccessConstraint>();
 }
 
 /// <summary>
