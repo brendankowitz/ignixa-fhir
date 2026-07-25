@@ -78,9 +78,16 @@ public sealed class SymbolTable
            : throw new KeyNotFoundException($"SymbolTable has no ResourceTypeId for '{resourceType}'.");
 
     /// <summary>
-    /// Attempts to resolve a resource type's ResourceTypeId without throwing. Returns false when the type
-    /// was never collected, which is appropriate when scanning declared-target lists — an unresolved
-    /// target should be skipped rather than raise an invariant violation.
+    /// Attempts to look up a resource type's ResourceTypeId without throwing. Returns
+    /// <see langword="false"/> only when the type was <em>never collected</em> — a
+    /// <c>SymbolCollectingVisitor</c> invariant violation, not a normal "type the resolver could not
+    /// find". That is a distinct case: when the DB resolver returns <see langword="null"/>,
+    /// <c>Resolve.RunAsync</c> stores <see cref="UnmatchableResourceTypeId"/> (-1) rather than
+    /// omitting the key, so this method returns <c>(true, -1)</c> for a resolver miss. Callers such
+    /// as <see cref="LeafContext.DeclaredTargetResourceTypeIds"/> rely on that distinction: they
+    /// include the sentinel as an OR arm that matches nothing rather than dropping the target —
+    /// because dropping every declared target would collapse the list and reintroduce the
+    /// unconstrained match the type-narrowing pass exists to prevent.
     /// </summary>
     public bool TryGetResourceTypeId(string resourceType, out short id)
         => _resourceTypeIds.TryGetValue(resourceType, out id);

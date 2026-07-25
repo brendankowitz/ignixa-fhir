@@ -41,18 +41,20 @@ public sealed class LeafContext
     /// declares no targets, which leaves the reference unconstrained by type.
     /// </summary>
     /// <remarks>
-    /// A declared target type that the symbol table could not resolve is included as
-    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) rather than dropped. That sentinel
-    /// contributes an OR arm that matches nothing — no catalog row carries id -1 — but it does not
-    /// collapse the predicate. Dropping instead would be more dangerous: if every declared target is
-    /// unresolvable, the resulting empty list falls through to the unconstrained id-only predicate,
-    /// matching a reference to any resource type carrying that id. That is exactly the false-positive
-    /// behaviour the type-narrowing pass exists to prevent.
+    /// When the DB resolver could not find a declared target type, <c>Resolve.RunAsync</c> stored
+    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) rather than omitting the key, so
+    /// <see cref="SymbolTable.TryGetResourceTypeId"/> returns <c>(true, -1)</c> here and the
+    /// sentinel is included rather than dropped. That sentinel contributes an OR arm that matches
+    /// nothing — no catalog row carries id -1 — but it does not collapse the predicate. Dropping
+    /// instead would be more dangerous: if the resolver missed every declared target, the resulting
+    /// empty list falls through to the unconstrained id-only predicate, matching a reference to any
+    /// resource type carrying that id. That is exactly the false-positive behaviour the
+    /// type-narrowing pass exists to prevent.
     ///
-    /// In the mixed case (<c>[Organization, UnknownType]</c>) the -1 arm contributes nothing to the OR
-    /// and the resolvable arms still work correctly. This mirrors the convention established in
-    /// <see cref="StructuralContext.LowerNotReferenced"/>, where an unresolvable source type also
-    /// resolves to the unmatchable sentinel.
+    /// In the mixed case (<c>[Organization, UnknownType]</c>) the -1 arm contributes nothing to the
+    /// OR and the resolvable arms still work correctly. This mirrors the convention established in
+    /// <see cref="StructuralContext.LowerNotReferenced"/>, where a source type the resolver could
+    /// not find also maps to the unmatchable sentinel.
     /// </remarks>
     public IReadOnlyList<short> DeclaredTargetResourceTypeIds(SearchParameterInfo parameter)
     {
