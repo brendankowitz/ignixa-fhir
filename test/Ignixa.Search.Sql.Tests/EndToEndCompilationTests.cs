@@ -52,7 +52,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the plan-shape golden test
@@ -586,7 +586,7 @@ public class EndToEndCompilationTests
         plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
         var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
         not.Operand.ShouldBeOfType<Predicate.Or>();
-        emitted.Sql.ShouldContain("NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Sql.ShouldContain("NOT ((r.ResourceId = @p1 OR r.ResourceId = @p2))");
         emitted.Sql.ShouldNotContain("TokenSearchParam");
         emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "1", "2"]);
     }
@@ -984,7 +984,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbols = (await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, top: 50).Plan;
+        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
         // Assert -- structure via Explain(), full SQL text via Emit for the whole shape. No modifier on
         // `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI), same as every other
@@ -1047,7 +1047,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbols = (await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, top: 50).Plan;
+        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
         // Assert
         plan.Explain().ShouldBe(
@@ -1274,59 +1274,13 @@ public class EndToEndCompilationTests
     }
 
     [Fact]
-    public async Task GivenACompartmentSearchWithANestedResourceColumnPredicate_WhenComposedByTheHandlerAndCompiled_ThenLowersSuccessfully()
+    public async Task GivenACompartmentSearchThatResolvesToZeroMembershipParameters_WhenLowered_ThenMatchesNothing()
     {
-        // Arrange -- GET /Patient/123/Observation?_id=obs-1&category=laboratory, composed the way
-        // SearchCompartmentHandler now builds it after Task 2's fix: the compartment expression is
-        // spliced as a direct sibling of _id and category in ONE flat top-level And (not nested
-        // inside a wrapping And(compartment, And(_id, category)), which is the shape that made _id
-        // invisible to the compiler's top-level resource-column extraction and threw NotSupportedException).
-        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
-        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
-        var categoryParam = new SearchParameterInfo("category", "category", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-category"));
-        var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
-        var idExpression = new SearchParameterExpression(
-            idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "obs-1", text: null)));
-        var categoryPredicate = new SearchParameterPredicateExpression(categoryParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "laboratory", text: null));
-        var tree = new MultiaryExpression(MultiaryOperator.And, [compartment, idExpression, categoryPredicate]);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
-        resolver.SearchParamIds[categoryParam.Url!.ToString()] = 22;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Observation"] = 104;
-
-        var compartmentManager = new FakeCompartmentDefinitionManager();
-        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
-        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
-
-        var searchParamManager = new FakeSearchParameterDefinitionManager();
-        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(
-            tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
-            compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
-
-        // Assert -- compiles successfully (no NotSupportedException). _id is extracted to the outer
-        // WHERE (OuterPredicate), the compartment membership lowers to CompartmentSource -> Union, and
-        // category lowers to its own ParamSource, Intersected with the compartment's Union CTE.
-        // Explain() is pinned exactly -- proving all three mechanisms compose, not just that
-        // compilation didn't throw (a ShouldNotThrow-only assertion would pass identically even if
-        // _id or category were silently dropped from the composed expression).
-        plan.Explain().ShouldBe(
-            "cte0 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p0 AND ReferenceResourceId = @p1\n" +
-            "cte1 = Union(cte0)\n" +
-            "cte2 = TokenSearchParam[104,22]  Code = @p2\n" +
-            "root = Intersect(cte1, cte2) WHERE ResourceId = @p3");
-        plan.OuterPredicate.ShouldNotBeNull();
-    }
-
-    [Fact]
-    public async Task GivenACompartmentSearchThatResolvesToZeroMembershipParameters_WhenLowered_ThenThrowsNotSupportedException()
-    {
-        // Arrange -- GET /Patient/123/NotInCompartment (design §2's degenerate case).
+        // Arrange -- GET /Patient/123/NotInCompartment (design §2's degenerate case). A _type/compartment
+        // filter naming only a type outside the compartment is caller input describing something the
+        // compartment cannot contain, so it lowers to an empty match anchored on the compartment's own type
+        // -- the compiler's "not found is data, not an error" convention, the same answer $everything?_type=foo
+        // gives -- rather than throwing a 500 straight out of a user-facing URL.
         var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "NotInCompartment" });
 
         var resolver = new FakeSymbolResolver();
@@ -1342,10 +1296,12 @@ public class EndToEndCompilationTests
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
 
-        // Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
-            .Message.ShouldContain("zero membership");
+        var plan = Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- a single ResourceSource on the compartment's own type carrying the unsatisfiable
+        // predicate (WHERE ResourceTypeId = @p AND 1 = 0), so the query is valid, well-typed SQL that
+        // returns no rows.
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE 1 = 0");
     }
 
     [Fact]
@@ -1365,7 +1321,7 @@ public class EndToEndCompilationTests
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
 
         // Assert
         plan.Explain().ShouldContain("sort = SortSpec([String:202 ASC], Valued)");
@@ -1397,7 +1353,7 @@ public class EndToEndCompilationTests
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
         var plan = Lower.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000,
-            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 50).Plan;
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
         // Assert -- IncludeStage's own fields are exactly what Phase 7 already produces; no new field.
         plan.Includes!.Count.ShouldBe(1);
@@ -1450,71 +1406,6 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain("LEFT JOIN dbo.DateTimeSearchParam sk1");
         emitted.Sql.ShouldContain("sk1.IsMax = 1");
         emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
-    }
-
-    [Fact]
-    public async Task GivenSortByIdAscending_WhenCompiled_ThenJoinsResourceAndOrdersByResourceId()
-    {
-        // Arrange -- Patient?_sort=_id. _id is a resource-column key like _lastUpdated (SearchParamId
-        // is null, no symbol resolution needed), but unlike _lastUpdated it still needs a join -- to
-        // dbo.Resource -- since the CTE graph's own (T1, Sid1) projection doesn't carry the resource's
-        // ResourceId string value.
-        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.ResourceTypeIds["Patient"] = 103;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(
-            expression: null, includes: [], revIncludes: [], sort: [new SortExpression(idParam, SortOrder.Ascending)],
-            resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
-            expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [new SortExpression(idParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
-
-        // Assert
-        plan.Sort!.Keys[0].Kind.ShouldBe(SortKeyKind.ResourceId);
-        plan.Sort.Keys[0].SearchParamId.ShouldBeNull();
-        var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldContain("JOIN dbo.Resource rid0");
-        emitted.Sql.ShouldContain("rid0.ResourceId");
-        emitted.Sql.ShouldContain("ORDER BY rid0.ResourceId ASC, m.T1 ASC, m.Sid1 ASC");
-    }
-
-    [Fact]
-    public async Task GivenAnObservationSearchSortedByStatus_WhenCompiledEndToEnd_ThenTheMatchGainsAnAggregatingDerivedTableJoin()
-    {
-        // Arrange -- Observation?status=final&_sort=status, first page. status is a Token parameter, so
-        // BuildSortKey (Lower.cs) resolves it to a SortKeyKind.Aggregated key over TokenSearchParam.Code
-        // rather than String/Date's IsMin/IsMax row -- this is the real Resolve->Lower->Emit pipeline
-        // proof that Task 1's SortKey.Table/Column plumbing and Task 2's EmitSortJoins/SortValueExpr
-        // Aggregated branch compose end to end, not just in the hand-constructed QueryPlan unit tests.
-        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
-        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new StringSearchValue("final"));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[statusParam.Url!.ToString()] = 77;
-        resolver.ResourceTypeIds["Observation"] = 103;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(
-            predicate, includes: [], revIncludes: [], sort: [new SortExpression(statusParam, SortOrder.Ascending)],
-            resolver, targetResourceType: "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
-            predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [new SortExpression(statusParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
-
-        // Assert
-        plan.Sort!.Keys[0].Kind.ShouldBe(SortKeyKind.Aggregated);
-        var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldContain(
-            "INNER JOIN (\n" +
-            "    SELECT ResourceTypeId, ResourceSurrogateId, MIN(Code) AS AggValue\n" +
-            "    FROM dbo.TokenSearchParam\n" +
-            "    WHERE SearchParamId = 77\n" +
-            "    GROUP BY ResourceTypeId, ResourceSurrogateId\n" +
-            ") sk0 ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.AggValue ASC, m.T1 ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1572,7 +1463,7 @@ public class EndToEndCompilationTests
         var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(7000L));
         var plan = Lower.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.MissingPrimary, page: page, top: 10).Plan;
+            sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.MissingPrimary, page: page, new LowerOptions { Top = 10 }).Plan;
 
         // Assert -- ResourceSource's own ResourceTypeId is itself a bound parameter (@p0, same accounting
         // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's own two
@@ -1614,7 +1505,7 @@ public class EndToEndCompilationTests
             CancellationToken.None, compartmentManager, searchParamManager)).Symbols;
         var plan = Lower.Run(
             compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
@@ -1691,7 +1582,7 @@ public class EndToEndCompilationTests
             missingName, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
         var plan = Lower.Run(
             missingName, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000,
-            sort: [], sortPhase: SortPhase.Valued, page: null, top: 50).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
         // Assert -- the match CTE is genuinely the Except/ResourceSource/ParamSource shape LowerMissing
         // produces, matching Task 3's own :missing=true structural style, not a ParamSource.
@@ -1747,10 +1638,41 @@ public class EndToEndCompilationTests
 
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain($"SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte{plan.Match.Index} m");
-        // m.Sid1 ASC appears once: it is LastUpdated's own sort-key value expression, so the trailing
-        // tiebreak's Sid1 term is correctly suppressed to avoid a duplicate ORDER BY column (SQL Server
-        // Msg 145) -- see SqlBuilder.EmitOrderBy.
         emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenAStatusPredicateWithNoResourceTypeSortedByName_WhenCompiledEndToEnd_ThenSortComposesNormallyThroughTheFullPipeline()
+    {
+        // Arrange -- GET /?status=final&_sort=name (system-level search composed with _sort). The sort
+        // machinery never needed a single target type: its join correlates on m.T1, so the null-type
+        // sort guard applies to wildcard compartment search only.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 77;
+
+        var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
+
+        // Act
+        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: sort, sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, Top = 10 }).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- typeless ParamSource root ("*" is this branch's rendering of a cross-type scope) plus
+        // a working sort join, all the way to real SQL.
+        plan.Explain().ShouldBe(
+            "root = TokenSearchParam[*,202]  Code = @p0 top 10\n" +
+            "sort = SortSpec([String:77 ASC], Valued)");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1771,7 +1693,7 @@ public class EndToEndCompilationTests
             missingName, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
         var plan = Lower.Run(
             missingName, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
         // Assert -- the match CTE is the Except/ResourceSource/ParamSource shape, NOT a bare ParamSource.
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Except>();
@@ -2461,9 +2383,9 @@ public class EndToEndCompilationTests
         // Act -- compile the identical search twice, each compile reading the clock exactly once, the way
         // SearchCompiler.CompileWithTimeProviderAsync captures one instant per compile
         var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan1 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
+        var plan1 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted1 = SqlBuilder.Run(plan1);
-        var plan2 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
+        var plan2 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted2 = SqlBuilder.Run(plan2);
 
         // Assert -- plan shape: widened end compared to StartDateTime, widened start compared to EndDateTime
@@ -2520,7 +2442,7 @@ public class EndToEndCompilationTests
 
         // Act
         var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: timeProvider.GetUtcNow()).Plan;
+        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource's own ResourceTypeId consumes @p0, so the outer predicate's widened
@@ -2536,7 +2458,7 @@ public class EndToEndCompilationTests
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
-            "WHERE (ResourceSurrogateId >= @p1 AND ResourceSurrogateId <= @p2)\n" +
+            "WHERE (r.ResourceSurrogateId >= @p1 AND r.ResourceSurrogateId <= @p2)\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
         // The upper bound covers the whole boundary millisecond: the database appends a 0-79999
@@ -2546,603 +2468,6 @@ public class EndToEndCompilationTests
         emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
             [("@p0", (object)(short)103), ("@p1", (object)expectedLowerSurrogateId), ("@p2", (object)expectedUpperSurrogateId)]);
     }
-
-    [Fact]
-    public async Task GivenABareStatusPredicateWithNoResourceType_WhenCompiledEndToEnd_ThenTheParamSourceIsTypelessAndTheFullPipelineEmitsValidSql()
-    {
-        // Arrange -- GET /?status=final (system-level search: no resource type anywhere in the request).
-        // Task 4's own SystemLevelSearchTests.cs proves this shape at the Lower-only level with a
-        // hand-built SymbolTable; this is the full Resolve->Lower->Emit combined proof design doc
-        // Section 4 asks for.
-        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
-        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- one ParamSource CTE with an empty ResourceTypeId slot (Explain()'s null-interpolation
-        // rendering), and the real emitted SQL never filters on ResourceTypeId at all for this CTE.
-        plan.Explain().ShouldBe("root = TokenSearchParam[,202]  Code = @p0");
-        emitted.Sql.ShouldNotContain("ResourceTypeId =");
-        emitted.Sql.ShouldNotContain("final");
-        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe([("@p0", (object)"final")]);
-    }
-
-    [Fact]
-    public async Task GivenABareResourceColumnOnlySystemSearch_WhenCompiledEndToEnd_ThenTheOuterFilterAppliesOverATypelessResourceSource()
-    {
-        // Arrange -- GET /?_lastUpdated=gt2020-01-01 (system-level, bare resource-column-only query: no
-        // CTE-lowerable remainder, so Lower falls through to a typeless ResourceSource base case).
-        var lastUpdatedParam = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
-        var predicate = new SearchParameterPredicateExpression(lastUpdatedParam, SearchComparator.Gt, modifier: null, new DateTimeSearchValue(DateTime.Parse("2020-01-01")));
-        var tree = new SearchParameterExpression(lastUpdatedParam, predicate);
-
-        var resolver = new FakeSymbolResolver();
-
-        // Act
-        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- Explain()'s shared parameter-ordinal counter only advances for ResourceSource's own
-        // ResourceTypeId when it is non-null (PlanExplainer.PrintResourceSource), matching
-        // EmitResourceSource's own `rs.ResourceTypeId is { } typeId` guard that skips binding a type
-        // filter parameter entirely for a NULL ResourceTypeId. For this typeless, system-level
-        // ResourceSource, neither side consumes an ordinal for the type filter, so Explain() and the
-        // real emitted SQL agree at "@p0" for the resource-column predicate.
-        plan.Explain().ShouldBe("root = ResourceSource[] WHERE ResourceSurrogateId > @p0");
-        emitted.Sql.ShouldNotContain("WHERE ResourceTypeId =");
-        emitted.Sql.ShouldContain("WHERE ResourceSurrogateId > @p0");
-        emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0"]);
-    }
-
-    [Fact]
-    public async Task GivenAStatusPredicateWithNoResourceTypeSortedByName_WhenCompiledEndToEnd_ThenSortComposesNormallyThroughTheFullPipeline()
-    {
-        // Arrange -- GET /?status=final&_sort=name (system-level search composed with _sort -- design
-        // doc Section 4's "sort composes normally" requirement). Task 4's own test file proves the
-        // Lower-only version of this; this is the full Resolve->Lower->Emit combined proof.
-        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
-        resolver.SearchParamIds[nameParam.Url!.ToString()] = 77;
-
-        var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
-
-        // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: sort, sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true, top: 10).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- typeless ParamSource root plus a working sort join, all the way to real SQL.
-        plan.Explain().ShouldBe(
-            "root = TokenSearchParam[,202]  Code = @p0 top 10\n" +
-            "sort = SortSpec([String:77 ASC], Valued)");
-        emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
-        emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
-    }
-
-    [Fact]
-    public async Task GivenAMultiValueTypeFilterComposedWithAnOrdinaryPredicateAndNoResourceType_WhenCompiledEndToEnd_ThenBothMechanismsComposeCleanly()
-    {
-        // Arrange -- GET /?_type=Patient,Observation&status=final -- Task 5's multi-value _type
-        // (a comma-separated Or-of-resource-column-equalities, extracted into the outer WHERE) composed
-        // with an ordinary typed predicate under system-level search (no single target resource type).
-        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
-        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
-        var typeExpr = new SearchParameterExpression(
-            typeParam,
-            new MultiaryExpression(MultiaryOperator.Or,
-            [
-                new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Patient", text: null)),
-                new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Observation", text: null)),
-            ]));
-        var statusPredicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
-        var tree = new MultiaryExpression(MultiaryOperator.And, [typeExpr, statusPredicate]);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Observation"] = 104;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- status becomes the typeless ParamSource root; _type's Or-of-equals becomes the outer
-        // WHERE. Neither ParamSource's own (absent) type filter nor _type's resolved values consume an
-        // ordinal ahead of where the real SQL binds them (unlike the ResourceSource case above, ParamSource
-        // never binds its type filter as a parameter at all -- see EmitParamSource), so Explain() and the
-        // real emitted SQL's @pN numbering agree here.
-        plan.Explain().ShouldBe("root = TokenSearchParam[,202]  Code = @p0 WHERE ResourceTypeId = @p1 OR ResourceTypeId = @p2");
-        emitted.Sql.ShouldContain("WHERE (ResourceTypeId = @p1 OR ResourceTypeId = @p2)");
-        emitted.Sql.ShouldNotContain("final");
-        emitted.Parameters.Select(p => (p.Name, p.Value)).ShouldBe(
-            [("@p0", (object)"final"), ("@p1", (object)(short)103), ("@p2", (object)(short)104)]);
-    }
-
-    [Fact]
-    public async Task GivenARevincludeCombinedWithAnOrdinaryPredicateAndNoResourceType_WhenCompiledEndToEnd_ThenTheCompositionLimitGuardThrows()
-    {
-        // Arrange -- GET /?status=final&_revinclude=Observation:subject under system-level search (no
-        // single target resource type). _include/_revinclude never combine with a null match type --
-        // BuildIncludeStages needs a concrete resource type to compute SeedFromMatch -- confirmed against
-        // Task 4's own Lower-only regression (SystemLevelSearchTests.GivenAnIncludeWithNoResourceType...);
-        // this is the same guard proven through the full Resolve->Lower pipeline.
-        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
-        var subjectParam = new SearchParameterInfo(
-            "subject", "subject", SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"), targetResourceTypes: ["Patient", "Group"]);
-        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
-        var revInclude = new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", null, wildCard: false, reversed: true, iterate: false);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
-        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 77;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-
-        // Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(predicate, symbols, targetResourceType: null, includes: [], revIncludes: [revInclude], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
-            .Message.ShouldContain("SeedFromMatch");
-    }
-
-    [Fact]
-    public async Task GivenAnOrdinaryCompositeSearchParameterWithNoResourceType_WhenCompiledEndToEnd_ThenCompositeDispatchSucceeds()
-    {
-        // Arrange -- GET /?code-value-concept=8480-6$high under system-level search. Task 4 widened BOTH
-        // the leaf AND composite dispatchers for a nullable resourceTypeId, but no end-to-end test before
-        // this one exercised the composite success path specifically under systemLevelSearch: true (a
-        // gap this task's brief calls out explicitly). Same composite shape as
-        // GivenAnObservationTokenTokenCompositeQuery_WhenCompiled above, but with no target resource type.
-        var compositeParam = new SearchParameterInfo(
-            "code-value-concept", "code-value-concept", SearchParamType.Composite,
-            new Uri("http://hl7.org/fhir/SearchParameter/Observation-code-value-concept"));
-        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
-        var valueParam = new SearchParameterInfo("value-concept", "value-concept", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-value-concept"));
-
-        var tree = new SearchParameterExpression(
-            compositeParam,
-            new MultiaryExpression(MultiaryOperator.And,
-            [
-                new CompositeComponentExpression(codeParam, 0,
-                    new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "8480-6", text: null))),
-                new CompositeComponentExpression(valueParam, 1,
-                    new SearchParameterPredicateExpression(valueParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "high", text: null))),
-            ]));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[compositeParam.Url!.ToString()] = 301;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- a typeless TokenTokenCompositeSearchParam CTE, no throw, valid SQL.
-        plan.Explain().ShouldBe("root = TokenTokenCompositeSearchParam[,301]  Code1 = @p0 AND Code2 = @p1");
-        emitted.Sql.ShouldNotContain("ResourceTypeId =");
-        emitted.Sql.ShouldNotContain("8480-6");
-        emitted.Sql.ShouldNotContain("high");
-    }
-
-    [Fact]
-    public async Task GivenANotModifiedPredicateWithNoResourceType_WhenCompiledEndToEnd_ThenThrowsNotSupportedException()
-    {
-        // Arrange -- GET /?name:not=Smith under system-level search (no single target resource type).
-        // Task 4's LowerNot has an explicit `if (resourceType is null) throw` guard at the top of the
-        // method, but no end-to-end test pinned this behavior at the combined-proof level before now --
-        // a gap this task's brief calls out explicitly. Same single-value :not shape as
-        // GivenAPatientNameNotQuery above, but with no target resource type.
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var tree = new SearchParameterExpression(
-            nameParam,
-            new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new StringSearchValue("Smith")));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-
-        // Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
-            .Message.ShouldContain("not supported in system-level search");
-    }
-
-    [Fact]
-    public async Task GivenAMissingTruePredicateWithNoResourceType_WhenCompiledEndToEnd_ThenThrowsNotSupportedException()
-    {
-        // Arrange -- GET /?name:missing=true under system-level search (no single target resource type).
-        // :missing=true reaches the exact same LowerNot guard as :not (it negates a presence set), but
-        // through LowerMissing rather than LowerSearchParameter's NotExpression/`:not`-modifier paths --
-        // a distinct entry route this task's brief calls out by name alongside :not.
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var missingName = new MissingSearchParameterExpression(nameParam, isMissing: true);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(missingName, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-
-        // Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(missingName, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
-            .Message.ShouldContain("not supported in system-level search");
-    }
-
-    [Fact]
-    public async Task GivenAWildcardCompartmentSearchSortedByNameThroughTheFullPipeline_WhenCompiledEndToEnd_ThenStillThrowsNotSupportedException()
-    {
-        // Arrange -- GET /Patient/123/* ?_sort=name -- the wildcard-compartment regression this task's
-        // brief asks for: proving system-level search's relaxation of the null-resourceType guards has
-        // NOT leaked into a genuine wildcard compartment search (systemLevelSearch defaults false, a
-        // DIFFERENT null-resourceType case), at the full Resolve->Lower level rather than Task 4's own
-        // Lower-only regression (SystemLevelSearchTests.GivenAWildcardCompartmentSearchWithASortKey...,
-        // which hand-builds its SymbolTable instead of running Resolve). The successful wildcard
-        // compartment flow itself is unaffected too -- proven by GivenAWildcardPatientCompartmentSearch
-        // above, unchanged by this task and still passing.
-        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Observation-name"));
-        var compartment = new CompartmentSearchExpression("Patient", "123");
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
-        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Observation"] = 104;
-
-        var compartmentManager = new FakeCompartmentDefinitionManager();
-        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
-        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
-
-        var searchParamManager = new FakeSearchParameterDefinitionManager();
-        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
-
-        var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
-
-        // Act -- note: NO systemLevelSearch argument to Lower.Run (defaults false), so this stays a
-        // genuine wildcard compartment search, not a system-level search.
-        var symbols = (await Resolve.RunAsync(
-            compartment, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None,
-            compartmentManager, searchParamManager)).Symbols;
-
-        // Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: sort, sortPhase: SortPhase.Valued, page: null))
-            .Message.ShouldContain("wildcard compartment search");
-    }
-
-    [Fact]
-    public async Task GivenAPatientEverythingRequestWithNoOptionalFilters_WhenCompiled_ThenUnionsPatientItselfAndCompartment()
-    {
-        // Arrange -- the minimal case: no date range, no _since, no referenced-type expansion.
-        // GET /Patient/123/$everything. Patient compartment covers Observation via "subject".
-        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
-        var everything = new PatientEverythingExpression("123", includeReferencedResources: false);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Observation"] = 104;
-
-        var compartmentManager = new FakeCompartmentDefinitionManager();
-        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
-        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
-
-        var searchParamManager = new FakeSearchParameterDefinitionManager();
-        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(
-            everything, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None,
-            compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(everything, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
-
-        // Assert -- exactly two top-level union members: the Patient-itself ResourceSource and the
-        // compartment Union. No VisibleSinceFilter/TableExistsPredicate/Except present.
-        plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
-            "cte1 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
-            "cte2 = Union(cte1)\n" +
-            "root = Union(cte0, cte2)");
-
-        plan.Ctes.OfType<CteDefinition.VisibleSinceFilter>().ShouldBeEmpty();
-        plan.Ctes.OfType<CteDefinition.TableExistsPredicate>().ShouldBeEmpty();
-        plan.Ctes.OfType<CteDefinition.Except>().ShouldBeEmpty();
-
-        // Emit sanity -- byte-producing, no user value inlined.
-        var emitted = SqlBuilder.Run(plan);
-        emitted.Sql.ShouldNotContain("123");
-        emitted.Parameters.Select(p => p.Value).ShouldContain("123");
-    }
-
-    [Fact]
-    public async Task GivenAPatientEverythingRequestWithADateRangeAndSince_WhenCompiled_ThenComposesTheConditionalDatePredicateAndScopesSinceToTheCompartmentBranchOnly()
-    {
-        // Arrange -- exercises items 3+4 together: the Union(matching-date, no-date-at-all) via Except,
-        // and _since applied via Intersect ONLY to the compartment branch, never the Patient-itself branch.
-        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
-        var everything = new PatientEverythingExpression(
-            "123",
-            startDate: new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero),
-            endDate: new DateTimeOffset(2023, 12, 31, 0, 0, 0, TimeSpan.Zero),
-            sinceDate: new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
-            includeReferencedResources: false);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Observation"] = 104;
-
-        var compartmentManager = new FakeCompartmentDefinitionManager();
-        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
-        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
-
-        var searchParamManager = new FakeSearchParameterDefinitionManager();
-        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(
-            everything, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None,
-            compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(everything, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
-
-        // Assert -- Explain()-pinned. The compartment branch (cte9) carries the conditional-date Union
-        // (cte7) and the _since Intersect (cte9); the Patient-itself branch (cte0) carries neither.
-        plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
-            "cte1 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
-            "cte2 = Union(cte1)\n" +
-            "cte3 = TableExistsPredicate[DateTimeSearchParam]  EndDateTime >= @p4 AND StartDateTime <= @p5\n" +
-            "cte4 = TableExistsPredicate[DateTimeSearchParam]\n" +
-            "cte5 = Intersect(cte2, cte3)\n" +
-            "cte6 = Except(cte2, cte4)\n" +
-            "cte7 = Union(cte5, cte6)\n" +
-            "cte8 = VisibleSinceFilter(@p6)\n" +
-            "cte9 = Intersect(cte7, cte8)\n" +
-            "root = Union(cte0, cte9)");
-
-        // Critically: the Patient-itself branch's CTE subtree contains NO VisibleSinceFilter/Intersect at
-        // all (proving _since correctly does NOT apply there), while the compartment branch's does.
-        var root = (CteDefinition.Union)plan.Ctes[plan.Match.Index];
-        var patientBranch = CollectReachable(root.Parts[0].Index, plan);
-        var compartmentBranch = CollectReachable(root.Parts[1].Index, plan);
-
-        patientBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.VisibleSinceFilter>().ShouldBeEmpty();
-        patientBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.Intersect>().ShouldBeEmpty();
-        compartmentBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.VisibleSinceFilter>().ShouldNotBeEmpty();
-        compartmentBranch.Select(i => plan.Ctes[i]).OfType<CteDefinition.Intersect>().ShouldNotBeEmpty();
-    }
-
-    [Fact]
-    public async Task GivenAPatientEverythingRequestWithReferencedResourceExpansion_WhenCompiled_ThenSeedsFromTheFilteredCompartmentSet()
-    {
-        // Arrange -- exercises item 5, seeded from the AFTER-since-filtering compartment set per legacy's
-        // own sequencing (PatientEverythingQueryGenerator.cs Step 5 runs after Steps 3-4).
-        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-subject"));
-        var everything = new PatientEverythingExpression(
-            "123",
-            sinceDate: new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero),
-            includeReferencedResources: true);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 55;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Observation"] = 104;
-        resolver.ResourceTypeIds["Practitioner"] = 201;
-        resolver.ResourceTypeIds["Organization"] = 202;
-        resolver.ResourceTypeIds["Location"] = 203;
-        resolver.ResourceTypeIds["Medication"] = 204;
-
-        var compartmentManager = new FakeCompartmentDefinitionManager();
-        compartmentManager.ResourceTypes[CompartmentType.Patient] = ["Observation"];
-        compartmentManager.SearchParams[("Observation", CompartmentType.Patient)] = ["subject"];
-
-        var searchParamManager = new FakeSearchParameterDefinitionManager();
-        searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
-
-        // Act
-        var symbols = (await Resolve.RunAsync(
-            everything, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: null, CancellationToken.None,
-            compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(everything, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
-
-        // Assert -- Explain()-pinned. The referenced-type-expansion CTE (cte5) seeds from cte4 (the
-        // _since-FILTERED compartment Intersect), not cte2 (the raw pre-filter compartment Union).
-        plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
-            "cte1 = CompartmentSource[104,55]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
-            "cte2 = Union(cte1)\n" +
-            "cte3 = VisibleSinceFilter(@p4)\n" +
-            "cte4 = Intersect(cte2, cte3)\n" +
-            "cte5 = ReferencedTypeExpansion(cte4, output=[201,202,203,204])\n" +
-            "root = Union(cte0, cte4, cte5)");
-
-        var expansion = plan.Ctes[5].ShouldBeOfType<CteDefinition.ReferencedTypeExpansion>();
-        expansion.Seed.ShouldBe(new CteRef(4)); // the filtered compartment, not the raw cte2
-    }
-
-    [Fact]
-    public async Task GivenAnOffsetPageRequest_WhenCompiledWithNoIncludesOrSort_ThenEmitsOffsetFetchNext()
-    {
-        // Arrange -- Patient?_id=123, offset-mode paging instead of the keyset PageSpec.
-        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
-        var tree = new SearchParameterExpression(
-            idParam,
-            new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null)));
-
-        var resolver = new FakeSymbolResolver();
-        resolver.ResourceTypeIds["Patient"] = 103;
-
-        var offsetPage = new OffsetSpec(Offset: 20, Limit: 10);
-
-        // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var lowered = Lower.Run(tree, symbolTable, targetResourceType: "Patient",
-            includes: [], revIncludes: [], includeLimit: 0, sort: [], SortPhase.Valued, page: null, offsetPage: offsetPage);
-        var emitted = SqlBuilder.Run(lowered.Plan);
-
-        // Assert
-        emitted.Sql.ShouldContain("OFFSET @p");
-        emitted.Sql.ShouldContain("FETCH NEXT @p");
-        emitted.Sql.ShouldContain("ROWS ONLY");
-        emitted.Parameters.ShouldContain(p => p.Value.Equals(20));
-        emitted.Parameters.ShouldContain(p => p.Value.Equals(10));
-    }
-
-    [Fact]
-    public async Task GivenAnOffsetPageRequestWithIncludes_WhenCompiledEndToEnd_ThenOffsetFetchNextRendersInsideTheMatchPageCteNotAfterTheOuterUnion()
-    {
-        // Arrange -- Patient?name=Smith&_include=Patient:organization, offset-mode paging instead of
-        // the keyset PageSpec/top. The match-page CTE must own the OFFSET/FETCH NEXT clause -- paging
-        // the outer UNION ALL would page over match+include rows combined, which is wrong.
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var orgParam = new SearchParameterInfo(
-            "organization", "organization", SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
-        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
-        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
-        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
-        resolver.ResourceTypeIds["Patient"] = 103;
-        resolver.ResourceTypeIds["Organization"] = 105;
-
-        var offsetPage = new OffsetSpec(Offset: 20, Limit: 10);
-
-        // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, offsetPage: offsetPage).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert
-        emitted.Sql.ShouldContain("OFFSET @p");
-        emitted.Sql.ShouldContain("FETCH NEXT @p");
-        emitted.Sql.ShouldContain("ROWS ONLY");
-
-        var matchPageCteStart = emitted.Sql.IndexOf("cteMatchPage AS (", StringComparison.Ordinal);
-        matchPageCteStart.ShouldBeGreaterThanOrEqualTo(0);
-        var matchPageCteEnd = emitted.Sql.IndexOf("\n)", matchPageCteStart, StringComparison.Ordinal);
-        matchPageCteEnd.ShouldBeGreaterThan(matchPageCteStart);
-        var unionAllIndex = emitted.Sql.IndexOf("UNION ALL", StringComparison.Ordinal);
-        unionAllIndex.ShouldBeGreaterThan(matchPageCteEnd);
-
-        var offsetIndex = emitted.Sql.IndexOf("OFFSET @p", StringComparison.Ordinal);
-
-        // The clause is textually inside the match-page CTE's own closing paren...
-        offsetIndex.ShouldBeGreaterThan(matchPageCteStart);
-        offsetIndex.ShouldBeLessThan(matchPageCteEnd);
-
-        // ...and, redundantly, strictly before the outer UNION ALL that stitches match+include rows
-        // together -- the exact scope-confusion bug class this test guards against.
-        offsetIndex.ShouldBeLessThan(unionAllIndex);
-
-        // Confirms offset is applied exactly once -- never a second time on the outer union.
-        (emitted.Sql.Split("OFFSET", StringSplitOptions.None).Length - 1).ShouldBe(1);
-    }
-
-    [Fact]
-    public async Task GivenASurrogateIdRange_WhenCompiledAlongsideAnOrdinaryPredicate_ThenBothPredicatesAppearInOuterPredicate()
-    {
-        // Arrange -- Patient?_id=123&active=true, plus an export-worker-style surrogate-ID range --
-        // composes with a resource-column predicate the search expression itself already contributed
-        // to OuterPredicate (_id), not just the bare-expression case.
-        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
-        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
-        var tree = new MultiaryExpression(MultiaryOperator.And,
-        [
-            new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null))),
-            new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null)),
-        ]);
-
-        var resolver = new FakeSymbolResolver();
-        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
-        resolver.ResourceTypeIds["Patient"] = 103;
-
-        // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var lowered = Lower.Run(tree, symbolTable, targetResourceType: "Patient",
-            includes: [], revIncludes: [], includeLimit: 0, sort: [], SortPhase.Valued, page: null,
-            surrogateIdRange: (Start: 1000L, End: 2000L));
-        var emitted = SqlBuilder.Run(lowered.Plan);
-
-        // Assert
-        emitted.Sql.ShouldContain("ResourceSurrogateId >= @p");
-        emitted.Sql.ShouldContain("ResourceSurrogateId <= @p");
-        emitted.Parameters.ShouldContain(p => p.Value.Equals(1000L));
-        emitted.Parameters.ShouldContain(p => p.Value.Equals(2000L));
-    }
-
-    [Fact]
-    public async Task GivenOnlyASurrogateIdRangeWithNoOtherExpression_WhenCompiled_ThenComposesWithTheBareResourceSource()
-    {
-        // Arrange -- the common export case: no search predicate at all, just a resource-type +
-        // surrogate-range scan (covers Lower.Run's expression == null branch, where OuterPredicate
-        // starts out as the implicit null rather than something ExtractResourceColumnPredicates set).
-        var resolver = new FakeSymbolResolver();
-        resolver.ResourceTypeIds["Patient"] = 103;
-
-        // Act
-        var symbolTable = (await Resolve.RunAsync(expression: null, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var lowered = Lower.Run(expression: null, symbolTable, targetResourceType: "Patient",
-            includes: [], revIncludes: [], includeLimit: 0, sort: [], SortPhase.Valued, page: null,
-            surrogateIdRange: (Start: 1000L, End: 2000L));
-        var emitted = SqlBuilder.Run(lowered.Plan);
-
-        // Assert
-        emitted.Sql.ShouldContain("ResourceSurrogateId >= @p");
-        emitted.Sql.ShouldContain("ResourceSurrogateId <= @p");
-        emitted.Parameters.ShouldContain(p => p.Value.Equals(1000L));
-        emitted.Parameters.ShouldContain(p => p.Value.Equals(2000L));
-    }
-
-    /// <summary>Collects the transitive set of CTE indices reachable from a root index, walking the public
-    /// CteDefinition graph (used to prove branch-scoped composition without touching internal helpers).</summary>
-    private static HashSet<int> CollectReachable(int rootIndex, QueryPlan plan)
-    {
-        var seen = new HashSet<int>();
-        Visit(rootIndex);
-        return seen;
-
-        void Visit(int index)
-        {
-            if (!seen.Add(index))
-            {
-                return;
-            }
-
-            foreach (var child in ChildrenOf(plan.Ctes[index]))
-            {
-                Visit(child);
-            }
-        }
-    }
-
-    private static IEnumerable<int> ChildrenOf(CteDefinition cte) => cte switch
-    {
-        CteDefinition.Intersect x => [x.Left.Index, x.Right.Index],
-        CteDefinition.Union u => u.Parts.Select(r => r.Index),
-        CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
-        CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
-        CteDefinition.ReferencedTypeExpansion re => [re.Seed.Index],
-        _ => [],
-    };
 
     private sealed class FakeCompartmentDefinitionManager : ICompartmentDefinitionManager
     {

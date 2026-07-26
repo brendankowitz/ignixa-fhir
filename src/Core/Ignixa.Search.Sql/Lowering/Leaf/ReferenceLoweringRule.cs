@@ -16,7 +16,7 @@ public static class ReferenceLoweringRule
     {
         var table = SqlCatalog.Default.Table("ReferenceSearchParam");
         var combined = ReferenceColumnEquality.Build(
-            table, "BaseUri", "ReferenceResourceTypeId", "ReferenceResourceId", value, context);
+            table, "BaseUri", "ReferenceResourceTypeId", "ReferenceResourceId", value, context, predicate.Parameter);
 
         return new CteDefinition.ParamSource(table, resourceTypeId, context.SearchParamId(predicate.Parameter), combined);
     }

@@ -72,4 +72,40 @@ public class LowerSortKeyTests
         Should.Throw<NotSupportedException>(() => Lower.BuildSortKey(sortExpression, symbols))
             .Message.ShouldContain("Composite");
     }
+
+    [Fact]
+    public void GivenASortByTheTypeResourceColumn_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- _type is a Token parameter, so without an explicit guard it would fall into the
+        // Aggregated arm and hit the SearchParamId lookup. Resolve deliberately never collects a
+        // resource-column parameter, so that lookup would throw KeyNotFoundException blaming Resolve for
+        // skipping a node kind rather than naming the real problem.
+        var typeParameter = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        var sortExpression = new SortExpression(typeParameter, Ignixa.Search.Expressions.SortOrder.Ascending);
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => Lower.BuildSortKey(sortExpression, symbols))
+            .Message.ShouldContain("_type");
+    }
+
+    [Fact]
+    public void GivenAResourceIdPrimarySortKeyInTheMissingPrimaryPhase_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- _id resolves to dbo.Resource.ResourceId, a non-nullable resource column, so it is
+        // never "missing" and has no MissingPrimary segment. Without this rejection
+        // EmitMissingPrimaryFilter would interpolate a null SearchParamId into SQL text.
+        var idParameter = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [new SortExpression(idParameter, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.MissingPrimary, page: null))
+            .Message.ShouldContain("MissingPrimary");
+    }
 }

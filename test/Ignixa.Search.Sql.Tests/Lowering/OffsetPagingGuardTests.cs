@@ -8,16 +8,11 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class OffsetPagingGuardTests
 {
-    [Fact]
-    public void GivenBothOffsetPageAndKeysetPage_WhenLowering_ThenThrowsNotSupportedException()
-    {
-        // Arrange
-        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
-        var page = new PageSpec([], new SqlParameterRef((short)1), new SqlParameterRef(1L));
-        var offsetPage = new OffsetSpec(Offset: 10, Limit: 5);
+    private static SymbolTable PatientSymbols() =>
+        new(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(
+    private static LoweredPlan RunWith(SymbolTable symbols, PageSpec? page, LowerOptions options) =>
+        Lower.Run(
             expression: null,
             symbols,
             targetResourceType: "Patient",
@@ -27,29 +22,29 @@ public class OffsetPagingGuardTests
             sort: [],
             SortPhase.Valued,
             page,
-            offsetPage: offsetPage));
+            options);
+
+    [Fact]
+    public void GivenBothOffsetPageAndKeysetPage_WhenLowering_ThenThrowsNotSupportedException()
+    {
+        // Arrange
+        var symbols = PatientSymbols();
+        var page = new PageSpec([], new SqlParameterRef((short)1), new SqlParameterRef(1L));
+        var options = new LowerOptions { OffsetPage = new OffsetSpec(Offset: 10, Limit: 5) };
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => RunWith(symbols, page, options));
     }
 
     [Fact]
     public void GivenBothOffsetPageAndTop_WhenLowering_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
-        var offsetPage = new OffsetSpec(Offset: 10, Limit: 5);
+        var symbols = PatientSymbols();
+        var options = new LowerOptions { OffsetPage = new OffsetSpec(Offset: 10, Limit: 5), Top = 10 };
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(
-            expression: null,
-            symbols,
-            targetResourceType: "Patient",
-            includes: [],
-            revIncludes: [],
-            includeLimit: 0,
-            sort: [],
-            SortPhase.Valued,
-            page: null,
-            top: 10,
-            offsetPage: offsetPage));
+        Should.Throw<NotSupportedException>(() => RunWith(symbols, page: null, options));
     }
 
     [Fact]
@@ -58,61 +53,32 @@ public class OffsetPagingGuardTests
         // Regression guard for the design doc's own corrected rule: page+top together is keyset
         // paging's own valid, existing call shape (top is keyset's page-size mechanism) and must remain
         // legal -- only offset-vs-page and offset-vs-top are mutually exclusive, not page-vs-top.
-        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
+        var symbols = PatientSymbols();
         var page = new PageSpec([], new SqlParameterRef((short)1), new SqlParameterRef(1L));
+        var options = new LowerOptions { Top = 10 };
 
-        Should.NotThrow(() => Lower.Run(
-            expression: null,
-            symbols,
-            targetResourceType: "Patient",
-            includes: [],
-            revIncludes: [],
-            includeLimit: 0,
-            sort: [],
-            SortPhase.Valued,
-            page,
-            top: 10));
+        Should.NotThrow(() => RunWith(symbols, page, options));
     }
 
     [Fact]
-    public void GivenCountPhaseScopedWithoutCountOnly_WhenLowering_ThenThrowsArgumentException()
+    public void GivenCountPhaseScopedWithoutCountOnly_WhenLowering_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
+        var symbols = PatientSymbols();
+        var options = new LowerOptions { CountOnly = false, CountPhaseScoped = true };
 
         // Act & Assert
-        Should.Throw<ArgumentException>(() => Lower.Run(
-            expression: null,
-            symbols,
-            targetResourceType: "Patient",
-            includes: [],
-            revIncludes: [],
-            includeLimit: 0,
-            sort: [],
-            SortPhase.Valued,
-            page: null,
-            countOnly: false,
-            countPhaseScoped: true));
+        Should.Throw<NotSupportedException>(() => RunWith(symbols, page: null, options));
     }
 
     [Fact]
-    public void GivenCountPhaseScopedWithCountOnlyButEmptySort_WhenLowering_ThenThrowsArgumentException()
+    public void GivenCountPhaseScopedWithCountOnlyButEmptySort_WhenLowering_ThenThrowsNotSupportedException()
     {
         // Arrange
-        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short> { ["Patient"] = 103 });
+        var symbols = PatientSymbols();
+        var options = new LowerOptions { CountOnly = true, CountPhaseScoped = true };
 
         // Act & Assert
-        Should.Throw<ArgumentException>(() => Lower.Run(
-            expression: null,
-            symbols,
-            targetResourceType: "Patient",
-            includes: [],
-            revIncludes: [],
-            includeLimit: 0,
-            sort: [],
-            SortPhase.Valued,
-            page: null,
-            countOnly: true,
-            countPhaseScoped: true));
+        Should.Throw<NotSupportedException>(() => RunWith(symbols, page: null, options));
     }
 }

@@ -65,6 +65,79 @@ public class LegacyCorpusDifferentialTests
         compiled.ShouldBeGreaterThanOrEqualTo(DifferentialBaseline.CompiledQueries);
     }
 
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoFewerQueriesMatchTheShippingEngineThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var matched = results.Count(r => r.Verdict == ShapeVerdict.Match);
+
+        // Raise this as divergences are closed. Never lower it without recording why in the report.
+        matched.ShouldBeGreaterThanOrEqualTo(DivergenceBaseline.MatchingQueries);
+    }
+
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoMoreQueriesOmitAFilterThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var doesLess = results.Count(r => r.Verdict == ShapeVerdict.CompilerDoesLess);
+
+        // Lower this as omitted filters are restored. Never raise it: a new omission is a
+        // correctness regression until proven redundant.
+        doesLess.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesOmittingAFilter);
+    }
+
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoMoreQueriesDivergeFromTheShippingEngineThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var diverged = results.Count(r => r.Verdict == ShapeVerdict.Divergent);
+
+        // Lower this as divergences are closed. Never raise it: a query that gains a spurious filter
+        // flips from CompilerDoesLess to Divergent, so this ceiling is what stops that flip from
+        // reading as an improvement.
+        diverged.ShouldBeLessThanOrEqualTo(DivergenceBaseline.DivergingQueries);
+    }
+
+    [Fact]
+    public async Task GivenTheCapturedCorpus_WhenCompiled_ThenNoMoreQueriesApplyAnExtraFilterThanTheBaseline()
+    {
+        var results = await RunAsync();
+        var doesMore = results.Count(r => r.Verdict == ShapeVerdict.CompilerDoesMore);
+
+        // Lower this as extra filters are justified or removed. Never raise it: a query that also
+        // starts omitting a required legacy filter flips from CompilerDoesMore to Divergent, so this
+        // ceiling catches that flip just as DivergingQueries catches the symmetric one.
+        doesMore.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesApplyingAnExtraFilter);
+    }
+
+    [Fact]
+    public async Task GivenTheVerdictBaselines_WhenSummed_ThenTheyAccountForEveryCompiledQuery()
+    {
+        // The four guards above are individually one-sided, which on its own permits slack: raise a
+        // ceiling once and it stays raised, and a compensating swap (one query improving while another
+        // regresses) satisfies every one of them. They are only airtight because the four constants sum
+        // to exactly the corpus size -- the verdicts partition the compiled set, so an exact-sum
+        // baseline collapses the feasible region to a single point and any movement between verdicts
+        // breaks at least two guards.
+        //
+        // That tightness was an arithmetic coincidence nothing enforced. This asserts it, so a future
+        // maintainer who raises one ceiling in isolation is told they have just bought permanent slack
+        // rather than discovering it the next time a regression slips through.
+        var total = DivergenceBaseline.MatchingQueries
+            + DivergenceBaseline.QueriesOmittingAFilter
+            + DivergenceBaseline.DivergingQueries
+            + DivergenceBaseline.QueriesApplyingAnExtraFilter;
+
+        total.ShouldBe(
+            DifferentialBaseline.CompiledQueries,
+            "the four verdict baselines must sum to the compiled-query count; adjusting one without a " +
+            "compensating adjustment leaves the distribution guards permanently slack.");
+
+        // And the corpus really does compile in full, which is what makes the partition total knowable.
+        var results = await RunAsync();
+        results.Count(r => r.Compilation.Succeeded).ShouldBe(DifferentialBaseline.CompiledQueries);
+    }
+
     private static async Task<IReadOnlyList<DifferentialResult>> RunAsync()
     {
         var results = new List<DifferentialResult>();

@@ -41,7 +41,7 @@ public class KeysetContinuationTokenTests
     [Fact]
     public void GivenAZeroBoundaryValueToken_WhenEncodedThenDecoded_ThenRoundTripsAnEmptyList()
     {
-        // Arrange -- MissingPrimary-phase first page has no boundary values at all.
+        // Arrange -- a MissingPrimary-phase first page has no boundary values at all.
         var token = KeysetContinuationToken.Encode([], resourceTypeId: 103, surrogateId: 7000L);
 
         // Act
@@ -57,11 +57,11 @@ public class KeysetContinuationTokenTests
     [Theory]
     [InlineData("")]
     [InlineData("not-base64!!!")]
-    [InlineData("dGhpcyBpcyBub3QgSlNPTg==")] // valid base64, invalid JSON payload
+    [InlineData("dGhpcyBpcyBub3QgSlNPTg==")]
     public void GivenAMalformedToken_WhenDecoded_ThenReturnsFalseWithoutThrowing(string malformed)
     {
         // Act
-        var decoded = KeysetContinuationToken.TryDecode(malformed, out var boundaryValues, out var resourceTypeId, out var surrogateId);
+        var decoded = KeysetContinuationToken.TryDecode(malformed, out _, out _, out _);
 
         // Assert
         decoded.ShouldBeFalse();

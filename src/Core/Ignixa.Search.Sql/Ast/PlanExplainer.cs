@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Ignixa.Search.Expressions;
 using static Ignixa.Search.Sql.Builders.SqlLabels;
@@ -105,6 +106,7 @@ public static class PlanExplainer
         CteDefinition.ChainJoin => PlanRowKind.ChainJoin,
         CteDefinition.CompartmentSource => PlanRowKind.CompartmentSource,
         CteDefinition.NotReferencedSource => PlanRowKind.NotReferencedSource,
+        CteDefinition.MultiTypeResourceSource => PlanRowKind.MultiTypeResourceSource,
         CteDefinition.TableExistsPredicate => PlanRowKind.TableExistsPredicate,
         CteDefinition.VisibleSinceFilter => PlanRowKind.VisibleSinceFilter,
         CteDefinition.ReferencedTypeExpansion => PlanRowKind.ReferencedTypeExpansion,
@@ -129,7 +131,7 @@ public static class PlanExplainer
         CteDefinition.Except ex => [ex.Left.Index, ex.Right.Index],
         CteDefinition.ChainJoin cj => [cj.InnerMatch.Index],
         CteDefinition.ReferencedTypeExpansion re => [re.Seed.Index],
-        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource
+        CteDefinition.ParamSource or CteDefinition.ResourceSource or CteDefinition.CompartmentSource or CteDefinition.NotReferencedSource or CteDefinition.MultiTypeResourceSource
             or CteDefinition.TableExistsPredicate or CteDefinition.VisibleSinceFilter => [],
         _ => throw new NotSupportedException($"No Explain() CTE references for {cte.GetType().Name}."),
     };
@@ -168,7 +170,7 @@ public static class PlanExplainer
     private static string PrintCte(CteDefinition cte, int? top, ref int parameterOrdinal) => cte switch
     {
         CteDefinition.ParamSource p =>
-            $"{p.Table.TableName}[{p.ResourceTypeId},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
+            $"{p.Table.TableName}[{PrintTypeScope(p.ResourceTypeId)},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
         CteDefinition.Intersect x =>
             $"Intersect({CteLabel(x.Left.Index)}, {CteLabel(x.Right.Index)}){PrintTop(top)}",
         CteDefinition.Union u =>
@@ -180,6 +182,7 @@ public static class PlanExplainer
         CteDefinition.CompartmentSource cs =>
             $"CompartmentSource[{string.Join(",", cs.ResourceTypeIds)},{cs.SearchParamId}]  {PrintPredicate(cs.Predicate, ref parameterOrdinal)}{PrintTop(top)}",
         CteDefinition.NotReferencedSource nr => PrintNotReferencedSource(nr, top, ref parameterOrdinal),
+        CteDefinition.MultiTypeResourceSource mts => PrintMultiTypeResourceSource(mts, top),
         CteDefinition.TableExistsPredicate tep =>
             $"TableExistsPredicate[{tep.Table.TableName}]{(tep.Predicate is null ? string.Empty : $"  {PrintPredicate(tep.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
         CteDefinition.VisibleSinceFilter =>
@@ -212,23 +215,32 @@ public static class PlanExplainer
         return $"NotReferencedSource[{nr.TargetResourceTypeId}]{suffix}{PrintTop(top)}";
     }
 
-    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)
+    /// <summary>Renders a CTE's resource-type scope: the literal id, or "*" for a cross-type
+    /// (system-level) scope, matching <see cref="PrintMultiTypeResourceSource"/>'s spelling of the same
+    /// idea. A null scope emits no type filter in SqlBuilder and so consumes no parameter ordinal.</summary>
+    private static string PrintTypeScope(short? resourceTypeId)
+        => resourceTypeId is { } id ? id.ToString(CultureInfo.InvariantCulture) : "*";
+
+    private static string PrintMultiTypeResourceSource(CteDefinition.MultiTypeResourceSource mts, int? top)
     {
-        // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource) only when it is
-        // non-null -- EmitResourceSource's typeFilter is emitted (and binds @pN) solely inside its
-        // `rs.ResourceTypeId is { } typeId` arm, so a null ResourceTypeId (a bare/system-level
-        // ResourceSource) emits no type filter and consumes no ordinal. Mirroring that here keeps
-        // Explain()'s @pN numbering in sync with the emitted SQL's real parameter numbering for any
-        // plan mixing a ResourceSource with another parameterized CTE or an OuterPredicate. The
-        // literal ResourceTypeId is still shown inline (not "@pN") because it reads better in a
-        // human-facing summary; only the counter is shared.
+        // ResourceTypeIds are emitted as literals in SqlBuilder (not bound parameters), so no ordinal is
+        // consumed here — parameter numbering in the plan summary stays aligned with the emitted SQL.
+        var typeList = mts.ResourceTypeIds.Count == 0
+            ? "*"
+            : string.Join(",", mts.ResourceTypeIds);
+        return $"MultiTypeResourceSource[{typeList}]{PrintTop(top)}";
+    }
+
+    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)    {
+        // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource), so this must consume
+        // an ordinal too -- otherwise Explain()'s @pN numbering silently diverges from the emitted
+        // SQL's real parameter numbering for any plan mixing a ResourceSource with another
+        // parameterized CTE or an OuterPredicate. The literal ResourceTypeId is still shown inline
+        // (not "@pN") because it reads better in a human-facing summary; only the counter is shared.
         // rs.Predicate (nested-scope resource-column filter, e.g. a chain target's _id=X), when
         // present, is a real predicate rendered the same way OuterPredicate is -- it also consumes
         // whatever ordinals PrintPredicate consumes internally.
-        if (rs.ResourceTypeId is not null)
-        {
-            parameterOrdinal++;
-        }
+        parameterOrdinal++;
         var predicateSuffix = rs.Predicate is null ? string.Empty : $" WHERE {PrintPredicate(rs.Predicate, ref parameterOrdinal)}";
         return $"ResourceSource[{rs.ResourceTypeId}]{predicateSuffix}{PrintTop(top)}";
     }

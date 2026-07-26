@@ -1,4 +1,5 @@
 using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 
@@ -41,17 +42,48 @@ internal static class ReferenceColumnEquality
         string resourceTypeColumn,
         string resourceIdColumn,
         ReferenceSearchValue value,
-        LeafContext context)
+        LeafContext context,
+        SearchParameterInfo parameter)
     {
         Predicate idPredicate = new Predicate.Equal(
             new SqlColumnRef(table.TableName, resourceIdColumn),
             context.Parameter(value.ResourceId));
 
-        // A value the parser could not resolve to a resource type carries the whole input as its id;
-        // there is nothing else to constrain on.
+        // A value the parser could not resolve to a resource type is still constrained: the search
+        // parameter itself declares which types it may point at, and the shipping engine narrows to
+        // them. Without this a bare id matches a reference to any type carrying that id, which
+        // returns rows that are not matches.
         if (string.IsNullOrEmpty(value.ResourceType))
         {
-            return idPredicate;
+            var declared = context.DeclaredTargetResourceTypeIds(parameter);
+            if (declared.Count == 0)
+            {
+                return idPredicate;
+            }
+
+            Predicate targets = new Predicate.Equal(
+                new SqlColumnRef(table.TableName, resourceTypeColumn),
+                context.Parameter(declared[0]));
+
+            for (var i = 1; i < declared.Count; i++)
+            {
+                targets = new Predicate.Or(
+                    targets,
+                    new Predicate.Equal(
+                        new SqlColumnRef(table.TableName, resourceTypeColumn),
+                        context.Parameter(declared[i])));
+            }
+
+            // A stored NULL type means the reference was indexed without resolvable type information.
+            // That is only ambiguous when the parameter itself admits several target types; for a
+            // single-target parameter the type is unambiguous, so admitting NULL rows would widen the
+            // match for no semantic gain — matching the shipping engine's observed behaviour.
+            if (declared.Count > 1)
+            {
+                targets = new Predicate.Or(targets, new Predicate.IsNull(new SqlColumnRef(table.TableName, resourceTypeColumn)));
+            }
+
+            return new Predicate.And(targets, idPredicate);
         }
 
         if (context.UnmatchableResourceType(value.ResourceType) is { } unmatchable)

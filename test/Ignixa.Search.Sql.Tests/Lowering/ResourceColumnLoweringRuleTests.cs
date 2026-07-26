@@ -3,7 +3,6 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
-using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -104,50 +103,6 @@ public class ResourceColumnLoweringRuleTests
         var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new TokenSearchValue(system: null, code: "Patient", text: null));
 
         Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
-    }
-
-    [Fact]
-    public void GivenACommaSeparatedTypeList_WhenLowered_ThenComposesAsAnOrOfEqualsExtractedIntoOuterPredicate()
-    {
-        // Arrange -- a directly-constructed expression tree representing _type=Patient,Observation combined
-        // with an ordinary predicate (status=final) -- matching the design doc's cited example query. No
-        // production binder path produces this shape today (SearchOptionsBuilder.cs consumes _type into a
-        // plain string list, never an expression tree), so this test constructs the tree by hand: one
-        // SearchParameterExpression wrapping an Or of bare SearchParameterPredicateExpression alternatives --
-        // the same shape ordinary comma-separated values use elsewhere in this codebase (see
-        // EndToEndCompilationTests.GivenAMultiValueIdNotQuery_WhenCompiled_... for the same shape under :not).
-        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
-        var typeExpression = new SearchParameterExpression(
-            TypeParameter(),
-            new MultiaryExpression(MultiaryOperator.Or,
-            [
-                new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Patient", text: null)),
-                new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Observation", text: null)),
-            ]));
-        var statusPredicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
-        var tree = new MultiaryExpression(MultiaryOperator.And, [typeExpression, statusPredicate]);
-        var symbols = new SymbolTable(
-            new Dictionary<string, short> { [statusParam.Url.ToString()] = 44 },
-            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
-
-        // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- the Or-of-Equals lands in QueryPlan.OuterPredicate (not thrown as NotSupportedException);
-        // `status` lowers normally into its own ParamSource CTE, untouched by the extraction.
-        var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
-        var left = or.Left.ShouldBeOfType<Predicate.Equal>();
-        var right = or.Right.ShouldBeOfType<Predicate.Equal>();
-        left.Column.Column.ShouldBe("ResourceTypeId");
-        right.Column.Column.ShouldBe("ResourceTypeId");
-        left.Value.Value.ShouldBe((short)103);
-        right.Value.Value.ShouldBe((short)104);
-
-        plan.Ctes.Count.ShouldBe(1);
-        plan.Ctes[0].ShouldBeOfType<CteDefinition.ParamSource>();
-        plan.Explain().ShouldBe("root = TokenSearchParam[103,44]  Code = @p0 WHERE ResourceTypeId = @p1 OR ResourceTypeId = @p2");
-        emitted.Sql.ShouldContain("(ResourceTypeId = @p1 OR ResourceTypeId = @p2)");
     }
 
     private static SearchParameterInfo LastUpdatedParameter()

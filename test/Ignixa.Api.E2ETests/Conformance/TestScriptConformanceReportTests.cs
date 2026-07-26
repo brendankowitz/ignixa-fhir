@@ -23,6 +23,45 @@ public sealed class TestScriptConformanceReportTests
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    // Suites that legitimately produce no executable checks against this server, because they
+    // exercise operations or FHIR releases it does not implement. Everything here is a deliberate
+    // decision: a suite that goes fully skipped for any other reason -- typically a capability
+    // gate that can never evaluate true -- is a silently disabled test, not an unsupported
+    // feature, and must fail this assertion rather than be added to the list.
+    private static readonly HashSet<string> SuitesWithNoSupportedFeatures = new(StringComparer.Ordinal)
+    {
+        // Version-specific corpora that do not apply to the R4 target
+        "CRUD/all-resource-types-r4b-plus.json",
+        "CRUD/all-resource-types-r5-only.json",
+        "CRUD/all-resource-types-stu3-only.json",
+
+        // No vread route exists, so the CapabilityStatement deliberately does not declare it
+        "CRUD/vread.json",
+
+        // Bulk/import/export and reindex operations are not implemented
+        "Microsoft/ms-bulk-delete.json",
+        "Microsoft/ms-bulk-update.json",
+        "Microsoft/ms-convert-data.json",
+        "Microsoft/ms-import-basic.json",
+        "Microsoft/ms-import-history-soft-delete.json",
+        "Microsoft/ms-import-rebuild-indexes.json",
+        "Microsoft/ms-operation-versions.json",
+        "Microsoft/ms-reindex.json",
+
+        // Terminology and document operations are not implemented
+        "Operations/docref-operation.json",
+        "Operations/everything-operation.json",
+        "Operations/expand-operation.json",
+        "Operations/lookup-operation.json",
+        "Operations/member-match.json",
+        "Operations/subsumes-operation.json",
+        "Operations/translate-operation.json",
+        "Operations/validate-code-operation.json",
+
+        "Subscriptions/basic.json",
+        "Validation/validate-op.json",
+    };
+
     private readonly ConformanceApiFixture _fixture;
 
     public TestScriptConformanceReportTests(ConformanceApiFixture fixture)
@@ -69,6 +108,25 @@ public sealed class TestScriptConformanceReportTests
 
         results.Count(result => result.Status is "pass" or "fail").ShouldBeGreaterThan(0,
             "All results were skipped — the conformance corpus produced no executable checks.");
+
+        // Per-suite, not just corpus-wide: one passing test anywhere satisfies the check above,
+        // so a suite whose every test is skipped stays invisible. A skip reports neither pass nor
+        // fail, so an unsatisfiable capability gate silently deletes its suite from the matrix
+        // while CI stays green — which is exactly how several suites sat dead for months.
+        var deadSuites = results
+            .GroupBy(result => result.File, StringComparer.Ordinal)
+            .Where(group => !group.Any(result => result.Status is "pass" or "fail"))
+            .Select(group => group.Key)
+            .Where(file => !SuitesWithNoSupportedFeatures.Contains(file))
+            .OrderBy(file => file, StringComparer.Ordinal)
+            .ToList();
+
+        deadSuites.ShouldBeEmpty(
+            "Suite(s) produced no executable checks — every test was skipped:\n" +
+            string.Join("\n", deadSuites.Select(file => $"  {file}")) +
+            "\nEither a requiresCapability gate cannot be satisfied by this server's CapabilityStatement " +
+            "(fix the gate, or declare the interaction the server actually serves), or the feature is " +
+            $"genuinely unsupported and the suite belongs in {nameof(SuitesWithNoSupportedFeatures)}.");
     }
 
     private static bool IsEnabled() =>

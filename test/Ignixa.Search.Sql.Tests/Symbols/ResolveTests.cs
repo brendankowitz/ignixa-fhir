@@ -112,6 +112,34 @@ public class ResolveTests
     }
 
     [Fact]
+    public async Task GivenAnUntypedReferenceWithADeclaredTargetTheResolverCannotFind_WhenResolved_ThenSymbolTableStoresTheUnmatchableSentinel()
+    {
+        // Arrange -- Patient?organization=org-123 where "Organization" is a declared target type but
+        // the resolver has no row for it. SymbolCollectingVisitor adds "Organization" to the resource-
+        // type set (untyped-reference branch); Resolve must then store UnmatchableResourceTypeId (-1)
+        // rather than omitting the key, so DeclaredTargetResourceTypeIds finds it and includes the
+        // sentinel in the OR list instead of collapsing to an unconstrained match.
+        var parameter = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null,
+            new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: null, resourceId: "org-123"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[parameter.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        // "Organization" is deliberately absent from resolver.ResourceTypeIds -- GetResourceTypeIdAsync returns null
+
+        // Act
+        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+
+        // Assert -- Resolve stored the sentinel rather than omitting the key; the entry is present as -1.
+        symbolTable.ResourceTypeId("Organization").ShouldBe(SymbolTable.UnmatchableResourceTypeId);
+    }
+
+    [Fact]
     public async Task GivenATypePredicate_WhenResolved_ThenSymbolTableHasItsOwnValuesResourceTypeId()
     {
         // Arrange -- _type=Observation, where the query's own targetResourceType is a DIFFERENT type

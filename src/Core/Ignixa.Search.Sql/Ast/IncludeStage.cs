@@ -21,4 +21,16 @@ public sealed record IncludeStage(
     IReadOnlyList<int> SeedStages,
     bool SeedFromMatch,
     bool Iterate,
-    int Limit);
+    int Limit,
+    IReadOnlyList<IncludeConstraint>? Constraints = null);
+
+/// <summary>
+/// One access-constraint binding on an include stage: the emitter renders it as a type-guarded EXISTS so
+/// only rows of <see cref="ConstraintTypeId"/> are required to satisfy the constraint CTE at
+/// <see cref="ConstraintCteIndex"/>, and rows of any other type the stage produces pass through untouched.
+/// A trailing optional field on <see cref="IncludeStage"/> rather than a new stage kind: an unconstrained
+/// stage leaves it null and emits exactly as before this field existed.
+/// </summary>
+/// <param name="ConstraintTypeId">The resource-type id the constraint governs.</param>
+/// <param name="ConstraintCteIndex">The index into QueryPlan.Ctes of the CTE the constraint lowered to.</param>
+public sealed record IncludeConstraint(short ConstraintTypeId, int ConstraintCteIndex);

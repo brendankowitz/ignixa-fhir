@@ -24,7 +24,7 @@ public class SystemLevelSearchTests
         // Act
         var lowered = Lower.Run(
             predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true);
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
 
         // Assert
         lowered.Plan.Ctes.Count.ShouldBe(1);
@@ -34,12 +34,13 @@ public class SystemLevelSearchTests
     }
 
     [Fact]
-    public void GivenABareRequestWithNoPredicatesAtAll_WhenLowered_ThenResourceSourceHasANullResourceTypeId()
+    public void GivenABareRequestWithNoPredicatesAtAll_WhenLowered_ThenTheBaseSetScansEveryType()
     {
         // Arrange -- GET /?_lastUpdated=gt2020-01-01 (a resource-column-only query). The _lastUpdated
         // predicate is a resource-column predicate, so it must be wrapped in a SearchParameterExpression
         // for ExtractResourceColumnPredicates to pull it into the outer WHERE, leaving no CTE-lowerable
-        // remainder -- which drops through to the bare ResourceSource base case.
+        // remainder -- which drops through to the base case: MultiTypeResourceSource.AllTypes(), whose
+        // empty type list is the deliberate every-type contract.
         var lastUpdatedParam = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
         var predicate = new SearchParameterPredicateExpression(lastUpdatedParam, SearchComparator.Gt, modifier: null, new DateTimeSearchValue(DateTime.Parse("2020-01-01")));
         var expression = new SearchParameterExpression(lastUpdatedParam, predicate);
@@ -48,10 +49,10 @@ public class SystemLevelSearchTests
         // Act
         var lowered = Lower.Run(
             expression, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true);
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
 
         // Assert
-        lowered.Plan.Ctes.OfType<CteDefinition.ResourceSource>().ShouldContain(rs => rs.ResourceTypeId == null);
+        lowered.Plan.Ctes.OfType<CteDefinition.MultiTypeResourceSource>().ShouldContain(rs => rs.ResourceTypeIds.Count == 0);
         lowered.Plan.OuterPredicate.ShouldNotBeNull();
     }
 
@@ -71,7 +72,7 @@ public class SystemLevelSearchTests
         var lowered = Lower.Run(
             predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
-            sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true);
+            sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
 
         // Assert -- a type-less ParamSource plus a working sort join that emits without error.
         var cte = lowered.Plan.Ctes[0].ShouldBeOfType<CteDefinition.ParamSource>();
@@ -101,7 +102,7 @@ public class SystemLevelSearchTests
         Should.Throw<NotSupportedException>(() =>
             Lower.Run(
                 chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
-                sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
+                sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }))
             .Message.ShouldContain("Chain is not supported in system-level search");
     }
 
@@ -124,7 +125,7 @@ public class SystemLevelSearchTests
         Should.Throw<NotSupportedException>(() =>
             Lower.Run(
                 predicate, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000,
-                sort: [], sortPhase: SortPhase.Valued, page: null, systemLevelSearch: true))
+                sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }))
             .Message.ShouldContain("SeedFromMatch");
     }
 

@@ -14,6 +14,19 @@ namespace Ignixa.Search.Sql.Ast;
 /// shape; <see cref="CountOnly"/> replaces every row-returning shape with a single
 /// COUNT_BIG(DISTINCT Sid1) SELECT.
 /// </para>
+/// <para>
+/// A non-null <see cref="Projection"/> appends dbo.Resource columns after the identity (and flag)
+/// columns, turning the emitted statement into a self-contained row-returning query. When
+/// <see cref="Projection"/> is null the historical identity-only shape is preserved and the caller
+/// fetches resource rows itself. It is ignored when <see cref="CountOnly"/> is set: a count is a
+/// single scalar with no row to project onto, so no resource join is forced and no columns are emitted.
+/// </para>
+/// <para>
+/// A non-null <see cref="SearchParameterHash"/> restricts the match set to rows whose
+/// <c>dbo.Resource.SearchParamHash</c> differs from this value — the resources reindex must revisit
+/// because their indexed parameters predate the current definition set. Rows with a <c>NULL</c> hash
+/// have never been indexed and always qualify.
+/// </para>
 /// </summary>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,
@@ -24,8 +37,26 @@ public sealed record QueryPlan(
     SortSpec? Sort = null,
     PageSpec? Page = null,
     bool CountOnly = false,
+    ResourceVisibility? Visibility = null,
+    ProjectionSpec? Projection = null,
+    SurrogateIdRange? SurrogateRange = null,
+    /// <summary>
+    /// When set, restricts the match set to rows whose dbo.Resource.SearchParamHash differs from this
+    /// value — the resources reindex must revisit because their indexed parameters predate the current
+    /// definition set. A row with a NULL hash has never been indexed and always qualifies.
+    /// </summary>
+    SqlParameterRef? SearchParameterHash = null,
+    /// <summary>
+    /// When true, the emitted statement returns include-stage rows only, omitting the match page from the
+    /// result while still using it to seed the stages. This is the $includes operation's second page: the
+    /// caller already has the match rows and asks only for more included resources.
+    /// </summary>
+    bool IncludesOnly = false,
     OffsetSpec? OffsetPage = null,
     bool CountPhaseScoped = false)
 {
+    /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
+    public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;
+
     public string Explain() => PlanExplainer.Print(this);
 }
