@@ -1,6 +1,7 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
@@ -97,6 +98,90 @@ public class CompileFromOptionsTests
         trace.Failure.ShouldBeNull();
         trace.Sql.ShouldNotBeNull();
         trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId}, {PatientTypeId})");
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsCarryingHistoryResourceVersionTypes_WhenCompilingFromOptions_ThenTheEmittedSqlOmitsTheIsHistoryFilter()
+    {
+        // Arrange -- GET /?_type=Observation&status=final, ResourceVersionTypes=History (superseded
+        // versions only, no Latest). System-level (resourceType: null) so the base set lowers to a
+        // MultiTypeResourceSource, which renders its own visibility check directly against dbo.Resource --
+        // unlike a typed ParamSource against a search-param table, which only carries an IsHistory clause
+        // when that specific table has the column (dbo.TokenSearchParam does not), so asserting against a
+        // ParamSource-only plan would pass whether or not Visibility is forwarded. Same class of defect as
+        // AccessConstraints/ResourceTypes above: without forwarding, ResourceVersionTypes is accepted by
+        // the API but never reaches Lower, so the emitted SQL keeps filtering to "IsHistory = 0" -- silent
+        // Latest-only results for a caller that asked for history.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            Expression = expression,
+            ResourceTypes = ["Observation"],
+            ResourceVersionTypes = ResourceVersionTypes.History,
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            resourceType: null,
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert -- the MultiTypeResourceSource scan must not filter out superseded rows. Deleting the
+        // Visibility forwarding in CompileFromOptionsAsync restores "IsHistory = 0" to the emitted SQL
+        // (EmitMultiTypeResourceSource) and fails this.
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId})");
+        trace.Sql!.Sql.ShouldNotContain("IsHistory = 0");
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsWithNoneResourceVersionTypes_WhenCompilingFromOptions_ThenTheTraceRecordsALowerStageFailure()
+    {
+        // Arrange -- None is not a valid search input (SearchOptions.ResourceVersionTypes' own doc); the
+        // compiler must reject it rather than silently treating it as Latest, which would reproduce the
+        // exact fail-open-by-omission shape this forwarding exists to close. This class's own contract
+        // (see the class doc) is that a NotSupportedException at this boundary is recorded on
+        // SearchTrace.Failure rather than thrown past CompileFromOptionsAsync -- the same convention
+        // AccessConstraints/ResourceTypes guards already follow.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Observation",
+            Expression = expression,
+            ResourceVersionTypes = ResourceVersionTypes.None,
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Observation",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert
+        trace.Failure.ShouldNotBeNull();
+        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
+        trace.Sql.ShouldBeNull();
     }
 
     /// <summary>A wrapped token predicate ("&lt;param&gt; eq &lt;code&gt;"), the shape a real bound leaf takes -- mirrors AccessConstraintTests' TokenPredicate.</summary>

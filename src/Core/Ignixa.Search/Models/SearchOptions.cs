@@ -111,10 +111,15 @@ public class SearchOptions
     /// the only shape an ordinary search wants; _history, $export, and reindex widen it.
     /// </summary>
     /// <remarks>
-    /// Unlike <see cref="AccessConstraints"/>, this property is deliberately not forwarded into the SQL
-    /// compiler: it is read by the consuming data layer, which maps it onto its own
-    /// <c>ResourceVisibility</c> (see the <see cref="ResourceVersionTypes"/> remarks). Its absence from the
-    /// compile path is by design, not the fail-open-by-omission defect a missing forwarder would be.
+    /// Like <see cref="AccessConstraints"/>, this property is forwarded into the SQL compiler:
+    /// <c>Ignixa.Search.Sql.Tracing.SearchCompiler.CompileFromOptionsAsync</c> maps it onto
+    /// <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c> by testing two bits --
+    /// <c>IncludeHistory = types.HasFlag(History)</c> and <c>IncludeDeleted = types.HasFlag(SoftDeleted)</c>.
+    /// <see cref="Latest"/> is deliberately not tested -- it is the implicit baseline every search already
+    /// returns, and exists so that "an ordinary search" has a named non-zero value rather than being spelled
+    /// <see cref="None"/>. So <c>Latest | History</c> and <c>History</c> map to the same visibility; the
+    /// distinction is which one states the intent. <see cref="None"/> is not a valid search input and the
+    /// compiler throws <see cref="NotSupportedException"/> rather than treating it as <see cref="Latest"/>.
     /// </remarks>
     public ResourceVersionTypes ResourceVersionTypes { get; set; } = ResourceVersionTypes.Latest;
 
