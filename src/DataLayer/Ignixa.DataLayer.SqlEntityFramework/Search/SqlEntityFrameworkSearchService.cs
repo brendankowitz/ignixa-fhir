@@ -85,6 +85,11 @@ public class SqlEntityFrameworkSearchService : ISearchService
         // regardless: the single-type path below both constrains the base query to ResourceTypeId = Patient
         // (intersecting the compartment expansion down to the patient row alone) and labels every row it
         // does return with options.ResourceType, which would report an Observation as a Patient.
+        //
+        // Matches the bare root node only. Both callers (PatientEverythingHandler, IpsGeneratorService)
+        // assign the operation expression directly, so an And-wrapped one cannot reach here today -- but the
+        // compiler side does tolerate that shape (see Lower.Run's matchSource dispatch), so anything that
+        // starts combining $everything with a sibling predicate must revisit this test too.
         var spansMultipleResourceTypes = options.Expression is PatientEverythingExpression;
 
         // For wildcard/multi-type searches (ResourceType is null or empty), skip type lookup
@@ -106,15 +111,18 @@ public class SqlEntityFrameworkSearchService : ISearchService
                 .Include(x => x.ResourceType)
                 .AsAsyncEnumerable().WithCancellation(ct))
             {
-                // For multi-type results, we need to determine the actual resource type from the entity
-                // entity.ResourceType is a ResourceTypeEntity, get the Name property
-                if (entity.ResourceType == null)
-                {
-                    _logger.LogWarning("ResourceType is null for entity with ResourceId {ResourceId}", entity.ResourceId);
-                    continue;
-                }
+                // Resolve the row's own type: the navigation property first, then the reference-data cache,
+                // matching what the _include paths below already do. Dropping the row instead -- the previous
+                // behaviour here -- silently shortens the bundle, and a caller cannot tell a resource that
+                // was omitted from one the patient does not have. That is worse for $everything than for an
+                // ordinary multi-type search, because the compartment is the entire point of the response.
+                var resourceTypeName = entity.ResourceType?.Name
+                    ?? _cache.TryGetResourceTypeNameFromCache(entity.ResourceTypeId)
+                    ?? throw new InvalidOperationException(
+                        $"ResourceType ID {entity.ResourceTypeId} (ResourceId {entity.ResourceId}) not found in " +
+                        "cache or database.");
 
-                var searchResult = MapResourceEntityToSearchResult(entity, entity.ResourceType.Name);
+                var searchResult = MapResourceEntityToSearchResult(entity, resourceTypeName);
                 multiTypeMainResults.Add(searchResult);
                 yield return searchResult;  // Stream immediately
             }

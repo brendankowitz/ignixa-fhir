@@ -264,8 +264,11 @@ public class AccessConstraintTests
         var f = Arrange();
         var duplicate = new AccessConstraint("Observation", TokenPredicate(f.CategoryParam, "vital-signs"));
 
-        // Act + Assert
-        var ex = Should.Throw<ArgumentException>(() => Lower.Run(
+        // Act + Assert -- NotSupportedException, not ArgumentException: these constraints are caller input
+        // arriving on SearchOptions, and SearchCompiler's catch filter deliberately excludes
+        // ArgumentException (its trace-record guards throw that for genuine programmer errors). Throwing it
+        // here would escape CompileFromOptionsAsync as a 500 rather than a recorded TraceFailure.
+        var ex = Should.Throw<NotSupportedException>(() => Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint, duplicate] }));
         ex.Message.ShouldContain("Observation");

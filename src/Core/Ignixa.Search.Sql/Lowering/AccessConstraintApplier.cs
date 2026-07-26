@@ -47,6 +47,15 @@ internal sealed class AccessConstraintApplier
     /// but throwing keeps the one-constraint-per-type contract the compiler relies on visible at the seam
     /// where the mistake was made.
     /// </summary>
+    /// <remarks>
+    /// <see cref="NotSupportedException"/> rather than <see cref="ArgumentException"/>, for the same reason
+    /// <see cref="BindIncludeStage"/> uses it: these constraints arrive on
+    /// <see cref="Search.Models.SearchOptions"/> from the claim-translation layer, so a duplicate is
+    /// unsupported *input*, not a programmer error inside the compiler. SearchCompiler's catch filter
+    /// deliberately excludes ArgumentException — its trace-record guards throw that and cannot trip on a
+    /// well-formed plan — so throwing it here would escape CompileFromOptionsAsync and surface as a 500
+    /// instead of the recorded TraceFailure its contract promises.
+    /// </remarks>
     public AccessConstraintApplier(IReadOnlyList<AccessConstraint>? constraints)
     {
         if (constraints is not { Count: > 0 })
@@ -60,11 +69,10 @@ internal sealed class AccessConstraintApplier
         {
             if (!byType.TryAdd(constraint.ResourceType, constraint))
             {
-                throw new ArgumentException(
+                throw new NotSupportedException(
                     $"Duplicate access constraint for resource type '{constraint.ResourceType}'. At most one " +
                     "constraint per type is allowed -- combine the predicates into a single constraint before " +
-                    "compiling. Silently keeping one would drop the other half of an authorization rule.",
-                    nameof(constraints));
+                    "compiling. Silently keeping one would drop the other half of an authorization rule.");
             }
         }
 
@@ -155,9 +163,16 @@ internal sealed class AccessConstraintApplier
             {
                 if (outputTypeIds is null)
                 {
-                    // Wildcard stage whose produced types are unknown, and a constraint whose type was never
-                    // resolved: we cannot emit a guard for a type id we do not have, and we cannot prove the
-                    // wildcard will not produce that type. Refuse to compile rather than fail open.
+                    // Wildcard stage whose produced types are unknown, and a constraint whose type is absent
+                    // from the symbol table entirely: we cannot emit a guard for a type id we do not have,
+                    // and we cannot prove the wildcard will not produce that type. Refuse to compile.
+                    //
+                    // Unreachable through SearchCompiler: Resolve now collects every constraint's
+                    // ResourceType (SymbolCollectingVisitor.CollectConstraint) and records a resolver miss as
+                    // the unmatchable sentinel rather than omitting the key, so TryGetResourceTypeId always
+                    // succeeds on that path. A sentinel id is safe to bind -- it names a type with no catalog
+                    // row and therefore no rows to leak. This guard remains for callers that reach Lower.Run
+                    // without going through Resolve, which is every test and any future direct caller.
                     //
                     // NotSupportedException, not InvalidOperationException: SearchCompiler's catch filter
                     // records the former as a TraceFailure and lets the latter escape, which would break its
