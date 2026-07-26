@@ -491,20 +491,26 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenATokenSortKey_WhenLowered_ThenThrowsNotSupportedException()
+    public void GivenATokenSortKey_WhenLowered_ThenProducesAnAggregatedKeyBoundToTheTokenTable()
     {
-        // Arrange -- Token/Number/Quantity/Reference/Uri sort is deferred, not silently mishandled.
+        // Arrange -- Token/Number/Quantity/Reference/Uri sort now lowers to an Aggregated key whose
+        // table/column come from the catalog. TokenSearchParam carries no IsMin/IsMax column, so the
+        // value is resolved by a MIN/MAX-aggregating join rather than a flagged row.
         var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [statusParam.Url.ToString()] = 1 },
             new Dictionary<string, short> { ["Observation"] = 104 });
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
-                expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-                sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
-            .Message.ShouldContain("Token");
+        // Act
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var key = plan.Sort.ShouldNotBeNull().Keys.ShouldHaveSingleItem();
+        key.Kind.ShouldBe(SortKeyKind.Aggregated);
+        key.Table!.TableName.ShouldBe("TokenSearchParam");
+        key.Column!.Name.ShouldBe("Code");
     }
 
     [Fact]

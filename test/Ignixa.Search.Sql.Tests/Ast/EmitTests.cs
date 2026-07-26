@@ -668,7 +668,32 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldNotContain("JOIN dbo.");
         emitted.Sql.ShouldContain("SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte0 m\n");
-        emitted.Sql.ShouldContain("ORDER BY m.Sid1 DESC, m.T1 ASC, m.Sid1 ASC");
+        // The trailing tiebreak's Sid1 term is suppressed here: m.Sid1 is already LastUpdated's own
+        // sort-key value expression, so repeating it would name the same column twice in one ORDER BY
+        // list, which SQL Server rejects with Msg 145 -- see SqlBuilder.EmitOrderBy.
+        emitted.Sql.ShouldContain("ORDER BY m.Sid1 DESC, m.T1 ASC");
+    }
+
+    [Fact]
+    public void GivenALastUpdatedOnlySort_WhenEmitted_ThenTheOrderByNamesTheSurrogateIdColumnExactlyOnce()
+    {
+        // Arrange -- Patient?_sort=_lastUpdated. SortValueExpr(LastUpdated) is literally "m.Sid1", which
+        // is also the trailing keyset tiebreak column. Appending both produces "ORDER BY m.Sid1 ASC,
+        // m.T1 ASC, m.Sid1 ASC" -- rejected at execution time by SQL Server Msg 145, "A column has been
+        // specified more than once in the order by list." Only executing the SQL surfaces this, so it is
+        // pinned here as a text-level invariant.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        var orderBy = emitted.Sql[emitted.Sql.LastIndexOf("ORDER BY", StringComparison.Ordinal)..];
+        orderBy.Split("m.Sid1", StringSplitOptions.None).Length.ShouldBe(2);
+        orderBy.ShouldBe("ORDER BY m.Sid1 ASC, m.T1 ASC");
     }
 
     [Fact]

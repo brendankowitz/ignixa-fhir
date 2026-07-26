@@ -1,6 +1,7 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -103,12 +104,15 @@ public static class Lower
             };
         }
 
-        if (targetResourceType is null && sort.Count > 0)
+        // System-level search is deliberately excluded: the sort joins correlate on the match set's own
+        // m.T1 rather than on a literal ResourceTypeId, so they never needed a single target type. A
+        // wildcard compartment search is a different null-type case and keeps the original refusal.
+        if (targetResourceType is null && !options.SystemLevelSearch && sort.Count > 0)
         {
             throw new NotSupportedException(
-                $"_sort combined with {NoTargetTypeReason(options.SystemLevelSearch)} (no single target resource " +
-                "type) is not supported -- a SortSpec needs a single ResourceTypeId scope for its joins, the same " +
-                "reasoning already established for _include/_revinclude under a null scope.");
+                "_sort combined with a wildcard compartment search (no single target resource type) is not " +
+                "supported -- a SortSpec needs a single ResourceTypeId scope for its joins, the same reasoning " +
+                "already established for typed leaves and _include/_revinclude under a null scope.");
         }
 
         // Reject the self-contradictory combination up front, before doing the work of building
@@ -591,37 +595,69 @@ public static class Lower
 
         var keys = sort.Select(s => BuildSortKey(s, symbols)).ToList();
 
-        if (phase == SortPhase.MissingPrimary && keys[0].Kind == SortKeyKind.LastUpdated)
+        if (phase == SortPhase.MissingPrimary && keys[0].Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceId)
         {
             throw new NotSupportedException(
-                "_lastUpdated is a resource-column sort key derived directly from ResourceSurrogateId -- " +
-                "it is never \"missing,\" so there is no MissingPrimary segment for it. Only a search-" +
-                "parameter-table primary key (String or Date) has a MissingPrimary phase.");
+                "_lastUpdated and _id are resource-column sort keys derived directly from ResourceSurrogateId " +
+                "and ResourceId -- both are non-nullable resource columns, so a value is never missing for " +
+                "either, and neither has a MissingPrimary segment. Only a search-parameter-table primary key " +
+                "(String, Date, or an aggregated leaf type) has a MissingPrimary phase.");
         }
 
         return new SortSpec(keys, phase);
     }
 
-    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated kind and resolving its id (none for _lastUpdated).</summary>
-    private static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
+    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated or _id).</summary>
+    internal static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
         if (sortExpression.Parameter.Code == "_lastUpdated")
         {
             return new SortKey(null, SortKeyKind.LastUpdated, sortExpression.SortOrder);
         }
 
-        var kind = sortExpression.Parameter.Type switch
+        if (sortExpression.Parameter.Code == "_id")
         {
-            SearchParamType.String => SortKeyKind.String,
-            SearchParamType.Date => SortKeyKind.Date,
-            _ => throw new NotSupportedException(
-                $"Sorting by a '{sortExpression.Parameter.Type}' search parameter ('{sortExpression.Parameter.Code}') " +
-                "is not supported this phase -- only String, Date, and _lastUpdated sort keys are handled. " +
-                "Token/Number/Quantity/Reference/Uri sort is deferred."),
-        };
+            return new SortKey(null, SortKeyKind.ResourceId, sortExpression.SortOrder);
+        }
+
+        // _type is the third resource-column code, and the only one with no sort meaning. Resolve never
+        // collects a resource-column parameter, so without this it would reach the SearchParamId lookup
+        // below and surface as a KeyNotFoundException blaming Resolve for skipping a node kind.
+        if (ResourceColumnLoweringRule.IsResourceColumnCode(sortExpression.Parameter.Code))
+        {
+            throw new NotSupportedException(
+                $"Sorting by '{sortExpression.Parameter.Code}' is not supported -- it names a resource type, " +
+                "not a value with an ordering. _lastUpdated and _id are the only sortable resource columns.");
+        }
 
         var searchParamId = symbols.SearchParamId(sortExpression.Parameter);
-        return new SortKey(searchParamId, kind, sortExpression.SortOrder);
+
+        if (sortExpression.Parameter.Type == SearchParamType.String)
+        {
+            return new SortKey(searchParamId, SortKeyKind.String, sortExpression.SortOrder);
+        }
+
+        if (sortExpression.Parameter.Type == SearchParamType.Date)
+        {
+            return new SortKey(searchParamId, SortKeyKind.Date, sortExpression.SortOrder);
+        }
+
+        var (tableName, columnName) = sortExpression.Parameter.Type switch
+        {
+            SearchParamType.Token => ("TokenSearchParam", "Code"),
+            SearchParamType.Number => ("NumberSearchParam", "LowValue"),
+            SearchParamType.Quantity => ("QuantitySearchParam", "LowValue"),
+            SearchParamType.Reference => ("ReferenceSearchParam", "ReferenceResourceId"),
+            SearchParamType.Uri => ("UriSearchParam", "Uri"),
+            _ => throw new NotSupportedException(
+                $"Sorting by a '{sortExpression.Parameter.Type}' search parameter ('{sortExpression.Parameter.Code}') " +
+                "is not supported -- String, Date, _lastUpdated, Token, Number, Quantity, Reference, and Uri " +
+                "sort keys are handled; Composite has no single scalar column to sort by."),
+        };
+
+        var table = SqlCatalog.Default.Table(tableName);
+        var column = table.Column(columnName);
+        return new SortKey(searchParamId, SortKeyKind.Aggregated, sortExpression.SortOrder, table, column);
     }
 
     /// <summary>Resolves an include's direction and its seed/output resource-type ids into a <see cref="ResolvedInclude"/>.</summary>

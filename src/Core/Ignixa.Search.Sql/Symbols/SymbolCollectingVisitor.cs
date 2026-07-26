@@ -225,8 +225,8 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     /// <summary>
     /// Records a parameter for resolution, skipping the resource-column codes. Those target dbo.Resource's
     /// own columns and never reach a SearchParamId lookup -- Lower extracts them into the outer predicate,
-    /// BuildSortKey resolves _lastUpdated straight to its own sort kind and rejects _id/_type outright, and
-    /// the dispatchers reject them too. Collecting them
+    /// BuildSortKey resolves _lastUpdated and _id straight to their own sort kinds and rejects _type
+    /// outright, and the dispatchers reject them too. Collecting them
     /// would make a resolver with no row for _id report the query unresolvable when it compiles fine.
     /// </summary>
     private void AddParameter(SearchParameterInfo parameter)

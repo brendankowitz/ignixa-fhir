@@ -1638,7 +1638,41 @@ public class EndToEndCompilationTests
 
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain($"SELECT m.T1, m.Sid1, m.Sid1 AS SortValue0 FROM cte{plan.Match.Index} m");
-        emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY m.Sid1 ASC, m.T1 ASC");
+    }
+
+    [Fact]
+    public async Task GivenAStatusPredicateWithNoResourceTypeSortedByName_WhenCompiledEndToEnd_ThenSortComposesNormallyThroughTheFullPipeline()
+    {
+        // Arrange -- GET /?status=final&_sort=name (system-level search composed with _sort). The sort
+        // machinery never needed a single target type: its join correlates on m.T1, so the null-type
+        // sort guard applies to wildcard compartment search only.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 77;
+
+        var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
+
+        // Act
+        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = Lower.Run(
+            predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: sort, sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, Top = 10 }).Plan;
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- typeless ParamSource root ("*" is this branch's rendering of a cross-type scope) plus
+        // a working sort join, all the way to real SQL.
+        plan.Explain().ShouldBe(
+            "root = TokenSearchParam[*,202]  Code = @p0 top 10\n" +
+            "sort = SortSpec([String:77 ASC], Valued)");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
+        emitted.Sql.ShouldContain("sk0.IsMin = 1");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
     }
 
     [Fact]
