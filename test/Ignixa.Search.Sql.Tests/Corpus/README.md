@@ -7,8 +7,15 @@ it, captured during a TestScript conformance run. The suite compiles each URL wi
 The point is **triage, not parity**. The shipping engine is a reference, not an oracle: a divergence
 is a question — a feature the compiler lacks, a table read the compiler avoids, or a filter the
 shipping engine applies for a reason worth understanding — and some divergences are wins we should
-keep. Only two things are asserted: every captured legacy query still parses, and no fewer queries
-compile than `DifferentialBaseline.CompiledQueries`.
+keep.
+
+Six things are asserted: every captured legacy query still parses, no fewer queries compile than
+`DifferentialBaseline.CompiledQueries`, and the verdict distribution stays within the four one-sided
+guards in `DivergenceBaseline` (`Match >= 75`, `CompilerDoesLess <= 37`, `CompilerDoesMore <= 14`,
+`Divergent <= 59`). The compile count alone was saturated — all 185 compiled before the guards
+existed — so it could not detect a regression that kept a query compiling while changing what it
+asked the database for. Note the four counts sum to exactly 185, which leaves the feasible region a
+single point: any one query moving between verdicts fails at least two of the guards.
 
 ## Running it
 

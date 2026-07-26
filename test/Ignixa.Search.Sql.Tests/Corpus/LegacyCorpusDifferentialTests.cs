@@ -110,6 +110,34 @@ public class LegacyCorpusDifferentialTests
         doesMore.ShouldBeLessThanOrEqualTo(DivergenceBaseline.QueriesApplyingAnExtraFilter);
     }
 
+    [Fact]
+    public async Task GivenTheVerdictBaselines_WhenSummed_ThenTheyAccountForEveryCompiledQuery()
+    {
+        // The four guards above are individually one-sided, which on its own permits slack: raise a
+        // ceiling once and it stays raised, and a compensating swap (one query improving while another
+        // regresses) satisfies every one of them. They are only airtight because the four constants sum
+        // to exactly the corpus size -- the verdicts partition the compiled set, so an exact-sum
+        // baseline collapses the feasible region to a single point and any movement between verdicts
+        // breaks at least two guards.
+        //
+        // That tightness was an arithmetic coincidence nothing enforced. This asserts it, so a future
+        // maintainer who raises one ceiling in isolation is told they have just bought permanent slack
+        // rather than discovering it the next time a regression slips through.
+        var total = DivergenceBaseline.MatchingQueries
+            + DivergenceBaseline.QueriesOmittingAFilter
+            + DivergenceBaseline.DivergingQueries
+            + DivergenceBaseline.QueriesApplyingAnExtraFilter;
+
+        total.ShouldBe(
+            DifferentialBaseline.CompiledQueries,
+            "the four verdict baselines must sum to the compiled-query count; adjusting one without a " +
+            "compensating adjustment leaves the distribution guards permanently slack.");
+
+        // And the corpus really does compile in full, which is what makes the partition total knowable.
+        var results = await RunAsync();
+        results.Count(r => r.Compilation.Succeeded).ShouldBe(DifferentialBaseline.CompiledQueries);
+    }
+
     private static async Task<IReadOnlyList<DifferentialResult>> RunAsync()
     {
         var results = new List<DifferentialResult>();

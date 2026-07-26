@@ -80,9 +80,16 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         _logger.LogDebug("Streaming search for {ResourceType}", options.ResourceType ?? "<null - relying on expression>");
 
+        // $everything carries ResourceType = "Patient" so the SQL compiler knows which compartment root to
+        // expand, but the rows it returns span the whole compartment. It must take the multi-type path
+        // regardless: the single-type path below both constrains the base query to ResourceTypeId = Patient
+        // (intersecting the compartment expansion down to the patient row alone) and labels every row it
+        // does return with options.ResourceType, which would report an Observation as a Patient.
+        var spansMultipleResourceTypes = options.Expression is PatientEverythingExpression;
+
         // For wildcard/multi-type searches (ResourceType is null or empty), skip type lookup
         // and rely on the expression tree to filter results (e.g., Union with _type filters)
-        if (string.IsNullOrEmpty(options.ResourceType))
+        if (string.IsNullOrEmpty(options.ResourceType) || spansMultipleResourceTypes)
         {
             _logger.LogDebug("Null/empty ResourceType detected - building query without resource type constraint");
 
@@ -277,8 +284,12 @@ public class SqlEntityFrameworkSearchService : ISearchService
 
         _logger.LogDebug("Counting resources for {ResourceType}", options.ResourceType ?? "all resource types");
 
+        // See SearchStreamAsync: $everything's ResourceType names the compartment root, not the row type,
+        // so counting it down the single-type path would count the patient row alone.
+        var spansMultipleResourceTypes = options.Expression is PatientEverythingExpression;
+
         // For system-wide search (ResourceType is null), skip type lookup and query all resources
-        if (string.IsNullOrEmpty(options.ResourceType))
+        if (string.IsNullOrEmpty(options.ResourceType) || spansMultipleResourceTypes)
         {
             _logger.LogDebug("System-wide count query - no resource type filter");
 
