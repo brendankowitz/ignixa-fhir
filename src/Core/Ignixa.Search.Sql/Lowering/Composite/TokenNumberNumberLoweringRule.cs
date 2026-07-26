@@ -19,7 +19,7 @@ public static class TokenNumberNumberLoweringRule
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenNumberNumberCompositeSearchParam");
 

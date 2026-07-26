@@ -34,7 +34,7 @@ public static class LeafLoweringDispatcher
     /// it down the unattributed early-return in the trace's failure recorder — where a trace can say only
     /// that the search failed, not which parameter did it, which is the one thing needed to find the gap.
     /// </remarks>
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context, short resourceTypeId)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context, short? resourceTypeId)
     {
         try
         {
@@ -61,7 +61,7 @@ public static class LeafLoweringDispatcher
         }
     }
 
-    private static CteDefinition.ParamSource LowerCore(SearchParameterPredicateExpression predicate, LeafContext context, short resourceTypeId) => predicate.Value switch
+    private static CteDefinition.ParamSource LowerCore(SearchParameterPredicateExpression predicate, LeafContext context, short? resourceTypeId) => predicate.Value switch
     {
         StringSearchValue s => StringLoweringRule.Lower(predicate, s, context, resourceTypeId),
         TokenSearchValue t => TokenLoweringRule.Lower(predicate, t, context, resourceTypeId),

@@ -30,7 +30,7 @@ public static class StringLoweringRule
     private const string CaseInsensitiveCollation = "Latin1_General_100_CI_AI";
     private const string CaseSensitiveCollation = "Latin1_General_100_CS_AS";
 
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, StringSearchValue value, LeafContext context, short resourceTypeId)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, StringSearchValue value, LeafContext context, short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var inlineWidth = table.Column("Text").MaxLength

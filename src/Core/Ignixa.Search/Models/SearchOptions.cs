@@ -105,6 +105,57 @@ public class SearchOptions
     /// Used by the $includes operation to fetch additional included resources.
     /// </summary>
     public string IncludesContinuationToken { get; set; }
+
+    /// <summary>
+    /// Gets or sets which resource versions the search may return. Defaults to <see cref="ResourceVersionTypes.Latest"/>,
+    /// the only shape an ordinary search wants; _history, $export, and reindex widen it.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="AccessConstraints"/>, this property is forwarded into the SQL compiler:
+    /// <c>Ignixa.Search.Sql.Tracing.SearchCompiler.CompileFromOptionsAsync</c> maps it onto
+    /// <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c> by testing two bits --
+    /// <c>IncludeHistory = types.HasFlag(History)</c> and <c>IncludeDeleted = types.HasFlag(SoftDeleted)</c>.
+    /// <see cref="Latest"/> is deliberately not tested -- it is the implicit baseline every search already
+    /// returns, and exists so that "an ordinary search" has a named non-zero value rather than being spelled
+    /// <see cref="None"/>. So <c>Latest | History</c> and <c>History</c> map to the same visibility; the
+    /// distinction is which one states the intent. <see cref="None"/> is not a valid search input and the
+    /// compiler throws <see cref="NotSupportedException"/> rather than treating it as <see cref="Latest"/>.
+    /// </remarks>
+    public ResourceVersionTypes ResourceVersionTypes { get; set; } = ResourceVersionTypes.Latest;
+
+    /// <summary>
+    /// Restrictions on which resources the caller may see, at most one per resource type. Empty means
+    /// unrestricted. Enforced structurally by the compiler, not by rewriting the search expression.
+    /// </summary>
+    public IReadOnlyList<AccessConstraint> AccessConstraints { get; set; } = Array.Empty<AccessConstraint>();
+}
+
+/// <summary>
+/// Which versions of a resource a search may return. A flags enum because _history returns latest and
+/// history together, and $export may additionally need soft-deleted rows.
+/// </summary>
+/// <remarks>
+/// A SQL data layer maps this onto <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c> by testing two bits:
+/// <c>IncludeHistory = (types &amp; History) != 0</c> and <c>IncludeDeleted = (types &amp; SoftDeleted) != 0</c>.
+/// <see cref="Latest"/> is deliberately not tested — it is the implicit baseline every search already
+/// returns, and exists so that "an ordinary search" has a named non-zero value rather than being spelled
+/// <see cref="None"/>. So <c>Latest | History</c> and <c>History</c> map to the same visibility; the
+/// distinction is which one states the intent.
+/// </remarks>
+[Flags]
+public enum ResourceVersionTypes
+{
+    /// <summary>No version selected. Not a valid search input; present so the default is explicit.</summary>
+    None = 0,
+
+    /// <summary>The current version of each resource. The implicit baseline, not a relaxation.</summary>
+    Latest = 1,
+
+    /// <summary>Superseded versions.</summary>
+    History = 2,
+
+    /// <summary>Soft-deleted rows.</summary>
+    SoftDeleted = 4,
 }
 
 /// <summary>

@@ -20,17 +20,21 @@ public static class CompartmentLoweringRule
         LeafContext context)
     {
         var table = SqlCatalog.Default.Table("ReferenceSearchParam");
-        Predicate predicate = context.UnmatchableResourceType(compartmentType) is { } unmatchable
-            ? unmatchable
-            : new Predicate.And(
-                new Predicate.Equal(
-                    new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"),
-                    context.Parameter(context.ResourceTypeId(compartmentType))),
-                new Predicate.Equal(
-                    new SqlColumnRef(table.TableName, "ReferenceResourceId"),
-                    context.Parameter(compartmentId)));
-
         var resourceTypeIds = resourceTypes.Select(context.ResourceTypeId).ToList();
+
+        if (context.UnmatchableResourceType(compartmentType) is { } unmatchable)
+        {
+            return new CteDefinition.CompartmentSource(resourceTypeIds, context.SearchParamId(parameter), unmatchable);
+        }
+
+        Predicate predicate = new Predicate.And(
+            new Predicate.Equal(
+                new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"),
+                context.Parameter(context.ResourceTypeId(compartmentType))),
+            new Predicate.Equal(
+                new SqlColumnRef(table.TableName, "ReferenceResourceId"),
+                context.Parameter(compartmentId)));
+
         return new CteDefinition.CompartmentSource(resourceTypeIds, context.SearchParamId(parameter), predicate);
     }
 }

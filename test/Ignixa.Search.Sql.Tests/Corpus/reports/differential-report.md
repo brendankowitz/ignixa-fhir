@@ -7,10 +7,10 @@
 | Verdict | Count |
 |---|---:|
 | NotCompiled | 0 |
-| Match | 69 |
-| CompilerDoesLess | 46 |
+| Match | 75 |
+| CompilerDoesLess | 37 |
 | CompilerDoesMore | 14 |
-| Divergent | 56 |
+| Divergent | 59 |
 
 ## Gaps -- queries the compiler cannot express
 
@@ -21,14 +21,13 @@ None.
 ### CompilerDoesLess: `/DocumentReference/$docref?patient=ignixa-docref-pat0`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x4)`
-- `filter col:ReferenceResourceTypeId is-null`
+- `filter ReferenceResourceTypeId = <v> (x2)`
 
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op distinct`
 - `legacy: op inner-join`
-- `legacy: op or (x4)`
+- `legacy: op or (x2)`
 - `legacy: op order-by`
 - `legacy: op top`
 
@@ -42,7 +41,7 @@ cte1 = <-cte0  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte0  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 ```
 
 </details>
@@ -50,13 +49,12 @@ cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> Searc
 ### CompilerDoesLess: `/DocumentReference/$docref?patient=ignixa-docref-pat0&type=http://loinc.org%7C55107-7`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x4)`
-- `filter col:ReferenceResourceTypeId is-null`
+- `filter ReferenceResourceTypeId = <v> (x2)`
 
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op exists`
-- `legacy: op or (x4)`
+- `legacy: op or (x2)`
 - `legacy: op order-by`
 - `legacy: op top`
 
@@ -71,7 +69,7 @@ cte2 = <-cte1  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
@@ -81,14 +79,13 @@ cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ### CompilerDoesLess: `/DocumentReference/$docref?patient=ignixa-docref-pat0&unknown=unknownvalue`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x4)`
-- `filter col:ReferenceResourceTypeId is-null`
+- `filter ReferenceResourceTypeId = <v> (x2)`
 
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op distinct`
 - `legacy: op inner-join`
-- `legacy: op or (x4)`
+- `legacy: op or (x2)`
 - `legacy: op order-by`
 - `legacy: op top`
 
@@ -102,7 +99,7 @@ cte1 = <-cte0  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte0  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 ```
 
 </details>
@@ -560,141 +557,6 @@ cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
 
 </details>
 
-### CompilerDoesLess: `/Patient/ignixa-evx-pat/$everything?_count=100&foo=bar`
-
-Only the shipping engine does:
-- `table ReferenceSearchParam (x2)`
-- `table Resource (x2)`
-- `filter IsDeleted = <v> (x2)`
-- `filter IsHistory = <v> (x2)`
-- `filter ResourceId = <v>`
-- `filter Row < <v> (x2)`
-- `filter SearchParamId = <v> (x2)`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x14)`
-- `legacy: op count-big (x2)`
-- `legacy: op distinct (x6)`
-- `legacy: op exists (x4)`
-- `legacy: op in (x2)`
-- `legacy: op inner-join (x3)`
-- `legacy: op not (x2)`
-- `legacy: op order-by`
-- `legacy: op row-number`
-- `legacy: op top (x5)`
-- `legacy: op union-all (x2)`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
-cte1 = <-cte0  [distinct,order-by,row-number,top]
-select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte1 = 
-cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
-cte3 = <-cte2  [count-big,distinct,top]
-cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
-cte5 = <-cte4  [count-big,distinct,top]
-cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
-
-compiler:
-select0 = <-cte0  [order-by]
-cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient/ignixa-evx-pat/$everything?_since=3000`
-
-Only the shipping engine does:
-- `table ReferenceSearchParam (x2)`
-- `table Resource (x2)`
-- `filter IsDeleted = <v> (x2)`
-- `filter IsHistory = <v> (x2)`
-- `filter ResourceId = <v>`
-- `filter Row < <v> (x2)`
-- `filter SearchParamId = <v> (x2)`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x14)`
-- `legacy: op count-big (x2)`
-- `legacy: op distinct (x6)`
-- `legacy: op exists (x4)`
-- `legacy: op in (x2)`
-- `legacy: op inner-join (x3)`
-- `legacy: op not (x2)`
-- `legacy: op order-by`
-- `legacy: op row-number`
-- `legacy: op top (x5)`
-- `legacy: op union-all (x2)`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
-cte1 = <-cte0  [distinct,order-by,row-number,top]
-select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte1 = 
-cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
-cte3 = <-cte2  [count-big,distinct,top]
-cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
-cte5 = <-cte4  [count-big,distinct,top]
-cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
-
-compiler:
-select0 = <-cte0  [order-by]
-cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient/ignixa-evx-pat/$everything?_type=foo`
-
-Only the shipping engine does:
-- `table ReferenceSearchParam (x2)`
-- `table Resource (x2)`
-- `filter IsDeleted = <v> (x2)`
-- `filter IsHistory = <v> (x2)`
-- `filter ResourceId = <v>`
-- `filter Row < <v> (x2)`
-- `filter SearchParamId = <v> (x2)`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x14)`
-- `legacy: op count-big (x2)`
-- `legacy: op distinct (x6)`
-- `legacy: op exists (x4)`
-- `legacy: op in (x2)`
-- `legacy: op inner-join (x3)`
-- `legacy: op not (x2)`
-- `legacy: op order-by`
-- `legacy: op row-number`
-- `legacy: op top (x5)`
-- `legacy: op union-all (x2)`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
-cte1 = <-cte0  [distinct,order-by,row-number,top]
-select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte1 = 
-cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
-cte3 = <-cte2  [count-big,distinct,top]
-cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
-cte5 = <-cte4  [count-big,distinct,top]
-cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
-
-compiler:
-select0 = <-cte0  [order-by]
-cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
-```
-
-</details>
-
 ### CompilerDoesLess: `/Patient?_expiryDate=gt2025&identifier=http://ignixa.io/testscript/suite/ms-param%7C&_count=100`
 
 Only the shipping engine does:
@@ -856,184 +718,6 @@ compiler:
 select0 = <-cte2  [order-by]
 cte0 = Resource+sub:ReferenceSearchParam  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p  [correlate,correlate,exists,not]
 cte1 = TokenSearchParam  ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?general-practitioner=ignixa-impsrch-ref-pract-untyped&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x3)`
-- `filter col:ReferenceResourceTypeId is-null`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op or (x3)`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [or,or,or]
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?general-practitioner=ignixa-ref-p2&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x3)`
-- `filter col:ReferenceResourceTypeId is-null`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op or (x3)`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [or,or,or]
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=ignixa-impsrch-ref-org-untyped&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-impsrch-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=ignixa-ref-ijk&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
-cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
-```
-
-</details>
-
-### CompilerDoesLess: `/Patient?organization=organization/ignixa-ref-org-123&_tag=http://ignixa.io/testscript/suite/test%7Cignixa-ref-suite&_count=100`
-
-Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v>`
-
-Operator differences (encoding, not semantics):
-- `legacy: op correlate (x2)`
-- `legacy: op exists`
-- `legacy: op order-by`
-- `legacy: op top`
-
-<details><summary>shapes</summary>
-
-```
-legacy:
-select0 = Resource  <-cte2  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>
-cte1 = TokenSearchParam  <-cte0  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [correlate,correlate,exists]
-cte2 = <-cte1  [distinct,order-by,top]
-
-compiler:
-select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = TokenSearchParam  Code = @p ResourceTypeId = <n> SearchParamId = <n> SystemId = @p  [distinct]
 cte2 = <-cte0,cte1  [correlate,correlate,inner-join]
 ```
 
@@ -2139,8 +1823,7 @@ inc0lim = <-inc0  [count-big,order-by,top]
 ### Divergent: `/DocumentReference/$docref?patient=ignixa-docref-pat0,ignixa-docref-pat1`
 
 Only the shipping engine does:
-- `filter ReferenceResourceTypeId = <v> (x8)`
-- `filter col:ReferenceResourceTypeId is-null (x2)`
+- `filter ReferenceResourceTypeId = <v> (x4)`
 
 Only the compiler does:
 - `table ReferenceSearchParam`
@@ -2150,7 +1833,7 @@ Only the compiler does:
 Operator differences (encoding, not semantics):
 - `legacy: op correlate (x2)`
 - `legacy: op inner-join`
-- `legacy: op or (x9)`
+- `legacy: op or (x5)`
 - `legacy: op order-by`
 - `legacy: op top`
 - `compiler: op union`
@@ -2165,8 +1848,8 @@ cte1 = <-cte0  [distinct,order-by,top]
 
 compiler:
 select0 = <-cte2  [order-by]
-cte0 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
-cte1 = ReferenceSearchParam  ReferenceResourceId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte0 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
+cte1 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n> col:ReferenceResourceTypeId is-null  [distinct,or,or]
 cte2 = <-cte0,cte1  [union]
 ```
 
@@ -3240,6 +2923,318 @@ cte4 = <-cte3  [distinct,order-by,top]
 compiler:
 select0 = <-cte0  [order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+```
+
+</details>
+
+### Divergent: `/Patient/ignixa-evx-pat/$everything?_count=100&foo=bar`
+
+Only the shipping engine does:
+- `table Resource`
+- `filter IsDeleted = <v>`
+- `filter IsHistory = <v>`
+- `filter Row < <v> (x2)`
+
+Only the compiler does:
+- `table ReferenceSearchParam (x74)`
+- `filter ReferenceResourceId = <v> (x75)`
+- `filter ReferenceResourceTypeId = <v> (x79)`
+- `filter ResourceTypeId = <v> (x93)`
+- `filter SearchParamId = <v> (x73)`
+- `filter col:BaseUri is-null`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x10)`
+- `legacy: op count-big (x2)`
+- `legacy: op exists (x4)`
+- `legacy: op in (x2)`
+- `legacy: op inner-join`
+- `legacy: op not (x2)`
+- `legacy: op order-by`
+- `legacy: op row-number`
+- `legacy: op top (x5)`
+- `legacy: op union-all (x2)`
+- `compiler: op distinct (x70)`
+- `compiler: op or (x21)`
+- `compiler: op union (x76)`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
+cte1 = <-cte0  [distinct,order-by,row-number,top]
+select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte1 = 
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte3 = <-cte2  [count-big,distinct,top]
+cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte5 = <-cte4  [count-big,distinct,top]
+cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+
+compiler:
+select0 = <-cte78  [order-by]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = @p
+cte1 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte2 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte3 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>  [distinct,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or]
+cte4 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte5 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte6 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte7 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte8 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte9 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte10 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte11 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte12 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte13 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte14 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte15 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte16 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte17 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte18 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte19 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte20 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte21 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte22 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte23 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte24 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte25 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte26 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte27 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte28 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte29 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte30 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte31 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte32 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte33 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte34 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte35 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte36 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte37 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte38 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte39 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte40 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte41 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte42 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte43 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte44 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte45 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte46 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte47 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte48 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte49 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte50 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte51 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte52 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte53 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte54 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte55 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte56 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte57 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte58 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte59 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte60 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte61 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte62 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte63 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte64 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte65 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte66 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte67 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte68 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte69 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte70 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte71 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte72 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte73 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte74 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte75 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte76 = <-cte1,cte10,cte11,cte12,cte13,cte14,cte15,cte16,cte17,cte18,cte19,cte2,cte20,cte21,cte22,cte23,cte24,cte25,cte26,cte27,cte28,cte29,cte3,cte30,cte31,cte32,cte33,cte34,cte35,cte36,cte37,cte38,cte39,cte4,cte40,cte41,cte42,cte43,cte44,cte45,cte46,cte47,cte48,cte49,cte5,cte50,cte51,cte52,cte53,cte54,cte55,cte56,cte57,cte58,cte59,cte6,cte60,cte61,cte62,cte63,cte64,cte65,cte66,cte67,cte68,cte69,cte7,cte70,cte71,cte72,cte73,cte74,cte75,cte8,cte9  [union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union]
+cte77 = ReferenceSearchParam+Resource  <-cte76  IsDeleted = <n> IsHistory = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,inner-join,inner-join,or,or,or]
+cte78 = <-cte0,cte76,cte77  [union,union]
+```
+
+</details>
+
+### Divergent: `/Patient/ignixa-evx-pat/$everything?_since=3000`
+
+Only the shipping engine does:
+- `table Resource`
+- `filter IsDeleted = <v>`
+- `filter IsHistory = <v>`
+- `filter Row < <v> (x2)`
+
+Only the compiler does:
+- `table ReferenceSearchParam (x74)`
+- `filter ReferenceResourceId = <v> (x75)`
+- `filter ReferenceResourceTypeId = <v> (x79)`
+- `filter ResourceTypeId = <v> (x93)`
+- `filter SearchParamId = <v> (x73)`
+- `filter col:BaseUri is-null`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x10)`
+- `legacy: op count-big (x2)`
+- `legacy: op exists (x4)`
+- `legacy: op in (x2)`
+- `legacy: op inner-join`
+- `legacy: op not (x2)`
+- `legacy: op order-by`
+- `legacy: op row-number`
+- `legacy: op top (x5)`
+- `legacy: op union-all (x2)`
+- `compiler: op distinct (x70)`
+- `compiler: op or (x21)`
+- `compiler: op union (x76)`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
+cte1 = <-cte0  [distinct,order-by,row-number,top]
+select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte1 = 
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte3 = <-cte2  [count-big,distinct,top]
+cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte5 = <-cte4  [count-big,distinct,top]
+cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+
+compiler:
+select0 = <-cte78  [order-by]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = @p
+cte1 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte2 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte3 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> ResourceTypeId = <n> SearchParamId = <n>  [distinct,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or,or]
+cte4 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte5 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte6 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte7 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte8 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte9 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte10 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte11 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte12 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte13 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte14 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte15 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte16 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte17 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte18 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte19 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte20 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte21 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte22 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte23 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte24 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte25 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte26 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte27 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte28 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte29 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte30 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte31 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte32 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte33 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte34 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte35 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte36 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte37 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte38 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte39 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte40 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte41 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte42 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte43 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte44 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte45 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte46 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte47 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte48 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte49 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte50 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte51 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte52 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte53 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte54 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte55 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte56 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte57 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte58 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte59 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte60 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte61 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte62 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte63 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte64 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte65 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte66 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte67 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte68 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte69 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte70 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte71 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte72 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte73 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte74 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte75 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
+cte76 = <-cte1,cte10,cte11,cte12,cte13,cte14,cte15,cte16,cte17,cte18,cte19,cte2,cte20,cte21,cte22,cte23,cte24,cte25,cte26,cte27,cte28,cte29,cte3,cte30,cte31,cte32,cte33,cte34,cte35,cte36,cte37,cte38,cte39,cte4,cte40,cte41,cte42,cte43,cte44,cte45,cte46,cte47,cte48,cte49,cte5,cte50,cte51,cte52,cte53,cte54,cte55,cte56,cte57,cte58,cte59,cte6,cte60,cte61,cte62,cte63,cte64,cte65,cte66,cte67,cte68,cte69,cte7,cte70,cte71,cte72,cte73,cte74,cte75,cte8,cte9  [union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union]
+cte77 = ReferenceSearchParam+Resource  <-cte76  IsDeleted = <n> IsHistory = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,inner-join,inner-join,or,or,or]
+cte78 = <-cte0,cte76,cte77  [union,union]
+```
+
+</details>
+
+### Divergent: `/Patient/ignixa-evx-pat/$everything?_type=foo`
+
+Only the shipping engine does:
+- `table ReferenceSearchParam`
+- `filter Row < <v> (x2)`
+- `filter SearchParamId = <v> (x2)`
+
+Only the compiler does:
+- `filter <v> = <v>`
+- `filter ReferenceResourceTypeId = <v> (x4)`
+- `filter ResourceTypeId = <v>`
+- `filter col:BaseUri is-null`
+
+Operator differences (encoding, not semantics):
+- `legacy: op correlate (x10)`
+- `legacy: op count-big (x2)`
+- `legacy: op distinct (x5)`
+- `legacy: op exists (x4)`
+- `legacy: op in (x2)`
+- `legacy: op inner-join`
+- `legacy: op not (x2)`
+- `legacy: op order-by`
+- `legacy: op row-number`
+- `legacy: op top (x5)`
+- `legacy: op union-all (x2)`
+- `compiler: op or (x3)`
+- `compiler: op union (x2)`
+
+<details><summary>shapes</summary>
+
+```
+legacy:
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = <n>
+cte1 = <-cte0  [distinct,order-by,row-number,top]
+select0 = Resource  <-cte6  IsDeleted = <n> IsHistory = <n>  [correlate,correlate,distinct,inner-join,order-by]
+cte1 = 
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte3 = <-cte2  [count-big,distinct,top]
+cte4 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> SearchParamId = <n> sub:Row < @p  [correlate,correlate,correlate,correlate,distinct,exists,in,inner-join,top]
+cte5 = <-cte4  [count-big,distinct,top]
+cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
+
+compiler:
+select0 = <-cte3  [order-by]
+cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = @p
+cte1 = Resource  <n> = <n> IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,inner-join,inner-join,or,or,or]
+cte3 = <-cte0,cte1,cte2  [union,union]
 ```
 
 </details>

@@ -296,7 +296,7 @@ public class PatientEverythingHandlerTests
     }
 
     [Fact]
-    public async Task GivenRequest_WhenHandling_ThenResourceTypeIsNull()
+    public async Task GivenRequest_WhenHandling_ThenResourceTypeIsThePatientAnchor()
     {
         // Arrange
         SetupDefaultMocks();
@@ -307,7 +307,7 @@ public class PatientEverythingHandlerTests
 
         // Assert
         result.ShouldNotBeNull();
-        result.SearchOptions.ResourceType.ShouldBeNull();
+        result.SearchOptions.ResourceType.ShouldBe("Patient");
     }
 
     [Fact]

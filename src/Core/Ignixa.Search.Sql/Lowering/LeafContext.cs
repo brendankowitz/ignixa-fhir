@@ -26,6 +26,17 @@ public sealed class LeafContext
     public short ResourceTypeId(string resourceType) => _symbols.ResourceTypeId(resourceType);
 
     /// <summary>
+    /// Attempts to look up a resource type's id without throwing. Maps a type the resolver could not
+    /// find to <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1); returns that same sentinel for
+    /// a type that was never collected at all, so multi-type callers can safely keep the entry rather
+    /// than dropping it (dropping would collapse an all-unknown list to empty, widening to all types).
+    /// </summary>
+    public short ResourceTypeIdOrSentinel(string resourceType)
+        => _symbols.TryGetResourceTypeId(resourceType, out var id)
+            ? id
+            : SymbolTable.UnmatchableResourceTypeId;
+
+    /// <summary>
     /// The unsatisfiable predicate for a resource type the resolver could not find, or
     /// <see langword="null"/> when it resolved normally.
     /// </summary>
@@ -52,6 +63,44 @@ public sealed class LeafContext
 
     /// <inheritdoc cref="SymbolTable.QuantityCodeId"/>
     public int? QuantityCodeId(string code) => _symbols.QuantityCodeId(code);
+
+    /// <summary>
+    /// The ResourceTypeIds a reference parameter declares it may point at. Empty when the parameter
+    /// declares no targets, which leaves the reference unconstrained by type.
+    /// </summary>
+    /// <remarks>
+    /// Every declared target maps to an id, never to nothing: a resolver miss already carries
+    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) from <c>Resolve.RunAsync</c>, and a type
+    /// that was never collected at all goes through <see cref="ResourceTypeIdOrSentinel"/> to that same
+    /// sentinel. The sentinel contributes an OR arm that matches nothing — no catalog row carries id -1 —
+    /// but it does not collapse the predicate. Dropping instead would be more dangerous: if every declared
+    /// target were dropped, the resulting empty list falls through to the unconstrained id-only predicate,
+    /// matching a reference to any resource type carrying that id. That is exactly the false-positive
+    /// behaviour the type-narrowing pass exists to prevent, and it must not depend on the collector and
+    /// this consumer staying in agreement about which types get collected.
+    ///
+    /// In the mixed case (<c>[Organization, UnknownType]</c>) the -1 arm contributes nothing to the
+    /// OR and the resolvable arms still work correctly. This mirrors the convention established in
+    /// <see cref="StructuralContext.LowerNotReferenced"/>, where a source type the resolver could
+    /// not find also maps to the unmatchable sentinel.
+    /// </remarks>
+    public IReadOnlyList<short> DeclaredTargetResourceTypeIds(SearchParameterInfo parameter)
+    {
+        ArgumentNullException.ThrowIfNull(parameter);
+
+        if (parameter.TargetResourceTypes is not { Count: > 0 } targets)
+        {
+            return [];
+        }
+
+        var ids = new List<short>(targets.Count);
+        foreach (var target in targets)
+        {
+            ids.Add(ResourceTypeIdOrSentinel(target));
+        }
+
+        return ids;
+    }
 
     public SqlParameterRef Parameter(object value) => new(value);
 }

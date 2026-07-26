@@ -24,8 +24,8 @@ namespace Ignixa.Search.Sql.Symbols;
 /// <c>targetResourceType</c> is the query's own resource type (e.g. "Patient" for a
 /// Patient?... search); every ordinary leaf and composite predicate needs it to scope its ParamSource,
 /// because a SearchParamId is assigned per parameter-definition URL, not per resource type. It is
-/// nullable for the wildcard-compartment case, where only the types collected from the tree, includes,
-/// sort, and compartments are resolved. Compartment entries are expanded into
+/// nullable for the wildcard-compartment and system-level cases, where only the types collected from the
+/// tree, includes, sort, compartments, and <c>additionalResourceTypes</c> are resolved. Compartment entries are expanded into
 /// <see cref="SymbolTable.CompartmentMembership"/> via the two optional definition managers, which are
 /// required only when a compartment search is actually present.
 /// </para>
@@ -41,7 +41,9 @@ public static class Resolve
         string? targetResourceType,
         CancellationToken cancellationToken,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
-        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null)
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
+        IReadOnlyList<string>? additionalResourceTypes = null,
+        IReadOnlyList<AccessConstraint>? accessConstraints = null)
     {
         ArgumentNullException.ThrowIfNull(includes);
         ArgumentNullException.ThrowIfNull(revIncludes);
@@ -67,6 +69,15 @@ public static class Resolve
         foreach (var sortExpression in sort)
         {
             collector.CollectSort(sortExpression);
+        }
+
+        // Access constraints are lowered as ordinary expressions by AccessConstraintApplier, so their
+        // symbols have to be resolved here like any other. Omitting them made every constraint whose
+        // predicate named a parameter the user's own query did not also name throw KeyNotFoundException
+        // out of Lower -- an authorization control that worked only by coincidence.
+        foreach (var constraint in accessConstraints ?? [])
+        {
+            collector.CollectConstraint(constraint);
         }
 
         var compartmentMembership = ResolveCompartmentMembership(collector, compartmentDefinitionManager, searchParameterDefinitionManager);
@@ -95,6 +106,16 @@ public static class Resolve
         if (targetResourceType is not null)
         {
             resourceTypes.Add(targetResourceType);
+        }
+
+        // A system-level caller that already resolved _type before compiling passes its type list here
+        // rather than in the expression, so nothing in the tree collects those names. Without this they
+        // resolve to the unmatchable sentinel and the base set narrows to IN (-1, ...) -- a query that
+        // compiles, emits, and matches nothing. The names still go through the resolver like any other,
+        // so a genuinely unknown type keeps the sentinel it deserves.
+        if (additionalResourceTypes is not null)
+        {
+            resourceTypes.UnionWith(additionalResourceTypes);
         }
 
         // A resource type the resolver cannot find is recorded as unmatchable rather than dropped: dropping

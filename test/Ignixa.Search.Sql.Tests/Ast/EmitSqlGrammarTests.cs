@@ -1,7 +1,14 @@
+using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing.SearchValues;
+using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Builders;
+using Ignixa.Search.Sql.Lowering;
+using Ignixa.Search.Sql.Symbols;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
+using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
 
 namespace Ignixa.Search.Sql.Tests.Ast;
 
@@ -24,6 +31,30 @@ public class EmitSqlGrammarTests
         yield return ["contains (LIKE)", LikePlan()];
         yield return ["prefix of parameter", PrefixOfParameterPlan()];
         yield return ["dual-column contains (IsNull guard + overflow)", DualColumnContainsPlan()];
+        yield return ["projection alone", ProjectionAlonePlan()];
+        yield return ["projection + outer predicate", ProjectionWithOuterPredicatePlan()];
+        yield return ["projection + includes", ProjectionWithIncludesPlan()];
+        yield return ["projection + sort", ProjectionWithSortPlan()];
+        yield return ["projection + paging", ProjectionWithPagingPlan()];
+        yield return ["surrogate range alone", SurrogateRangeAlonePlan()];
+        yield return ["surrogate range + outer predicate", SurrogateRangeWithOuterPredicatePlan()];
+        yield return ["surrogate range + sort + paging", SurrogateRangeWithSortAndPagingPlan()];
+        yield return ["surrogate range + includes", SurrogateRangeWithIncludesPlan()];
+        yield return ["search parameter hash alone", SearchParameterHashAlonePlan()];
+        yield return ["search parameter hash + projection", SearchParameterHashWithProjectionPlan()];
+        yield return ["search parameter hash + outer predicate", SearchParameterHashWithOuterPredicatePlan()];
+        yield return ["search parameter hash + surrogate range", SearchParameterHashWithSurrogateRangePlan()];
+        yield return ["search parameter hash + projection + outer predicate + surrogate range", SearchParameterHashAllFourPlan()];
+        yield return ["search parameter hash + includes", SearchParameterHashWithIncludesPlan()];
+        yield return ["search parameter hash + count only", SearchParameterHashCountOnlyPlan()];
+        yield return ["includes-only, single stage", IncludesOnlyPlan()];
+        yield return ["includes-only, two stages", IncludesOnlyTwoStagesPlan()];
+        yield return ["includes-only, :iterate", IncludesOnlyWithIteratePlan()];
+        yield return ["includes-only, with projection", IncludesOnlyWithProjectionPlan()];
+        yield return ["patient $everything alone", EverythingAlonePlan()];
+        yield return ["patient $everything with _since", EverythingWithSincePlan()];
+        yield return ["patient $everything with _type", EverythingWithTypePlan()];
+        yield return ["patient $everything with projection", EverythingWithProjectionPlan()];
     }
 
     [Theory]
@@ -151,5 +182,655 @@ public class EmitSqlGrammarTests
         var fragment = SqlGrammar.Parse(emitted.Sql);
 
         SqlGrammar.Count<LikePredicate>(fragment).ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAResourceSourcePlanWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAForwardChainJoinWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(
+                    SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202,
+                    new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
+                new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
+            ],
+            new CteRef(1),
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenANotReferencedSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [new CteDefinition.NotReferencedSource(103, 96, 969)],
+            new CteRef(0),
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAnIncludeStageWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            Visibility: visibility);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    private static ProjectionSpec StandardProjection() => new(["ResourceId", "Version", "RawResource", "IsDeleted"]);
+
+    /// <summary>
+    /// A symbol table whose Patient compartment reaches Observation and Encounter through the "subject"
+    /// reference parameter — the shape Resolve produces from an ICompartmentDefinitionManager — so a
+    /// $everything search lowers to a real compartment traversal rather than a bare Patient scan. The four
+    /// referenced resource types are registered too, matching what SymbolCollectingVisitor collects for an
+    /// $everything whose referenced-resource expansion is on (the default).
+    /// </summary>
+    private static SymbolTable EverythingSymbols(IReadOnlyList<string>? memberTypes = null)
+    {
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var membership = new Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>
+        {
+            ["Patient"] = new List<(SearchParameterInfo, IReadOnlyList<string>)> { (subjectParam, memberTypes ?? ["Observation", "Encounter"]) },
+        };
+
+        return new SymbolTable(
+            new Dictionary<string, short> { [subjectParam.Url!.ToString()] = 77 },
+            new Dictionary<string, short>
+            {
+                ["Patient"] = 103,
+                ["Observation"] = 104,
+                ["Encounter"] = 105,
+                ["Practitioner"] = 201,
+                ["Organization"] = 202,
+                ["Location"] = 203,
+                ["Medication"] = 204,
+            },
+            compartmentMembership: membership);
+    }
+
+    private static QueryPlan EverythingPlan(PatientEverythingExpression expression)
+        => Lower.Run(expression, EverythingSymbols(), "Patient", includes: [], revIncludes: [], includeLimit: 100, sort: [], SortPhase.Valued, page: null).Plan;
+
+    private static QueryPlan EverythingAlonePlan() => EverythingPlan(new PatientEverythingExpression("pat-1"));
+
+    private static QueryPlan EverythingWithSincePlan() => EverythingPlan(new PatientEverythingExpression("pat-1", sinceDate: new DateTimeOffset(2021, 6, 1, 0, 0, 0, TimeSpan.Zero)));
+
+    private static QueryPlan EverythingWithTypePlan() => EverythingPlan(new PatientEverythingExpression("pat-1", filteredResourceTypes: new HashSet<string> { "Encounter" }));
+
+    private static QueryPlan EverythingWithProjectionPlan() => EverythingAlonePlan() with { Projection = StandardProjection() };
+
+    private static QueryPlan ProjectionAlonePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithOuterPredicatePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithIncludesPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithSortPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Projection: StandardProjection());
+    }
+
+    private static QueryPlan ProjectionWithPagingPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            Projection: StandardProjection());
+    }
+
+    private static SurrogateIdRange StandardRange()
+        => new(new SqlParameterRef(5000L), new SqlParameterRef(6000L));
+
+    private static QueryPlan SurrogateRangeAlonePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan SurrogateRangeWithOuterPredicatePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan SurrogateRangeWithSortAndPagingPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page,
+            SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan SurrogateRangeWithIncludesPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SurrogateRange: StandardRange());
+    }
+
+    [Fact]
+    public void GivenAProjectionColumnNameContainingAClosingBracket_WhenEmitted_ThenItIsDoubledAndTheSqlIsValid()
+    {
+        // Proves the bracket-escaping path: a name containing ']' must emit ']]' so the quoted identifier
+        // is well-formed and SQL Server's grammar accepts it.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Projection: new ProjectionSpec(["Raw]Resource"]));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("r.[Raw]]Resource]");
+        SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    private static SqlParameterRef StandardHash() => new("hash-abc-123");
+
+    private static QueryPlan SearchParameterHashAlonePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithProjectionPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Projection: StandardProjection(),
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithOuterPredicatePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithSurrogateRangePlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            SurrogateRange: StandardRange(),
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashAllFourPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            OuterPredicate: outer,
+            Projection: StandardProjection(),
+            SurrogateRange: StandardRange(),
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashWithIncludesPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage],
+            SearchParameterHash: StandardHash());
+    }
+
+    private static QueryPlan SearchParameterHashCountOnlyPlan()
+    {
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            CountOnly: true,
+            SearchParameterHash: StandardHash());
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithSeveralIds_WhenParsed_ThenItIsValidTSql()
+    {
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
+            new CteRef(0));
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithNoIds_WhenParsed_ThenItIsValidTSql()
+    {
+        // Empty list = system-wide scan; the emitter must produce no WHERE clause, not a dangling AND or
+        // an empty WHERE ().
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.AllTypes()],
+            new CteRef(0));
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithOneId_WhenParsed_ThenItIsValidTSql()
+    {
+        // Single-element list emits IN (x), which is valid T-SQL.
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103])],
+            new CteRef(0));
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenAMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        // Tests all four visibility flag combinations, exercising the WHERE-clause assembly for multi-type
+        // with visibility filters.
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
+            new CteRef(0),
+            Visibility: visibility);
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Theory]
+    [InlineData(false, false, "default (both filters)")]
+    [InlineData(true, false, "include history only")]
+    [InlineData(false, true, "include deleted only")]
+    [InlineData(true, true, "fully relaxed")]
+    public void GivenASystemWideMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
+        bool includeHistory, bool includeDeleted, string _)
+    {
+        // System-wide (AllTypes) with visibility: validates that the visibility clauses alone build a
+        // correct WHERE clause when there is no type filter.
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.AllTypes()],
+            new CteRef(0),
+            Visibility: visibility);
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    // Multi-type WHERE text for all four visibility combinations, verified against the expected output.
+    // These lock in that the clause-list emitter produces byte-identical output to the former
+    // concatenate-then-strip approach. Any future refactor that changes WHERE formatting will fail here.
+    [Theory]
+    [InlineData(false, false, "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0 AND IsDeleted = 0")]
+    [InlineData(true,  false, "    WHERE ResourceTypeId IN (103, 104) AND IsDeleted = 0")]
+    [InlineData(false, true,  "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0")]
+    [InlineData(true,  true,  "    WHERE ResourceTypeId IN (103, 104)")]
+    public void GivenAMultiTypeResourceSourceAcrossAllVisibilityCombinations_TheWhereClauseIsExact(
+        bool includeHistory, bool includeDeleted, string expectedWhereClause)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
+            new CteRef(0),
+            Visibility: visibility);
+
+        SqlBuilder.Run(plan).Sql.ShouldContain(expectedWhereClause);
+    }
+
+    // AllTypes (system-wide) WHERE text for all four visibility combinations.
+    [Theory]
+    [InlineData(false, false, "    WHERE IsHistory = 0 AND IsDeleted = 0")]
+    [InlineData(true,  false, "    WHERE IsDeleted = 0")]
+    [InlineData(false, true,  "    WHERE IsHistory = 0")]
+    [InlineData(true,  true,  null)]  // fully relaxed: no WHERE clause
+    public void GivenAnAllTypesResourceSourceAcrossAllVisibilityCombinations_TheWhereClauseIsExact(
+        bool includeHistory, bool includeDeleted, string? expectedWhereClause)
+    {
+        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.AllTypes()],
+            new CteRef(0),
+            Visibility: visibility);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+        if (expectedWhereClause is null)
+        {
+            sql.ShouldNotContain("WHERE");
+        }
+        else
+        {
+            sql.ShouldContain(expectedWhereClause);
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------------------
+    // Access-constraint shapes. Built through Lower.Run (the real production path) rather than hand-assembled
+    // QueryPlans, because a constraint's CTE and its type-guarded EXISTS are wired up by the lowerer -- these
+    // prove that the emitted SQL for a constrained match, include, :iterate, and chain all parse as valid
+    // T-SQL under the SQL Server grammar.
+    // -----------------------------------------------------------------------------------------------------
+
+    private const short AcObservationTypeId = 104;
+    private const short AcPatientTypeId = 103;
+    private const short AcStatusParamId = 220;
+    private const short AcSubjectParamId = 230;
+
+    private static (SymbolTable Symbols, AccessConstraint Constraint, SearchParameterInfo SubjectParam, SearchParameterInfo StatusParam) AccessConstraintFixture()
+    {
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>
+            {
+                [statusParam.Url!.ToString()] = AcStatusParamId,
+                [subjectParam.Url!.ToString()] = AcSubjectParamId,
+            },
+            new Dictionary<string, short> { ["Observation"] = AcObservationTypeId, ["Patient"] = AcPatientTypeId });
+
+        return (symbols, new AccessConstraint("Observation", AcTokenPredicate(statusParam, "final")), subjectParam, statusParam);
+    }
+
+    private static Expression AcTokenPredicate(SearchParameterInfo parameter, string code)
+        => new SearchParameterExpression(
+            parameter,
+            new SearchParameterPredicateExpression(
+                parameter,
+                SearchComparator.Eq,
+                modifier: null,
+                new TokenSearchValue(system: null, code: code, text: null)));
+
+    [Fact]
+    public void GivenAConstrainedMatchOnlyPlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var plan = Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAConstrainedRevIncludePlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var revinclude = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false);
+        var plan = Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [revinclude], includeLimit: 1000,
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAConstrainedIteratePlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var iterate = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: true);
+        var plan = Lower.Run(
+            expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [iterate], includeLimit: 1000,
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    [Fact]
+    public void GivenAConstrainedChainPlan_WhenParsed_ThenItIsValidTSql()
+    {
+        var f = AccessConstraintFixture();
+        var chain = new ChainedExpression(
+            resourceTypes: ["Observation"],
+            referenceSearchParameter: f.SubjectParam,
+            targetResourceTypes: ["Patient"],
+            reversed: true,
+            expression: AcTokenPredicate(f.StatusParam, "final"));
+        var plan = Lower.Run(
+            chain, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
+
+        SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
+    }
+
+    // ─── IncludesOnly grammar plan factories ────────────────────────────────────────────────────────
+
+    private static QueryPlan IncludesOnlyPlan()
+    {
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyTwoStagesPlan()
+    {
+        var stage0 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(
+            IncludeDirection.Reverse, ReferenceSearchParamId: 88, SeedTypeIds: [103], OutputTypeIds: [107],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage0, stage1],
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyWithIteratePlan()
+    {
+        var stage0 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 88, SeedTypeIds: [105], OutputTypeIds: [105],
+            SeedStages: [0], SeedFromMatch: true, Iterate: true, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage0, stage1],
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyWithProjectionPlan()
+    {
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            Projection: StandardProjection(),
+            IncludesOnly: true);
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithASort_WhenEmitted_ThenItIsRefusedRatherThanEmittingUnboundSql()
+    {
+        // Dropping the match arm leaves the include arm's projected sort columns unaliased (bare ", NULL")
+        // while the outer ORDER BY still references SortValueN, so the emitted SQL would bind to a
+        // nonexistent column (SQL Server error 207 at execution). The grammar tests cannot catch it -- an
+        // unbound identifier is grammatically valid -- so the combination is guarded in SqlBuilder.Run the
+        // same way IncludesOnly + CountOnly and IncludesOnly + no-stages already are.
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            Sort: sort,
+            IncludesOnly: true);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 }

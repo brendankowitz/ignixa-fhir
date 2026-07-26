@@ -359,6 +359,25 @@ public class SearchTraceTests
     }
 
     [Fact]
+    public async Task GivenOptionsCarryingAnAccessConstraint_WhenCompiledThroughSearchCompiler_ThenTheConstraintReachesLowerAndNarrowsTheMatch()
+    {
+        // Arrange & Act -- Observation?status=final with an AccessConstraint("Observation", status eq
+        // amended) set on the options. This exercises the wiring seam: SearchOptions.AccessConstraints must
+        // be forwarded from SearchCompiler into Lower.Run. The constraint is applied structurally by
+        // intersecting the match set, so the emitted plan gains an Intersect node it never has for a bare
+        // single-leaf search. Dropping the forwarding argument in SearchCompiler leaves the match a plain
+        // ParamSource and this assertion fails -- proving the test covers the wiring, not just Lower.
+        var trace = await SearchTraceFixtures.TraceObservationStatusWithAccessConstraintAsync();
+
+        // Assert
+        trace.Failure.ShouldBeNull("the constrained search should compile end to end");
+        trace.Plan.ShouldNotBeNull();
+        trace.Plan!.Explain.ShouldContain("Intersect");
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain("SearchParamId = 220");
+    }
+
+    [Fact]
     public async Task GivenAMovingClock_WhenCompiled_ThenTheReferenceInstantIsReadExactlyOnceSoEveryConsumerSeesTheSameValue()
     {
         // Arrange -- a clock that advances a day on every read. Against the fixed provider used above,

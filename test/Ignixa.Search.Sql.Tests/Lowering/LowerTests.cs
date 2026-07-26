@@ -3,6 +3,7 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
@@ -49,7 +50,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, top: 10).Plan;
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -490,20 +491,26 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenATokenSortKey_WhenLowered_ThenThrowsNotSupportedException()
+    public void GivenATokenSortKey_WhenLowered_ThenProducesAnAggregatedKeyBoundToTheTokenTable()
     {
-        // Arrange -- Token/Number/Quantity/Reference/Uri sort is deferred, not silently mishandled.
+        // Arrange -- Token/Number/Quantity/Reference/Uri sort now lowers to an Aggregated key whose
+        // table/column come from the catalog. TokenSearchParam carries no IsMin/IsMax column, so the
+        // value is resolved by a MIN/MAX-aggregating join rather than a flagged row.
         var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [statusParam.Url.ToString()] = 1 },
             new Dictionary<string, short> { ["Observation"] = 104 });
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
-                expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
-                sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
-            .Message.ShouldContain("Token");
+        // Act
+        var plan = Lower.Run(
+            expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        var key = plan.Sort.ShouldNotBeNull().Keys.ShouldHaveSingleItem();
+        key.Kind.ShouldBe(SortKeyKind.Aggregated);
+        key.Table!.TableName.ShouldBe("TokenSearchParam");
+        key.Column!.Name.ShouldBe("Code");
     }
 
     [Fact]
@@ -593,7 +600,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, countOnly: true).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
         // Assert
         plan.CountOnly.ShouldBeTrue();
@@ -812,7 +819,7 @@ public class LowerTests
         // Act
         var plan = Lower.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, approximationReferenceTime: fixedTime).Plan;
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = fixedTime }).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -1037,4 +1044,313 @@ public class LowerTests
         plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.NotReferencedSource>();
         plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>();
     }
+
+    [Fact]
+    public void GivenSeveralResourceTypesAndNoExpression_WhenLowered_ThenTheMatchSetSpansAllOfThem()
+    {
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null, new LowerOptions { ResourceTypes = ["Patient", "Observation"] }).Plan;
+
+        // Assert against the AST node: the type mapping is what is under test, not emitter formatting.
+        var mts = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+        mts.ResourceTypeIds.ShouldBe([103, 104]);
+    }
+
+    [Fact]
+    public void GivenNoResourceTypeAtAll_WhenLowered_ThenTheMatchSetIsEveryType()
+    {
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null, new LowerOptions { ResourceTypes = [] }).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("ResourceTypeId =");
+        sql.ShouldNotContain("ResourceTypeId IN");
+    }
+
+    [Fact]
+    public void GivenAMultiTypeSearchWithAnUnresolvableTypeName_WhenLowered_ThenTheSentinelIsKeptToAvoidWideningToAllTypes()
+    {
+        // An unresolvable name yields the sentinel -1 from _leafContext.ResourceTypeId. The sentinel is
+        // kept in the IN list rather than dropped: dropping it when every name is unresolvable would
+        // collapse the list to empty, which means "all types" — catastrophically wrong. IN (-1) matches
+        // nothing, which is the correct answer for a type the catalog does not know.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null, new LowerOptions { ResourceTypes = ["Patient", "NotAType"] }).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The sentinel -1 is present; the query matches no row for the unknown type but does not widen.
+        sql.ShouldContain("ResourceTypeId IN (103, -1)");
+    }
+
+    [Fact]
+    public void GivenAllUnresolvableTypeNames_WhenLowered_ThenTheInListContainsSentinelsNotAllTypes()
+    {
+        // When every requested type is unknown, the IN list is IN(-1) rather than empty.
+        // An empty IN list would be dropped, producing a full-table scan — wrong and dangerous.
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null, new LowerOptions { ResourceTypes = ["NotAType"] }).Plan;
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("ResourceTypeId IN (-1)");
+        sql.ShouldNotContain("ResourceTypeId IN ()");
+    }
+
+    [Fact]
+    public void GivenASingleResourceTypeInTheList_WhenLowered_ThenEmitsInWithOneElement()
+    {
+        // A single-element list emits IN (x) rather than = x for consistency — IN (x) is equally
+        // valid T-SQL and avoids a special-case branch in the emitter.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null, new LowerOptions { ResourceTypes = ["Patient"] }).Plan;
+
+        // Assert the AST mapping first; then confirm the emitter path uses IN rather than = for a
+        // one-element list (this is the one emitted-SQL assertion kept to cover the emitter path).
+        var mts = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+        mts.ResourceTypeIds.ShouldBe([103]);
+        SqlBuilder.Run(plan).Sql.ShouldContain("ResourceTypeId IN (103)");
+    }
+
+    [Fact]
+    public void GivenAnEmptyTypeListPassedToForTypes_WhenConstructed_ThenThrows()
+    {
+        // ForTypes([]) must throw rather than silently producing an AllTypes scan. This is the
+        // API-level protection: a caller that filters a type list down to nothing gets an error
+        // rather than a full-table scan.
+        Should.Throw<ArgumentException>(() => CteDefinition.MultiTypeResourceSource.ForTypes([]));
+    }
+
+    // ─── System-level (cross-type) lowering tests ───────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenMultipleTypesAndALeafPredicate_WhenLoweringSystemLevel_ThenBothTypesNarrowAndTheLeafApplies()
+    {
+        // Arrange -- GET /?_type=Patient,Observation&name=foo. The leaf has no single resource type to
+        // scope against, so its ParamSource must carry no ResourceTypeId at all; the two requested types
+        // narrow the base set instead.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("foo"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Observation"] }).Plan;
+
+        // Assert
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBeNull();
+        plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>()
+            .ResourceTypeIds.ShouldBe([103, 104]);
+    }
+
+    [Fact]
+    public void GivenAMultiValuedTypeParameterAndALeafPredicate_WhenLoweringSystemLevel_ThenTheTypeOrLiftsToTheOuterWhereAndTheLeafStaysUntyped()
+    {
+        // Arrange -- GET /?_type=Patient,Observation&name=foo as the binder actually produces it: the type
+        // filter arrives as an expression (an Or of _type equalities under one SearchParameterExpression),
+        // not as a caller-supplied LowerOptions.ResourceTypes list. This is the path Ignixa's own Build
+        // output takes, and it must reach the outer WHERE rather than falling through to CTE lowering,
+        // where the leaf dispatcher rejects resource columns outright.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [TypeList("Patient", "Observation"), new SearchParameterPredicateExpression(
+            nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("foo"))]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url!.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- the type list narrows through the outer WHERE, and the leaf carries no type scope.
+        var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
+        or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
+        or.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAMultiValuedTypeParameterNamingAnUnknownType_WhenLowered_ThenTheUnknownBranchStaysInTheOrAsUnsatisfiable()
+    {
+        // Arrange -- GET /?_type=Patient,NotAType. The extraction is deliberately not restricted to
+        // Predicate.Equal branches: an unresolvable type lowers to Predicate.False, which carries the
+        // reason for the trace. An Equal-only extraction would reject the whole Or, drop it back to CTE
+        // lowering, and turn a diagnosable known miss into a thrown "resource column reached leaf dispatch".
+        // Resolve records a type the resolver could not find as the unmatchable sentinel rather than
+        // omitting the key -- an omitted key throws KeyNotFoundException on lookup. Mirror that here.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["NotAType"] = SymbolTable.UnmatchableResourceTypeId });
+
+        // Act
+        var plan = Lower.Run(
+            TypeList("Patient", "NotAType"), symbols, targetResourceType: null, includes: [], revIncludes: [],
+            includeLimit: 0, sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert
+        var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
+        or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
+        or.Right.ShouldBeOfType<Predicate.False>().Reason.ShouldNotBeNull();
+    }
+
+    /// <summary>The shape a bound <c>_type=a,b</c> takes: an Or of bare _type equalities under one wrapper.</summary>
+    private static SearchParameterExpression TypeList(params string[] resourceTypes)
+    {
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        return new SearchParameterExpression(
+            typeParam,
+            Expression.Or([.. resourceTypes.Select(t => (Expression)new SearchParameterPredicateExpression(
+                typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: t, text: null)))]));
+    }
+
+    // ─── IncludesOnly Lower.Run guard tests ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndNoIncludes_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // IncludesOnly with no _include/_revinclude parameters can only ever return empty — a caller
+        // error rather than a legitimate empty result.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludesOnly = true }));
+    }
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndCountOnly_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // IncludesOnly asks for include rows; CountOnly counts match rows — these are contradictory.
+        // The guard fires before BuildIncludeStages and before the access-constraint binding loop,
+        // so the combination is rejected immediately without building any include stages.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludesOnly = true, CountOnly = true }));
+    }
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // _sort orders the match rows, but an IncludesOnly page drops the match arm and pages its include
+        // rows by (T1, Sid1). The sort key has nothing to order, so the combination is refused rather than
+        // silently dropped -- mirroring the IncludesOnly + CountOnly and IncludesOnly + no-stages guards.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [include],
+                revIncludes: [],
+                includeLimit: 1000,
+                sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludesOnly = true }));
+    }
 }
+

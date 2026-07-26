@@ -349,4 +349,54 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe("root = UriSearchParam[103,202]  Uri PREFIX_OF @p0");
     }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithSeveralTypes_WhenExplained_ThenPrintsAllTypeIds()
+    {
+        // Arrange -- GET /?_type=Patient,Observation
+        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = MultiTypeResourceSource[103,104]");
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceWithNoTypes_WhenExplained_ThenPrintsStarForSystemWide()
+    {
+        // Arrange -- bare GET / (no _type filter)
+        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.AllTypes()], new CteRef(0));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldBe("root = MultiTypeResourceSource[*]");
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceAlongsideAParameterizedCte_WhenExplained_ThenOrdinalNumberingIsUnaffected()
+    {
+        // MultiTypeResourceSource has no bound parameters (type ids are literals), so it must NOT
+        // consume an ordinal. A ParamSource following it must still start at @p0.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var plan = new QueryPlan(
+        [
+            CteDefinition.MultiTypeResourceSource.ForTypes([103, 104]),
+            new CteDefinition.ParamSource(table, 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
+            new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
+        ],
+        new CteRef(2));
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert -- @p0 belongs to the ParamSource, not consumed by the MultiTypeResourceSource
+        explained.ShouldBe(
+            "cte0 = MultiTypeResourceSource[103,104]\n" +
+            "cte1 = StringSearchParam[103,202]  Text = @p0\n" +
+            "root = Intersect(cte0, cte1)");
+    }
 }
