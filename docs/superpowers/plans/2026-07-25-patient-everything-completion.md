@@ -97,21 +97,34 @@ Follow the file's own stated convention: record the changed reason rather than a
 
 ---
 
-### Task 3: Establish real test coverage
+### Task 3: Establish the coverage this branch can actually carry
 
 **Files:**
-- Adopt: `docs/superpowers/specs/2026-07-25-unified-execution-gate-tests/` — six preserved test sources with target paths
-- Test: `test/Ignixa.Api.E2ETests/`
+- Test: `test/Ignixa.Search.Sql.Tests/` — compiler-level coverage
+- Create: `docs/superpowers/specs/2026-07-25-patient-everything-branch-a-handoff.md`
 
 **Interfaces:**
 - Consumes: Task 1's anchor fix and Task 2's seed fix.
 
-There is **no `$everything` E2E and no `$everything` integration test on either branch** — a direct consequence of the operation being uncompilable. Six tests written during the execution gate sit as `.cs.txt` files compiled by nothing, because they target `Ignixa.DataLayer.SqlServer`, which exists only on branch A.
+**Read this before writing anything — the plan was wrong about what is testable here.**
 
-- [ ] **Step 1: Inventory the preserved gate tests**, splitting those adoptable here from those belonging to branch A at rebase. Record the split.
-- [ ] **Step 2: Write `$everything` E2E coverage.** Seed a patient with compartment members of several types **plus** a `generalPractitioner` and `managingOrganization` not otherwise referenced (Task 2's isolation case). Assert the bundle equals `{patient} ∪ compartment ∪ {referenced Practitioner/Organization/Location/Medication}`.
-- [ ] **Step 3: Add `_since` E2E coverage**, knowing it will fail against branch A's write-path defect. **Note the expected failure explicitly rather than working around it** — it is evidence for that follow-up, and a passing `_since` test here would mean something else is wrong.
-- [ ] **Step 4: Run the E2E suite** per the environment constraints. Record counts and every delta from the 569/620 baseline with its explanation.
+Task 1 established that **this branch has no compiled search service at all.** `SqlServerCompiledSearchService` exists only on branch A (`worktree-ignixa-datalayer-sqlserver`); `src/DataLayer/` here holds BlobStorage, FileSystem, InMemoryIndex and SqlEntityFramework only. Production `ISearchService` on this branch resolves to the **legacy EF** implementation, and `Ignixa.Search.Sql` is reachable only through `SearchCompiler` and tests.
+
+So an `$everything` E2E test written here would exercise the **legacy EF path**, not the compiled traversal Tasks 1 and 2 fixed. That is worse than no coverage — it would look like validation and prove nothing about the code under change. The earlier draft of this task called for exactly that; it was wrong.
+
+**The honest ceiling on this branch is compiler-level.** Real end-to-end validation belongs to branch A after it rebases, because A is where the compiled service is registered.
+
+- [ ] **Step 1: Write compiler-level `$everything` coverage** in `Ignixa.Search.Sql.Tests` — lowering shape and emitted SQL. This is genuinely valuable and currently thin: assert the compartment traversal, the outbound expansion (including Task 2's union seed), the conditional date filter, `_since`, and that `AccessConstraint` reaches every row-producing stage. Pin the `Explain()` output so a future change to the traversal is visible in a diff.
+
+- [ ] **Step 2: Inventory the six preserved gate tests** at `docs/superpowers/specs/2026-07-25-unified-execution-gate-tests/`. They sit as `.cs.txt` files compiled by nothing because they target `Ignixa.DataLayer.SqlServer`. Determine which are adoptable here (if any) and which are branch A's at rebase. Record the split; do not force one into this branch by stubbing out its data layer.
+
+- [ ] **Step 3: Write the branch-A handoff document.** It must state precisely what A should run once it rebases onto this branch, and why each item cannot run here:
+  - `$everything` E2E: seed a patient with compartment members of several types **plus** a `generalPractitioner` and `managingOrganization` not otherwise referenced (Task 2's isolation case — with a compartment member referencing them, the seed bug stays invisible). Assert the bundle equals `{patient} ∪ compartment ∪ {referenced Practitioner/Organization/Location/Medication}`.
+  - `_since` E2E: **expected to fail** against A's uncommitted-transaction defect, which leaves `VisibleDate` NULL. That failure is evidence for the follow-up, not something to work around — and a *passing* `_since` test would mean something else is wrong.
+  - The six gate tests from Step 2 that belong to A.
+
+- [ ] **Step 4: Run the compiler suite**, both TFMs. Measure corpus drift and report either way.
+
 - [ ] **Step 5: Commit.**
 
 ---
@@ -157,8 +170,9 @@ Four behaviours the advisory identified that neither implementation handles. Eac
 - Create: `docs/superpowers/specs/2026-07-25-patient-everything-results.md`
 
 - [ ] **Step 1: Full compiler suite**, both TFMs.
-- [ ] **Step 2: Full E2E run** against a fresh database, every delta from baseline explained.
-- [ ] **Step 3: Corpus verdict distribution** — final state, and for each `$everything` entry still `Divergent`, the remaining reason.
+- [ ] **Step 2: Corpus verdict distribution** — final state, and for each `$everything` entry still `Divergent`, the remaining reason.
+
+**No E2E run in this task.** Per Task 3, this branch has no compiled search service — an E2E run here exercises the legacy EF path and says nothing about the compiled `$everything`. End-to-end validation is branch A's, against the handoff document Task 3 produces. Recording that as a deliberate boundary rather than an omission.
 - [ ] **Step 4: Write the results document** — what `$everything` now returns versus before, the direction finding and its spec citations, the seed bug and its scope (both implementations), coverage added, decisions recorded in Task 5, and what remains open.
 - [ ] **Step 5: Commit.**
 
