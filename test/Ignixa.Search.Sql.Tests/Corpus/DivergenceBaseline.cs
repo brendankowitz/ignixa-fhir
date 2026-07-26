@@ -35,6 +35,7 @@ public static class DivergenceBaseline
     /// plus the paging/hydration machinery — not a windowed-vs-unwound batching of the same membership
     /// reads. (The capture's opaque SearchParamIds can't be name-mapped, so exactly which two patient
     /// reference parameters the engine expanded isn't verifiable; the outbound direction is.)
+    /// </para>
     /// <para>
     /// One clause of that account is now obsolete and has been struck: the compiler no longer "emits no
     /// referenced-resource union at all". <c>StructuralContext.LowerPatientEverything</c> emits a
@@ -45,6 +46,7 @@ public static class DivergenceBaseline
     /// entries were already Divergent, and closing one contributing difference out of several cannot flip
     /// a query out of that bucket. Per the convention below, the changed reason is recorded here rather
     /// than the count being adjusted.
+    /// </para>
     /// <para>
     /// That account's "opposite graph direction" framing was itself wrong, not just the "no
     /// referenced-resource union" clause struck above. The captured SQL is not the whole $everything
@@ -71,7 +73,6 @@ public static class DivergenceBaseline
     /// reason these three entries are Divergent is the paging model — phased continuation token versus a
     /// single windowed query — which is a future phase's subject, not a semantics gap. The count still does
     /// not move, for the same categorical reason as above.
-    /// </para>
     /// </para>
     /// </summary>
     public const int DivergingQueries = 59;
