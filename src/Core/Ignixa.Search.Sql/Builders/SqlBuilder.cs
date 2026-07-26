@@ -655,6 +655,12 @@ public static class SqlBuilder
 
         if (key.Kind == SortKeyKind.ResourceId)
         {
+            // Deliberately unwrapped even as a secondary key, where the join is LEFT: (ResourceTypeId,
+            // ResourceSurrogateId) is dbo.Resource's clustered primary key (PKC_Resource), so every
+            // (T1, Sid1) the CTE graph produces has a matching row and the LEFT can never yield NULL.
+            // Note this is architectural, not enforced -- no FK ties the search-param tables to
+            // dbo.Resource -- so a future source of match rows that are not real resources would
+            // break it silently.
             return $"rid{index}.ResourceId";
         }
 
