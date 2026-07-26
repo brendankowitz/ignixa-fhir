@@ -275,3 +275,38 @@ defect (a passing result there would itself be evidence something else is wrong)
 only in `Ignixa.DataLayer.SqlServer` and so cannot compile or run here.
 
 Do not read the compiler-level verification above as end-to-end validation. It is not.
+
+## Addendum, 2026-07-26: what execution found
+
+Branch A rebased onto this work and ran it against a database. The caveat above held, and it mattered:
+the first execution found a defect that every layer of verification recorded in this document had missed.
+
+**`$everything?_type=X` threw `RequestNotValidException: SymbolTable has no ResourceTypeId for
+'Practitioner'`.** `SymbolCollectingVisitor.VisitPatientEverything` collects the four expansion types only
+when `IncludeReferencedResources` is set, and `LowerPatientEverything` originally resolved them under the
+same condition. The `_type` intersection recorded above as Task 5's fix hoisted that resolve *out* of the
+guard, so it could use `expansionTypeIds.Count` in the condition — which left the lowerer resolving
+symbols the collector deliberately never gathered. The handler sets the flag false exactly when `_type` is
+present (`includeReferencedResources = request.Types is null or { Count: 0 }`), so the broken shape is the
+one a caller reaches by filtering. Fixed by moving the resolve back inside the guard, keeping the
+intersection.
+
+**Why nothing here caught it.** `PatientEverythingLoweringTests.BuildSymbols` registers all four expansion
+types unconditionally, which made the missing-symbol case unreachable from any lowering test; and the
+corpus verdicts key off the tables/filters multiset, not symbol resolution. Both facts are visible in this
+document's own verification section, and neither was recognised as a coverage hole until execution
+produced the exception. A green suite and zero corpus drift were consistent with a broken operation.
+
+**What execution confirmed.** The seed fix (Task 2) is proven at row level: a Practitioner and an
+Organization referenced by the patient row and by nothing else are returned, which the pre-fix traversal —
+seeded from the compartment alone — could not have done. `_since` over the ordinary write path returns no
+compartment member, confirming the `CreateOrUpdateAsync` transaction-commit defect is real and executable
+rather than inferred from reading.
+
+`Ignixa.DataLayer.SqlServer.IntegrationTests`: **135 passed, 0 failed** (126 pre-existing, the 6 gate
+tests adopted, 3 added for the paths above).
+
+**Two numbers in this document are wrong.** `Ignixa.Search.Sql.Tests` is reported above as 812; main's
+baseline after the post-merge fixes landed with the #365 squash is **817**, and 818 with the regression
+test added by the fix. `Ignixa.Application.Tests` is reported as 1052; it measures **1125** on branch A
+after the merge. The corpus distribution (75/37/14/59) is unchanged and still accurate.
