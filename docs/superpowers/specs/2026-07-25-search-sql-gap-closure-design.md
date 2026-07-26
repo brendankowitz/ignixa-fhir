@@ -23,7 +23,19 @@ This phase closes 30 of those 32.
 | URI `:below`/`:above` separator | 1 | Compiler bug |
 | Single-value `:not` | 2 | Compiler bug |
 | `:count` with `_include`/`_revinclude` | 2 | Compiler bug |
-| System-level `_type` filter | 1 | Compiler bug |
+| ~~System-level `_type` filter~~ | ~~1~~ | **CLOSED 2026-07-26** — see note below |
+
+**Update 2026-07-26 — one group is already closed, and the baseline moved.**
+
+The system-level `_type` filter group was closed by merging `origin/main`'s unified `Ignixa.Search.Sql`
+foundation into this branch, which brought `MultiTypeResourceSource` and the `SystemLevelSearch` /
+`LowerOptions.ResourceTypes` threading. No work in this plan was needed for it.
+
+Re-measured on the merged branch: **E2E 620 total / 569 passed / 31 failed / 20 skipped** (was 568 / 32 /
+20). Every remaining failure still maps onto a group in the table above, with the counts unchanged —
+so the merge closed one gap and introduced no regression.
+
+Scope is therefore **five groups, 29 failures**, plus the two out-of-scope architectural guards.
 
 **Out of scope, deliberately:**
 
