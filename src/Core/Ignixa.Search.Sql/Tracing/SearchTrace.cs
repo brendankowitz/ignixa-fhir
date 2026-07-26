@@ -1,4 +1,5 @@
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql.Ast;
 
 namespace Ignixa.Search.Sql.Tracing;
 
@@ -12,7 +13,7 @@ namespace Ignixa.Search.Sql.Tracing;
 /// <see cref="Parameters"/> at all, because the caller never sent them.
 /// </summary>
 public sealed record SearchTrace(
-    string ResourceType,
+    string? ResourceType,
     IReadOnlyList<ParameterTrace> Parameters,
     QueryPlanTrace? Plan,
     EmittedSqlTrace? Sql)
@@ -30,4 +31,16 @@ public sealed record SearchTrace(
     /// null-check a collection.
     /// </summary>
     public IReadOnlyList<ImplicitParameter> Implicit { get; init; } = [];
+
+    /// <summary>
+    /// The real <see cref="QueryPlan"/> Lower produced, or null when compilation stopped before Lower ran.
+    /// Declared outside the positional list for the same reason as <see cref="Failure"/>/<see cref="Implicit"/>.
+    /// A production caller that needs to branch on the plan's own structure (e.g. whether <c>Includes</c> or
+    /// <c>Sort</c> is populated, to pick the right result-row shape) reads this directly, rather than
+    /// re-deriving it from the caller's own <c>SearchOptions</c> — <c>Lower.BuildIncludeStages</c> can drop a
+    /// degenerate stage and return null even when the caller's <c>options.Include</c> is non-empty, so the
+    /// two can diverge; <see cref="QueryPlanTrace"/> (<see cref="Plan"/>) is a display-only projection with
+    /// no <c>Includes</c>/<c>Sort</c> structure of its own and cannot substitute for this.
+    /// </summary>
+    public QueryPlan? CompiledPlan { get; init; }
 }

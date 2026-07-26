@@ -130,7 +130,7 @@ public static class SearchCompiler
                 MarkKnownMisses(outcomes, lowered);
 
                 var emitted = SqlBuilder.Run(lowered.Plan, new EmitOptions(IncludeTextRanges: true));
-                sqlTrace = new EmittedSqlTrace(emitted.Sql, emitted.TextRanges ?? []);
+                sqlTrace = new EmittedSqlTrace(emitted.Sql, emitted.Parameters, emitted.TextRanges ?? []);
             }
             // Deliberately does NOT catch ArgumentException. The trace records' construction guards
             // (SqlTextRange, CteProvenance, PlanExplainRow) throw it, but none can trip on a well-formed
@@ -146,6 +146,117 @@ public static class SearchCompiler
         {
             Failure = failure,
             Implicit = DetectImplicit(parameters, options),
+        };
+    }
+
+    /// <summary>
+    /// Compiles an already-built <see cref="SearchOptions"/> — skipping the Build stage entirely, since the
+    /// caller (a production ISearchService implementation receiving a pre-built SearchOptions, not raw query
+    /// parameters) has already built it upstream. Runs Resolve, Lower, and Emit only, tracing every stage the
+    /// same way <see cref="CompileWithTimeProviderAsync"/> does. Failures are recorded as data on
+    /// <see cref="SearchTrace.Failure"/>, never thrown, matching CompileAsync's own contract.
+    /// </summary>
+    public static async Task<SearchTrace> CompileFromOptionsAsync(
+        SearchOptions options,
+        string? resourceType,
+        ISymbolResolver resolver,
+        ICompartmentDefinitionManager? compartmentDefinitionManager,
+        ISearchParameterDefinitionManager? searchParameterDefinitionManager,
+        TimeProvider? timeProvider,
+        OffsetSpec? offsetPage = null,
+        (long Start, long End)? surrogateIdRange = null,
+        bool countOnly = false,
+        int includeLimit = 0,
+        bool countPhaseScoped = false,
+        SortPhase sortPhase = SortPhase.Valued,
+        CancellationToken cancellationToken = default)
+    {
+        // resourceType is deliberately NOT null-checked here -- null/empty means a multi-type/system-level
+        // search, a real supported case (see this task's Interfaces note), not a caller error. Normalized
+        // to null ONCE, here, before any downstream use -- Resolve.RunAsync, Lower.Run, systemLevelSearch,
+        // and the final SearchTrace.ResourceType must all observe the exact same value, or an empty string
+        // would read as system-level to one and as a literal (unmatchable) resource type to the others.
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(resolver);
+
+        resourceType = string.IsNullOrEmpty(resourceType) ? null : resourceType;
+
+        var approximationReferenceTime = (timeProvider ?? TimeProvider.System).GetUtcNow();
+        var outcomes = new List<ParameterTrace>();
+
+        var resolved = await Resolve.RunAsync(
+            options.Expression,
+            options.Include,
+            options.RevInclude,
+            options.Sort,
+            resolver,
+            resourceType,
+            cancellationToken,
+            compartmentDefinitionManager,
+            searchParameterDefinitionManager);
+
+        MarkUnresolved(outcomes, resolved.Unresolved);
+
+        QueryPlanTrace? planTrace = null;
+        EmittedSqlTrace? sqlTrace = null;
+        var failure = ResolveFailure(resolved.Unresolved);
+
+        // Declared here, not inside the `if` block below, even though it's only ever assigned inside it --
+        // the final `return`'s `CompiledPlan = lowered?.Plan` needs it in scope whether or not that block
+        // ran at all (an unresolved parameter skips the block entirely and this stays null, which is
+        // correct: no Lower call means no plan to report).
+        LoweredPlan? lowered = null;
+
+        if (resolved.Unresolved.Count == 0)
+        {
+            try
+            {
+                lowered = Lower.Run(
+                    options.Expression,
+                    resolved.Symbols,
+                    resourceType,
+                    options.Include,
+                    options.RevInclude,
+                    includeLimit,
+                    options.Sort,
+                    sortPhase,
+                    page: null,
+                    new LowerOptions
+                    {
+                        CountOnly = countOnly,
+                        ApproximationReferenceTime = approximationReferenceTime,
+                        SystemLevelSearch = resourceType is null,
+                        OffsetPage = offsetPage,
+                        CountPhaseScoped = countPhaseScoped,
+                        SurrogateRange = surrogateIdRange is { } range
+                            ? new SurrogateIdRange(new SqlParameterRef(range.Start), new SqlParameterRef(range.End))
+                            : null,
+                        // The forwarding this task exists for: without it, a caller setting AccessConstraints
+                        // on options gets silent non-enforcement -- the constraint is accepted by the API but
+                        // never reaches Lower, so nothing narrows the match set or guards an include/chain
+                        // target. See CompileFromOptionsTests.
+                        AccessConstraints = options.AccessConstraints,
+                    });
+
+                planTrace = BuildPlanTrace(lowered, outcomes);
+                MarkKnownMisses(outcomes, lowered);
+
+                var emitted = SqlBuilder.Run(lowered.Plan, new EmitOptions(IncludeTextRanges: true));
+                sqlTrace = new EmittedSqlTrace(emitted.Sql, emitted.Parameters, emitted.TextRanges ?? []);
+            }
+            catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
+            {
+                failure = RecordFailure(outcomes, lowered is null ? TraceStage.Lower : TraceStage.Emit, ex);
+            }
+        }
+
+        return new SearchTrace(resourceType, outcomes, planTrace, sqlTrace)
+        {
+            Failure = failure,
+            // A pre-built SearchOptions carries no notion of "was this explicitly supplied" -- the only
+            // input DetectImplicit needs that this entry point genuinely lacks. Leaving Implicit at its []
+            // default (see SearchTrace) rather than guessing which control values the caller supplied.
+            CompiledPlan = lowered?.Plan,
         };
     }
 
