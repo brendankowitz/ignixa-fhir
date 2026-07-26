@@ -403,6 +403,56 @@ public class PatientEverythingLoweringTests
     }
 
     [Fact]
+    public void GivenAConstrainedReferencedType_WhenReachedThroughEverythingsExpansion_ThenTheConstraintStillNarrowsThatType()
+    {
+        // Arrange -- Practitioner is reachable only through the referenced-type expansion; it is not a
+        // compartment member (the only member type registered is Observation), so this exercises a
+        // different row-producing stage than GivenAConstrainedMemberType above. ApplyToTypes wraps the
+        // whole $everything match set -- patient-itself, filtered compartment, and the expansion output
+        // together -- so a constraint on an expansion-only type must narrow that stage in place too, or a
+        // constrained Practitioner reached via generalPractitioner/managingOrganization would leak through
+        // unfiltered.
+        var symbols = BuildSymbols(["Observation"]);
+        var constraint = new AccessConstraint(
+            "Practitioner",
+            new SearchParameterExpression(
+                StatusParam,
+                new SearchParameterPredicateExpression(StatusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))));
+
+        var expression = new PatientEverythingExpression("pat-1", includeReferencedResources: true);
+
+        // Act
+        var plan = Lowered(expression, symbols, new LowerOptions { AccessConstraints = [constraint] });
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert -- same subtract-then-union wiring as the compartment-member case: the match root is
+        // (base MINUS Practitioner) UNION (base INTERSECT constraint).
+        var ctes = plan.Ctes;
+        var root = ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        root.Parts.Count.ShouldBe(2);
+
+        var subtract = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Except>().ShouldHaveSingleItem();
+        var admitted = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Intersect>().ShouldHaveSingleItem();
+
+        ctes[subtract.Right.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe(PractitionerTypeId);
+        subtract.Left.ShouldBe(admitted.Left);
+
+        // The narrowed base must still reach the ReferencedTypeExpansion CTE -- proving the constraint
+        // wraps the expansion's output rather than only the patient-itself and compartment branches
+        // beneath it. A wiring that applied ApplyToTypes before adding the expansion branch (or skipped it
+        // entirely) would fail this while still passing the assertions above.
+        var narrowedReachable = Reachable(subtract.Left.Index, plan);
+        var expansionIndex = plan.Ctes
+            .Select((cte, index) => (cte, index))
+            .Where(t => t.cte is CteDefinition.ReferencedTypeExpansion)
+            .Select(t => t.index)
+            .ShouldHaveSingleItem();
+        narrowedReachable.ShouldContain(expansionIndex);
+
+        sql.ShouldContain("SearchParamId = 220");
+    }
+
+    [Fact]
     public void GivenAPatientEverythingSearchWithAnUnknownTypeFilter_WhenLowered_ThenTheCompartmentMatchesNothingRatherThanThrowing()
     {
         // _type=foo names a type that is not a member of the Patient compartment, so the membership set
