@@ -306,8 +306,11 @@ the same fail-open defect this branch's own review caught elsewhere."
 - Test: `test/Ignixa.Search.Sql.Tests/Lowering/LowerTests.cs`
 
 **Interfaces:**
-- Consumes: `LowerOptions.SystemLevelSearch` (Task 1).
+- Consumes: `LowerOptions.SystemLevelSearch` (Task 1), `CompileFromOptionsAsync` (Task 2).
 - Produces: leaf and composite rules that lower without a concrete target resource type when `SystemLevelSearch` is set.
+- Produces: `CompileFromOptionsAsync` forwarding `SearchOptions.ResourceTypes` → `LowerOptions.ResourceTypes`.
+
+**Also close a silent-drop gap found during Task 2.** `CompileFromOptionsAsync` forwards neither `AccessConstraints` (closed in Task 2) nor `SearchOptions.ResourceTypes` — both predate the properties they should carry. The `ResourceTypes` omission belongs here because this is where multi-type search is exercised: without it, a multi-`_type` search silently returns **every** type rather than the requested subset. Forward it, and cover it with a test that fails when the forwarding is removed — the same non-vacuity standard Task 2 applied, since this is the same class of defect that hides behind a green build.
 
 **Read the reconciliation analysis §1.1 before starting.** This is the synthesis decision: A's nullable-`ResourceTypeId` threading is the only implementation that can express `GET /?_type=A,B&name=foo` — B's typed-leaf path throws when the target type is null — but B's `MultiTypeResourceSource` is the better node for the no-expression base set.
 
