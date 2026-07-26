@@ -1481,6 +1481,27 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenASurrogateIdRangeAlone_WhenEmitted_ThenNoResourceJoinIsAddedForTheBound()
+    {
+        // The reason B's SurrogateIdRange shape won over A's outer-predicate splice: the range renders
+        // against m.Sid1 directly, so bounding a scan by surrogate id must never by itself force a
+        // dbo.Resource join. The match CTE here is a ParamSource (not a ResourceSource, whose own FROM
+        // legitimately mentions dbo.Resource), and there is no OuterPredicate, SearchParameterHash, or
+        // Projection -- those are the other, legitimate reasons NeedsResourceJoin can add the join;
+        // isolating the range from all of them is the whole point of this test.
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
+            new CteRef(0),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("m.Sid1 >=");
+        sql.ShouldContain("m.Sid1 <=");
+        sql.ShouldNotContain("dbo.Resource");
+    }
+
+    [Fact]
     public void GivenACountOnlyPlanWithASurrogateIdRange_WhenEmitted_ThenTheSurrogateRangeIsAppliedToTheCountQuery()
     {
         // CountOnly shape: the WHERE clause must filter the count to this partition.
