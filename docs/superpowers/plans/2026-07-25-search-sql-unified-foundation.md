@@ -23,7 +23,7 @@
 - No inline comments except non-obvious invariants. One type per file. Test naming `GivenContext_WhenAction_ThenResult`, AAA with Shouldly, no `#region`.
 - `StartsWith`/`EndsWith`/`Contains` on strings need an explicit `StringComparison` (CA1310 is enforced as an error). An `out` discard cannot appear inside an expression tree (CS8198) — use `Count(...).ShouldBe(0)` rather than `ShouldAllBe(x => !x.TryGet(out _))`.
 - **Copyright headers:** B's new files carry Microsoft headers; existing `Ignixa.Search.Sql` files carry none. New files added by this plan carry **no** header, matching the project's existing convention. Do not add headers to files you touch, and do not strip them from B's existing files (that is a separate cleanup).
-- **Corpus verdict drift is expected.** `test/Ignixa.Search.Sql.Tests/Corpus/` guards the *distribution* of compile verdicts. Tasks 3, 6 and 7 will move it legitimately. Update `DivergenceBaseline` when a task moves it, and record *why* in the commit message — never adjust it to make an unexplained failure disappear.
+- **Corpus verdict drift — expect it only where the corpus actually reaches.** `test/Ignixa.Search.Sql.Tests/Corpus/` guards the *distribution* of compile verdicts across 185 captured queries. Measured during Task 3: the corpus contains **zero system-level URLs and zero `_type` search entries** (its single `_type` mention is `$everything?_type=foo`), so multi-type and system-level work moves it not at all — zero drift there is the correct result, not a suspicious one. `$everything` (Task 7) *is* exercised and will move it. When a task does move it, update `DivergenceBaseline` and record *why* in the commit message — never adjust it to make an unexplained failure disappear, and never manufacture drift to match an expectation in this plan.
 
 ---
 
@@ -374,6 +374,18 @@ Removes the String/Date/`_lastUpdated`-only sort restriction. The FHIR Server su
 **Carry A's Msg-145 fix.** A's `EmitOrderBy` deduplicates the case where a `LastUpdated` sort key duplicates the `m.Sid1` tiebreak column, which SQL Server rejects with error 145. This was found by *executing* the SQL; B structurally could not have found it and does not have it.
 
 **Also travels in this task: `KeysetContinuationToken`.** A defines it; B does not. It encodes the compiler's own `PageSpec` boundary shape, so it belongs beside the paging/sort machinery rather than in an adapter. Its doc already disclaims compatibility with Ignixa's legacy offset token — that layering is correct and should be preserved verbatim.
+
+**Also in this task, by decision after Task 3: ungate `_sort` under system-level search.**
+
+Branch A permits cross-type `_sort` — its guard reads `if (targetResourceType is null && !systemLevelSearch && sort.Count > 0)` — and tests it (`EndToEndCompilationTests.cs:2622` passes `sort: sort, systemLevelSearch: true, top: 10`; `SystemLevelSearchTests.cs:73` sorts on a name param). The reconciliation analysis's prose claimed otherwise and was wrong. Task 3 correctly flagged rather than deciding; keeping B's guard would regress a tested capability and break A's tests when it rebases.
+
+**It rides with this task rather than landing as a point-fix, because it touches the same functions this task rewrites** — and A's cross-type E2E asserts exact `Explain()`/ORDER BY text that the Msg-145 dedup fix moves. Doing them separately means re-baselining the same assertions twice.
+
+The change is one condition (`&& !options.SystemLevelSearch` on the sort guard), but **keep the guard alive for the wildcard-compartment case** — A's own `GivenAWildcardCompartmentSearchWithASortKey_...ThenStillThrows` (`SystemLevelSearchTests.cs:132`) requires it. Port A's two cross-type sort test shapes.
+
+B's sort machinery already carries cross-type sort correctly — verified during Task 3's review: `EmitSortJoins` correlates on `sk{i}.ResourceTypeId = m.T1` with no literal type id, `EmitOrderBy` tiebreaks on `m.T1, m.Sid1`, `EmitSeekPredicate` already has explicit cross-type keyset branches, and `BuildSortSpec` never reads `targetResourceType`. So this is an ungate, not new capability.
+
+**One semantic worth a pin test:** a cross-type sort key that exists on only some types pushes the remaining types wholesale into the MissingPrimary phase (the primary join is an INNER JOIN). That is coherent and is what A ships, but it is currently untested anywhere.
 
 - [ ] **Step 1: Read A's sort implementation** — `BuildSortSpec`, `SortKeyKind`, `SentinelFor`, `EmitSortJoins`, `EmitOrderBy`, and `KeysetContinuationToken`. Note `OffsetSpec` lives in `Ast/SortSpec.cs` on A; check whether `SortKeyKind` and `KeysetContinuationToken` are similarly co-located before assuming file paths.
 - [ ] **Step 2: Write failing tests** — one per new `SortKeyKind`, plus one asserting a `_sort=_lastUpdated`-only plan emits **no duplicate ORDER BY column**.
