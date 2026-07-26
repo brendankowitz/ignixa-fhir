@@ -63,10 +63,12 @@ public class PatientEverythingHandler(
             patientEverythingExpression);
 
         // Create SearchOptions with the PatientEverythingExpression
-        // Note: ResourceType is null because $everything returns multiple resource types
+        // ResourceType names the anchor -- the compartment root whose expansion Lower dispatches to
+        // PatientEverythingExpression, not a filter on what comes back. The many resource types
+        // $everything returns come from the compartment traversal, not from a null anchor here.
         var searchOptions = new SearchOptions
         {
-            ResourceType = null, // Multi-resource type search
+            ResourceType = "Patient",
             Expression = patientEverythingExpression,
             MaxItemCount = request.Count ?? 50, // Default to 50 if not specified
             Sort = [], // _sort parameter not currently supported for $everything
