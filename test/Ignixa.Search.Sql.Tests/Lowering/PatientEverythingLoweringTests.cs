@@ -127,11 +127,39 @@ public class PatientEverythingLoweringTests
     }
 
     [Fact]
-    public void GivenAPatientEverythingSearchWithSinceAndReferencedResources_WhenLowered_ThenTheExpansionSeedsFromTheFilteredCompartmentSet()
+    public void GivenAPatientEverythingSearchIncludingReferencedResources_WhenLowered_ThenTheExpansionSeedIncludesThePatientItself()
     {
-        // Legacy runs its referenced-resource expansion after the _since/date narrowing, so the expansion
-        // must follow the filtered compartment set. Seeding from the raw compartment union instead would
-        // return referenced resources reachable only from members _since had already excluded.
+        // The patient is not a member of its own compartment -- no ReferenceSearchParam row points from the
+        // patient at itself -- so a generalPractitioner/managingOrganization reachable only from the patient
+        // row (no compartment member happens to reference the same target) is missed unless the expansion's
+        // seed set includes the patient-itself branch alongside the compartment branch. This isolates that:
+        // the only member type registered is Observation, which never carries a generalPractitioner or
+        // managingOrganization reference, so the compartment branch alone can never reach those two targets.
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1", includeReferencedResources: true);
+
+        var plan = Lowered(expression, symbols);
+
+        var expansion = plan.Ctes.OfType<CteDefinition.ReferencedTypeExpansion>().ShouldHaveSingleItem();
+        var seedReachable = Reachable(expansion.Seed.Index, plan);
+
+        var patientItselfIndex = plan.Ctes
+            .Select((cte, index) => (cte, index))
+            .Where(t => t.cte is CteDefinition.ResourceSource rs && rs.ResourceTypeId == PatientTypeId)
+            .Select(t => t.index)
+            .ShouldHaveSingleItem();
+
+        seedReachable.ShouldContain(patientItselfIndex);
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithSinceAndReferencedResources_WhenLowered_ThenTheExpansionSeedsFromThePatientItselfAndTheFilteredCompartmentSet()
+    {
+        // Legacy runs its referenced-resource expansion after the _since/date narrowing, so the compartment
+        // half of the seed must follow the filtered compartment set -- seeding from the raw compartment
+        // union instead would return referenced resources reachable only from members _since had already
+        // excluded. The patient-itself branch is never touched by _since (asserted elsewhere), so it joins
+        // the seed unfiltered, alongside the filtered compartment set.
         var symbols = BuildSymbols();
         var expression = new PatientEverythingExpression(
             "pat-1",
@@ -141,7 +169,18 @@ public class PatientEverythingLoweringTests
         var plan = Lowered(expression, symbols);
 
         var expansion = plan.Ctes.OfType<CteDefinition.ReferencedTypeExpansion>().ShouldHaveSingleItem();
-        plan.Ctes[expansion.Seed.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var seed = plan.Ctes[expansion.Seed.Index].ShouldBeOfType<CteDefinition.Union>();
+        seed.Parts.Count.ShouldBe(2);
+
+        var patientItselfIndex = plan.Ctes
+            .Select((cte, index) => (cte, index))
+            .Where(t => t.cte is CteDefinition.ResourceSource rs && rs.ResourceTypeId == PatientTypeId)
+            .Select(t => t.index)
+            .ShouldHaveSingleItem();
+
+        seed.Parts.ShouldContain(new CteRef(patientItselfIndex));
+        var compartmentHalf = seed.Parts.Single(p => p.Index != patientItselfIndex);
+        plan.Ctes[compartmentHalf.Index].ShouldBeOfType<CteDefinition.Intersect>();
     }
 
     [Fact]
@@ -294,12 +333,14 @@ public class PatientEverythingLoweringTests
             "cte7 = Union(cte5, cte6)\n" +
             "cte8 = VisibleSinceFilter(@p6)\n" +
             "cte9 = Intersect(cte7, cte8)\n" +
-            "cte10 = ReferencedTypeExpansion(cte9, output=[201,202,203,204])\n" +
-            "root = Union(cte0, cte9, cte10)");
+            "cte10 = Union(cte0, cte9)\n" +
+            "cte11 = ReferencedTypeExpansion(cte10, output=[201,202,203,204])\n" +
+            "root = Union(cte0, cte9, cte11)");
 
         // Seven bound values reach the SQL: the Patient type id and its ResourceId, the compartment's
         // reference type and id, the two date bounds, and the _since instant. The second
-        // TableExistsPredicate carries no predicate and binds nothing, and the expansion's type ids are
+        // TableExistsPredicate carries no predicate and binds nothing, cte10's Union of the patient-itself
+        // and filtered-compartment branches binds nothing of its own, and the expansion's type ids are
         // literals. @p0 is the ResourceSource type id, which PlanExplainer counts but renders inline as
         // [103] rather than as @p0, so the highest printed ordinal is the assertion available here.
         emitted.Parameters.Count.ShouldBe(7);

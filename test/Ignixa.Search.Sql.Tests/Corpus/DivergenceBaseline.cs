@@ -45,6 +45,32 @@ public static class DivergenceBaseline
     /// entries were already Divergent, and closing one contributing difference out of several cannot flip
     /// a query out of that bucket. Per the convention below, the changed reason is recorded here rather
     /// than the count being adjusted.
+    /// <para>
+    /// That account's "opposite graph direction" framing was itself wrong, not just the "no
+    /// referenced-resource union" clause struck above. The captured SQL is not the whole $everything
+    /// operation — it is phase 1 of Microsoft fhir-server's own <em>phased</em> $everything, and the
+    /// capture never followed its continuation token to phases 2–4. The evidence is in the capture itself
+    /// (<c>legacy-sql-corpus.json</c>, around lines 3072/3135/3198): the <c>@FilteredData</c> table
+    /// variable, <c>IsMatch</c>/<c>IsPartial</c> columns, the <c>TOP (@p) = 1001</c> include ceiling, and
+    /// the <c>Row &lt; @p</c> window are fhir-server's <c>_include</c> machinery, not bespoke $everything
+    /// SQL. The seed Patient is the sole match (<c>ResourceId = @p0</c>, <c>IsMatch = 1</c>), and the two
+    /// expansions marked <c>IsMatch = 0</c> follow exactly two outbound reference parameters
+    /// (SearchParamIds 1012 and 1017) — almost certainly <c>Patient.general-practitioner</c> and
+    /// <c>Patient.organization</c>, finally supplying the name-mapping the paragraph above said was
+    /// unverifiable. Microsoft documents the phasing: phase 1 returns the Patient plus its
+    /// generalPractitioner and managingOrganization; phases 2–3 return the patient compartment behind that
+    /// continuation token; phase 4 returns devices referencing the patient. So the capture reads outbound
+    /// only because phase 1 <em>is</em> outbound-only — not because the engine and the compiler disagree
+    /// on graph direction. The FHIR spec (identical wording in STU3, R4, and R5) requires the compartment
+    /// <em>and</em> resources referenced from it, and this repo's own legacy EF generator performs both
+    /// directions in a single query — the compiler is a transliteration of it, not a divergent design.
+    /// Combined with the seed-union fix in <c>StructuralContext.LowerPatientEverything</c>
+    /// (<c>Union(patientItselfRef, filteredCompartmentRef)</c> now feeds the ReferencedTypeExpansion,
+    /// closing the shared under-return bug where the patient's own generalPractitioner/managingOrganization
+    /// were missed whenever no compartment member happened to reference them too), the sole remaining
+    /// reason these three entries are Divergent is the paging model — phased continuation token versus a
+    /// single windowed query — which is a future phase's subject, not a semantics gap. The count still does
+    /// not move, for the same categorical reason as above.
     /// </para>
     /// </para>
     /// </summary>

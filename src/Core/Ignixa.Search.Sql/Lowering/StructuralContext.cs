@@ -467,7 +467,12 @@ public sealed class StructuralContext
         var unionParts = new List<CteRef> { patientItselfRef, compartmentRef };
         if (expression.IncludeReferencedResources)
         {
-            unionParts.Add(ReferencedTypeExpansionRef(compartmentRef, ResolveReferencedTypeIds()));
+            // The seed patient is not a member of its own compartment -- no ReferenceSearchParam row points
+            // from the patient at itself -- so seeding the expansion from compartmentRef alone misses the
+            // patient's own generalPractitioner/managingOrganization unless some compartment member happens
+            // to reference them too. Union in patientItselfRef so those two are found even in isolation.
+            var expansionSeed = Union([patientItselfRef, compartmentRef]);
+            unionParts.Add(ReferencedTypeExpansionRef(expansionSeed, ResolveReferencedTypeIds()));
         }
 
         return Union(unionParts);
