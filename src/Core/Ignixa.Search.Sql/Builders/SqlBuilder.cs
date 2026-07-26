@@ -133,6 +133,12 @@ public static class SqlBuilder
     /// Deliberately ignores Sort and Page. A count is of the whole result set, so the keyset-seek predicate
     /// would undercount by exactly the rows already paged past, and a sort has nothing to order. This is the
     /// one shape whose WHERE assembly legitimately differs from the match shapes' shared one.
+    /// <para>
+    /// <see cref="QueryPlan.CountPhaseScoped"/> is the one count-side exception: it joins the current sort
+    /// phase's own key (mirroring <see cref="EmitSortJoins"/>) and, in the MissingPrimary phase, applies
+    /// the same NOT EXISTS filter the match shapes use, so a two-phase executor's count matches the rows
+    /// that phase actually returns rather than the whole match set.
+    /// </para>
     /// </remarks>
     private static void EmitCountOnlyShape(
         QueryPlan plan,
@@ -142,7 +148,12 @@ public static class SqlBuilder
     {
         WriteCteHeader(writer, cteBlocks);
         writer.Append("\n");
-        writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m");
+
+        // CountPhaseScoped joins the current sort phase's own key -- the same join a match shape would
+        // use for that phase -- so a two-phase (Valued/MissingPrimary) executor's count matches the rows
+        // that phase actually returns, rather than the whole match set. See the class remarks above.
+        var countSortJoins = plan.CountPhaseScoped ? EmitSortJoins(plan.Sort) : string.Empty;
+        writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
 
         if (NeedsResourceJoin(plan, includesProjection: false))
         {
@@ -154,6 +165,11 @@ public static class SqlBuilder
         if (plan.OuterPredicate is not null)
         {
             whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+        }
+
+        if (plan.CountPhaseScoped && plan.Sort is { Phase: SortPhase.MissingPrimary } countPhaseSort)
+        {
+            whereClauses.Add(EmitMissingPrimaryFilter(countPhaseSort));
         }
 
         if (plan.SurrogateRange is { } range)
@@ -206,6 +222,11 @@ public static class SqlBuilder
         using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
         {
             writer.Append(EmitOrderBy(plan.Sort));
+        }
+
+        if (plan.OffsetPage is { } offsetPage)
+        {
+            writer.Append($"\nOFFSET {EmitParam(new SqlParameterRef(offsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(offsetPage.Limit), parameters)} ROWS ONLY");
         }
     }
 
@@ -264,11 +285,13 @@ public static class SqlBuilder
             ? "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1"
             : string.Empty;
 
-        // A CTE's own ORDER BY is only legal T-SQL alongside TOP (SQL Server Msg 1033) -- when plan.Top
-        // is null, cteMatchPage has no TOP and so must have no ORDER BY of its own either. The outer
-        // final UNION ALL's ORDER BY (EmitOuterOrderByForIncludes) is a plain top-level SELECT,
-        // always legal regardless of TOP, and is unaffected by this.
-        var cteOrderBy = plan.Top is not null ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}" : string.Empty;
+        // A CTE's own ORDER BY is only legal T-SQL alongside TOP or OFFSET/FETCH (SQL Server Msg 1033) --
+        // when neither is present, cteMatchPage must have no ORDER BY of its own either. The outer final
+        // UNION ALL's ORDER BY (EmitOuterOrderByForIncludes, below) is a plain top-level SELECT, always
+        // legal regardless of TOP or OFFSET/FETCH, and is unaffected by this.
+        var cteOrderBy = plan.Top is not null || plan.OffsetPage is not null
+            ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}"
+            : string.Empty;
 
         var whereClauses = BuildMatchWhereClauses(plan, parameters, out var seekClauseIndex);
 
@@ -282,6 +305,12 @@ public static class SqlBuilder
             WriteWhereSection(writer, whereClauses, seekClauseIndex, indent: "    ");
 
             writer.Append(cteOrderBy);
+
+            if (plan.OffsetPage is { } matchOffsetPage)
+            {
+                writer.Append($"\n    OFFSET {EmitParam(new SqlParameterRef(matchOffsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(matchOffsetPage.Limit), parameters)} ROWS ONLY");
+            }
+
             writer.Append("\n)");
         }
     }

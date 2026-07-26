@@ -2312,6 +2312,191 @@ public class EmitTests
 
     // ─── End SearchParameterHash tests ──────────────────────────────────────────────────────────────
 
+    // ─── Ordinal invariant guard ────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenAPlanWithCteAndShapeBoundParameters_WhenEmitted_ThenCteParametersOccupyTheLeadingOrdinals()
+    {
+        // PlanExplainer reads parameters back by ordinal, so EmitCteBlocks must bind every CTE parameter
+        // before any shape binds one of its own. Nothing but this test catches a shape's binding logic
+        // being hoisted ahead of the CTE prelude -- the failure mode otherwise is a large, unexplained
+        // golden-SQL diff rather than a named assertion. cte0's predicate value must land at @p0; the
+        // shape-level OuterPredicate and SearchParameterHash values must follow, in shape emission order.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var ctePredicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, ctePredicate)],
+            new CteRef(0),
+            OuterPredicate: outerPredicate,
+            SearchParameterHash: new SqlParameterRef("hash123"));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0", "@p1", "@p2"]);
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", "abc", "hash123"]);
+    }
+
+    // ─── End ordinal invariant guard ────────────────────────────────────────────────────────────────
+
+    // ─── OffsetPage tests ───────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenANoIncludesPlanWithOffsetPage_WhenEmitted_ThenEmitsOffsetFetchAfterOrderBy()
+    {
+        // Arrange
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            OffsetPage: new OffsetSpec(20, 10));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert
+        emitted.Sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.StringSearchParam\n" +
+            "    WHERE ResourceTypeId = 103 AND SearchParamId = 202 AND Text = @p0\n" +
+            ")\n" +
+            "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            "OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY");
+        emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0", "@p1", "@p2"]);
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", 20, 10]);
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithOffsetPage_WhenEmitted_ThenMatchPageCteEmitsOrderByAndOffsetFetch()
+    {
+        // Arrange -- no Top, so cteMatchPage would normally omit its own ORDER BY (SQL Server Msg 1033
+        // forbids one without TOP); OffsetPage must gate that ORDER BY just as Top does, since OFFSET/FETCH
+        // is equally illegal without one.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            OffsetPage: new OffsetSpec(20, 10));
+
+        // Act
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert
+        sql.ShouldContain(
+            "cteMatchPage AS (\n" +
+            "    SELECT m.T1, m.Sid1\n" +
+            "    FROM cte0 m\n" +
+            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            "    OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY\n" +
+            ")");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithOffsetPage_WhenEmitted_ThenOffsetFetchIsNotEmitted()
+    {
+        // CountOnly returns a single scalar row; an OFFSET/FETCH clause has nothing to page there and
+        // CountOnly already deliberately ignores Sort/Page for the same reason (see EmitCountOnlyShape).
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            OffsetPage: new OffsetSpec(20, 10));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("OFFSET");
+        sql.ShouldNotContain("FETCH");
+    }
+
+    // ─── End OffsetPage tests ───────────────────────────────────────────────────────────────────────
+
+    // ─── CountPhaseScoped tests ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenACountOnlyPlanWithCountPhaseScoped_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
+    {
+        // Arrange -- Valued phase: Keys[0]'s join is present and the count must scope to it, not the
+        // whole match set, or a two-phase executor would double count rows present in both phases.
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            Sort: sort,
+            CountPhaseScoped: true);
+
+        // Act
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert
+        sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.Resource\n" +
+            "    WHERE ResourceTypeId = @p0 AND IsHistory = 0 AND IsDeleted = 0\n" +
+            ")\n" +
+            "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m\n" +
+            "INNER JOIN dbo.StringSearchParam sk0\n" +
+            "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
+            "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithCountPhaseScopedAndMissingPrimaryPhase_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
+    {
+        // Arrange -- MissingPrimary phase: Keys[0] is excluded from the joins (EmitSortJoins' own
+        // MissingPrimary continue) and instead the count must apply the NOT EXISTS filter, the same
+        // predicate the match shapes use for this phase.
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            Sort: sort,
+            CountPhaseScoped: true);
+
+        // Act
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert
+        sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m\n");
+        sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
+        sql.ShouldContain(
+            "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 " +
+            "AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithoutCountPhaseScoped_WhenEmitted_ThenSortIsIgnoredAsBefore()
+    {
+        // Regression guard: CountOnly without CountPhaseScoped must keep ignoring Sort entirely -- no
+        // join, no MissingPrimary filter -- exactly as EmitCountOnlyShape's remarks already document.
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            CountOnly: true,
+            Sort: sort);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldNotContain("StringSearchParam sk0");
+        sql.ShouldBe(
+            ";WITH cte0 AS (\n" +
+            "    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            "    FROM dbo.Resource\n" +
+            "    WHERE ResourceTypeId = @p0 AND IsHistory = 0 AND IsDeleted = 0\n" +
+            ")\n" +
+            "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
+    }
+
+    // ─── End CountPhaseScoped tests ─────────────────────────────────────────────────────────────────
+
     [Fact]
     public void GivenAnIncludesPlanWithASurrogateIdRange_WhenEmitted_ThenTheRangeAppliesOnlyToTheMatchArm()
     {
