@@ -140,7 +140,13 @@ The legacy engine pages *phased*: distinct query shapes per phase behind a conti
 
 - [ ] **Step 1: Read the captured legacy paging shape** in the corpus and `DivergenceBaseline`'s corrected account.
 - [ ] **Step 2: Establish whether existing machinery suffices.** The compiler has keyset `PageSpec` and `OffsetSpec` with OFFSET/FETCH emission. **Determine whether `$everything` can page through those before designing anything** — this may be wiring rather than new capability.
-- [ ] **Step 3: Decide single-query-windowed versus phased.** Matching legacy's phasing is not automatically right: a single windowed query over the unioned result is simpler and, per Task 2's analysis, semantically equivalent. Record the decision and its reasoning in the code.
+- [ ] **Step 3: The model is decided — single windowed query.** Not phased.
+
+The phases are an implementation detail of how Microsoft assembles the result set, not a difference in what the operation returns: per Task 2's spec analysis, phase 1 plus phases 2-3 plus phase 4 is the same set a single union produces. A single windowed query over that union is one round trip instead of four and needs no phase concept, which the compiler does not have.
+
+**Record this decision and its reasoning in the code at `LowerPatientEverything`**, including what was rejected and why — a future reader comparing against Microsoft's documented phasing will otherwise assume the difference is an oversight.
+
+Trade-off accepted knowingly: phased paging bounds memory per phase for very large compartments. A single windowed query relies on the window to do that instead. If that proves insufficient in practice, phasing remains available later — this decision is reversible.
 - [ ] **Step 4: Write failing tests. Implement.**
 - [ ] **Step 5: Measure corpus drift** — this task is the genuine candidate to move the distribution. Report what you measure.
 - [ ] **Step 6: Build, commit.**
