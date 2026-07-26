@@ -368,6 +368,69 @@ public class PatientEverythingLoweringTests
     }
 
     [Fact]
+    public void GivenAPatientEverythingSearchWhoseTypeFilterExcludesEveryReferencedType_WhenLowered_ThenNoExpansionIsEmitted()
+    {
+        // Arrange -- $everything?_type=Encounter with referenced-resource expansion still switched on. The
+        // expansion's output set is fixed at Practitioner/Organization/Location/Medication, so before the
+        // intersection it emitted all four regardless of _type: the compartment branch honoured the filter
+        // and the expansion branch quietly did not.
+        var symbols = BuildSymbols(["Observation", "Encounter"]);
+        var expression = new PatientEverythingExpression(
+            "pat-1",
+            filteredResourceTypes: new HashSet<string> { "Encounter" },
+            includeReferencedResources: true);
+
+        // Act
+        var plan = Lowered(expression, symbols);
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert -- the intersection is empty, so the expansion is dropped rather than emitted with an
+        // empty type-in filter (which would match every referenced type, the inverse of what was asked).
+        plan.Ctes.OfType<CteDefinition.ReferencedTypeExpansion>().ShouldBeEmpty();
+        plan.Explain().ShouldNotContain("ReferencedTypeExpansion(");
+        sql.ShouldNotContain($"rsp.ReferenceResourceTypeId = {PractitionerTypeId}");
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWhoseTypeFilterNamesOneReferencedType_WhenLowered_ThenTheExpansionOutputsOnlyThatType()
+    {
+        // Arrange -- _type=Practitioner names a type the Patient compartment cannot reach (its only member
+        // here is Observation) but the expansion can. The expansion must survive, narrowed to that one
+        // type: dropping it whenever _type is present would make this request return nothing but the
+        // patient row, and emitting all four would return Organizations that were excluded.
+        var symbols = BuildSymbols(["Observation"]);
+        var expression = new PatientEverythingExpression(
+            "pat-1",
+            filteredResourceTypes: new HashSet<string> { "Practitioner" },
+            includeReferencedResources: true);
+
+        // Act
+        var plan = Lowered(expression, symbols);
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert
+        var expansion = plan.Ctes.OfType<CteDefinition.ReferencedTypeExpansion>().ShouldHaveSingleItem();
+        expansion.OutputResourceTypeIds.ShouldBe([PractitionerTypeId]);
+        sql.ShouldContain($"rsp.ReferenceResourceTypeId = {PractitionerTypeId}");
+        sql.ShouldNotContain($"rsp.ReferenceResourceTypeId = {OrganizationTypeId}");
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithNoTypeFilter_WhenLowered_ThenTheExpansionStillOutputsAllFourReferencedTypes()
+    {
+        // The intersection must be a no-op on the unfiltered request -- an empty _type set means "every
+        // type", not "no type", and reading it as the latter would silently delete the expansion from the
+        // ordinary $everything call.
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1", includeReferencedResources: true);
+
+        var plan = Lowered(expression, symbols);
+
+        var expansion = plan.Ctes.OfType<CteDefinition.ReferencedTypeExpansion>().ShouldHaveSingleItem();
+        expansion.OutputResourceTypeIds.ShouldBe([PractitionerTypeId, OrganizationTypeId, LocationTypeId, MedicationTypeId]);
+    }
+
+    [Fact]
     public void GivenAConstrainedMemberType_WhenReachedThroughEverything_ThenTheConstraintStillNarrowsThatType()
     {
         // Arrange -- Observation is a compartment member and is access-constrained to status=final. A

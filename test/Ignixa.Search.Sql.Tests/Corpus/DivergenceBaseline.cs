@@ -96,6 +96,23 @@ public static class DivergenceBaseline
     /// the single-windowed-query model is unchanged at 75/37/14/59, and the four constants here are
     /// untouched.
     /// </para>
+    /// <para>
+    /// One clause of that paragraph has since gone stale, and this one replaces it. Its account of the
+    /// third entry (<c>_type=foo</c>) — "the legacy-only side still holds a <c>ReferenceSearchParam</c>
+    /// read … because legacy expands its two outbound reference parameters as two separate reads where the
+    /// compiler emits one read covering all four target types" — described a compiler that expanded
+    /// referenced types regardless of <c>_type</c>. It no longer does:
+    /// <c>StructuralContext.ResolveReferencedTypeIds</c> intersects the expansion's fixed output set
+    /// (Practitioner/Organization/Location/Medication) with the request's <c>_type</c>, and
+    /// <c>_type=foo</c> intersects to nothing, so the expansion is dropped and the compiler reads
+    /// <c>dbo.ReferenceSearchParam</c> zero times for that entry. The measured legacy-only side accordingly
+    /// now carries <em>both</em> reads rather than one, and the compiler-only side is down to the
+    /// unsatisfiable predicate and its type anchor. This is the compiler doing less <em>correctly</em> — a
+    /// caller who excluded every one of those four types was previously returned all four — so the widened
+    /// diff is not a regression despite reading as one. The verdict and the counts are unmoved for the same
+    /// categorical reason as above: all three $everything entries were already Divergent. Measured, not
+    /// predicted: the distribution is unchanged at 75/37/14/59 and the four constants stay untouched.
+    /// </para>
     /// </summary>
     public const int DivergingQueries = 59;
 

@@ -465,6 +465,55 @@ public sealed class StructuralContext
     /// boundaries, where here the expansion is part of the match set and interleaves by (T1, Sid1). Both
     /// are reversible: nothing in this lowering forecloses adding phases later.
     /// </para>
+    /// <para>
+    /// <b>Decision -- expansion rows are matches, not includes.</b> The captured shipping-engine SQL marks
+    /// its outbound expansion <c>IsMatch = 0</c>, which surfaces as <c>search.mode = "include"</c>, and
+    /// orders <c>IsMatch DESC</c>. This lowering deliberately does neither: the expansion is a plain arm of
+    /// the match union, so every row is a match and the page partition follows the (T1, Sid1) total order.
+    /// Three reasons, in order of weight. First, the search spec defines <c>include</c> as "because of an
+    /// <c>_include</c> requirement" -- $everything carries no <c>_include</c>; the referenced resources are
+    /// part of the result set the operation itself defines, so <c>match</c> is the accurate code and the
+    /// engine's <c>IsMatch = 0</c> is an artefact of implementing $everything on top of its <c>_include</c>
+    /// SQL machinery rather than a spec requirement. Second, this repo's own executing engine (the legacy
+    /// EF <c>PatientEverythingQueryGenerator</c>) returns one flat surrogate-id set that hydrates entirely
+    /// as <c>match</c>, so emitting <c>include</c> here would make the two Ignixa engines disagree on
+    /// bundle output while they are meant to be interchangeable. Third, the include machinery caps each
+    /// stage at its <c>Limit</c> and flags <c>IsPartial</c>; silently truncating the referenced half of an
+    /// operation named "everything" is a worse failure than a different page partition.
+    /// </para>
+    /// <para>
+    /// That decision is reversible and the migration is known: give <see cref="Ast.IncludeStage"/> a null
+    /// <c>ReferenceSearchParamId</c> (already nullable) with <c>OutputTypeIds</c> set to the referenced
+    /// types and <c>SeedFromMatch = true</c>, which emits almost exactly what
+    /// <c>CteDefinition.ReferencedTypeExpansion</c> emits today. Revisit when a compiled search service
+    /// exists to consume the flag -- no path on this branch reads <c>IsMatch</c> for $everything -- and
+    /// when the truncation question above has an answer.
+    /// </para>
+    /// <para>
+    /// <b>Decision -- <c>_since</c> narrows the seed, not the expansion output.</b> <c>_since</c> is
+    /// intersected into <c>compartmentRef</c> before that set seeds the expansion, and the expansion's own
+    /// output carries no visibility bound. The consequence is stated rather than emergent: a Practitioner
+    /// whose only referencing compartment rows all predate the cutoff disappears from an incremental pull,
+    /// even though the Practitioner itself may have changed after it. Kept because it is what the legacy EF
+    /// generator does (it seeds <c>GetReferencedResourceIdsAsync</c> from the already-<c>_since</c>-filtered
+    /// compartment set) and because the alternative -- expanding from the unfiltered compartment, then
+    /// <c>_since</c>-filtering the referenced resources -- would make an incremental pull traverse the whole
+    /// compartment, which is the cost <c>_since</c> exists to avoid.
+    /// </para>
+    /// <para>
+    /// <b>Known gap -- Device.</b> Verified against this repo's own generated compartment definitions:
+    /// STU3, R4, R4B, R5 and R6 all list <c>Device</c> in the Patient compartment with an <em>empty</em>
+    /// parameter list, so no compartment traversal can ever return one and $everything silently omits a
+    /// clinically significant type. (R5/R6 reach devices only indirectly, through
+    /// <c>DeviceAssociation{subject,operator}</c> and <c>DeviceUsage{patient}</c> -- the association, not
+    /// the Device.) This is a gap in the spec's own CompartmentDefinition, which is why the shipping engine
+    /// patches it with a bespoke phase 4. Not closed here: the fix is a fixed extra traversal over a
+    /// patient-referencing Device parameter that exists in STU3/R4/R4B (<c>Device.patient</c>) and not in
+    /// R5+, so it needs a version-conditional symbol that <see cref="Symbols.SymbolCollectingVisitor"/>
+    /// must request and tolerate the absence of -- a resolve-stage change, not a lowering one, and the
+    /// seam where this compiler has already shipped one collection defect. Scoped as follow-up rather than
+    /// half-built.
+    /// </para>
     /// </remarks>
     public CteRef LowerPatientEverything(PatientEverythingExpression expression)
     {
@@ -491,14 +540,15 @@ public sealed class StructuralContext
         }
 
         var unionParts = new List<CteRef> { patientItselfRef, compartmentRef };
-        if (expression.IncludeReferencedResources)
+        var expansionTypeIds = ResolveReferencedTypeIds(expression);
+        if (expression.IncludeReferencedResources && expansionTypeIds.Count > 0)
         {
             // The seed patient is not a member of its own compartment -- no ReferenceSearchParam row points
             // from the patient at itself -- so seeding the expansion from compartmentRef alone misses the
             // patient's own generalPractitioner/managingOrganization unless some compartment member happens
             // to reference them too. Union in patientItselfRef so those two are found even in isolation.
             var expansionSeed = Union([patientItselfRef, compartmentRef]);
-            unionParts.Add(ReferencedTypeExpansionRef(expansionSeed, ResolveReferencedTypeIds()));
+            unionParts.Add(ReferencedTypeExpansionRef(expansionSeed, expansionTypeIds));
         }
 
         return Union(unionParts);
@@ -559,8 +609,28 @@ public sealed class StructuralContext
             ?? throw new InvalidOperationException("BuildDateRangePredicate reached with neither startDate nor endDate -- ApplyConditionalDateFilter's own guard should have prevented this.");
     }
 
-    private IReadOnlyList<short> ResolveReferencedTypeIds()
-        => PatientEverythingReferencedResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+    /// <summary>
+    /// The referenced types the expansion may output, intersected with the request's <c>_type</c> filter.
+    /// <c>$everything?_type=Encounter</c> must return Encounters only, but the expansion's output set is
+    /// fixed, so without this intersection it would emit Practitioner/Organization/Location/Medication rows
+    /// the caller excluded -- a filter the compartment branch honours and the expansion branch did not. An
+    /// empty intersection means the filter excluded every referenced type, and the caller drops the
+    /// expansion entirely rather than emitting a type-in filter over nothing.
+    /// <para>
+    /// This is deliberately redundant with <c>PatientEverythingHandler</c>, which clears
+    /// <see cref="PatientEverythingExpression.IncludeReferencedResources"/> whenever any <c>_type</c> is
+    /// present. That guard is the one the legacy EF generator relies on (its own expansion applies no type
+    /// filter at all), and it is coarser than this one: it also suppresses the expansion for
+    /// <c>_type=Practitioner</c>, where a referenced Practitioner is exactly what was asked for. Keeping
+    /// the intersection here makes the compiled plan correct for any caller that sets the flag itself --
+    /// the IPS generator does, with a <c>_type</c> set -- rather than correct only by the handler's grace.
+    /// </para>
+    /// </summary>
+    private IReadOnlyList<short> ResolveReferencedTypeIds(PatientEverythingExpression expression)
+        => PatientEverythingReferencedResourceTypes
+            .Where(type => expression.FilteredResourceTypes.Count == 0 || expression.FilteredResourceTypes.Contains(type))
+            .Select(_leafContext.ResourceTypeId)
+            .ToList();
 
     private CteRef TableExistsPredicateRef(TableDescriptor table, Predicate? predicate)
     {

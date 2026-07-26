@@ -26,6 +26,30 @@ namespace Ignixa.Application.Operations.Features.PatientEverything;
 /// 3. Delegate to normal search execution strategy
 /// 4. Data layer intercepts PatientEverythingExpression and optimizes with PatientEverythingQueryGenerator
 /// </summary>
+/// <remarks>
+/// Stated non-goals, recorded here because this handler is where each would be decided and because
+/// silence about an absent behaviour is what let the last $everything defect survive unnoticed.
+/// <para>
+/// <b>Patient <c>link</c> is not followed.</b> The shipping engine resolves <c>link.type = seealso</c> one
+/// layer deep, adding the linked patient's compartment to the result, and under
+/// <c>Prefer: handling=strict</c> answers <c>link.type = replaced-by</c> with a 301 and an
+/// OperationOutcome. Neither Ignixa path does any of it, and this is a non-goal rather than an oversight:
+/// following <c>seealso</c> turns a single-patient operation into a graph walk whose termination depends
+/// on data (the spec bounds it only by convention, not by cardinality), and the <c>replaced-by</c>
+/// redirect is an HTTP-status concern that would have to be decided above the handler, in the endpoint,
+/// where the <c>Prefer</c> header and the response status actually live. Both are additive: the
+/// expression already accepts multiple patient ids (Group $everything uses it), so a future
+/// <c>seealso</c> resolution is a pre-handler id expansion, not a change to the query.
+/// </para>
+/// <para>
+/// <b>R5's Provenance/AuditEvent suggestion is not implemented.</b> R5 adds that servers "should consider
+/// returning appropriate Provenance and AuditTrail" for $everything. Not done, and deliberately so: it is
+/// a SHOULD introduced in a version this operation is not yet specialised for, and both types are
+/// target-referencing (Provenance.target, AuditEvent.entity point <em>at</em> the returned resources), so
+/// satisfying it is a reverse traversal over the whole result set rather than another member type -- a
+/// different query shape, not another entry in a list.
+/// </para>
+/// </remarks>
 public class PatientEverythingHandler(
     IPartitionStrategy partitionStrategy,
     IQueryExecutionStrategy executionStrategy,
@@ -45,9 +69,12 @@ public class PatientEverythingHandler(
             "Executing Patient $everything for patient {PatientId}",
             request.PatientId);
 
-        // Create PatientEverythingExpression with all filters
-        // Only include referenced resources (Practitioner, Organization, etc.) when NO _type filter is specified
-        // When _type is specified, only return resources of those exact types
+        // Referenced-resource expansion is suppressed outright whenever _type is present, because the
+        // legacy EF generator's expansion applies no type filter of its own -- $everything?_type=Encounter
+        // would otherwise return Practitioners the caller excluded. Coarser than it needs to be
+        // (_type=Practitioner also loses the expansion, where a referenced Practitioner is exactly what was
+        // asked for); the compiler narrows the same case precisely, in ResolveReferencedTypeIds, so
+        // relaxing this guard is a legacy-engine change rather than a compiler one.
         var includeReferencedResources = request.Types == null || request.Types.Count == 0;
 
         var patientEverythingExpression = new PatientEverythingExpression(

@@ -148,6 +148,13 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     /// filter -- and, when referenced-resource expansion is requested, the referenced resource types.
     /// Like <see cref="VisitCompartment"/>, it does no I/O and no further recursion (a
     /// PatientEverythingExpression has no child expression).
+    /// <para>
+    /// All four referenced types are collected even when <c>_type</c> excludes some of them, where
+    /// <c>StructuralContext.ResolveReferencedTypeIds</c> intersects. The asymmetry is deliberate: a symbol
+    /// table that is a superset of what lowering asks for costs one resolved type id, whereas a subset is
+    /// a missing-symbol failure at lowering time, and keeping the two intersections identical is exactly
+    /// the kind of duplicated rule that drifts.
+    /// </para>
     /// </summary>
     public override Expression VisitPatientEverything(PatientEverythingExpression expression, object? context)
     {
