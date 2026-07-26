@@ -170,7 +170,7 @@ public static class SearchCompiler
     /// <item><term><see cref="LowerOptions.Top"/></term><description>Not set (always null on this path). No <see cref="SearchOptions"/> mapping exists, and none should be added naively: <see cref="SearchOptions.MaxItemCount"/> is not a safe 1:1 source because real callers already transform it before a search runs (e.g. <c>SearchResourcesHandler</c> requests <c>MaxItemCount + 1</c> to detect "has more"), so forwarding it here would silently fight that transformation. Row-capping on this path is done via <see cref="LowerOptions.OffsetPage"/> or keyset paging (the <c>page</c> parameter to <see cref="Lower.Run"/>, always null here today), both mutually exclusive with <see cref="LowerOptions.Top"/>. Flagged as a real gap in the row-capping story, not fixed here: nothing calls this method wanting <c>Top</c> driven from <see cref="SearchOptions"/> today.</description></item>
     /// <item><term><see cref="LowerOptions.ApproximationReferenceTime"/></term><description>The <c>timeProvider</c> method parameter. Not a <see cref="SearchOptions"/> concept — an <c>:ap</c> comparator needs a clock, not caller intent.</description></item>
     /// <item><term><see cref="LowerOptions.Visibility"/></term><description><see cref="SearchOptions.ResourceVersionTypes"/>, mapped through a local <c>ToVisibility</c> helper (<see cref="ResourceVersionTypes.None"/> throws <see cref="NotSupportedException"/>; <see cref="ResourceVersionTypes.Latest"/> alone maps to null, which <see cref="QueryPlan.EffectiveVisibility"/> already treats as <see cref="ResourceVisibility.Current"/>). The third instance of this defect class, fixed alongside this table: was accepted by <see cref="SearchOptions"/>, never reached Lower, so a caller asking for history or soft-deleted rows got silent Latest-only results.</description></item>
-    /// <item><term><see cref="LowerOptions.SurrogateRange"/></term><description>The <c>surrogateIdRange</c> method parameter, not <see cref="SearchOptions.StartSurrogateId"/>/<see cref="SearchOptions.EndSurrogateId"/> — those two properties exist but are never populated or read anywhere in this repository (zero hits repo-wide). The real caller (an export partition worker) constructs the tuple itself and passes it as this method's own parameter, the same adapter-parameter boundary <see cref="LowerOptions.OffsetPage"/> uses below.</description></item>
+    /// <item><term><see cref="LowerOptions.SurrogateRange"/></term><description>The <c>surrogateIdRange</c> method parameter when the caller supplies one (the explicit path an export partition worker uses today), falling back to <see cref="SearchOptions.StartSurrogateId"/>/<see cref="SearchOptions.EndSurrogateId"/> when it is null — those two properties ARE populated and read elsewhere in this repository (<c>ExportWorkerActivity</c> sets them; <c>FileBasedSearchService</c> and <c>SqlEntityFrameworkSearchService</c> read them), so leaving them unforwarded here was the fourth instance of this defect class. A half-open pair (only one of the two set) throws <see cref="NotSupportedException"/> rather than silently scanning unbounded in one direction. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingOnlySurrogateBounds_...</c>.</description></item>
     /// <item><term><see cref="LowerOptions.SearchParameterHash"/></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. Reindex gating (confirming a resource was indexed against an expected search-parameter hash) is a distinct caller concern, not a search request — there is nothing on <see cref="SearchOptions"/> to forward.</description></item>
     /// <item><term><see cref="LowerOptions.ResourceTypes"/></term><description><see cref="SearchOptions.ResourceTypes"/>. Forwarded; without it a multi-<c>_type</c> system-level search silently returns every type. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingResourceTypes_...</c>.</description></item>
     /// <item><term><see cref="LowerOptions.AccessConstraints"/></term><description><see cref="SearchOptions.AccessConstraints"/>. Forwarded; without it an authorization constraint is accepted but never enforced. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingAccessConstraints_...</c>.</description></item>
@@ -264,9 +264,7 @@ public static class SearchCompiler
                         ResourceTypes = options.ResourceTypes,
                         OffsetPage = offsetPage,
                         CountPhaseScoped = countPhaseScoped,
-                        SurrogateRange = surrogateIdRange is { } range
-                            ? new SurrogateIdRange(new SqlParameterRef(range.Start), new SqlParameterRef(range.End))
-                            : null,
+                        SurrogateRange = ToSurrogateRange(surrogateIdRange, options),
                         // The forwarding this task exists for: without it, a caller setting AccessConstraints
                         // on options gets silent non-enforcement -- the constraint is accepted by the API but
                         // never reaches Lower, so nothing narrows the match set or guards an include/chain
@@ -321,6 +319,34 @@ public static class SearchCompiler
             IncludeHistory: types.HasFlag(ResourceVersionTypes.History),
             IncludeDeleted: types.HasFlag(ResourceVersionTypes.SoftDeleted)),
     };
+
+    /// <summary>
+    /// Resolves the surrogate-id bound this compile should apply: the explicit <paramref name="explicitRange"/>
+    /// method parameter when the caller supplied one, otherwise a fallback onto
+    /// <see cref="SearchOptions.StartSurrogateId"/>/<see cref="SearchOptions.EndSurrogateId"/> -- the fourth
+    /// instance of the same defect class as <see cref="AccessConstraints"/>, <see cref="ResourceTypes"/>, and
+    /// <see cref="ResourceVersionTypes"/>: a <see cref="SearchOptions"/> property that looked live and reached
+    /// nothing. The explicit parameter wins when both are supplied, matching the adapter-parameter boundary
+    /// <see cref="LowerOptions.OffsetPage"/> uses.
+    /// </summary>
+    private static SurrogateIdRange? ToSurrogateRange((long Start, long End)? explicitRange, SearchOptions options)
+    {
+        if (explicitRange is { } range)
+        {
+            return new SurrogateIdRange(new SqlParameterRef(range.Start), new SqlParameterRef(range.End));
+        }
+
+        return (options.StartSurrogateId, options.EndSurrogateId) switch
+        {
+            (null, null) => null,
+            ({ } start, { } end) => new SurrogateIdRange(new SqlParameterRef(start), new SqlParameterRef(end)),
+            // A half-open range is a caller error, not a partial intent to honour -- silently treating one
+            // bound as unset would scan an unbounded direction, the same fail-open shape this method exists
+            // to close. Matches ToVisibility's NotSupportedException for ResourceVersionTypes.None below.
+            _ => throw new NotSupportedException(
+                "SearchOptions.StartSurrogateId and EndSurrogateId must both be set or both be null."),
+        };
+    }
 
     /// <summary>Names every parameter Resolve could not find in one top-level failure, or null when it found them all.</summary>
     private static TraceFailure? ResolveFailure(IReadOnlyList<SearchParameterInfo> unresolved)

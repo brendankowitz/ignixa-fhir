@@ -103,8 +103,10 @@ public class CompileFromOptionsTests
     [Fact]
     public async Task GivenSearchOptionsCarryingHistoryResourceVersionTypes_WhenCompilingFromOptions_ThenTheEmittedSqlOmitsTheIsHistoryFilter()
     {
-        // Arrange -- GET /?_type=Observation&status=final, ResourceVersionTypes=History (superseded
-        // versions only, no Latest). System-level (resourceType: null) so the base set lowers to a
+        // Arrange -- GET /?_type=Observation&status=final, ResourceVersionTypes=History. Under the
+        // additive-filter model the visibility filters only ever remove rows (IsHistory = 0, IsDeleted = 0);
+        // History alone still returns Latest UNION History, not superseded versions exclusively. System-level
+        // (resourceType: null) so the base set lowers to a
         // MultiTypeResourceSource, which renders its own visibility check directly against dbo.Resource --
         // unlike a typed ParamSource against a search-param table, which only carries an IsHistory clause
         // when that specific table has the column (dbo.TokenSearchParam does not), so asserting against a
@@ -166,6 +168,85 @@ public class CompileFromOptionsTests
             ResourceType = "Observation",
             Expression = expression,
             ResourceVersionTypes = ResourceVersionTypes.None,
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Observation",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert
+        trace.Failure.ShouldNotBeNull();
+        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
+        trace.Sql.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsCarryingOnlySurrogateBounds_WhenCompilingFromOptions_ThenTheEmittedSqlAppliesTheRange()
+    {
+        // Arrange -- no explicit surrogateIdRange method argument (an $export worker's path); the bound
+        // travels only through SearchOptions.StartSurrogateId/EndSurrogateId, the path a caller reaching
+        // this compiler through ISearchService would use. Deleting the fallback in ToSurrogateRange makes
+        // this SearchOptions pair vanish and the m.Sid1 clauses (and their bound values) never appear.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Observation",
+            Expression = expression,
+            StartSurrogateId = 5000L,
+            EndSurrogateId = 6000L,
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Observation",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert -- both the bound predicate against m.Sid1 and the caller's own values (5000/6000) must
+        // reach the emitted statement. Neither can appear unless CompileFromOptionsAsync read the
+        // SearchOptions properties itself, since no explicit surrogateIdRange argument was supplied.
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain("m.Sid1 >=");
+        trace.Sql!.Sql.ShouldContain("m.Sid1 <=");
+        trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, 5000L));
+        trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, 6000L));
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsWithOnlyOneSurrogateBoundSet_WhenCompilingFromOptions_ThenTheTraceRecordsALowerStageFailure()
+    {
+        // Arrange -- StartSurrogateId set, EndSurrogateId left null. A half-open range is a caller error,
+        // not a partial intent to honour: silently treating the unset bound as unbounded would scan outside
+        // the caller's intended partition, the same fail-open shape this forwarding exists to close.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Observation",
+            Expression = expression,
+            StartSurrogateId = 5000L,
         };
 
         // Act
