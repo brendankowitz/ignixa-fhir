@@ -161,6 +161,16 @@ Trade-off accepted knowingly: phased paging bounds memory per phase for very lar
 
 Four behaviours the advisory identified that neither implementation handles. Each needs a **recorded decision** — implement or explicit non-goal — not silence. Silence is what let the anchor defect survive.
 
+- [ ] **Step 0: `search.mode` on expansion entries — found by Task 4, and the most FHIR-visible item here.**
+
+Legacy marks referenced-resource rows `IsMatch = 0`, which surfaces as `search.mode = "include"` on the bundle entry, and orders `IsMatch DESC`. The compiler marks every row in the union as a match.
+
+That is not cosmetic. It changes the `search.mode` values a client sees, and — because legacy orders matches first — it changes **which resources land on which page**. A client paging `$everything` gets a different partition of the same set.
+
+Decide: emit expansion rows as `include` mode (matching legacy and FHIR's searchset semantics, where referenced resources are includes rather than matches), or keep them as matches and document why. If you emit include mode, the ordering question comes with it — matches-first, or leave ordering to the existing `(T1, Sid1)` total order and accept a different page partition than legacy.
+
+Task 4 recorded this in the decision comment at `LowerPatientEverything` but it is tracked nowhere else. Implement or record as an explicit non-goal; do not leave it as a comment only.
+
 - [ ] **Step 1: `_type` × expansion.** `$everything?_type=Encounter` should return only Encounters, but the expansion still emits its four fixed types whenever referenced-resource inclusion is on. Decide: the handler clears the flag when `_type` excludes those types, or the expansion output intersects `FilteredResourceTypes`. Implement and test.
 - [ ] **Step 2: Device.** Microsoft has a dedicated phase 4 for devices referencing the patient, because Device is **not** in the R4 patient compartment. **Verify whether Ignixa's per-version compartment definitions include Device.** If not, `$everything` silently drops a clinically significant type — implement or record as a known gap with rationale.
 - [ ] **Step 3: Patient `link`.** Microsoft follows `seealso` one layer deep and returns an `OperationOutcome`/301 for `replaced-by` under `Prefer: handling=strict`. Neither Ignixa path does any of it. Record as an explicit non-goal unless you implement it.
