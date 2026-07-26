@@ -520,6 +520,62 @@ public class PatientEverythingLoweringTests
     }
 
     [Fact]
+    public void GivenAConstrainedMemberType_WhenEverythingIsAndedWithAResourceColumnPredicate_ThenTheConstraintIsStillEnforced()
+    {
+        // Arrange -- `$everything AND _lastUpdated ge X`, the shape a caller gets from adding _lastUpdated
+        // to the operation. ExtractResourceColumnPredicates peels _lastUpdated into the outer WHERE and
+        // leaves the bare PatientEverythingExpression as the node the match set is lowered from, so the
+        // match set is still the multi-type $everything union. The enforcement dispatch has to read that
+        // residue: reading the original And instead sees a MultiaryExpression, falls through to the
+        // single-type Apply for "Patient", finds Patient unconstrained, and emits no guard at all --
+        // returning every Observation in the compartment to a caller restricted to status=final.
+        var symbols = BuildSymbols(["Observation"]);
+        var lastUpdated = new SearchParameterInfo("_lastUpdated", "_lastUpdated", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Resource-lastUpdated"));
+        var constraint = new AccessConstraint(
+            "Observation",
+            new SearchParameterExpression(
+                StatusParam,
+                new SearchParameterPredicateExpression(StatusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))));
+
+        var expression = new MultiaryExpression(
+            MultiaryOperator.And,
+            [
+                new PatientEverythingExpression("pat-1"),
+                new SearchParameterExpression(
+                    lastUpdated,
+                    new SearchParameterPredicateExpression(
+                        lastUpdated,
+                        SearchComparator.Ge,
+                        modifier: null,
+                        new DateTimeSearchValue(new DateTimeOffset(2024, 1, 1, 0, 0, 0, TimeSpan.Zero)))),
+            ]);
+
+        // Act
+        var plan = Lower.Run(
+            expression, symbols, "Patient", includes: [], revIncludes: [], includeLimit: 100,
+            sort: [], SortPhase.Valued, page: null,
+            new LowerOptions { AccessConstraints = [constraint] }).Plan;
+
+        // Assert -- the multi-type subtract-then-union wiring, same as the un-ANDed case. A single-type
+        // Apply would leave the match root as the plain $everything union with no Except/Intersect at all.
+        var ctes = plan.Ctes;
+        var root = ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var subtract = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Except>().ShouldHaveSingleItem();
+        var admitted = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Intersect>().ShouldHaveSingleItem();
+
+        ctes[subtract.Right.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe(ObservationTypeId);
+        subtract.Left.ShouldBe(admitted.Left);
+
+        // Reachability, not text presence: SqlBuilder emits every CTE in plan.Ctes whether or not it is
+        // joined to anything, so ShouldContain("SearchParamId = 220") passes even on a plan where the
+        // constraint was lowered and then discarded.
+        Reachable(plan.Match.Index, plan).ShouldContain(admitted.Right.Index);
+
+        // The _lastUpdated conjunct still reached the outer WHERE -- the fix must not have swallowed it.
+        plan.OuterPredicate.ShouldNotBeNull();
+    }
+
+    [Fact]
     public void GivenAPatientEverythingSearchWithAnUnknownTypeFilter_WhenLowered_ThenTheCompartmentMatchesNothingRatherThanThrowing()
     {
         // _type=foo names a type that is not a member of the Patient compartment, so the membership set

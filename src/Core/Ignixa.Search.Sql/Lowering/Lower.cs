@@ -58,6 +58,13 @@ public static class Lower
         CteRef match;
         Predicate? outerPredicate = null;
 
+        // The node the match set was actually lowered from. Not always `expression`: the resource-column
+        // extraction below peels _id/_type/_lastUpdated off an And and leaves the residue, so the two
+        // diverge for a query like `$everything AND _lastUpdated ge X`. The access-constraint dispatch
+        // downstream has to read this one -- picking its enforcement method from `expression` would see a
+        // MultiaryExpression where the match set is a multi-type union, and choose the single-type Apply.
+        Expression? matchSource = expression;
+
         if (expression is null)
         {
             match = LowerBaseSet(context, targetResourceType, options.ResourceTypes);
@@ -66,6 +73,7 @@ public static class Lower
         {
             var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
             outerPredicate = extractedPredicate;
+            matchSource = remaining;
             match = remaining switch
             {
                 null => LowerBaseSet(context, targetResourceType, options.ResourceTypes),
@@ -96,7 +104,7 @@ public static class Lower
             // whole union down to Patient-admitted rows -- dropping every compartment member and, worse,
             // never enforcing a constraint on a member type (an authorization bypass). ApplyToTypes narrows
             // each constrained type in place, exactly as it does for a multi-_type or wildcard match.
-            match = (targetResourceType, expression) switch
+            match = (targetResourceType, matchSource) switch
             {
                 (_, PatientEverythingExpression) => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
                 ({ } matchType, _) => accessConstraintApplier.Apply(match, matchType, context, LowerScopedExpression),

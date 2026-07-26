@@ -586,7 +586,7 @@ public class EndToEndCompilationTests
         plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ResourceSource>();
         var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
         not.Operand.ShouldBeOfType<Predicate.Or>();
-        emitted.Sql.ShouldContain("NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Sql.ShouldContain("NOT ((r.ResourceId = @p1 OR r.ResourceId = @p2))");
         emitted.Sql.ShouldNotContain("TokenSearchParam");
         emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "1", "2"]);
     }
@@ -2458,7 +2458,7 @@ public class EndToEndCompilationTests
             ")\n" +
             "SELECT m.T1, m.Sid1 FROM cte0 m\n" +
             "INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
-            "WHERE (ResourceSurrogateId >= @p1 AND ResourceSurrogateId <= @p2)\n" +
+            "WHERE (r.ResourceSurrogateId >= @p1 AND r.ResourceSurrogateId <= @p2)\n" +
             "ORDER BY m.T1 ASC, m.Sid1 ASC");
 
         // The upper bound covers the whole boundary millisecond: the database appends a 0-79999

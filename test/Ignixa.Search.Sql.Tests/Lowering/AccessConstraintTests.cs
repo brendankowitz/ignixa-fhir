@@ -307,8 +307,10 @@ public class AccessConstraintTests
         var wildcard = new IncludeExpression(["*"], referenceSearchParameter: null, "*", "Patient", referencedTypes: ["Device"], wildCard: true, reversed: true, iterate: false);
 
         // Act + Assert -- Device is unresolved and the wildcard output types are unknown: throw, do not
-        // silently drop the constraint.
-        var ex = Should.Throw<InvalidOperationException>(() => Lower.Run(
+        // silently drop the constraint. NotSupportedException specifically, because that is what
+        // SearchCompiler's catch filter records as a TraceFailure; an InvalidOperationException would
+        // escape it and surface as an unhandled 500 instead of a reported compile failure.
+        var ex = Should.Throw<NotSupportedException>(() => Lower.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [unresolvable] }));
         ex.Message.ShouldContain("Device");

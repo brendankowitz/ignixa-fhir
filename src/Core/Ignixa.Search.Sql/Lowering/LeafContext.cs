@@ -69,15 +69,15 @@ public sealed class LeafContext
     /// declares no targets, which leaves the reference unconstrained by type.
     /// </summary>
     /// <remarks>
-    /// When the DB resolver could not find a declared target type, <c>Resolve.RunAsync</c> stored
-    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) rather than omitting the key, so
-    /// <see cref="SymbolTable.TryGetResourceTypeId"/> returns <c>(true, -1)</c> here and the
-    /// sentinel is included rather than dropped. That sentinel contributes an OR arm that matches
-    /// nothing — no catalog row carries id -1 — but it does not collapse the predicate. Dropping
-    /// instead would be more dangerous: if the resolver missed every declared target, the resulting
-    /// empty list falls through to the unconstrained id-only predicate, matching a reference to any
-    /// resource type carrying that id. That is exactly the false-positive behaviour the
-    /// type-narrowing pass exists to prevent.
+    /// Every declared target maps to an id, never to nothing: a resolver miss already carries
+    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) from <c>Resolve.RunAsync</c>, and a type
+    /// that was never collected at all goes through <see cref="ResourceTypeIdOrSentinel"/> to that same
+    /// sentinel. The sentinel contributes an OR arm that matches nothing — no catalog row carries id -1 —
+    /// but it does not collapse the predicate. Dropping instead would be more dangerous: if every declared
+    /// target were dropped, the resulting empty list falls through to the unconstrained id-only predicate,
+    /// matching a reference to any resource type carrying that id. That is exactly the false-positive
+    /// behaviour the type-narrowing pass exists to prevent, and it must not depend on the collector and
+    /// this consumer staying in agreement about which types get collected.
     ///
     /// In the mixed case (<c>[Organization, UnknownType]</c>) the -1 arm contributes nothing to the
     /// OR and the resolvable arms still work correctly. This mirrors the convention established in
@@ -96,10 +96,7 @@ public sealed class LeafContext
         var ids = new List<short>(targets.Count);
         foreach (var target in targets)
         {
-            if (_symbols.TryGetResourceTypeId(target, out var id))
-            {
-                ids.Add(id);
-            }
+            ids.Add(ResourceTypeIdOrSentinel(target));
         }
 
         return ids;

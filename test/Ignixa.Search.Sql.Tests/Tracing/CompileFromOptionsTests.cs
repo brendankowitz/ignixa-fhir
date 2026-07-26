@@ -14,11 +14,16 @@ namespace Ignixa.Search.Sql.Tests.Tracing;
 /// Proves <see cref="SearchCompiler.CompileFromOptionsAsync"/> forwards <see cref="SearchOptions.AccessConstraints"/>
 /// into the compiler rather than silently dropping them -- the same fail-open defect this branch's own review
 /// caught when it found the property "connected to nothing." The query and the constraint deliberately share
-/// <c>statusParam</c> but bind different codes ("final" vs. "amended"): the query alone resolves the parameter
-/// through <see cref="SearchCompiler.CompileFromOptionsAsync"/>'s Resolve stage (AccessConstraints are not
-/// themselves symbol-collected -- the constraint's parameter only resolves because the query already
-/// references it), and "amended" reaching the emitted SQL can only happen if the constraint's own predicate
-/// was lowered.
+/// <c>statusParam</c> but bind different codes ("final" vs. "amended"): "amended" reaching the emitted SQL
+/// can only happen if the constraint's own predicate was lowered.
+/// <para>
+/// The shared-parameter case alone is not sufficient coverage, which is why
+/// <see cref="GivenAConstraintOnAParameterTheQueryDoesNotUse_WhenCompilingFromOptions_ThenItStillCompiles"/>
+/// exists: constraints are forwarded to Resolve as well as to Lower, so a constraint predicate naming a
+/// parameter the query never mentions still resolves. Before that forwarding existed, this suite passed only
+/// because every fixture reused a parameter the query itself already referenced -- the constraint's symbols
+/// rode in on the query's coat-tails, and any real SMART scope would have thrown out of Lower.
+/// </para>
 /// </summary>
 public class CompileFromOptionsTests
 {
@@ -59,6 +64,79 @@ public class CompileFromOptionsTests
         trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, "amended"));
         trace.CompiledPlan.ShouldNotBeNull();
         trace.CompiledPlan!.Ctes.Count.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
+    public async Task GivenAConstraintOnAParameterTheQueryDoesNotUse_WhenCompilingFromOptions_ThenItStillCompiles()
+    {
+        // Arrange -- Observation?code=1234-5 constrained by status=final. This is the realistic shape: a
+        // SMART scope restricts on whatever the policy names, which has no reason to be a parameter the
+        // caller happened to search on. The constraint's parameter (status) appears nowhere in the query,
+        // so it is collected only if Resolve is given the constraints -- otherwise SymbolTable.SearchParamId
+        // throws KeyNotFoundException out of Lower and the whole search fails.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-code"));
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(codeParam, TokenPredicateLeaf(codeParam, "1234-5"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[codeParam.Url!.ToString()] = 221;
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions { ResourceType = "Observation", Expression = expression };
+        options.AccessConstraints = [new AccessConstraint("Observation", TokenPredicate(statusParam, "final"))];
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Observation",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert -- compiles, and the constraint is genuinely enforced rather than dropped to make it
+        // compile: the constraint's parameter id and its bound value both reach the emitted SQL.
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain($"SearchParamId = {StatusParamId}");
+        trace.Sql.Parameters.ShouldContain(p => Equals(p.Value, "final"));
+    }
+
+    [Fact]
+    public async Task GivenAConstraintOnATypeTheQueryDoesNotName_WhenCompilingFromOptions_ThenThatTypeResolves()
+    {
+        // Arrange -- Patient?_id=abc with a constraint governing Observation, reachable through a
+        // _revinclude. The constrained type is named only by the constraint, so ApplyToTypes'
+        // LowerResourceSource("Observation") finds no id unless Resolve collected it from the constraint.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 230;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions { ResourceType = "Patient" };
+        options.RevInclude = [new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false)];
+        options.AccessConstraints = [new AccessConstraint("Observation", TokenPredicate(statusParam, "final"))];
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Patient",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain($"SearchParamId = {StatusParamId}");
     }
 
     [Fact]

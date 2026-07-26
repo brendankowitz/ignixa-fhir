@@ -157,9 +157,12 @@ internal sealed class AccessConstraintApplier
                 {
                     // Wildcard stage whose produced types are unknown, and a constraint whose type was never
                     // resolved: we cannot emit a guard for a type id we do not have, and we cannot prove the
-                    // wildcard will not produce that type. Refuse to compile rather than fail open. In the
-                    // real pipeline constraint symbols are resolved alongside the search, so this never fires.
-                    throw new InvalidOperationException(
+                    // wildcard will not produce that type. Refuse to compile rather than fail open.
+                    //
+                    // NotSupportedException, not InvalidOperationException: SearchCompiler's catch filter
+                    // records the former as a TraceFailure and lets the latter escape, which would break its
+                    // documented "failures are data, never thrown" contract and surface as a 500.
+                    throw new NotSupportedException(
                         $"Cannot enforce the access constraint for resource type '{constraint.ResourceType}' on a " +
                         "wildcard include: the type was never resolved, so no guard can be emitted and closure " +
                         "cannot be guaranteed. Resolve the constraint's symbols with the search, or narrow the " +

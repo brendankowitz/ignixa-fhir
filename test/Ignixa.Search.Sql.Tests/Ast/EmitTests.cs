@@ -940,9 +940,9 @@ public class EmitTests
         // Assert -- the outer filter is ANDed against the whole parenthesized OR chain as a single
         // unit, not just its first branch. If the seek predicate's OR chain were unparenthesized, this
         // exact "WHERE {outer} AND (...)" text would not appear -- the second/third OR branches would
-        // instead sit at the top level, bypassing ResourceId = @p1 entirely.
+        // instead sit at the top level, bypassing r.ResourceId = @p1 entirely.
         emitted.Sql.ShouldContain(
-            "WHERE ResourceId = @p1 AND (sk0.Text > @p2\n" +
+            "WHERE r.ResourceId = @p1 AND (sk0.Text > @p2\n" +
             "       OR (sk0.Text = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
             "       OR (sk0.Text = @p2 AND m.T1 > @p3))\n" +
             "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
@@ -1048,7 +1048,7 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldContain("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m\n" +
             "INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1\n" +
-            "WHERE ResourceId = @p1");
+            "WHERE r.ResourceId = @p1");
     }
 
     [Fact]
@@ -1241,7 +1241,7 @@ public class EmitTests
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
-        emitted.Sql.ShouldContain("WHERE NOT ((ResourceId = @p1 OR ResourceId = @p2))");
+        emitted.Sql.ShouldContain("WHERE NOT ((r.ResourceId = @p1 OR r.ResourceId = @p2))");
         emitted.Parameters.Select(p => p.Value).ShouldBe([(object)(short)103, "a", "b"]);
     }
 

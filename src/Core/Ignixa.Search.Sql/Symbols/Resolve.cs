@@ -42,7 +42,8 @@ public static class Resolve
         CancellationToken cancellationToken,
         ICompartmentDefinitionManager? compartmentDefinitionManager = null,
         ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
-        IReadOnlyList<string>? additionalResourceTypes = null)
+        IReadOnlyList<string>? additionalResourceTypes = null,
+        IReadOnlyList<AccessConstraint>? accessConstraints = null)
     {
         ArgumentNullException.ThrowIfNull(includes);
         ArgumentNullException.ThrowIfNull(revIncludes);
@@ -68,6 +69,15 @@ public static class Resolve
         foreach (var sortExpression in sort)
         {
             collector.CollectSort(sortExpression);
+        }
+
+        // Access constraints are lowered as ordinary expressions by AccessConstraintApplier, so their
+        // symbols have to be resolved here like any other. Omitting them made every constraint whose
+        // predicate named a parameter the user's own query did not also name throw KeyNotFoundException
+        // out of Lower -- an authorization control that worked only by coincidence.
+        foreach (var constraint in accessConstraints ?? [])
+        {
+            collector.CollectConstraint(constraint);
         }
 
         var compartmentMembership = ResolveCompartmentMembership(collector, compartmentDefinitionManager, searchParameterDefinitionManager);

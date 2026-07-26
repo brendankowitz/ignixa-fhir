@@ -84,7 +84,10 @@ public static class SearchCompiler
             resourceType,
             cancellationToken,
             compartmentDefinitionManager,
-            searchParameterDefinitionManager);
+            searchParameterDefinitionManager,
+            // Kept in step with the AccessConstraints forwarded to LowerOptions below: this entry point
+            // lowers the same constraint predicates, so it needs their symbols resolved too.
+            accessConstraints: options.AccessConstraints);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 
@@ -222,7 +225,10 @@ public static class SearchCompiler
             // than in the expression tree, so nothing collects them and they would resolve to the
             // unmatchable sentinel -- a base set of IN (-1, -1) that emits cleanly and matches nothing.
             // The same list is forwarded to LowerOptions.ResourceTypes below; both halves are required.
-            additionalResourceTypes: options.ResourceTypes);
+            additionalResourceTypes: options.ResourceTypes,
+            // Likewise both halves: the constraints are forwarded to LowerOptions.AccessConstraints below
+            // so they are enforced, and here so the symbols their predicates reference actually resolve.
+            accessConstraints: options.AccessConstraints);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 

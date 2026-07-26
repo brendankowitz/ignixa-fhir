@@ -241,6 +241,27 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
+    /// Collects an access constraint's governed resource type and every symbol its predicate references.
+    /// Called directly by Resolve per constraint, since an <see cref="AccessConstraint"/> lives on
+    /// <see cref="Search.Models.SearchOptions"/> rather than in the Expression tree.
+    /// </summary>
+    /// <remarks>
+    /// The predicate is walked by the same visitor as the user's own search because
+    /// <c>AccessConstraintApplier</c> lowers it through the same leaf dispatcher — so it needs the same
+    /// symbols. Without this the constraint's parameters reach <see cref="SymbolTable.SearchParamId"/>
+    /// uncollected and it throws, meaning a constraint only ever compiled when the user's query happened to
+    /// name the same parameter. That made the authorization mechanism silently dependent on the shape of
+    /// the query it was meant to restrict.
+    /// </remarks>
+    public void CollectConstraint(AccessConstraint constraint)
+    {
+        ArgumentNullException.ThrowIfNull(constraint);
+
+        AddResourceType(constraint.ResourceType);
+        constraint.Predicate.AcceptVisitor(this, context: null);
+    }
+
+    /// <summary>
     /// Records a parameter for resolution, skipping the resource-column codes. Those target dbo.Resource's
     /// own columns and never reach a SearchParamId lookup -- Lower extracts them into the outer predicate,
     /// BuildSortKey resolves _lastUpdated and _id straight to their own sort kinds and rejects _type

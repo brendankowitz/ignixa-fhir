@@ -83,6 +83,18 @@ public static class SqlBuilder
                 "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
                 "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
         }
+
+        // Lower.Run rejects these two at the lowering stage, but QueryPlan is a public construction surface
+        // -- a caller building one directly bypasses that guard entirely. TOP alongside OFFSET/FETCH is
+        // SQL Server Msg 10741, and a keyset seek alongside OFFSET/FETCH pages the same rows twice by two
+        // different mechanisms. Both are grammatically valid, so the grammar tests cannot catch either.
+        if (plan.OffsetPage is not null && (plan.Top is not null || plan.Page is not null))
+        {
+            throw new NotSupportedException(
+                "OffsetPage cannot be combined with Top or a keyset Page: TOP alongside OFFSET/FETCH is " +
+                "rejected by SQL Server, and a keyset seek alongside OFFSET/FETCH applies two independent " +
+                "paging mechanisms to one query.");
+        }
     }
 
     /// <summary>Renders every <see cref="CteDefinition"/> as a named "cteN AS (...)" block, in plan order.</summary>
@@ -165,7 +177,7 @@ public static class SqlBuilder
 
         if (plan.OuterPredicate is not null)
         {
-            whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+            whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters, ResourceJoinQualifier));
         }
 
         if (plan.CountPhaseScoped && plan.Sort is { Phase: SortPhase.MissingPrimary } countPhaseSort)
@@ -411,7 +423,7 @@ public static class SqlBuilder
 
         if (plan.OuterPredicate is not null)
         {
-            clauses.Add(EmitPredicate(plan.OuterPredicate, parameters));
+            clauses.Add(EmitPredicate(plan.OuterPredicate, parameters, ResourceJoinQualifier));
         }
 
         if (plan.Sort is { Phase: SortPhase.MissingPrimary } missingPhaseSort)
@@ -1162,23 +1174,41 @@ public static class SqlBuilder
            $"SELECT 1 FROM {CteLabel(constraint.ConstraintCteIndex)} ac " +
            $"WHERE ac.T1 = {outputTypeColumn} AND ac.Sid1 = {outputSurrogateColumn}))";
 
-    /// <summary>Renders a predicate tree to a WHERE fragment, fully parenthesizing And/Or so operator precedence never depends on the surrounding context.</summary>
-    private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters) => predicate switch
+    /// <summary>
+    /// Renders a predicate tree to a WHERE fragment, fully parenthesizing And/Or so operator precedence
+    /// never depends on the surrounding context.
+    /// </summary>
+    /// <param name="qualifier">
+    /// An alias prefix (including the dot) to put in front of every column, or empty for none. A CTE body
+    /// has exactly one table in scope, so unqualified is unambiguous there and stays the default. The outer
+    /// query does not: the resource join (<c>r</c>) and a <see cref="SortKeyKind.ResourceId"/> sort join
+    /// (<c>rid0</c>) are both <c>dbo.Resource</c>, so an unqualified <c>ResourceId</c>/<c>ResourceTypeId</c>/
+    /// <c>ResourceSurrogateId</c> in the outer predicate binds to neither and SQL Server raises Msg 209.
+    /// Grammar tests cannot see this — an ambiguous identifier parses fine.
+    /// </param>
+    private static string EmitPredicate(Predicate predicate, List<EmittedSqlParameter> parameters, string qualifier = "") => predicate switch
     {
-        Predicate.Equal e => $"{e.Column.Column} = {EmitParam(e.Value, parameters)}{EmitCollation(e.Collation)}",
-        Predicate.Like l => $"{l.Column.Column}{EmitCollation(l.Collation)} LIKE {EmitParam(EscapeLike(l), parameters)} ESCAPE '\\'",
-        Predicate.And a => $"({EmitPredicate(a.Left, parameters)} AND {EmitPredicate(a.Right, parameters)})",
-        Predicate.LessThan lt => $"{lt.Column.Column} < {EmitParam(lt.Value, parameters)}",
-        Predicate.LessThanOrEqual le => $"{le.Column.Column} <= {EmitParam(le.Value, parameters)}",
-        Predicate.GreaterThan gt => $"{gt.Column.Column} > {EmitParam(gt.Value, parameters)}",
-        Predicate.GreaterThanOrEqual ge => $"{ge.Column.Column} >= {EmitParam(ge.Value, parameters)}",
-        Predicate.Or or => $"({EmitPredicate(or.Left, parameters)} OR {EmitPredicate(or.Right, parameters)})",
-        Predicate.Not not => $"NOT ({EmitPredicate(not.Operand, parameters)})",
-        Predicate.IsNull isNull => $"{isNull.Column.Column} IS NULL",
+        Predicate.Equal e => $"{qualifier}{e.Column.Column} = {EmitParam(e.Value, parameters)}{EmitCollation(e.Collation)}",
+        Predicate.Like l => $"{qualifier}{l.Column.Column}{EmitCollation(l.Collation)} LIKE {EmitParam(EscapeLike(l), parameters)} ESCAPE '\\'",
+        Predicate.And a => $"({EmitPredicate(a.Left, parameters, qualifier)} AND {EmitPredicate(a.Right, parameters, qualifier)})",
+        Predicate.LessThan lt => $"{qualifier}{lt.Column.Column} < {EmitParam(lt.Value, parameters)}",
+        Predicate.LessThanOrEqual le => $"{qualifier}{le.Column.Column} <= {EmitParam(le.Value, parameters)}",
+        Predicate.GreaterThan gt => $"{qualifier}{gt.Column.Column} > {EmitParam(gt.Value, parameters)}",
+        Predicate.GreaterThanOrEqual ge => $"{qualifier}{ge.Column.Column} >= {EmitParam(ge.Value, parameters)}",
+        Predicate.Or or => $"({EmitPredicate(or.Left, parameters, qualifier)} OR {EmitPredicate(or.Right, parameters, qualifier)})",
+        Predicate.Not not => $"NOT ({EmitPredicate(not.Operand, parameters, qualifier)})",
+        Predicate.IsNull isNull => $"{qualifier}{isNull.Column.Column} IS NULL",
         Predicate.False => PlanExplainer.UnsatisfiableRendering,
-        Predicate.PrefixOfParameter pop => $"LEFT({EmitParam(pop.Value, parameters)}, LEN({pop.Column.Column})){EmitCollation(pop.Collation)} = {pop.Column.Column}",
+        Predicate.PrefixOfParameter pop => $"LEFT({EmitParam(pop.Value, parameters)}, LEN({qualifier}{pop.Column.Column})){EmitCollation(pop.Collation)} = {qualifier}{pop.Column.Column}",
         _ => throw new NotSupportedException($"No Emit for {predicate.GetType().Name}."),
     };
+
+    /// <summary>
+    /// The alias the outer query's <c>dbo.Resource</c> join uses. The outer predicate's columns are all
+    /// <c>dbo.Resource</c> columns, and <see cref="NeedsResourceJoin"/> guarantees this join exists whenever
+    /// an outer predicate does, so qualifying with it is always both valid and unambiguous.
+    /// </summary>
+    private const string ResourceJoinQualifier = "r.";
 
     /// <summary>Escapes the LIKE metacharacters in a value and wraps it in the % / _ pattern for its match kind, returning a parameter ref for binding.</summary>
     private static SqlParameterRef EscapeLike(Predicate.Like like)

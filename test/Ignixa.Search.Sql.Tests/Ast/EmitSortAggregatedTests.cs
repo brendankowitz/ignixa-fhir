@@ -136,4 +136,30 @@ public class EmitSortAggregatedTests
         emitted.Sql.ShouldContain("INNER JOIN dbo.Resource rid0 ON rid0.ResourceTypeId = m.T1 AND rid0.ResourceSurrogateId = m.Sid1");
         emitted.Sql.ShouldContain("ORDER BY rid0.ResourceId ASC, m.T1 ASC, m.Sid1 ASC");
     }
+
+    [Fact]
+    public void GivenAResourceIdSortKeyAndAnOuterPredicate_WhenEmitted_ThenTheOuterPredicateColumnsAreQualified()
+    {
+        // Arrange -- Patient?_id=abc&_sort=_id. Two joins onto dbo.Resource land in one statement: the
+        // resource join `r` that NeedsResourceJoin adds for the outer predicate, and the `rid0` sort join.
+        // Both expose ResourceId, so an unqualified `WHERE ResourceId = @p` binds to neither and SQL Server
+        // raises Msg 209 (ambiguous column name). ScriptDom parses it happily -- an ambiguous identifier is
+        // grammatically valid -- so only an explicit assertion on the qualifier catches this.
+        var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceId, SortOrder.Ascending)], SortPhase.Valued);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            OuterPredicate: outerPredicate,
+            Sort: sort);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- both aliases present, and the outer predicate names the one it means.
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource rid0 ON");
+        emitted.Sql.ShouldContain("INNER JOIN dbo.Resource r ON");
+        emitted.Sql.ShouldContain("WHERE r.ResourceId = @p1");
+        emitted.Sql.ShouldNotContain("WHERE ResourceId = @p1");
+    }
 }
