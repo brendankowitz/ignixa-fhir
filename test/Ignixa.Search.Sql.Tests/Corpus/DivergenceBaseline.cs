@@ -69,10 +69,32 @@ public static class DivergenceBaseline
     /// Combined with the seed-union fix in <c>StructuralContext.LowerPatientEverything</c>
     /// (<c>Union(patientItselfRef, filteredCompartmentRef)</c> now feeds the ReferencedTypeExpansion,
     /// closing the shared under-return bug where the patient's own generalPractitioner/managingOrganization
-    /// were missed whenever no compartment member happened to reference them too), the sole remaining
-    /// reason these three entries are Divergent is the paging model — phased continuation token versus a
-    /// single windowed query — which is a future phase's subject, not a semantics gap. The count still does
-    /// not move, for the same categorical reason as above.
+    /// were missed whenever no compartment member happened to reference them too), the semantics gap is
+    /// closed and what remains is the paging model — phased continuation token versus a single windowed
+    /// query — plus the capture-coverage difference the next paragraph names. The count still does not
+    /// move, for the same categorical reason as above.
+    /// </para>
+    /// <para>
+    /// That paragraph's stronger claim — that paging is the <em>sole</em> remaining reason — was wrong, and
+    /// this one strikes it. The differential report's own per-entry diff refutes it. A verdict is decided by
+    /// the tables/filters multiset alone (<see cref="ShapeComparison"/>), so the paging model is nearly
+    /// invisible to it: TOP, OFFSET/FETCH and ORDER BY are operations, reported but never decisive. The
+    /// only paging artefact that reaches the verdict is legacy's <c>Row &lt; @p</c> include-window filter
+    /// (twice per entry), and no compiler-side keyset seek can ever cancel it — the compiler's seek
+    /// predicate compares <c>m.T1</c>/<c>m.Sid1</c> against a decoded boundary, which canonicalizes as a
+    /// different filter, so implementing paging <em>adds</em> to the compiler-only side rather than
+    /// subtracting from the legacy-only one. The real weight is elsewhere: on the two unfiltered entries the
+    /// compiler-only side carries 74 <c>dbo.ReferenceSearchParam</c> reads (the Patient compartment's
+    /// membership parameters) against a legacy-only side of four items. That asymmetry is the capture
+    /// covering phase 1 only — phases 2–3, which are the compartment traversal, were never followed — so it
+    /// is not closable by any change to this compiler, only by capturing the later phases. On the third
+    /// entry (<c>_type=foo</c>, where the compartment collapses to an unsatisfiable predicate) the
+    /// legacy-only side still holds a <c>ReferenceSearchParam</c> read and two <c>SearchParamId</c> filters
+    /// after the <c>Row &lt;</c> pair, because legacy expands its two outbound reference parameters as two
+    /// separate reads where the compiler emits one read covering all four target types. All three therefore
+    /// stay Divergent under a perfect paging match. Measured, not predicted: the distribution after landing
+    /// the single-windowed-query model is unchanged at 75/37/14/59, and the four constants here are
+    /// untouched.
     /// </para>
     /// </summary>
     public const int DivergingQueries = 59;

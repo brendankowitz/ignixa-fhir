@@ -440,6 +440,32 @@ public sealed class StructuralContext
     /// The result is a Union of the Patient-itself branch, the (filtered) compartment branch, and -- when
     /// requested -- the referenced-type expansion.
     /// </summary>
+    /// <remarks>
+    /// Paging model: one windowed query over the whole union, deliberately NOT the shipping engine's
+    /// phased walk. Microsoft's $everything pages in four phases behind a continuation token -- phase 1
+    /// the patient plus its generalPractitioner/managingOrganization, phases 2-3 the compartment, phase 4
+    /// devices referencing the patient -- and the captured legacy corpus SQL is phase 1 alone. Phasing was
+    /// considered and rejected: phase 1 union phases 2-3 union phase 4 is the same resource set this
+    /// method's own union already produces, so the phases are how that engine assembles the result, not
+    /// what the operation returns. Reproducing them would need a phase concept this compiler does not
+    /// have, and four round trips where one suffices.
+    /// <para>
+    /// Consequently this node contributes no paging machinery of its own: the window is the ordinary
+    /// keyset <c>PageSpec</c> or <c>OffsetSpec</c> the shape emitters already apply to any match set,
+    /// which reach the union's output rather than any one arm. That is only safe because every structural
+    /// Union here emits a de-duplicating UNION, so (T1, Sid1) is unique across the arms and the
+    /// (T1 ASC, Sid1 ASC) ordering the keyset seek predicate mirrors is a total order over the whole
+    /// result. A UNION ALL here would leave the page boundary undefined between two arms and silently
+    /// duplicate or drop resources between pages -- no text-level test would see it.
+    /// </para>
+    /// <para>
+    /// Two consequences accepted knowingly. Phased paging bounds memory per phase for a very large
+    /// compartment; a single windowed query relies on the window to do that instead. And the legacy shape
+    /// orders <c>IsMatch DESC</c> first, so its outbound expansion rows follow every match across page
+    /// boundaries, where here the expansion is part of the match set and interleaves by (T1, Sid1). Both
+    /// are reversible: nothing in this lowering forecloses adding phases later.
+    /// </para>
+    /// </remarks>
     public CteRef LowerPatientEverything(PatientEverythingExpression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);

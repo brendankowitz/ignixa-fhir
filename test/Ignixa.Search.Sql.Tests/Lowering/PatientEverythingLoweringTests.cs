@@ -72,7 +72,11 @@ public class PatientEverythingLoweringTests
             compartmentMembership: membership);
     }
 
-    private static QueryPlan Lowered(PatientEverythingExpression expression, SymbolTable symbols, LowerOptions? options = null)
+    private static QueryPlan Lowered(
+        PatientEverythingExpression expression,
+        SymbolTable symbols,
+        LowerOptions? options = null,
+        PageSpec? page = null)
         => Lower.Run(
             expression,
             symbols,
@@ -82,7 +86,7 @@ public class PatientEverythingLoweringTests
             includeLimit: 100,
             sort: [],
             SortPhase.Valued,
-            page: null,
+            page,
             options).Plan;
 
     [Fact]
@@ -522,6 +526,100 @@ public class PatientEverythingLoweringTests
         var patientItself = plan.Ctes.OfType<CteDefinition.ResourceSource>().ShouldHaveSingleItem();
         patientItself.Predicate.ShouldBeOfType<Predicate.Or>();
         plan.Ctes.OfType<CteDefinition.CompartmentSource>().Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithAKeysetPageBoundary_WhenLowered_ThenTheSeekAndOrderByWindowTheUnionAsAWhole()
+    {
+        // $everything's match set is a Union of CTEs, not a single ParamSource, so the question this
+        // pins down is whether the existing keyset machinery composes over it at all. It does, and for a
+        // structural reason: the outer SELECT reads the union's own output through the m alias, so the
+        // seek predicate and ORDER BY constrain the union as one relation rather than any single arm.
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1");
+        var page = new PageSpec([], new SqlParameterRef(PatientTypeId), new SqlParameterRef(5000L));
+
+        var plan = Lowered(expression, symbols, page: page);
+        var emitted = SqlBuilder.Run(plan);
+
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        emitted.Sql.ShouldContain($"FROM {SqlLabels.CteLabel(plan.Match.Index)} m");
+
+        var typeParam = $"@p{emitted.Parameters.Count - 2}";
+        var sidParam = $"@p{emitted.Parameters.Count - 1}";
+        emitted.Sql.ShouldContain(
+            $"WHERE ((m.T1 = {typeParam} AND m.Sid1 > {sidParam})\n" +
+            $"       OR (m.T1 > {typeParam}))\n" +
+            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithAKeysetPageBoundary_WhenEmitted_ThenTheCteParametersStillOccupyTheLeadingOrdinals()
+    {
+        // The page boundary is bound by the shape emitter, after EmitCteBlocks has bound every CTE value.
+        // Reversing that -- hoisting the window ahead of the CTE prelude -- renumbers every @pN
+        // PlanExplainer reads back positionally, which is silent in the SQL text and loud only here.
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1");
+        var page = new PageSpec([], new SqlParameterRef(PatientTypeId), new SqlParameterRef(5000L));
+
+        var unpaged = SqlBuilder.Run(Lowered(expression, symbols));
+        var paged = SqlBuilder.Run(Lowered(expression, symbols, page: page));
+
+        paged.Parameters.Take(unpaged.Parameters.Count).Select(p => p.Value)
+            .ShouldBe(unpaged.Parameters.Select(p => p.Value));
+        paged.Parameters.Skip(unpaged.Parameters.Count).Select(p => p.Value)
+            .ShouldBe([PatientTypeId, 5000L]);
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithAnOffsetWindow_WhenLowered_ThenOffsetFetchFollowsTheOrderByOverTheUnion()
+    {
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1");
+
+        var emitted = SqlBuilder.Run(Lowered(expression, symbols, new LowerOptions { OffsetPage = new OffsetSpec(20, 10) }));
+
+        var offsetParam = $"@p{emitted.Parameters.Count - 2}";
+        var limitParam = $"@p{emitted.Parameters.Count - 1}";
+        emitted.Sql.ShouldContain(
+            "ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            $"OFFSET {offsetParam} ROWS FETCH NEXT {limitParam} ROWS ONLY");
+        emitted.Parameters.Skip(emitted.Parameters.Count - 2).Select(p => p.Value).ShouldBe([20, 10]);
+    }
+
+    [Fact]
+    public void GivenAPatientEverythingSearchWithATopCap_WhenLowered_ThenTheCapBoundsTheUnionedResultAndNotAnyOneArm()
+    {
+        // A cap pushed down into the arms would return up to N patient rows AND N compartment members
+        // AND N referenced resources -- silently more than the caller asked for, and a different set
+        // each time the arms' relative sizes change. Exactly one TOP, on the union's output.
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1");
+
+        var sql = SqlBuilder.Run(Lowered(expression, symbols, new LowerOptions { Top = 25 })).Sql;
+
+        sql.ShouldContain($"SELECT TOP (25) m.T1, m.Sid1 FROM {SqlLabels.CteLabel(Lowered(expression, symbols).Match.Index)} m");
+        (sql.Split("TOP (").Length - 1).ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAWindowedPatientEverythingSearch_WhenEmitted_ThenEveryUnionInTheMatchGraphDeduplicates()
+    {
+        // The invariant a single windowed query rests on: the arms can overlap (a Practitioner reachable
+        // from both the patient row and a compartment member; a member reachable from two membership
+        // parameters), and only a de-duplicating UNION makes (T1, Sid1) unique across them. Under UNION
+        // ALL the (T1 ASC, Sid1 ASC) order is no longer total, so a page boundary landing on a duplicated
+        // pair would repeat or skip resources between pages -- invisible to every other assertion here.
+        var symbols = BuildSymbols();
+        var expression = new PatientEverythingExpression("pat-1", includeReferencedResources: true);
+        var page = new PageSpec([], new SqlParameterRef(PatientTypeId), new SqlParameterRef(5000L));
+
+        var plan = Lowered(expression, symbols, page: page);
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        plan.Ctes.OfType<CteDefinition.Union>().ShouldNotBeEmpty();
+        sql.ShouldNotContain("UNION ALL");
     }
 
     /// <summary>The plan indexes of every CTE of kind <typeparamref name="T"/>.</summary>
