@@ -219,8 +219,10 @@ public class PatientEverythingLoweringTests
     {
         // $everything is not run with relaxed visibility in production today, so nothing else would catch a
         // CTE kind that ignores the plan's visibility input and hardcodes its own IsHistory/IsDeleted
-        // filter. This asserts the three $everything-only CTE kinds honour the contract the rest of the
-        // emitters do.
+        // filter, or one that silently omits the filter it owes under the default visibility. Asserted per
+        // CTE body rather than across the whole statement: a whole-statement Contains would pass as long as
+        // any one of the three kinds carries the filter, even if another kind of the three emits none at
+        // all -- exactly the shape a revert of visibility threading on a single emitter would produce.
         var symbols = BuildSymbols();
         var expression = new PatientEverythingExpression(
             "pat-1",
@@ -234,9 +236,32 @@ public class PatientEverythingLoweringTests
             new LowerOptions { Visibility = new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true) });
         var current = Lowered(expression, symbols);
 
-        SqlBuilder.Run(relaxed).Sql.ShouldNotContain("IsHistory");
-        SqlBuilder.Run(relaxed).Sql.ShouldNotContain("IsDeleted");
-        SqlBuilder.Run(current).Sql.ShouldContain("r.IsHistory = 0 AND r.IsDeleted = 0");
+        var relaxedSql = SqlBuilder.Run(relaxed).Sql;
+        relaxedSql.ShouldNotContain("IsHistory");
+        relaxedSql.ShouldNotContain("IsDeleted");
+
+        var currentSql = SqlBuilder.Run(current).Sql;
+
+        var referencedTypeExpansionCtes = CteIndexesOf<CteDefinition.ReferencedTypeExpansion>(current);
+        var visibleSinceFilterCtes = CteIndexesOf<CteDefinition.VisibleSinceFilter>(current);
+        var tableExistsPredicateCtes = CteIndexesOf<CteDefinition.TableExistsPredicate>(current);
+
+        referencedTypeExpansionCtes.ShouldNotBeEmpty();
+        visibleSinceFilterCtes.ShouldNotBeEmpty();
+        tableExistsPredicateCtes.ShouldNotBeEmpty();
+
+        foreach (var index in referencedTypeExpansionCtes.Concat(visibleSinceFilterCtes))
+        {
+            CteBody(currentSql, index).ShouldContain("r.IsHistory = 0 AND r.IsDeleted = 0");
+        }
+
+        // TableExistsPredicate scans dbo.DateTimeSearchParam, which has neither IsHistory nor IsDeleted, so
+        // its catalog-driven SearchParamTableHistoryClause correctly renders empty for this table -- not
+        // ResourceRowFilter, which would demand a column this table doesn't have.
+        foreach (var index in tableExistsPredicateCtes)
+        {
+            CteBody(currentSql, index).ShouldNotContain("IsDeleted");
+        }
     }
 
     [Fact]
@@ -406,6 +431,41 @@ public class PatientEverythingLoweringTests
         var patientItself = plan.Ctes.OfType<CteDefinition.ResourceSource>().ShouldHaveSingleItem();
         patientItself.Predicate.ShouldBeOfType<Predicate.Or>();
         plan.Ctes.OfType<CteDefinition.CompartmentSource>().Count().ShouldBe(2);
+    }
+
+    /// <summary>The plan indexes of every CTE of kind <typeparamref name="T"/>.</summary>
+    private static IReadOnlyList<int> CteIndexesOf<T>(QueryPlan plan) where T : CteDefinition
+        => [.. plan.Ctes.Select((cte, index) => (cte, index)).Where(t => t.cte is T).Select(t => t.index)];
+
+    /// <summary>
+    /// The SQL body of the CTE at <paramref name="index"/> in <paramref name="sql"/>, delimited by the
+    /// balanced parentheses following its <c>cteN AS (</c> header. Balances parens rather than searching
+    /// for the next <c>)</c> because emitters like TableExistsPredicate's NOT EXISTS nest their own.
+    /// </summary>
+    private static string CteBody(string sql, int index)
+    {
+        var marker = $"{SqlLabels.CteLabel(index)} AS (";
+        var start = sql.IndexOf(marker, StringComparison.Ordinal);
+        start.ShouldBeGreaterThanOrEqualTo(0);
+
+        var bodyStart = start + marker.Length;
+        var depth = 1;
+        var cursor = bodyStart;
+        while (depth > 0)
+        {
+            if (sql[cursor] == '(')
+            {
+                depth++;
+            }
+            else if (sql[cursor] == ')')
+            {
+                depth--;
+            }
+
+            cursor++;
+        }
+
+        return sql[bodyStart..(cursor - 1)];
     }
 
     /// <summary>The CTE indexes reachable from <paramref name="index"/>, itself included.</summary>

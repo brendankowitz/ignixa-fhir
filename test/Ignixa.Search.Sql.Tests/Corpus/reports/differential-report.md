@@ -2930,32 +2930,33 @@ cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
 ### Divergent: `/Patient/ignixa-evx-pat/$everything?_count=100&foo=bar`
 
 Only the shipping engine does:
-- `table Resource (x2)`
-- `filter IsDeleted = <v> (x2)`
-- `filter IsHistory = <v> (x2)`
+- `table Resource`
+- `filter IsDeleted = <v>`
+- `filter IsHistory = <v>`
 - `filter Row < <v> (x2)`
 
 Only the compiler does:
-- `table ReferenceSearchParam (x73)`
+- `table ReferenceSearchParam (x74)`
 - `filter ReferenceResourceId = <v> (x75)`
-- `filter ReferenceResourceTypeId = <v> (x75)`
+- `filter ReferenceResourceTypeId = <v> (x79)`
 - `filter ResourceTypeId = <v> (x93)`
 - `filter SearchParamId = <v> (x73)`
+- `filter col:BaseUri is-null`
 
 Operator differences (encoding, not semantics):
-- `legacy: op correlate (x14)`
+- `legacy: op correlate (x10)`
 - `legacy: op count-big (x2)`
 - `legacy: op exists (x4)`
 - `legacy: op in (x2)`
-- `legacy: op inner-join (x3)`
+- `legacy: op inner-join`
 - `legacy: op not (x2)`
 - `legacy: op order-by`
 - `legacy: op row-number`
 - `legacy: op top (x5)`
 - `legacy: op union-all (x2)`
-- `compiler: op distinct (x69)`
-- `compiler: op or (x18)`
-- `compiler: op union (x75)`
+- `compiler: op distinct (x70)`
+- `compiler: op or (x21)`
+- `compiler: op union (x76)`
 
 <details><summary>shapes</summary>
 
@@ -2972,7 +2973,7 @@ cte5 = <-cte4  [count-big,distinct,top]
 cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
 
 compiler:
-select0 = <-cte77  [order-by]
+select0 = <-cte78  [order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = @p
 cte1 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
 cte2 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
@@ -3050,7 +3051,8 @@ cte73 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId =
 cte74 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
 cte75 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
 cte76 = <-cte1,cte10,cte11,cte12,cte13,cte14,cte15,cte16,cte17,cte18,cte19,cte2,cte20,cte21,cte22,cte23,cte24,cte25,cte26,cte27,cte28,cte29,cte3,cte30,cte31,cte32,cte33,cte34,cte35,cte36,cte37,cte38,cte39,cte4,cte40,cte41,cte42,cte43,cte44,cte45,cte46,cte47,cte48,cte49,cte5,cte50,cte51,cte52,cte53,cte54,cte55,cte56,cte57,cte58,cte59,cte6,cte60,cte61,cte62,cte63,cte64,cte65,cte66,cte67,cte68,cte69,cte7,cte70,cte71,cte72,cte73,cte74,cte75,cte8,cte9  [union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union]
-cte77 = <-cte0,cte76  [union]
+cte77 = ReferenceSearchParam+Resource  <-cte76  IsDeleted = <n> IsHistory = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,inner-join,inner-join,or,or,or]
+cte78 = <-cte0,cte76,cte77  [union,union]
 ```
 
 </details>
@@ -3058,32 +3060,33 @@ cte77 = <-cte0,cte76  [union]
 ### Divergent: `/Patient/ignixa-evx-pat/$everything?_since=3000`
 
 Only the shipping engine does:
-- `table Resource (x2)`
-- `filter IsDeleted = <v> (x2)`
-- `filter IsHistory = <v> (x2)`
+- `table Resource`
+- `filter IsDeleted = <v>`
+- `filter IsHistory = <v>`
 - `filter Row < <v> (x2)`
 
 Only the compiler does:
-- `table ReferenceSearchParam (x73)`
+- `table ReferenceSearchParam (x74)`
 - `filter ReferenceResourceId = <v> (x75)`
-- `filter ReferenceResourceTypeId = <v> (x75)`
+- `filter ReferenceResourceTypeId = <v> (x79)`
 - `filter ResourceTypeId = <v> (x93)`
 - `filter SearchParamId = <v> (x73)`
+- `filter col:BaseUri is-null`
 
 Operator differences (encoding, not semantics):
-- `legacy: op correlate (x14)`
+- `legacy: op correlate (x10)`
 - `legacy: op count-big (x2)`
 - `legacy: op exists (x4)`
 - `legacy: op in (x2)`
-- `legacy: op inner-join (x3)`
+- `legacy: op inner-join`
 - `legacy: op not (x2)`
 - `legacy: op order-by`
 - `legacy: op row-number`
 - `legacy: op top (x5)`
 - `legacy: op union-all (x2)`
-- `compiler: op distinct (x69)`
-- `compiler: op or (x18)`
-- `compiler: op union (x75)`
+- `compiler: op distinct (x70)`
+- `compiler: op or (x21)`
+- `compiler: op union (x76)`
 
 <details><summary>shapes</summary>
 
@@ -3100,7 +3103,7 @@ cte5 = <-cte4  [count-big,distinct,top]
 cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
 
 compiler:
-select0 = <-cte77  [order-by]
+select0 = <-cte78  [order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = @p
 cte1 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
 cte2 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
@@ -3178,7 +3181,8 @@ cte73 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId =
 cte74 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
 cte75 = ReferenceSearchParam  ReferenceResourceId = @p ReferenceResourceTypeId = @p ResourceTypeId = <n> SearchParamId = <n>  [distinct]
 cte76 = <-cte1,cte10,cte11,cte12,cte13,cte14,cte15,cte16,cte17,cte18,cte19,cte2,cte20,cte21,cte22,cte23,cte24,cte25,cte26,cte27,cte28,cte29,cte3,cte30,cte31,cte32,cte33,cte34,cte35,cte36,cte37,cte38,cte39,cte4,cte40,cte41,cte42,cte43,cte44,cte45,cte46,cte47,cte48,cte49,cte5,cte50,cte51,cte52,cte53,cte54,cte55,cte56,cte57,cte58,cte59,cte6,cte60,cte61,cte62,cte63,cte64,cte65,cte66,cte67,cte68,cte69,cte7,cte70,cte71,cte72,cte73,cte74,cte75,cte8,cte9  [union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union,union]
-cte77 = <-cte0,cte76  [union]
+cte77 = ReferenceSearchParam+Resource  <-cte76  IsDeleted = <n> IsHistory = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,inner-join,inner-join,or,or,or]
+cte78 = <-cte0,cte76,cte77  [union,union]
 ```
 
 </details>
@@ -3186,30 +3190,30 @@ cte77 = <-cte0,cte76  [union]
 ### Divergent: `/Patient/ignixa-evx-pat/$everything?_type=foo`
 
 Only the shipping engine does:
-- `table ReferenceSearchParam (x2)`
-- `table Resource`
-- `filter IsDeleted = <v>`
-- `filter IsHistory = <v>`
+- `table ReferenceSearchParam`
 - `filter Row < <v> (x2)`
 - `filter SearchParamId = <v> (x2)`
 
 Only the compiler does:
 - `filter <v> = <v>`
+- `filter ReferenceResourceTypeId = <v> (x4)`
 - `filter ResourceTypeId = <v>`
+- `filter col:BaseUri is-null`
 
 Operator differences (encoding, not semantics):
-- `legacy: op correlate (x14)`
+- `legacy: op correlate (x10)`
 - `legacy: op count-big (x2)`
-- `legacy: op distinct (x6)`
+- `legacy: op distinct (x5)`
 - `legacy: op exists (x4)`
 - `legacy: op in (x2)`
-- `legacy: op inner-join (x3)`
+- `legacy: op inner-join`
 - `legacy: op not (x2)`
 - `legacy: op order-by`
 - `legacy: op row-number`
 - `legacy: op top (x5)`
 - `legacy: op union-all (x2)`
-- `compiler: op union`
+- `compiler: op or (x3)`
+- `compiler: op union (x2)`
 
 <details><summary>shapes</summary>
 
@@ -3226,10 +3230,11 @@ cte5 = <-cte4  [count-big,distinct,top]
 cte6 = <-cte1,cte3,cte5  [correlate,correlate,correlate,correlate,exists,exists,not,not,union-all,union-all]
 
 compiler:
-select0 = <-cte2  [order-by]
+select0 = <-cte3  [order-by]
 cte0 = Resource  IsDeleted = <n> IsHistory = <n> ResourceId = @p ResourceTypeId = @p
 cte1 = Resource  <n> = <n> IsDeleted = <n> IsHistory = <n> ResourceTypeId = @p
-cte2 = <-cte0,cte1  [union]
+cte2 = ReferenceSearchParam+Resource  <-cte1  IsDeleted = <n> IsHistory = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> ReferenceResourceTypeId = <n> col:BaseUri is-null  [correlate,correlate,correlate,correlate,distinct,inner-join,inner-join,or,or,or]
+cte3 = <-cte0,cte1,cte2  [union,union]
 ```
 
 </details>
