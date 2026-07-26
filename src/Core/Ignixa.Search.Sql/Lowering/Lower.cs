@@ -250,11 +250,11 @@ public static class Lower
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
-        PatientEverythingExpression everything when resourceType is null => throw new NotSupportedException(
+        PatientEverythingExpression when resourceType is null => throw new NotSupportedException(
             "$everything is not supported in system-level search -- it is anchored on the Patient/Group type " +
             "whose compartment it expands, so it has no meaning without one. Guarding at the dispatch choke " +
-            "point rather than letting EverythingLoweringRule receive a null type it cannot use."),
-        PatientEverythingExpression everything => EverythingLoweringRule.Lower(everything, context, resourceType),
+            "point rather than letting the traversal run under a scope it cannot use."),
+        PatientEverythingExpression everything => context.LowerPatientEverything(everything),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };

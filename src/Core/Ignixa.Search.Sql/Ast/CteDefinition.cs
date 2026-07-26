@@ -16,6 +16,12 @@ namespace Ignixa.Search.Sql.Ast;
 /// <item><b>NotReferencedSource</b> — resources of a type that no reference row points at (the
 /// <c>_not-referenced</c> search): a dbo.Resource scan anti-joined to dbo.ReferenceSearchParam by
 /// reference-target identity.</item>
+/// <item><b>TableExistsPredicate</b> — a raw table row-existence check, scoped only by
+/// ResourceSurrogateId (via the outer join, not a WHERE clause of its own) plus an optional additional
+/// Predicate. Unlike ParamSource, carries no SearchParamId or ResourceTypeId.</item>
+/// <item><b>VisibleSinceFilter</b> — $everything's _since filter: resources visible in a transaction on
+/// or after a given Since date, joined through dbo.Resource and dbo.Transactions on VisibleDate.</item>
+/// <item><b>ReferencedTypeExpansion</b> — $everything's outbound referenced-resource expansion.</item>
 /// </list>
 /// ParamSource carries ResourceTypeId because a SearchParamId is assigned per parameter-definition URL,
 /// not per resource type, so a shared definition (e.g. one spanning Patient and Practitioner) would
@@ -65,6 +71,39 @@ public abstract record CteDefinition
         short TargetResourceTypeId,
         short? SourceResourceTypeId,
         short? ReferenceSearchParamId) : CteDefinition;
+
+    /// <summary>
+    /// A raw table row-existence check, scoped only by ResourceSurrogateId (via the outer join, not a WHERE
+    /// clause of its own) plus an optional additional Predicate. Unlike ParamSource, carries no SearchParamId
+    /// or ResourceTypeId -- for checks that are genuinely table-wide, e.g. $everything's "does this resource
+    /// have ANY date-typed search-index row" (Predicate: null) or "...matching this date range" (Predicate: set).
+    /// </summary>
+    public sealed record TableExistsPredicate(TableDescriptor Table, Predicate? Predicate = null) : CteDefinition;
+
+    /// <summary>
+    /// $everything's _since filter -- resources visible in a transaction on or after Since. Scoped to
+    /// whichever branch it's Intersect-composed with (design: the compartment branch only, never the
+    /// Patient-itself or referenced-type-expansion branches -- see the $everything orchestration in
+    /// <c>StructuralContext.LowerPatientEverything</c>).
+    /// VisibleDate (not CreateDate) is Transactions' incremental-visibility column, NULL until a
+    /// transaction becomes visible -- distinct from CreateDate, which SqlServerFhirRepository's existing
+    /// LastModified derivation uses for a different purpose.
+    /// </summary>
+    public sealed record VisibleSinceFilter(SqlParameterRef Since) : CteDefinition;
+
+    /// <summary>
+    /// $everything's referenced-type expansion -- resources referenced <em>from</em> an upstream seed set
+    /// (the filtered patient-compartment set), restricted to a fixed set of referenced resource types
+    /// (Practitioner/Organization/Location/Medication). Follows every outbound internal reference the seed
+    /// rows carry (no <c>SearchParamId</c> filter -- all reference parameters), joined through
+    /// dbo.ReferenceSearchParam and dbo.Resource, and returns the referenced resource's own (type, surrogate
+    /// id). Structurally this is the reference-follow topology <see cref="ChainJoin"/> uses in reverse, but
+    /// with a wildcard reference parameter and a wildcard source type -- neither of which ChainJoin can
+    /// express -- which is why it is its own node kind rather than a ChainJoin. Seeds from <see cref="Seed"/>
+    /// specifically so the expansion follows the <em>filtered</em> compartment set (after date/_since
+    /// filtering), matching the legacy PatientEverythingQueryGenerator's own sequencing.
+    /// </summary>
+    public sealed record ReferencedTypeExpansion(CteRef Seed, IReadOnlyList<short> OutputResourceTypeIds) : CteDefinition;
 
     /// <summary>
     /// Current rows of dbo.Resource across several resource types, or across every type — the system-wide

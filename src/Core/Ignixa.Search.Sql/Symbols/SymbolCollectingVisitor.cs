@@ -140,18 +140,29 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// Records a <c>$everything</c> operation as a Patient-compartment search for Resolve to expand, so its
-    /// member types reach the SymbolTable through the identical ICompartmentDefinitionManager path an
-    /// ordinary <c>Patient/{id}/*</c> compartment search uses -- not a second mechanism. The <c>_type</c>
-    /// filter (<see cref="PatientEverythingExpression.FilteredResourceTypes"/>) rides along as the
-    /// compartment's filter. Like <see cref="VisitCompartment"/>, it does no I/O and no further recursion
-    /// (a PatientEverythingExpression has no child expression).
+    /// Records the symbols a Patient/Group <c>$everything</c> references so Resolve can resolve them: the
+    /// Patient resource type (for the Patient-itself branch), the Patient compartment -- expanded into
+    /// membership through the identical ICompartmentDefinitionManager path an ordinary
+    /// <c>Patient/{id}/*</c> compartment search uses, not a second mechanism, with the <c>_type</c> filter
+    /// (<see cref="PatientEverythingExpression.FilteredResourceTypes"/>) riding along as the compartment's
+    /// filter -- and, when referenced-resource expansion is requested, the referenced resource types.
+    /// Like <see cref="VisitCompartment"/>, it does no I/O and no further recursion (a
+    /// PatientEverythingExpression has no child expression).
     /// </summary>
     public override Expression VisitPatientEverything(PatientEverythingExpression expression, object? context)
     {
         ArgumentNullException.ThrowIfNull(expression);
         AddResourceType("Patient");
         Compartments.Add(("Patient", expression.FilteredResourceTypes));
+
+        if (expression.IncludeReferencedResources)
+        {
+            foreach (var referencedType in Lowering.StructuralContext.PatientEverythingReferencedResourceTypes)
+            {
+                AddResourceType(referencedType);
+            }
+        }
+
         return expression;
     }
 

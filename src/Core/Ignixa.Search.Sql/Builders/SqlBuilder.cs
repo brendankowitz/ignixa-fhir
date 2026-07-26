@@ -2,6 +2,7 @@
 
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Catalog;
 using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Builders;
@@ -527,6 +528,9 @@ public static class SqlBuilder
         CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
         CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters, visibility),
         CteDefinition.MultiTypeResourceSource mts => EmitMultiTypeResourceSource(mts, parameters, visibility),
+        CteDefinition.TableExistsPredicate tep => EmitTableExistsPredicate(tep, parameters, visibility),
+        CteDefinition.VisibleSinceFilter vsf => EmitVisibleSinceFilter(vsf, parameters, visibility),
+        CteDefinition.ReferencedTypeExpansion re => EmitReferencedTypeExpansion(re, visibility),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -566,17 +570,31 @@ public static class SqlBuilder
         return clauses.Count == 0 ? string.Empty : " AND " + string.Join(" AND ", clauses);
     }
 
+    /// <summary>
+    /// The unqualified <c>IsHistory = 0</c> clause a search-param index table needs under a given
+    /// visibility, or empty when it needs none.
+    /// </summary>
+    /// <remarks>
+    /// Most search-param tables hold rows for current versions only, so history is filtered once at
+    /// hydration. dbo.TokenText carries its own IsHistory column and does keep superseded rows, so a
+    /// query against it has to exclude them itself. Driven off the catalog rather than the table name:
+    /// the filter is required by any table that has the column, and the catalog is generated from DDL.
+    /// This is the search-param-table counterpart of <see cref="ResourceRowFilter"/>, which belongs to
+    /// dbo.Resource scans and additionally emits IsDeleted — a column no search-param table has.
+    /// Returned unprefixed so each caller supplies its own separator.
+    /// </remarks>
+    private static string SearchParamTableHistoryClause(TableDescriptor table, ResourceVisibility visibility)
+        => !visibility.IncludeHistory && table.Columns.Any(c => c.Name == "IsHistory")
+            ? "IsHistory = 0"
+            : string.Empty;
+
     /// <summary>Renders a ParamSource: distinct (type, surrogate id) rows from one search-param table filtered by SearchParamId and its optional predicate.</summary>
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
         var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
 
-        // Most search-param tables hold rows for current versions only, so history is filtered once at
-        // hydration. dbo.TokenText carries its own IsHistory column and does keep superseded rows, so a
-        // query against it has to exclude them itself. Driven off the catalog rather than the table name:
-        // the filter is required by any table that has the column, and the catalog is generated from DDL.
-        var historyClause = !visibility.IncludeHistory && p.Table.Columns.Any(c => c.Name == "IsHistory")
-            ? " AND IsHistory = 0"
+        var historyClause = SearchParamTableHistoryClause(p.Table, visibility) is { Length: > 0 } clause
+            ? $" AND {clause}"
             : string.Empty;
 
         // A null ResourceTypeId is system-level (cross-type) search: emit no type filter at all rather
@@ -934,6 +952,64 @@ public static class SqlBuilder
                $"        FROM dbo.ReferenceSearchParam rsp\n" +
                $"        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
                $"          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId{innerFilters})";
+    }
+
+    /// <summary>
+    /// Renders a TableExistsPredicate: distinct (type, surrogate id) rows from one raw table, with an
+    /// optional additional predicate and no SearchParamId/ResourceTypeId filter.
+    /// </summary>
+    /// <remarks>
+    /// Visibility reaches this emitter through <see cref="SearchParamTableHistoryClause"/>, not through
+    /// <see cref="ResourceRowFilter"/>: the table scanned here is a search-param index table, not
+    /// dbo.Resource. ResourceRowFilter would emit <c>IsDeleted = 0</c>, a column no search-param table has
+    /// (dbo.DateTimeSearchParam, this node's only producer today, has neither IsHistory nor IsDeleted), so
+    /// applying it would turn valid SQL into a parse error under the default visibility.
+    /// </remarks>
+    private static string EmitTableExistsPredicate(CteDefinition.TableExistsPredicate tep, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
+    {
+        var clauses = new List<string>(2);
+        if (SearchParamTableHistoryClause(tep.Table, visibility) is { Length: > 0 } historyClause)
+        {
+            clauses.Add(historyClause);
+        }
+
+        if (tep.Predicate is not null)
+        {
+            clauses.Add(EmitPredicate(tep.Predicate, parameters));
+        }
+
+        var whereClause = clauses.Count == 0 ? string.Empty : $"\n    WHERE {string.Join(" AND ", clauses)}";
+        return
+            $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
+            $"    FROM {tep.Table.SchemaName}.{tep.Table.TableName}{whereClause}";
+    }
+
+    /// <summary>Renders a VisibleSinceFilter: resources visible in a transaction on or after Since, joined through dbo.Resource and dbo.Transactions on VisibleDate.</summary>
+    private static string EmitVisibleSinceFilter(CteDefinition.VisibleSinceFilter vsf, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
+        => "    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+           "    FROM dbo.Resource r\n" +
+           "    INNER JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue\n" +
+           $"    WHERE t.VisibleDate >= {EmitParam(vsf.Since, parameters)}{ResourceRowFilter(visibility, "r.")}";
+
+    /// <summary>Renders a ReferencedTypeExpansion: the referenced resources reachable via any outbound internal reference from the seed set, restricted to the output resource types. Mirrors ChainJoin's reverse topology but with no SearchParamId/source-type filter (all reference parameters, any source type).</summary>
+    private static string EmitReferencedTypeExpansion(CteDefinition.ReferencedTypeExpansion re, ResourceVisibility visibility)
+    {
+        var rowFilter = ResourceRowFilter(visibility, "r.");
+
+        // Own-line placement, so the helper's leading space is replaced by this line's indentation.
+        // An inline caller must not trim it; see ResourceRowFilter's remarks.
+        var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
+
+        return $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
+               $"    FROM dbo.ReferenceSearchParam rsp\n" +
+               $"    INNER JOIN {CteLabel(re.Seed.Index)} m\n" +
+               $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
+               $"    INNER JOIN dbo.Resource r\n" +
+               $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+               $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
+               rowFilterLine +
+               $"    WHERE {EmitTypeInFilter("rsp.ReferenceResourceTypeId", re.OutputResourceTypeIds)}\n" +
+               $"      AND rsp.BaseUri IS NULL";
     }
 
     /// <summary>Renders a ResourceSource: current, non-deleted rows of dbo.Resource for one type, with an optional nested-scope predicate.</summary>

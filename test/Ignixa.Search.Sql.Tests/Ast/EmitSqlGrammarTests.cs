@@ -277,7 +277,9 @@ public class EmitSqlGrammarTests
     /// <summary>
     /// A symbol table whose Patient compartment reaches Observation and Encounter through the "subject"
     /// reference parameter — the shape Resolve produces from an ICompartmentDefinitionManager — so a
-    /// $everything search lowers to a real compartment traversal rather than a bare Patient scan.
+    /// $everything search lowers to a real compartment traversal rather than a bare Patient scan. The four
+    /// referenced resource types are registered too, matching what SymbolCollectingVisitor collects for an
+    /// $everything whose referenced-resource expansion is on (the default).
     /// </summary>
     private static SymbolTable EverythingSymbols(IReadOnlyList<string>? memberTypes = null)
     {
@@ -289,7 +291,16 @@ public class EmitSqlGrammarTests
 
         return new SymbolTable(
             new Dictionary<string, short> { [subjectParam.Url!.ToString()] = 77 },
-            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104, ["Encounter"] = 105 },
+            new Dictionary<string, short>
+            {
+                ["Patient"] = 103,
+                ["Observation"] = 104,
+                ["Encounter"] = 105,
+                ["Practitioner"] = 201,
+                ["Organization"] = 202,
+                ["Location"] = 203,
+                ["Medication"] = 204,
+            },
             compartmentMembership: membership);
     }
 

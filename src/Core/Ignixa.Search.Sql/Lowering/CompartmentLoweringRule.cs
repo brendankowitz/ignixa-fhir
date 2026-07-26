@@ -12,18 +12,12 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 public static class CompartmentLoweringRule
 {
-    /// <param name="additionalPredicate">
-    /// An optional extra clause ANDed into the CompartmentSource's WHERE -- used by <c>$everything</c>'s
-    /// <c>_since</c> to bound the member rows on <c>ResourceSurrogateId</c>. Null for an ordinary
-    /// compartment search, leaving the emitted SQL byte-identical.
-    /// </param>
     public static CteDefinition.CompartmentSource Lower(
         SearchParameterInfo parameter,
         IReadOnlyList<string> resourceTypes,
         string compartmentType,
         string compartmentId,
-        LeafContext context,
-        Predicate? additionalPredicate = null)
+        LeafContext context)
     {
         var table = SqlCatalog.Default.Table("ReferenceSearchParam");
         var resourceTypeIds = resourceTypes.Select(context.ResourceTypeId).ToList();
@@ -40,11 +34,6 @@ public static class CompartmentLoweringRule
             new Predicate.Equal(
                 new SqlColumnRef(table.TableName, "ReferenceResourceId"),
                 context.Parameter(compartmentId)));
-
-        if (additionalPredicate is not null)
-        {
-            predicate = new Predicate.And(predicate, additionalPredicate);
-        }
 
         return new CteDefinition.CompartmentSource(resourceTypeIds, context.SearchParamId(parameter), predicate);
     }

@@ -364,14 +364,13 @@ public sealed class StructuralContext
     }
 
     public CteRef LowerCompartment(CompartmentSearchExpression expression)
-        => LowerCompartmentCore(expression.CompartmentType, expression.CompartmentId, expression.FilteredResourceTypes, additionalPredicate: null);
+        => LowerCompartmentCore(expression.CompartmentType, expression.CompartmentId, expression.FilteredResourceTypes);
 
     /// <summary>
     /// Lowers a compartment membership set to a Union of one CompartmentSource per membership search
-    /// parameter, narrowing member types to <paramref name="filteredResourceTypes"/> when non-empty and
-    /// ANDing <paramref name="additionalPredicate"/> (e.g. a <c>_since</c> surrogate bound) into each
-    /// CompartmentSource. Shared by an ordinary compartment search and by <c>$everything</c> so both reach
-    /// the identical CompartmentSource emitter rather than a parallel implementation.
+    /// parameter, narrowing member types to <paramref name="filteredResourceTypes"/> when non-empty.
+    /// Shared by an ordinary compartment search and by <c>$everything</c> so both reach the identical
+    /// CompartmentSource emitter rather than a parallel implementation.
     /// <para>
     /// A <paramref name="filteredResourceTypes"/> filter that narrows the membership to zero groups is the
     /// same situation for both callers -- an ordinary <c>GET /Patient/123/NotInCompartment</c> naming a type
@@ -390,8 +389,7 @@ public sealed class StructuralContext
     private CteRef LowerCompartmentCore(
         string compartmentType,
         string compartmentId,
-        ISet<string> filteredResourceTypes,
-        Predicate? additionalPredicate)
+        ISet<string> filteredResourceTypes)
     {
         var membership = _leafContext.CompartmentMembership(compartmentType);
         var groups = filteredResourceTypes.Count == 0
@@ -418,7 +416,7 @@ public sealed class StructuralContext
 
         var refs = groups.Select(g =>
         {
-            var cte = CompartmentLoweringRule.Lower(g.Parameter, g.ResourceTypes, compartmentType, compartmentId, _leafContext, additionalPredicate);
+            var cte = CompartmentLoweringRule.Lower(g.Parameter, g.ResourceTypes, compartmentType, compartmentId, _leafContext);
             _ctes.Add(cte);
             return new CteRef(_ctes.Count - 1);
         }).ToList();
@@ -427,41 +425,127 @@ public sealed class StructuralContext
     }
 
     /// <summary>
-    /// Lowers a single resource of <paramref name="resourceType"/> identified by <paramref name="resourceId"/>
-    /// to a ResourceSource whose nested-scope predicate pins <c>dbo.Resource.ResourceId</c>. Used by
-    /// <c>$everything</c> to seed the patient's own row before its compartment members are unioned in.
+    /// The resource types $everything pulls in as "referenced resources" outside the patient compartment.
+    /// Matches the legacy PatientEverythingQueryGenerator's own fixed list (Practitioner/Organization/
+    /// Location/Medication) -- the FHIR spec's SHOULD-include set for the operation.
     /// </summary>
-    public CteRef LowerResourceSourceForId(string resourceType, string resourceId)
-    {
-        var table = SqlCatalog.Default.Table("Resource");
-        var predicate = new Predicate.Equal(
-            new SqlColumnRef(table.TableName, "ResourceId"),
-            _leafContext.Parameter(resourceId));
-        return LowerResourceSourceWithPredicate(resourceType, predicate);
-    }
+    public static readonly IReadOnlyList<string> PatientEverythingReferencedResourceTypes =
+        ["Practitioner", "Organization", "Location", "Medication"];
 
     /// <summary>
-    /// Lowers the patient compartment traversal for a <see cref="PatientEverythingExpression"/>: for each
-    /// patient id, the Patient compartment's members (narrowed by <c>_type</c> via
-    /// <see cref="PatientEverythingExpression.FilteredResourceTypes"/> and bounded by <c>_since</c> on the
-    /// member rows' <c>ResourceSurrogateId</c>), unioned across patients. Reuses the same compartment
-    /// membership the resolver populated for an ordinary compartment search -- no second mechanism, no
-    /// hardcoded member list.
+    /// Orchestrates a Patient/Group $everything into the CTE graph, composing five pieces in legacy's own
+    /// order: (1) the Patient resource(s) themselves, (2) the patient compartment, (3) an optional
+    /// conditional clinical-date filter, (4) an optional _since incremental filter scoped to the compartment
+    /// branch only, and (5) an optional referenced-type expansion seeded from the filtered compartment set.
+    /// The result is a Union of the Patient-itself branch, the (filtered) compartment branch, and -- when
+    /// requested -- the referenced-type expansion.
     /// </summary>
-    public CteRef LowerPatientCompartment(PatientEverythingExpression expression)
+    public CteRef LowerPatientEverything(PatientEverythingExpression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        Predicate? sinceBound = expression.SinceDate is { } since
-            ? new Predicate.GreaterThanOrEqual(
-                new SqlColumnRef(SqlCatalog.Default.Table("ReferenceSearchParam").TableName, "ResourceSurrogateId"),
-                _leafContext.Parameter(ResourceColumnLoweringRule.ToInclusiveLowerSurrogateId(since)))
-            : null;
+        var patientItselfRef = LowerPatientItself(expression.PatientIds);
+        var compartmentRef = LowerEverythingCompartment(expression.PatientIds, expression.FilteredResourceTypes);
 
-        var perPatient = expression.PatientIds
-            .Select(id => LowerCompartmentCore("Patient", id, expression.FilteredResourceTypes, sinceBound))
+        if (expression.StartDate is not null || expression.EndDate is not null)
+        {
+            compartmentRef = ApplyConditionalDateFilter(compartmentRef, expression.StartDate, expression.EndDate);
+        }
+
+        if (expression.SinceDate is { } since)
+        {
+            // _since is answered from dbo.Transactions.VisibleDate -- when the writing transaction became
+            // visible -- not from a meta.lastUpdated floor expressed as a ResourceSurrogateId bound. The
+            // two are not interchangeable: a resource written before the cutoff in a transaction that only
+            // became visible after it is returned by the first and missed by the second, and a resource in
+            // a transaction still awaiting visibility is returned by the second and correctly withheld by
+            // the first. VisibleDate is what the legacy PatientEverythingQueryGenerator filters on and what
+            // this compiler's output has been row-compared against, so it is the definition kept here.
+            compartmentRef = Intersect(compartmentRef, VisibleSinceFilterRef(since));
+        }
+
+        var unionParts = new List<CteRef> { patientItselfRef, compartmentRef };
+        if (expression.IncludeReferencedResources)
+        {
+            unionParts.Add(ReferencedTypeExpansionRef(compartmentRef, ResolveReferencedTypeIds()));
+        }
+
+        return Union(unionParts);
+    }
+
+    /// <summary>Lowers the Patient-itself branch: a typed dbo.Resource base set filtered by an _id equality (an Or of equalities for Group $everything's multiple patients). Never routed through CompartmentSource, and never touched by the date/_since filters.</summary>
+    private CteRef LowerPatientItself(IReadOnlyList<string> patientIds)
+    {
+        var idColumn = new SqlColumnRef(SqlCatalog.Default.Table("Resource").TableName, "ResourceId");
+        var predicate = patientIds
+            .Select(id => (Predicate)new Predicate.Equal(idColumn, _leafContext.Parameter(id)))
+            .Aggregate((left, right) => new Predicate.Or(left, right));
+        return LowerResourceSourceWithPredicate("Patient", predicate);
+    }
+
+    /// <summary>Lowers the compartment branch: the existing compartment mechanism per patient, Unioned across patients for Group $everything.</summary>
+    private CteRef LowerEverythingCompartment(IReadOnlyList<string> patientIds, ISet<string> filteredResourceTypes)
+    {
+        var refs = patientIds
+            .Select(id => LowerCompartmentCore("Patient", id, filteredResourceTypes))
             .ToList();
+        return refs.Count == 1 ? refs[0] : Union(refs);
+    }
 
-        return perPatient.Count == 1 ? perPatient[0] : Union(perPatient);
+    /// <summary>
+    /// Composes the conditional clinical-date filter: keep a compartment resource if it has a date-typed
+    /// index row matching the range, OR if it has no date-typed index row at all. Both checks are
+    /// table-wide over DateTimeSearchParam (no SearchParamId), so neither is expressible via ParamSource --
+    /// hence TableExistsPredicate. Union(compartment ∩ hasMatchingDate, compartment − hasAnyDateRow).
+    /// </summary>
+    private CteRef ApplyConditionalDateFilter(CteRef compartmentRef, DateTimeOffset? startDate, DateTimeOffset? endDate)
+    {
+        var table = SqlCatalog.Default.Table("DateTimeSearchParam");
+        var matchingDateRef = TableExistsPredicateRef(table, BuildDateRangePredicate(table, startDate, endDate));
+        var noDateRef = TableExistsPredicateRef(table, predicate: null);
+        return Union([Intersect(compartmentRef, matchingDateRef), Except(compartmentRef, noDateRef)]);
+    }
+
+    /// <summary>Builds the clinical-date range-overlap predicate over DateTimeSearchParam's [StartDateTime, EndDateTime], matching legacy's EndDateTime &gt;= start / StartDateTime &lt;= end. At least one bound is present (the caller guards).</summary>
+    private Predicate BuildDateRangePredicate(TableDescriptor table, DateTimeOffset? startDate, DateTimeOffset? endDate)
+    {
+        var startColumn = new SqlColumnRef(table.TableName, "StartDateTime");
+        var endColumn = new SqlColumnRef(table.TableName, "EndDateTime");
+
+        Predicate? predicate = null;
+        if (startDate is { } start)
+        {
+            predicate = new Predicate.GreaterThanOrEqual(endColumn, _leafContext.Parameter(start));
+        }
+
+        if (endDate is { } end)
+        {
+            var endClause = new Predicate.LessThanOrEqual(startColumn, _leafContext.Parameter(end));
+            predicate = predicate is null ? endClause : new Predicate.And(predicate, endClause);
+        }
+
+        return predicate
+            ?? throw new InvalidOperationException("BuildDateRangePredicate reached with neither startDate nor endDate -- ApplyConditionalDateFilter's own guard should have prevented this.");
+    }
+
+    private IReadOnlyList<short> ResolveReferencedTypeIds()
+        => PatientEverythingReferencedResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+
+    private CteRef TableExistsPredicateRef(TableDescriptor table, Predicate? predicate)
+    {
+        _ctes.Add(new CteDefinition.TableExistsPredicate(table, predicate));
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    private CteRef VisibleSinceFilterRef(DateTimeOffset since)
+    {
+        _ctes.Add(new CteDefinition.VisibleSinceFilter(new SqlParameterRef(since.DateTime)));
+        return new CteRef(_ctes.Count - 1);
+    }
+
+    private CteRef ReferencedTypeExpansionRef(CteRef seed, IReadOnlyList<short> outputResourceTypeIds)
+    {
+        _ctes.Add(new CteDefinition.ReferencedTypeExpansion(seed, outputResourceTypeIds));
+        return new CteRef(_ctes.Count - 1);
     }
 }

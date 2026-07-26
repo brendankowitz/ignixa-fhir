@@ -57,15 +57,28 @@ deliberately erased:
   joined through `dbo.Resource` to materialize each target) — referenced-resource inclusion, the resources
   the patient points to. The compiler instead emits the **inbound** compartment-membership traversal — one
   `dbo.ReferenceSearchParam` read per Patient-compartment membership parameter (many in real R4), matching
-  resources that point *at* the patient — and emits no referenced-resource union at all. So the divergence
-  is opposite graph direction plus the compiler's omission of referenced-resource inclusion and the
+  resources that point *at* the patient. So the divergence is opposite graph direction plus the
   paging/hydration machinery, not a windowed-vs-unwound batching of the same membership reads. (The
   capture's opaque `SearchParamId`s can't be name-mapped, so *which* two patient reference parameters the
-  engine expanded isn't verifiable; the outbound direction and the compiler's omission are.) This is why
+  engine expanded isn't verifiable; the outbound direction is.) This is why
   `DivergenceBaseline.DivergingQueries` was raised from 56 to 59 when the harness was wired; per the
   convention below, the reason is recorded rather than the count being suppressed. An earlier note here
   claimed "same semantics, different shape"; reading the captured SQL showed that was wrong, and it has
   been corrected.
+
+  A second clause of that note is now obsolete: the compiler no longer "emits no referenced-resource union
+  at all". `StructuralContext.LowerPatientEverything` emits a `ReferencedTypeExpansion` — the outbound
+  Practitioner/Organization/Location/Medication follow, seeded from the filtered compartment set — so the
+  two engines now agree on that half, and the compiled shape for all three entries changed accordingly.
+  The four guarded counts did **not** move (still 75/37/14/59): a verdict is categorical, all three
+  entries were already `Divergent` for several independent reasons, and closing one of them cannot flip a
+  query out of that bucket. The unclosed remainder is the inbound compartment traversal the engine's
+  capture does not contain, plus paging.
+
+  One harness limitation is worth knowing when reading these three entries: `_since=3000` is not a
+  parseable instant, so `CorpusCompiler` leaves `SinceDate` unset (by its own documented choice) and no
+  `VisibleSinceFilter` reaches the compiled shape. The `_since` path is covered by the unit suite, not
+  here.
 
 ## What it can't tell you
 

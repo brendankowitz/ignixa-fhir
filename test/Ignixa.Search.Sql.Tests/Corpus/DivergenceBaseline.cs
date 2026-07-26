@@ -31,14 +31,21 @@ public static class DivergenceBaseline
     /// referenced-resource inclusion (the resources the patient points to). The compiler instead emits the
     /// <em>inbound</em> compartment-membership traversal: one <c>dbo.ReferenceSearchParam</c> read per
     /// Patient-compartment membership parameter (many in real R4), matching resources that point <em>at</em>
-    /// the patient, and it emits no referenced-resource union at all. So the two engines ask the database for
-    /// different things — opposite graph direction, plus the compiler's omission of referenced-resource
-    /// inclusion and of the paging/hydration machinery — not a windowed-vs-unwound batching of the same
-    /// membership reads. (The capture's opaque SearchParamIds can't be name-mapped, so exactly which two
-    /// patient reference parameters the engine expanded isn't verifiable; the outbound direction, and the
-    /// compiler's omission of the referenced-resource union, are.) The count did not move for this
-    /// correction — only the recorded cause. Per the convention below, the reason is recorded here rather
-    /// than the count being suppressed.
+    /// the patient. So the two engines ask the database for different things — opposite graph direction,
+    /// plus the paging/hydration machinery — not a windowed-vs-unwound batching of the same membership
+    /// reads. (The capture's opaque SearchParamIds can't be name-mapped, so exactly which two patient
+    /// reference parameters the engine expanded isn't verifiable; the outbound direction is.)
+    /// <para>
+    /// One clause of that account is now obsolete and has been struck: the compiler no longer "emits no
+    /// referenced-resource union at all". <c>StructuralContext.LowerPatientEverything</c> emits a
+    /// ReferencedTypeExpansion — the outbound Practitioner/Organization/Location/Medication follow, seeded
+    /// from the filtered compartment set — so the compiler and the engine now agree on that half. The
+    /// remaining, unclosed divergence is the inbound compartment traversal the engine's capture does not
+    /// contain, and the paging machinery. The count did not move: a verdict is categorical, all three
+    /// entries were already Divergent, and closing one contributing difference out of several cannot flip
+    /// a query out of that bucket. Per the convention below, the changed reason is recorded here rather
+    /// than the count being adjusted.
+    /// </para>
     /// </para>
     /// </summary>
     public const int DivergingQueries = 59;
