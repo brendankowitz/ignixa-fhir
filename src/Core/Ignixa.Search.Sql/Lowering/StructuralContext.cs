@@ -543,15 +543,25 @@ public sealed class StructuralContext
         }
 
         var unionParts = new List<CteRef> { patientItselfRef, compartmentRef };
-        var expansionTypeIds = ResolveReferencedTypeIds(expression);
-        if (expression.IncludeReferencedResources && expansionTypeIds.Count > 0)
+
+        // Resolve the expansion's types only when the expansion is actually requested. SymbolCollectingVisitor
+        // .VisitPatientEverything collects them under the same condition, so hoisting this out of the guard
+        // makes the lowerer resolve symbols the collector deliberately never gathered, and ResourceTypeId
+        // throws on the miss. That is not hypothetical: includeReferencedResources is false exactly when
+        // _type is present, so $everything?_type=X failed outright.
+        if (expression.IncludeReferencedResources)
         {
-            // The seed patient is not a member of its own compartment -- no ReferenceSearchParam row points
-            // from the patient at itself -- so seeding the expansion from compartmentRef alone misses the
-            // patient's own generalPractitioner/managingOrganization unless some compartment member happens
-            // to reference them too. Union in patientItselfRef so those two are found even in isolation.
-            var expansionSeed = Union([patientItselfRef, compartmentRef]);
-            unionParts.Add(ReferencedTypeExpansionRef(expansionSeed, expansionTypeIds));
+            var expansionTypeIds = ResolveReferencedTypeIds(expression);
+            if (expansionTypeIds.Count > 0)
+            {
+                // The seed patient is not a member of its own compartment -- no ReferenceSearchParam row
+                // points from the patient at itself -- so seeding the expansion from compartmentRef alone
+                // misses the patient's own generalPractitioner/managingOrganization unless some compartment
+                // member happens to reference them too. Union in patientItselfRef so those two are found
+                // even in isolation.
+                var expansionSeed = Union([patientItselfRef, compartmentRef]);
+                unionParts.Add(ReferencedTypeExpansionRef(expansionSeed, expansionTypeIds));
+            }
         }
 
         return Union(unionParts);
