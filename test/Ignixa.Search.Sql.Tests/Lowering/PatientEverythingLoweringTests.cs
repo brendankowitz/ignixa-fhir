@@ -120,6 +120,41 @@ public class PatientEverythingLoweringTests
     }
 
     [Fact]
+    public void GivenTheExpansionIsNotRequested_WhenLowered_ThenTheExpansionTypesAreNeverResolved()
+    {
+        // BuildSymbols above registers all four expansion types, which is what every other test here needs
+        // and exactly why this case escaped until it was executed. SymbolCollectingVisitor.VisitPatientEverything
+        // only collects those types when IncludeReferencedResources is set, so the real symbol table for a
+        // non-expanding $everything does NOT contain them -- reproduced here by omitting them. Lowering must
+        // not resolve what the collector did not collect: doing so threw RequestNotValidException for
+        // $everything?_type=X, which is the request shape that turns the flag off.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>
+            {
+                [SubjectParam.Url!.ToString()] = SubjectParamId,
+                [StatusParam.Url!.ToString()] = StatusParamId,
+            },
+            new Dictionary<string, short>
+            {
+                ["Patient"] = PatientTypeId,
+                ["Observation"] = ObservationTypeId,
+            },
+            compartmentMembership: new Dictionary<string, IReadOnlyList<(SearchParameterInfo Parameter, IReadOnlyList<string> ResourceTypes)>>
+            {
+                ["Patient"] = new List<(SearchParameterInfo, IReadOnlyList<string>)>
+                {
+                    (SubjectParam, ["Observation"]),
+                },
+            });
+
+        var expression = new PatientEverythingExpression("pat-1", includeReferencedResources: false);
+
+        var plan = Should.NotThrow(() => Lowered(expression, symbols));
+
+        plan.Explain().ShouldNotContain("ReferencedTypeExpansion(");
+    }
+
+    [Fact]
     public void GivenAPatientEverythingSearchWithoutReferencedResources_WhenLowered_ThenNoExpansionIsAdded()
     {
         var symbols = BuildSymbols();
