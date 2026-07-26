@@ -19,7 +19,7 @@ public static class CompositeLoweringDispatcher
         SearchParameterInfo compositeParameter,
         IReadOnlyList<CompositeComponentExpression> components,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var ordered = components.OrderBy(c => c.Position).ToList();
         try
@@ -37,7 +37,7 @@ public static class CompositeLoweringDispatcher
         SearchParameterInfo compositeParameter,
         IReadOnlyList<CompositeComponentExpression> ordered,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var predicates = new SearchParameterPredicateExpression[ordered.Count];
         for (var i = 0; i < ordered.Count; i++)

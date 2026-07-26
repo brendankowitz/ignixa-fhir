@@ -472,9 +472,14 @@ public static class SqlBuilder
             ? " AND IsHistory = 0"
             : string.Empty;
 
+        // A null ResourceTypeId is system-level (cross-type) search: emit no type filter at all rather
+        // than a filter on some placeholder id. The requested types are narrowed by the plan's
+        // MultiTypeResourceSource base set instead, which this CTE is intersected with.
+        var typeFilter = p.ResourceTypeId is { } typeId ? $"ResourceTypeId = {typeId} AND " : string.Empty;
+
         return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
                $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-               $"    WHERE ResourceTypeId = {p.ResourceTypeId} AND SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
+               $"    WHERE {typeFilter}SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
     }
 
     /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>

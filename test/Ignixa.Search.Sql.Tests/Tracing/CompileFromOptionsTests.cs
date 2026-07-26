@@ -22,6 +22,7 @@ namespace Ignixa.Search.Sql.Tests.Tracing;
 public class CompileFromOptionsTests
 {
     private const short ObservationTypeId = 104;
+    private const short PatientTypeId = 103;
     private const short StatusParamId = 220;
 
     [Fact]
@@ -57,6 +58,45 @@ public class CompileFromOptionsTests
         trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, "amended"));
         trace.CompiledPlan.ShouldNotBeNull();
         trace.CompiledPlan!.Ctes.Count.ShouldBeGreaterThan(1);
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsCarryingResourceTypes_WhenCompilingFromOptions_ThenTheEmittedSqlNarrowsToThem()
+    {
+        // Arrange -- GET /?_type=Observation,Patient&status=final. resourceType is null (system-level), so
+        // the status leaf lowers with no ResourceTypeId of its own; the requested types are the only thing
+        // that can narrow the result. Deleting the ResourceTypes forwarding in CompileFromOptionsAsync makes
+        // the IN list vanish and this test fail -- the whole point, since a dropped _type silently returns
+        // every resource type rather than erroring.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+
+        var options = new SearchOptions
+        {
+            Expression = expression,
+            ResourceTypes = ["Observation", "Patient"],
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            resourceType: null,
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert -- the real ids, not the unmatchable sentinel: the requested types must reach the symbol
+        // resolver too, not only Lower. An IN (-1, -1) would compile, emit, and match nothing at all.
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId}, {PatientTypeId})");
     }
 
     /// <summary>A wrapped token predicate ("&lt;param&gt; eq &lt;code&gt;"), the shape a real bound leaf takes -- mirrors AccessConstraintTests' TokenPredicate.</summary>

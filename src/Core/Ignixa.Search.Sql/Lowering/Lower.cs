@@ -18,10 +18,13 @@ public static class Lower
     /// <summary>
     /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source when there is none) into the CTE graph,
-    /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed only
-    /// for a wildcard compartment search; combining it with typed leaves, includes, or sort throws. The
-    /// optional inputs -- paging caps, visibility, surrogate range, hash gating, the base-set types, and the
-    /// access constraints -- are grouped on <see cref="LowerOptions"/> so each is passed by name.
+    /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed for a
+    /// wildcard compartment search, or -- when <see cref="LowerOptions.SystemLevelSearch"/> is set -- for a
+    /// system-level (cross-type) search of ordinary leaf/composite/AND/OR predicates. Even under system-level
+    /// search, chain, :not/:missing=true, _not-referenced, :text, _include/_revinclude, and _sort still
+    /// require a single target type and throw. The optional inputs -- paging caps, visibility, surrogate
+    /// range, hash gating, the base-set types, and the access constraints -- are grouped on
+    /// <see cref="LowerOptions"/> so each is passed by name.
     /// </summary>
     public static LoweredPlan Run(
         Expression? expression,
@@ -66,12 +69,18 @@ public static class Lower
             {
                 null => LowerBaseSet(context, targetResourceType, options.ResourceTypes),
                 CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
-                _ when targetResourceType is null => throw new NotSupportedException(
+                _ when targetResourceType is null && !options.SystemLevelSearch => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
                     "combine with a CompartmentSearchExpression and resource-column predicates -- an ordinary " +
                     "typed search parameter alongside it has no single resource type to scope it against, " +
                     "which this phase does not support."),
-                _ => LowerNode(remaining, context, targetResourceType!), // non-null: the prior arm already threw otherwise.
+                // targetResourceType may be null here, but only under SystemLevelSearch: the leaves lower
+                // with no type scope and the requested types narrow the result set instead.
+                _ => NarrowToRequestedTypes(
+                    LowerNode(remaining, context, targetResourceType),
+                    context,
+                    targetResourceType,
+                    options.ResourceTypes),
             };
         }
 
@@ -97,9 +106,9 @@ public static class Lower
         if (targetResourceType is null && sort.Count > 0)
         {
             throw new NotSupportedException(
-                "_sort combined with a wildcard compartment search (no single target resource type) is not " +
-                "supported -- a SortSpec needs a single ResourceTypeId scope for its joins, the same reasoning " +
-                "already established for typed leaves and _include/_revinclude under a null scope.");
+                $"_sort combined with {NoTargetTypeReason(options.SystemLevelSearch)} (no single target resource " +
+                "type) is not supported -- a SortSpec needs a single ResourceTypeId scope for its joins, the same " +
+                "reasoning already established for _include/_revinclude under a null scope.");
         }
 
         // Reject the self-contradictory combination up front, before doing the work of building
@@ -118,9 +127,9 @@ public static class Lower
             if (includes.Count > 0 || revIncludes.Count > 0)
             {
                 throw new NotSupportedException(
-                    "_include/_revinclude combined with a wildcard compartment search (no single target resource " +
-                    "type) is not supported -- BuildIncludeStages needs a concrete match resource type to compute " +
-                    "SeedFromMatch.");
+                    $"_include/_revinclude combined with {NoTargetTypeReason(options.SystemLevelSearch)} (no single " +
+                    "target resource type) is not supported -- BuildIncludeStages needs a concrete match resource " +
+                    "type to compute SeedFromMatch.");
             }
 
             includeStages = null;
@@ -173,6 +182,11 @@ public static class Lower
             new PlanProvenance(context.Origins));
     }
 
+    /// <summary>Names why there is no single target resource type, so a guard's message diagnoses the caller's
+    /// actual situation rather than always blaming a wildcard compartment search.</summary>
+    private static string NoTargetTypeReason(bool systemLevelSearch)
+        => systemLevelSearch ? "a system-level search" : "a wildcard compartment search";
+
     /// <summary>
     /// The base match set when no expression narrows it: a single-type ResourceSource when a target type
     /// is named, otherwise a MultiTypeResourceSource over the requested types — empty meaning every type.
@@ -185,8 +199,33 @@ public static class Lower
             ? context.LowerResourceSource(single)
             : context.LowerMultiTypeResourceSource(resourceTypes ?? []);
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).</summary>
-    private static CteRef LowerNode(Expression expression, StructuralContext context, string resourceType) => expression switch
+    /// <summary>
+    /// Intersects a system-level match with the requested types' base set. A cross-type leaf carries no
+    /// ResourceTypeId of its own, so without this the requested <c>_type</c> list would be silently
+    /// dropped and <c>GET /?_type=A,B&amp;name=foo</c> would return every type that has a matching name.
+    /// A named target type needs no narrowing (its leaves are already scoped), and an empty type list is
+    /// the deliberate "every type" contract, which an AllTypes intersect would only make more expensive.
+    /// </summary>
+    private static CteRef NarrowToRequestedTypes(
+        CteRef match,
+        StructuralContext context,
+        string? targetResourceType,
+        IReadOnlyList<string>? resourceTypes)
+    {
+        if (targetResourceType is not null || resourceTypes is not { Count: > 0 })
+        {
+            return match;
+        }
+
+        var baseSet = context.LowerMultiTypeResourceSource(resourceTypes);
+        return context.Intersect(match, baseSet);
+    }
+
+    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).
+    /// A null <paramref name="resourceType"/> reaches here only under system-level search. Chain carries its own
+    /// resource types rather than consuming the ambient one, so it needs an explicit guard here: without it a
+    /// type-less chain would fall through every null-type guard in <see cref="Run"/> and appear to work.</summary>
+    private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
             "A :not-modified predicate reached leaf dispatch directly, outside a SearchParameterExpression wrapper -- " +
@@ -199,9 +238,18 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
+        ChainedExpression when resourceType is null => throw new NotSupportedException(
+            "Chain is not supported in system-level search in this phase -- a chain resolves and joins against " +
+            "a concrete referencing/target type, which a cross-type search has no single value for. Guarding at " +
+            "the chain dispatch choke point covers a top-level chain and one nested in an AND equally; a chain " +
+            "reached inside another chain's scope always has a concrete type and never trips this."),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
+        PatientEverythingExpression everything when resourceType is null => throw new NotSupportedException(
+            "$everything is not supported in system-level search -- it is anchored on the Patient/Group type " +
+            "whose compartment it expands, so it has no meaning without one. Guarding at the dispatch choke " +
+            "point rather than letting EverythingLoweringRule receive a null type it cannot use."),
         PatientEverythingExpression everything => EverythingLoweringRule.Lower(everything, context, resourceType),
         _ => throw new NotSupportedException(
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
@@ -212,7 +260,7 @@ public static class Lower
     /// a :not-modified predicate becomes a negation, a single composite or an OR of composite alternatives
     /// becomes composite lowering, and anything else falls through to <see cref="LowerNode"/>.
     /// </summary>
-    private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string resourceType)
+    private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string? resourceType)
     {
         if (sp.Expression is NotExpression not)
         {
@@ -256,7 +304,7 @@ public static class Lower
     }
 
     /// <summary>Lowers a :missing search to the parameter's presence set, negated when :missing=true.</summary>
-    private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string resourceType)
+    private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string? resourceType)
     {
         var presence = context.LowerParameterPresence(missing.Parameter, resourceType);
         return missing.IsMissing ? context.LowerNot(presence, resourceType) : presence;
@@ -284,7 +332,7 @@ public static class Lower
     /// siblings are already a smaller anchor, and `A AND NOT B` is `A EXCEPT B`. With no positive sibling
     /// there is nothing smaller to subtract from, so the ResourceSource anchor is still the only option.
     /// </summary>
-    private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string resourceType)
+    private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string? resourceType)
     {
         var positives = new List<Expression>();
         var negated = new List<Expression>();
@@ -302,7 +350,7 @@ public static class Lower
         // The positives must be lowered first: an Except may only reference CTEs already defined above it.
         var result = positives.Count > 0
             ? Intersect(positives, context, resourceType)
-            : context.LowerResourceSource(resourceType);
+            : context.LowerNegationAnchor(resourceType);
 
         foreach (var inner in negated)
         {
@@ -312,7 +360,7 @@ public static class Lower
         return result;
     }
 
-    private static CteRef Intersect(IReadOnlyList<Expression> expressions, StructuralContext context, string resourceType)
+    private static CteRef Intersect(IReadOnlyList<Expression> expressions, StructuralContext context, string? resourceType)
     {
         var refs = expressions.Select(e => LowerNode(e, context, resourceType)).ToList();
         var result = refs[0];

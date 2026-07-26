@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Ignixa.Search.Expressions;
 using static Ignixa.Search.Sql.Builders.SqlLabels;
@@ -164,7 +165,7 @@ public static class PlanExplainer
     private static string PrintCte(CteDefinition cte, int? top, ref int parameterOrdinal) => cte switch
     {
         CteDefinition.ParamSource p =>
-            $"{p.Table.TableName}[{p.ResourceTypeId},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
+            $"{p.Table.TableName}[{PrintTypeScope(p.ResourceTypeId)},{p.SearchParamId}]{(p.Predicate is null ? string.Empty : $"  {PrintPredicate(p.Predicate, ref parameterOrdinal)}")}{PrintTop(top)}",
         CteDefinition.Intersect x =>
             $"Intersect({CteLabel(x.Left.Index)}, {CteLabel(x.Right.Index)}){PrintTop(top)}",
         CteDefinition.Union u =>
@@ -202,6 +203,12 @@ public static class PlanExplainer
         var suffix = qualifiers.Count == 0 ? string.Empty : $" not referenced by {string.Join(" ", qualifiers)}";
         return $"NotReferencedSource[{nr.TargetResourceTypeId}]{suffix}{PrintTop(top)}";
     }
+
+    /// <summary>Renders a CTE's resource-type scope: the literal id, or "*" for a cross-type
+    /// (system-level) scope, matching <see cref="PrintMultiTypeResourceSource"/>'s spelling of the same
+    /// idea. A null scope emits no type filter in SqlBuilder and so consumes no parameter ordinal.</summary>
+    private static string PrintTypeScope(short? resourceTypeId)
+        => resourceTypeId is { } id ? id.ToString(CultureInfo.InvariantCulture) : "*";
 
     private static string PrintMultiTypeResourceSource(CteDefinition.MultiTypeResourceSource mts, int? top)
     {

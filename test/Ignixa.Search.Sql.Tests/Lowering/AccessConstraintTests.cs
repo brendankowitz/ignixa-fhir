@@ -212,6 +212,37 @@ public class AccessConstraintTests
     }
 
     [Fact]
+    public void GivenASystemLevelSearchWithACrossTypeLeaf_WhenOneTypeIsConstrained_ThenTheConstraintStillNarrowsThatType()
+    {
+        // Arrange -- GET /?_type=Observation,Patient&category=vital-signs. The cross-type leaf carries no
+        // ResourceTypeId of its own, which is exactly the shape that could slip past a constraint applier
+        // keyed on a single match type. Pins that a system-level match still routes through ApplyToTypes.
+        var f = Arrange();
+        var leaf = new SearchParameterPredicateExpression(
+            f.CategoryParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "vital-signs", text: null));
+
+        // Act
+        var plan = Lower.Run(
+            leaf, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, AccessConstraints = [f.ObservationConstraint], ResourceTypes = ["Observation", "Patient"] }).Plan;
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert -- the subtract-then-union shape ApplyToTypes builds, over the narrowed match rather than
+        // the bare leaf: neutralising ApplyToTypes would leave the root as the Intersect and fail here.
+        var ctes = plan.Ctes;
+        var root = ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var subtract = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Except>().ShouldHaveSingleItem();
+        var admitted = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Intersect>().ShouldHaveSingleItem();
+        ctes[subtract.Right.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe(ObservationTypeId);
+        ctes[admitted.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe(StatusParamId);
+        subtract.Left.ShouldBe(admitted.Left);
+
+        sql.ShouldContain("SearchParamId = 220");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
     public void GivenNoConstraints_WhenLowered_ThenThePlanIsIdenticalToOneLoweredWithoutTheParameter()
     {
         // Arrange

@@ -193,7 +193,12 @@ public static class SearchCompiler
             resourceType,
             cancellationToken,
             compartmentDefinitionManager,
-            searchParameterDefinitionManager);
+            searchParameterDefinitionManager,
+            // A system-level caller that resolved _type before compiling passes those names here rather
+            // than in the expression tree, so nothing collects them and they would resolve to the
+            // unmatchable sentinel -- a base set of IN (-1, -1) that emits cleanly and matches nothing.
+            // The same list is forwarded to LowerOptions.ResourceTypes below; both halves are required.
+            additionalResourceTypes: options.ResourceTypes);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 
@@ -226,6 +231,13 @@ public static class SearchCompiler
                         CountOnly = countOnly,
                         ApproximationReferenceTime = approximationReferenceTime,
                         SystemLevelSearch = resourceType is null,
+
+                        // Without this forwarding a multi-_type search silently returns EVERY resource type
+                        // rather than the requested subset: the cross-type leaves carry no ResourceTypeId of
+                        // their own, so nothing else narrows them. Same class of defect as the AccessConstraints
+                        // omission above -- accepted by the API, never reaching Lower, invisible to a green build.
+                        // See CompileFromOptionsTests.
+                        ResourceTypes = options.ResourceTypes,
                         OffsetPage = offsetPage,
                         CountPhaseScoped = countPhaseScoped,
                         SurrogateRange = surrogateIdRange is { } range

@@ -12,7 +12,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// </summary>
 public static class ReferenceLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, ReferenceSearchValue value, LeafContext context, short resourceTypeId)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, ReferenceSearchValue value, LeafContext context, short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("ReferenceSearchParam");
         var combined = ReferenceColumnEquality.Build(

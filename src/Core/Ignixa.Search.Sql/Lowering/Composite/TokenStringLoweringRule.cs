@@ -22,7 +22,7 @@ public static class TokenStringLoweringRule
         SearchParameterInfo compositeParameter,
         IReadOnlyList<SearchParameterPredicateExpression> components,
         LeafContext context,
-        short resourceTypeId)
+        short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("TokenStringCompositeSearchParam");
         var tokenPredicate = TokenColumnEquality.Build(table, "SystemId1", "Code1", "CodeOverflow1", (TokenSearchValue)components[0].Value, context);

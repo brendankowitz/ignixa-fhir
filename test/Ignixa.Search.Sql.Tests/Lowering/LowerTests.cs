@@ -1172,6 +1172,102 @@ public class LowerTests
         Should.Throw<ArgumentException>(() => CteDefinition.MultiTypeResourceSource.ForTypes([]));
     }
 
+    // ─── System-level (cross-type) lowering tests ───────────────────────────────────────────────────
+
+    [Fact]
+    public void GivenMultipleTypesAndALeafPredicate_WhenLoweringSystemLevel_ThenBothTypesNarrowAndTheLeafApplies()
+    {
+        // Arrange -- GET /?_type=Patient,Observation&name=foo. The leaf has no single resource type to
+        // scope against, so its ParamSource must carry no ResourceTypeId at all; the two requested types
+        // narrow the base set instead.
+        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("foo"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(
+            predicate,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            SortPhase.Valued,
+            page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Observation"] }).Plan;
+
+        // Assert
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBeNull();
+        plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>()
+            .ResourceTypeIds.ShouldBe([103, 104]);
+    }
+
+    [Fact]
+    public void GivenAMultiValuedTypeParameterAndALeafPredicate_WhenLoweringSystemLevel_ThenTheTypeOrLiftsToTheOuterWhereAndTheLeafStaysUntyped()
+    {
+        // Arrange -- GET /?_type=Patient,Observation&name=foo as the binder actually produces it: the type
+        // filter arrives as an expression (an Or of _type equalities under one SearchParameterExpression),
+        // not as a caller-supplied LowerOptions.ResourceTypes list. This is the path Ignixa's own Build
+        // output takes, and it must reach the outer WHERE rather than falling through to CTE lowering,
+        // where the leaf dispatcher rejects resource columns outright.
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var tree = new MultiaryExpression(MultiaryOperator.And, [TypeList("Patient", "Observation"), new SearchParameterPredicateExpression(
+            nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("foo"))]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url!.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
+
+        // Act
+        var plan = Lower.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- the type list narrows through the outer WHERE, and the leaf carries no type scope.
+        var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
+        or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
+        or.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
+        plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAMultiValuedTypeParameterNamingAnUnknownType_WhenLowered_ThenTheUnknownBranchStaysInTheOrAsUnsatisfiable()
+    {
+        // Arrange -- GET /?_type=Patient,NotAType. The extraction is deliberately not restricted to
+        // Predicate.Equal branches: an unresolvable type lowers to Predicate.False, which carries the
+        // reason for the trace. An Equal-only extraction would reject the whole Or, drop it back to CTE
+        // lowering, and turn a diagnosable known miss into a thrown "resource column reached leaf dispatch".
+        // Resolve records a type the resolver could not find as the unmatchable sentinel rather than
+        // omitting the key -- an omitted key throws KeyNotFoundException on lookup. Mirror that here.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["NotAType"] = SymbolTable.UnmatchableResourceTypeId });
+
+        // Act
+        var plan = Lower.Run(
+            TypeList("Patient", "NotAType"), symbols, targetResourceType: null, includes: [], revIncludes: [],
+            includeLimit: 0, sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert
+        var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
+        or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
+        or.Right.ShouldBeOfType<Predicate.False>().Reason.ShouldNotBeNull();
+    }
+
+    /// <summary>The shape a bound <c>_type=a,b</c> takes: an Or of bare _type equalities under one wrapper.</summary>
+    private static SearchParameterExpression TypeList(params string[] resourceTypes)
+    {
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        return new SearchParameterExpression(
+            typeParam,
+            Expression.Or([.. resourceTypes.Select(t => (Expression)new SearchParameterPredicateExpression(
+                typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: t, text: null)))]));
+    }
+
     // ─── IncludesOnly Lower.Run guard tests ─────────────────────────────────────────────────────────
 
     [Fact]

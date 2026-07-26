@@ -10,7 +10,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// </summary>
 public static class DateTimeLoweringRule
 {
-    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, DateTimeSearchValue value, LeafContext context, short resourceTypeId)
+    public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, DateTimeSearchValue value, LeafContext context, short? resourceTypeId)
     {
         var table = SqlCatalog.Default.Table("DateTimeSearchParam");
         var startColumn = new SqlColumnRef(table.TableName, "StartDateTime");
