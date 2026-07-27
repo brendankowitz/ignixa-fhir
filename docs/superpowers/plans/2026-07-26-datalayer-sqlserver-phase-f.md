@@ -79,7 +79,7 @@ reads. `Table()` still throws `KeyNotFoundException` on a miss, so an omission s
 
 ---
 
-### Task 1: Port `SqlSourceEventStore`
+### Task 1: Port `SqlSourceEventStore` — **COMPLETE**
 
 Smallest port (157 lines, 4 LINQ constructs). Establishes the raw-ADO.NET pattern for every later task.
 
@@ -100,24 +100,24 @@ IAsyncEnumerable<SourceEvent> ReadStreamAsync(string streamId, CancellationToken
 ```
 - Consumes: `ISqlExecutionService`, `ILogger<SqlServerSourceEventStore>`
 
-- [ ] **Step 1: Read the EF implementation and its entity in full.** Record the `dbo.SourceEvents` column list, the ordering guarantee of each read method, and what `AppendAsync` returns (assigned event ids — confirm whether they come from an OUTPUT clause or a post-insert read).
+- [x] **Step 1: Read the EF implementation and its entity in full.** Record the `dbo.SourceEvents` column list, the ordering guarantee of each read method, and what `AppendAsync` returns (assigned event ids — confirm whether they come from an OUTPUT clause or a post-insert read).
 
-- [ ] **Step 2: Write the failing test against the EF implementation.** Round-trip: append three events across two stream ids, then assert `ReadAllAsync` returns all three in ascending event-id order, `ReadFromAsync` skips correctly, and `ReadStreamAsync` filters by stream. Register the **EF** store in the fixture for this step.
+- [x] **Step 2: Write the failing test against the EF implementation.** Round-trip: append three events across two stream ids, then assert `ReadAllAsync` returns all three in ascending event-id order, `ReadFromAsync` skips correctly, and `ReadStreamAsync` filters by stream. Register the **EF** store in the fixture for this step.
 
 Run: `dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests --filter "FullyQualifiedName~SqlServerSourceEventStoreTests"`
 Expected: PASS against EF — this proves the test encodes real current behaviour, not an assumption.
 
-- [ ] **Step 3: Implement `SqlServerSourceEventStore`** over `ISqlExecutionService`, following `SqlServerHistoryQueryExecutor`'s reader-mapping style. `AppendAsync` uses a single multi-row INSERT with `OUTPUT INSERTED.EventId` rather than a round-trip per event.
+- [x] **Step 3: Implement `SqlServerSourceEventStore`** over `ISqlExecutionService`, following `SqlServerHistoryQueryExecutor`'s reader-mapping style. `AppendAsync` uses a single multi-row INSERT with `OUTPUT INSERTED.EventId` rather than a round-trip per event.
 
-- [ ] **Step 4: Repoint the test's fixture at the new implementation and run.**
+- [x] **Step 4: Repoint the test's fixture at the new implementation and run.**
 Expected: PASS with identical assertions and no edits to them. Any assertion that needs changing is a behavioural difference — stop and report it rather than adjusting the test.
 
-- [ ] **Step 5: Swap the registration** in `DataLayerRegistration.cs`; leave the EF type in place (Task 9 deletes it).
+- [x] **Step 5: Swap the registration** in `DataLayerRegistration.cs`; leave the EF type in place (Task 9 deletes it).
 
-- [ ] **Step 6: Full verification.**
+- [x] **Step 6: Full verification.**
 Run: `dotnet build All.sln` → 0/0; `dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests` → 135/135 + the new facts.
 
-- [ ] **Step 7: Commit** — `feat(sqlserver): port the source event store off EF`.
+- [x] **Step 7: Commit** — `feat(sqlserver): port the source event store off EF`.
 
 ---
 
