@@ -159,39 +159,35 @@ for a readable prefix. Over-long ids fail the insert rather than truncating.
 import job state does not survive a restart. Switching the default is a production behaviour change and
 belongs in its own piece of work.
 
-### Task 3: Port `SqlSystemRepository`
+### Task 3: Port `SqlSystemRepository` — **COMPLETE (wiring deferred to Task 8)**
 
-126 lines. Small, but a leaf dependency of both terminology tasks, so it must land before them.
+Implemented as `SqlServerSystemRepository`, delegating to `SqlServerSearchIndexReferenceDataCache` rather
+than issuing its own SQL, so a system created here lands in the same map the search index reads. The EF
+version could not do that: it wrote through its own DbContext and then called `ForgetMissingSystem` to
+invalidate a *separate* cache's negative entry. That call has no equivalent here and needs none — this cache
+resolves a miss on demand instead of remembering it.
 
-**Files:**
-- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer/Features/Terminology/SqlServerSystemRepository.cs`
-- Read as spec: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Features/Terminology/SqlSystemRepository.cs`
-- Modify: `src/Application/Ignixa.Api/Registrations/DataLayerRegistration.cs`
-- Test: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Features/SqlServerSystemRepositoryTests.cs`
+Three behaviours the cache's own `GetOrCreateSystemIdAsync` does **not** provide were preserved rather than
+lost to delegation, each pinned by a test: the URI is trimmed (without it `" http://x "` and `"http://x"`
+become two rows), a whitespace-only URI is rejected (the cache only rejects null/empty, and would store
+`"   "`), and a lost unique-constraint race (2601/2627) is resolved by re-reading rather than surfacing.
 
-**Interfaces:**
-- Produces: `SqlServerSystemRepository : ISystemRepository`
-```csharp
-Task<int> GetOrCreateAsync(string systemUri, CancellationToken cancellationToken);
-Task<int?> GetSystemIdAsync(string systemUri, CancellationToken cancellationToken);
-```
+**Registration deferred, deliberately.** `RegisterType<SqlSystemRepository>().As<ISystemRepository>()` is
+already unresolvable — it needs a `FhirDbContext`, and only `IDbContextFactory<FhirDbContext>` is
+registered. It is harmless because nothing resolves `ISystemRepository` from the container: the sole
+consumer, `ImportTerminologyResourceActivity`, constructs the repository and the importer by hand from a
+tenant-scoped context. Swapping the registration now would trade one unresolvable entry for another, since
+`SqlServerSearchIndexReferenceDataCache` is not in the container either. Both become resolvable in Task 8,
+which is already the task that changes that activity's signature.
 
-- [ ] **Step 1: Read the EF implementation.** `GetOrCreateAsync` is a get-or-insert race candidate. Record exactly how EF handles a concurrent duplicate insert — unique-constraint catch-and-reread, or nothing at all. **The port must reproduce whichever it is**, not improve on it (Global Constraints).
+Also noted: `SystemEntity.Value` is `[MaxLength(450)]` while `dbo.System.Value` is `NVARCHAR(256)` — a third
+entity/schema divergence, benign here because the database is the narrower of the two.
 
-- [ ] **Step 2: Write the test against EF:** `GetOrCreateAsync` twice with the same URI returns the same id; `GetSystemIdAsync` returns null for an unknown URI. Add a **concurrency** case — ten parallel `GetOrCreateAsync` calls for one new URI must yield one distinct id.
-Expected: PASS against EF. If the concurrency case fails against EF, that is a pre-existing defect: record it in the report, mark the case `Skip` with a reference, and do **not** fix it here.
-
-- [ ] **Step 3: Implement,** preferring a single `MERGE`/`INSERT ... WHERE NOT EXISTS` + read round-trip. Note the repo's documented `sp_reset_connection` behaviour: `ISqlExecutionService` opens a fresh connection per call, so no temp-table or session state can be carried between the insert and the read.
-
-- [ ] **Step 4: Repoint, re-run, assertions unchanged.**
-
-- [ ] **Step 5: Swap the registration.**
-
-- [ ] **Step 6: Full verification.**
-
-- [ ] **Step 7: Commit** — `feat(sqlserver): port the terminology system repository off EF`.
-
----
+- [x] Read the EF implementation; confirm it is exercised and its race handling is real.
+- [x] Write the behavioural contract as tests (6 facts), including trim, whitespace and concurrency.
+- [x] Implement `SqlServerSystemRepository` over the reference-data cache.
+- [x] Registration deferred to Task 8 with the reasoning above.
+- [x] Verified: 6/6 new facts, All.sln 0/0, Search.Sql 848/848, Application 1125/0/1, Api 135/135.
 
 ### Task 4: Port `SqlPackageResourceRepository`
 
