@@ -348,9 +348,16 @@ public static class SqlBuilder
     /// Renders an include stage's limit-applying companion: the first Limit rows, plus an IsPartial flag set
     /// from the window count so the caller can tell a truncated stage from an exactly-full one.
     /// </summary>
+    /// <remarks>
+    /// The flag is cast to <c>bit</c> rather than left as the <c>int</c> the CASE naturally yields, because this
+    /// column is unioned with the match arm's <c>CAST(0 AS bit) AS IsPartial</c>. T-SQL type precedence promotes
+    /// a bit/int union to <c>int</c>, so leaving it untyped silently changed the result column's type based on
+    /// whether the plan happened to carry includes — and a caller reading the documented
+    /// (T1, Sid1, IsMatch, IsPartial) contract as a bit threw InvalidCastException on include rows only.
+    /// </remarks>
     private static string EmitIncludeLimitStage(IncludeStage stage, int index)
         => $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
-           $"           CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS IsPartial\n" +
+           $"           CAST(CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
            $"    FROM {IncludeLabel(index)}\n" +
            $"    ORDER BY T1 ASC, Sid1 ASC";
 
