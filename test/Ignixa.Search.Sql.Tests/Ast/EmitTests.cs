@@ -337,7 +337,7 @@ public class EmitTests
             "),\n" +
             "inc0lim AS (\n" +
             "    SELECT TOP (1000) T1, Sid1,\n" +
-            "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
+            "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             ")\n" +
@@ -401,7 +401,7 @@ public class EmitTests
             "),\n" +
             "inc0lim AS (\n" +
             "    SELECT TOP (1000) T1, Sid1,\n" +
-            "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
+            "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             ")\n" +
@@ -2136,7 +2136,7 @@ public class EmitTests
             "),\n" +
             "inc0lim AS (\n" +
             "    SELECT TOP (1000) T1, Sid1,\n" +
-            "           CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS IsPartial\n" +
+            "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             ")\n" +
@@ -2573,6 +2573,26 @@ public class EmitTests
     private static IncludeStage ForwardIncludeStage(short seedType, short outputType, int limit)
         => new(IncludeDirection.Forward, ReferenceSearchParamId: 210, SeedTypeIds: [seedType], OutputTypeIds: [outputType],
                SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: limit);
+
+    [Fact]
+    public void GivenAPlanWithIncludes_WhenEmitted_ThenEveryUnionArmTypesIsPartialAsBit()
+    {
+        // Regression: the match arm emitted CAST(0 AS bit) AS IsPartial while the include arm's limit stage
+        // emitted a bare CASE ... THEN 1 ELSE 0 END, which is int. T-SQL union type precedence promotes a
+        // bit/int union to int, so the result column's type silently depended on whether the plan carried
+        // includes. A caller reading the documented (T1, Sid1, IsMatch, IsPartial) contract as a bit then threw
+        // InvalidCastException on include rows only -- the kind of defect that appears at execution against a
+        // real server and is invisible to a grammar check, since the SQL parses either way.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)]);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("CAST(CASE WHEN COUNT_BIG(*) OVER() > 10 THEN 1 ELSE 0 END AS bit) AS IsPartial");
+        sql.ShouldNotContain("END AS IsPartial");
+    }
 
     [Fact]
     public void GivenAnIncludesOnlyPlan_WhenEmitted_ThenMatchRowsAreExcludedFromTheResult()
