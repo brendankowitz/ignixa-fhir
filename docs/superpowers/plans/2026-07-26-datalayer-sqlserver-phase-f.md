@@ -121,42 +121,43 @@ Run: `dotnet build All.sln` → 0/0; `dotnet test test/Ignixa.DataLayer.SqlServe
 
 ---
 
-### Task 2: Port `SqlBackgroundJobRepository<T>`
+### Task 2: Port `SqlBackgroundJobRepository<T>` — **COMPLETE (rewrite, not a port)**
 
-250 lines, 6 LINQ constructs, generic over `T : IJobDefinition`.
+**What execution changed about this task.** The EF implementation was not merely unwired, it was
+non-functional: `BackgroundJobEntity` declares no `TenantId` property and `FhirDbContext` maps the key as
+`JobId` alone ("system-wide, unique across all tenants"), while `dbo.BackgroundJobs` declares
+`PRIMARY KEY (TenantId, JobId)` with `TenantId INT NOT NULL` and no default. An insert through that model
+omits the column and fails with SQL error 515, so it could never have persisted a row — consistent with it
+being registered `.AsSelf()` and never resolved. `IBackgroundJobRepository<>` resolved unconditionally to
+the in-memory implementation, and the `BackgroundJobs:Repository` setting its own doc comment described was
+never read.
 
-**Files:**
-- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer/Features/BackgroundJobs/SqlServerBackgroundJobRepository.cs`
-- Read as spec: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Features/BackgroundJobs/SqlBackgroundJobRepository.cs`, `Entities/BackgroundJobEntity.cs`
-- Modify: `src/Application/Ignixa.Api/Registrations/DataLayerRegistration.cs`
-- Test: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Features/SqlServerBackgroundJobRepositoryTests.cs`
+Two consequences, both approved rather than assumed:
 
-**Interfaces:**
-- Produces: `SqlServerBackgroundJobRepository<T> : IBackgroundJobRepository<T> where T : class, IJobDefinition`
-```csharp
-Task CreateAsync(BackgroundJob<T> job, CancellationToken cancellationToken);
-Task<BackgroundJob<T>?> GetAsync(string jobId, int tenantId, CancellationToken cancellationToken);
-Task UpdateAsync(BackgroundJob<T> job, int tenantId, CancellationToken cancellationToken);
-Task<IReadOnlyList<BackgroundJob<T>>> ListAsync(int? jobType = null, CancellationToken cancellationToken = default);
-Task DeleteAsync(string jobId, int tenantId, CancellationToken cancellationToken);
-```
+1. **This is a rewrite.** The storage model comes from the DDL; only the behavioural rules come from the EF
+   class. The "write the test against EF first" method was impossible — there was nothing runnable to test
+   against — so the tests encode the rules that implementation *expressed* against the schema that exists.
+2. **The setting is now honoured**, which is a deliberate exception to this plan's no-behaviour-change
+   constraint. Blast radius is contained by keeping `InMemory` the default: a deployment that does not set
+   the key keeps exactly what it had, so no acceptance number moves.
 
-- [ ] **Step 1: Read the EF implementation.** Note specifically how `T` is serialised into the job-definition column (JSON?) and which serializer options — a mismatch here silently breaks deserialisation of jobs written before the port.
+Behaviours preserved and pinned by test: `GetAsync` returns null on tenant mismatch while `UpdateAsync` and
+`DeleteAsync` throw; `UpdateAsync` throws when absent while `DeleteAsync` no-ops; `ListAsync` does not
+filter by tenant; Distributed mode skips ownership checks entirely; `HeartbeatDate` is stamped by the
+repository rather than carried from the model.
 
-- [ ] **Step 2: Write the round-trip test against EF.** Create a job with a real `T`, `GetAsync` it back, assert the definition deserialises equal. Cover `ListAsync` with and without the `jobType` filter, `UpdateAsync` status transition, and `DeleteAsync`. Include a **tenant-isolation** case: a job created under tenant A must not be visible to `GetAsync(jobId, tenantB)`.
-Expected: PASS against EF.
+Also recorded because it cost a test round: `JobId` is `NVARCHAR(36)` — exactly a dashed GUID, with no room
+for a readable prefix. Over-long ids fail the insert rather than truncating.
 
-- [ ] **Step 3: Implement over `ISqlExecutionService`,** reusing the EF implementation's exact serializer configuration.
+- [x] Read the EF implementation; establish it cannot run against the deployed schema.
+- [x] Write the behavioural contract as tests against the real schema (11 facts).
+- [x] Implement `SqlServerBackgroundJobRepository<T>` over `ISqlExecutionService`.
+- [x] Honour `BackgroundJobs:Repository`, defaulting to `InMemory`.
+- [x] Verified: integration **152/152**, All.sln 0/0, Search.Sql 848/848, Application 1125/0/1, Api 135/135.
 
-- [ ] **Step 4: Repoint the fixture, re-run, assertions unchanged.**
-
-- [ ] **Step 5: Swap the registration.**
-
-- [ ] **Step 6: Full verification** (build 0/0, integration 135/135 + new facts).
-
-- [ ] **Step 7: Commit** — `feat(sqlserver): port the background job repository off EF`.
-
----
+**Still open, deliberately out of scope:** background jobs remain in-memory by default, so export and
+import job state does not survive a restart. Switching the default is a production behaviour change and
+belongs in its own piece of work.
 
 ### Task 3: Port `SqlSystemRepository`
 

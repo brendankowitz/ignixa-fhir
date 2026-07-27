@@ -134,7 +134,7 @@ public static class DataLayerRegistration
             .SingleInstance();
 
         // Register background job repository module
-        builder.RegisterModule<Infrastructure.BackgroundJobsModule>();
+        builder.RegisterModule(new Infrastructure.BackgroundJobsModule(configuration));
 
         // Register package resource repository
         RegisterPackageRepository(builder);
