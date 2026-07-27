@@ -29,11 +29,25 @@ public sealed class SqlCatalogGenerator : IIncrementalGenerator
             var ddlText = string.Join(
                 "\n",
                 files.Select(f => f.GetText(spc.CancellationToken)?.ToString() ?? string.Empty));
+            // The search-index tables the compiler lowers against, plus the tables the data layer
+            // hand-writes SQL against (terminology, packages, background jobs, the event store) so those
+            // identifiers come from the real DDL -- a renamed column becomes a build failure rather than a
+            // runtime error 207.
+            //
+            // Deliberately a named set rather than every table. The parser handles the DDL vocabulary these
+            // tables use; the wider schema also contains computed columns (EventLog's PERSISTED
+            // PartitionId), which it does not model. Widening further means teaching it those constructs
+            // first -- worth doing when something needs them, not speculatively.
             var tables = DdlTableParser.ParseTables(ddlText,
                 name => name.EndsWith("SearchParam", StringComparison.Ordinal)
                     || name == "ResourceType"
                     || name == "Resource"
-                    || name == "TokenText");
+                    || name == "TokenText"
+                    || name.StartsWith("Term", StringComparison.Ordinal)
+                    || name == "SourceEvents"
+                    || name == "BackgroundJobs"
+                    || name == "PackageResource"
+                    || name == "System");
 
             spc.AddSource("SqlCatalog.g.cs", Emit(tables));
         });

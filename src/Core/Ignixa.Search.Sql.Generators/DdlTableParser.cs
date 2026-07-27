@@ -20,7 +20,13 @@ public static class DdlTableParser
         @"(\s+CONSTRAINT\s+\S+\s+DEFAULT\s+\S+)?" +
         @"(\s+DEFAULT\s+\S+)?" +
         @"(\s+IDENTITY\s*\([^)]*\))?" +
-        @"\s+(?<nullability>NOT\s+NULL|NULL)" +
+        // Optional: SQL Server defaults an undeclared column to nullable, and 65 columns across the
+        // non-search tables rely on that. The search-index tables all declare it explicitly, so this
+        // changes nothing the compiler reads.
+        @"(\s+(?<nullability>NOT\s+NULL|NULL))?" +
+        // IDENTITY appears on either side of the nullability clause across this schema
+        // (Resource declares it before, PackageResource after), so both positions are optional.
+        @"(\s+IDENTITY\s*\([^)]*\))?" +
         @"(\s+CONSTRAINT\s+.+)?$",
         RegexOptions.IgnoreCase);
 

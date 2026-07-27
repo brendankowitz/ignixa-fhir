@@ -13,13 +13,14 @@
 ## Global Constraints
 
 - **Phase F changes no behaviour.** Every acceptance number is equality with the pre-phase baseline, not improvement.
-- **Baselines that must hold at the end of every task:** `dotnet build All.sln` 0 warnings / 0 errors; `Ignixa.Search.Sql.Tests` **839/839** both TFMs; `Ignixa.Application.Tests` **1125 passed / 0 failed / 1 skipped**; `Ignixa.DataLayer.SqlServer.IntegrationTests` **135/135** for Tasks 1–8 and **85/85** after Task 9.
+- **Baselines that must hold at the end of every task:** `dotnet build All.sln` 0 warnings / 0 errors; `Ignixa.Search.Sql.Tests` **848/848** both TFMs; `Ignixa.Application.Tests` **1125 passed / 0 failed / 1 skipped**; `Ignixa.DataLayer.SqlServer.IntegrationTests` **135/135** for Tasks 1–8 and **85/85** after Task 9.
 - **E2E must land on exactly 620 total / 569 passed / 31 failed / 20 skipped, with the same failing test names** as recorded in `docs/superpowers/specs/2026-07-25-search-sql-gap-closure-design.md`. A *lower* failure count is as suspect as a higher one — nothing in this phase should fix a search gap.
 - **Verify before deleting.** Tasks 1–8 run while the EF implementation is still present and registered. Any port merged after Task 9 has no reference to be checked against.
 - **Where existing coverage is thin, write the test against the EF implementation FIRST**, prove it passes there, then repoint it at the new implementation. A test written only against the new code proves nothing about equivalence.
 - **Do not touch `Ignixa.Search.Sql`.** Phase F is a data-layer phase. Any compiler change means the task has gone out of scope.
 - **Do not fix bugs found in the EF implementations.** Port behaviour as-is, including quirks; record anything suspicious in the task report. A behavioural "improvement" during a port is indistinguishable from a port defect at review time.
 - Environment for every test run: `unset Platform __DOTNET_PREFERRED_BITNESS __DOTNET_ADD_32BIT`; `TEST_SQL_CONNECTION_STRING` must contain a `Database=`/`Initial Catalog=` segment; `SqlServer__AutomaticSchemaDeploymentEnabled=true`.
+- **Table and column identifiers in hand-written SQL come from `SqlCatalog.Default.Table("X").Column("Y")`, not string literals.** `Ignixa.DataLayer.SqlServer` already references `Ignixa.Search.Sql`, and Task 0 extended the catalog to cover the tables these ports write against. A renamed column then fails the build instead of throwing SQL error 207 at runtime. Values and statement structure stay hand-written -- the catalog covers identifiers only.
 - No inline comments except where they explain a non-obvious invariant (CLAUDE.md). No `#region`. One type per file. `cancellationToken`, never `ct`.
 
 ---
@@ -43,6 +44,38 @@ Ignixa.DataLayer.SqlServer/
 **The porting model to follow:** `src/DataLayer/Ignixa.DataLayer.SqlServer/SqlServerMergeRepository.cs` and `SqlServerHistoryQueryExecutor.cs`. Both are existing, reviewed, raw-ADO.NET implementations over `ISqlExecutionService` — parameter binding, reader mapping, and batching conventions all come from there rather than being invented per task.
 
 **The specification for each port is the EF source file itself.** These are not greenfield implementations; the EF file defines required behaviour down to its quirks. Every porting task below names its source file and requires reading it in full before writing anything.
+
+---
+
+### Task 0: Extend `SqlCatalog` to the data-layer tables — **COMPLETE**
+
+Done ahead of the plan's execution, recorded here so the sequence is auditable and the constraint above has
+a provenance.
+
+The generator already parsed every `Tables/*.sql` file but filtered the result to search-index tables only,
+so the tables these ports write against were excluded rather than absent. Widening that filter surfaced
+three DDL constructs the parser never had to handle, because the search-index tables do not use them:
+
+1. **Implicit nullability** — 65 columns across the schema omit `NULL`/`NOT NULL`. The regex required it.
+2. **`IDENTITY` after the nullability clause** — `PackageResource` declares `BIGINT NOT NULL IDENTITY (1, 1)`
+   where `System` declares `INT IDENTITY (1, 1) NOT NULL`. Both orders occur; the regex allowed only one.
+3. **Computed columns** — `EventLog`'s `PartitionId AS isnull(...) PERSISTED`. **Not fixed.**
+
+Because of (3) the catalog is a **named set, not the whole schema**: search tables plus `Term*`,
+`SourceEvents`, `BackgroundJobs`, `PackageResource`, and `System`. Teaching the parser computed columns is
+deferred until something needs them — widening speculatively means fixing parser gaps for tables no one
+reads. `Table()` still throws `KeyNotFoundException` on a miss, so an omission stays loud.
+
+**Files:** `src/Core/Ignixa.Search.Sql.Generators/SqlCatalogGenerator.cs` (filter),
+`src/Core/Ignixa.Search.Sql.Generators/DdlTableParser.cs` (regex),
+`test/Ignixa.Search.Sql.Tests/Catalog/SqlCatalogDataLayerTablesTests.cs` (new).
+
+- [x] Widen the generator's table filter to the named set.
+- [x] Make the nullability clause optional; allow `IDENTITY` on either side of it.
+- [x] Pin every construct with a test — both IDENTITY orders, `NVARCHAR (MAX)`, an inline `DEFAULT`, and a
+      negative case asserting `EventLog` still throws so the set stays deliberate.
+- [x] Verified: `dotnet build All.sln` 0/0; `Ignixa.Search.Sql.Generators.Tests` 11/11 both TFMs;
+      `Ignixa.Search.Sql.Tests` **848/848** both TFMs (was 839 — the 9 new facts above).
 
 ---
 
@@ -344,7 +377,7 @@ Expected: only the E2E csproj reference and the three E2E string/comment hits. *
 
 - [ ] **Step 4: Full verification against every Global Constraint.**
 Run: `dotnet build All.sln` → 0/0.
-Run: `dotnet test test/Ignixa.Search.Sql.Tests` → **839/839** both TFMs.
+Run: `dotnet test test/Ignixa.Search.Sql.Tests` → **848/848** both TFMs.
 Run: `dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests` → **85/85**, and confirm 135 − 85 = 50 is accounted for **entirely** by the deleted differential facts. Any other missing test is a mistake in Step 2.
 Run: `dotnet test test/Ignixa.Application.Tests` → 1125/0/1.
 Run: the E2E suite → **620 / 569 / 31 / 20**, and diff the failing test names against the gap-closure document's recorded set. Same names, or the phase has regressed something.
