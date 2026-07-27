@@ -177,7 +177,7 @@ public static class SearchCompiler
     /// <item><term><see cref="LowerOptions.CountOnly"/></term><description>The <c>countOnly</c> method parameter, not a <see cref="SearchOptions"/> property. Count-mode is an execution-shape control the caller states directly, the same as <c>includeLimit</c>/<c>sortPhase</c>/<c>countPhaseScoped</c> below.</description></item>
     /// <item><term><see cref="LowerOptions.Top"/></term><description>Not set (always null on this path). No <see cref="SearchOptions"/> mapping exists, and none should be added naively: <see cref="SearchOptions.MaxItemCount"/> is not a safe 1:1 source because real callers already transform it before a search runs (e.g. <c>SearchResourcesHandler</c> requests <c>MaxItemCount + 1</c> to detect "has more"), so forwarding it here would silently fight that transformation. Row-capping on this path is done via <see cref="LowerOptions.OffsetPage"/> or keyset paging (the <c>page</c> parameter to <see cref="Lower.Run"/>, always null here today), both mutually exclusive with <see cref="LowerOptions.Top"/>. Flagged as a real gap in the row-capping story, not fixed here: nothing calls this method wanting <c>Top</c> driven from <see cref="SearchOptions"/> today.</description></item>
     /// <item><term><see cref="LowerOptions.ApproximationReferenceTime"/></term><description>The <c>timeProvider</c> method parameter. Not a <see cref="SearchOptions"/> concept — an <c>:ap</c> comparator needs a clock, not caller intent.</description></item>
-    /// <item><term><see cref="LowerOptions.Visibility"/></term><description><see cref="SearchOptions.ResourceVersionTypes"/>, mapped through a local <c>ToVisibility</c> helper (<see cref="ResourceVersionTypes.None"/> throws <see cref="NotSupportedException"/>; <see cref="ResourceVersionTypes.Latest"/> alone maps to null, which <see cref="QueryPlan.EffectiveVisibility"/> already treats as <see cref="ResourceVisibility.Current"/>). The third instance of this defect class, fixed alongside this table: was accepted by <see cref="SearchOptions"/>, never reached Lower, so a caller asking for history or soft-deleted rows got silent Latest-only results.</description></item>
+    /// <item><term><see cref="LowerOptions.Visibility"/></term><description><see cref="SearchOptions.ResourceVersionTypes"/>, mapped through a local <c>ToVisibility</c> helper onto the tri-state <see cref="ResourceVisibility"/> (each of IsHistory/IsDeleted independently: <c>false</c> → <c>= 0</c>, <c>true</c> → <c>= 1</c>, <c>null</c> → no filter), reproducing the legacy generator's per-column truth table so history-only and soft-deleted-only searches are expressible and not just relaxations of Latest. <see cref="ResourceVersionTypes.None"/> throws <see cref="NotSupportedException"/>; <see cref="ResourceVersionTypes.Latest"/> alone maps to null, which <see cref="QueryPlan.EffectiveVisibility"/> already treats as <see cref="ResourceVisibility.Current"/> (itself <c>IsHistory: false, IsDeleted: false</c>, so the shortcut is byte-identical). The third instance of this defect class, fixed alongside this table: was accepted by <see cref="SearchOptions"/>, never reached Lower, so a caller asking for history or soft-deleted rows got silent Latest-only results.</description></item>
     /// <item><term><see cref="LowerOptions.SurrogateRange"/></term><description>The <c>surrogateIdRange</c> method parameter when the caller supplies one (the explicit path an export partition worker uses today), falling back to <see cref="SearchOptions.StartSurrogateId"/>/<see cref="SearchOptions.EndSurrogateId"/> when it is null — those two properties ARE populated and read elsewhere in this repository (<c>ExportWorkerActivity</c> sets them; <c>FileBasedSearchService</c> and <c>SqlEntityFrameworkSearchService</c> read them), so leaving them unforwarded here was the fourth instance of this defect class. A half-open pair (only one of the two set) throws <see cref="NotSupportedException"/> rather than silently scanning unbounded in one direction. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingOnlySurrogateBounds_...</c>.</description></item>
     /// <item><term><see cref="LowerOptions.SearchParameterHash"/></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. Reindex gating (confirming a resource was indexed against an expected search-parameter hash) is a distinct caller concern, not a search request — there is nothing on <see cref="SearchOptions"/> to forward.</description></item>
     /// <item><term><see cref="LowerOptions.ResourceTypes"/></term><description><see cref="SearchOptions.ResourceTypes"/>. Forwarded; without it a multi-<c>_type</c> system-level search silently returns every type. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingResourceTypes_...</c>.</description></item>
@@ -327,10 +327,21 @@ public static class SearchCompiler
     /// <summary>
     /// Maps <see cref="SearchOptions.ResourceVersionTypes"/> onto the SQL compiler's own
     /// <see cref="ResourceVisibility"/>, per the mapping <see cref="ResourceVersionTypes"/>'s own remarks
-    /// document. <see cref="ResourceVersionTypes.Latest"/> alone returns null rather than an explicit
+    /// document. Each of the two columns is resolved independently and tri-state: a version-type set that
+    /// names Latest but not the column's non-current partner pins the column to its current value
+    /// (<c>false</c> → <c>= 0</c>); one that names the non-current partner but not Latest pins it to the
+    /// non-current value (<c>true</c> → <c>= 1</c>); one that names both, or neither, leaves the column
+    /// unconstrained (<c>null</c>). This reproduces the legacy generator's AppendHistoryClause /
+    /// AppendDeletedClause exactly, which is what lets a history-only or soft-deleted-only search — the
+    /// shapes the old relaxation-only visibility could not express — reach the emitter at all.
+    /// <para>
+    /// <see cref="ResourceVersionTypes.Latest"/> alone returns null rather than an explicit
     /// <see cref="ResourceVisibility.Current"/> -- both leave <see cref="QueryPlan.EffectiveVisibility"/>
-    /// (which falls back to <see cref="ResourceVisibility.Current"/> on null) at the same value, so null
-    /// is the smaller diff against the plan this compiler emitted before this forwarding existed.
+    /// (which falls back to <see cref="ResourceVisibility.Current"/> on null) at the same value, and
+    /// <see cref="ResourceVisibility.Current"/> is itself <c>new(IsHistory: false, IsDeleted: false)</c> —
+    /// exactly what the general arm below would compute for Latest alone — so the shortcut is a byte-for-byte
+    /// no-op that keeps the smaller diff against the plan this compiler emitted before this forwarding existed.
+    /// </para>
     /// </summary>
     private static ResourceVisibility? ToVisibility(ResourceVersionTypes types) => types switch
     {
@@ -340,9 +351,33 @@ public static class SearchCompiler
             "SearchOptions.ResourceVersionTypes.None is not a valid search input; a search must select at least Latest."),
         ResourceVersionTypes.Latest => null,
         _ => new ResourceVisibility(
-            IncludeHistory: types.HasFlag(ResourceVersionTypes.History),
-            IncludeDeleted: types.HasFlag(ResourceVersionTypes.SoftDeleted)),
+            IsHistory: ColumnFilter(types.HasFlag(ResourceVersionTypes.Latest), types.HasFlag(ResourceVersionTypes.History)),
+            IsDeleted: ColumnFilter(types.HasFlag(ResourceVersionTypes.Latest), types.HasFlag(ResourceVersionTypes.SoftDeleted))),
     };
+
+    /// <summary>
+    /// Resolves one version column's tri-state from whether the caller asked for its current partition
+    /// (<paramref name="wantsCurrent"/>, i.e. Latest) and its non-current partition
+    /// (<paramref name="wantsNonCurrent"/>, i.e. History for IsHistory or SoftDeleted for IsDeleted).
+    /// Current only → pin to <c>0</c> (<c>false</c>); non-current only → pin to <c>1</c> (<c>true</c>);
+    /// both or neither → no filter (<c>null</c>), the union. This is the exact truth table of the legacy
+    /// generator's per-column clause helpers, expressed once so the IsHistory and IsDeleted axes cannot
+    /// drift apart.
+    /// </summary>
+    private static bool? ColumnFilter(bool wantsCurrent, bool wantsNonCurrent)
+    {
+        if (wantsCurrent && !wantsNonCurrent)
+        {
+            return false;
+        }
+
+        if (wantsNonCurrent && !wantsCurrent)
+        {
+            return true;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Resolves the surrogate-id bound this compile should apply: the explicit <paramref name="explicitRange"/>

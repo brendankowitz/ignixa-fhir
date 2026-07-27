@@ -185,14 +185,15 @@ public class EmitSqlGrammarTests
     }
 
     [Theory]
-    [InlineData(false, false, "default (both filters)")]
-    [InlineData(true, false, "include history only")]
-    [InlineData(false, true, "include deleted only")]
-    [InlineData(true, true, "fully relaxed")]
+    [InlineData(null, null, "no filters")]
+    [InlineData(false, false, "current rows only")]
+    [InlineData(true, null, "history rows only")]
+    [InlineData(null, true, "deleted rows only")]
+    [InlineData(true, true, "history and deleted rows only")]
     public void GivenAResourceSourcePlanWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
-        bool includeHistory, bool includeDeleted, string _)
+        bool? isHistory, bool? isDeleted, string _)
     {
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
@@ -204,14 +205,15 @@ public class EmitSqlGrammarTests
     }
 
     [Theory]
-    [InlineData(false, false, "default (both filters)")]
-    [InlineData(true, false, "include history only")]
-    [InlineData(false, true, "include deleted only")]
-    [InlineData(true, true, "fully relaxed")]
+    [InlineData(null, null, "no filters")]
+    [InlineData(false, false, "current rows only")]
+    [InlineData(true, null, "history rows only")]
+    [InlineData(null, true, "deleted rows only")]
+    [InlineData(true, true, "history and deleted rows only")]
     public void GivenAForwardChainJoinWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
-        bool includeHistory, bool includeDeleted, string _)
+        bool? isHistory, bool? isDeleted, string _)
     {
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [
                 new CteDefinition.ParamSource(
@@ -228,14 +230,15 @@ public class EmitSqlGrammarTests
     }
 
     [Theory]
-    [InlineData(false, false, "default (both filters)")]
-    [InlineData(true, false, "include history only")]
-    [InlineData(false, true, "include deleted only")]
-    [InlineData(true, true, "fully relaxed")]
+    [InlineData(null, null, "no filters")]
+    [InlineData(false, false, "current rows only")]
+    [InlineData(true, null, "history rows only")]
+    [InlineData(null, true, "deleted rows only")]
+    [InlineData(true, true, "history and deleted rows only")]
     public void GivenANotReferencedSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
-        bool includeHistory, bool includeDeleted, string _)
+        bool? isHistory, bool? isDeleted, string _)
     {
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [new CteDefinition.NotReferencedSource(103, 96, 969)],
             new CteRef(0),
@@ -247,14 +250,15 @@ public class EmitSqlGrammarTests
     }
 
     [Theory]
-    [InlineData(false, false, "default (both filters)")]
-    [InlineData(true, false, "include history only")]
-    [InlineData(false, true, "include deleted only")]
-    [InlineData(true, true, "fully relaxed")]
+    [InlineData(null, null, "no filters")]
+    [InlineData(false, false, "current rows only")]
+    [InlineData(true, null, "history rows only")]
+    [InlineData(null, true, "deleted rows only")]
+    [InlineData(true, true, "history and deleted rows only")]
     public void GivenAnIncludeStageWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
-        bool includeHistory, bool includeDeleted, string _)
+        bool? isHistory, bool? isDeleted, string _)
     {
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage = new IncludeStage(
@@ -583,16 +587,17 @@ public class EmitSqlGrammarTests
     }
 
     [Theory]
-    [InlineData(false, false, "default (both filters)")]
-    [InlineData(true, false, "include history only")]
-    [InlineData(false, true, "include deleted only")]
-    [InlineData(true, true, "fully relaxed")]
+    [InlineData(null, null, "no filters")]
+    [InlineData(false, false, "current rows only")]
+    [InlineData(true, null, "history rows only")]
+    [InlineData(null, true, "deleted rows only")]
+    [InlineData(true, true, "history and deleted rows only")]
     public void GivenAMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
-        bool includeHistory, bool includeDeleted, string _)
+        bool? isHistory, bool? isDeleted, string _)
     {
-        // Tests all four visibility flag combinations, exercising the WHERE-clause assembly for multi-type
+        // Tests representative visibility combinations, exercising the WHERE-clause assembly for multi-type
         // with visibility filters.
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
             new CteRef(0),
@@ -602,16 +607,17 @@ public class EmitSqlGrammarTests
     }
 
     [Theory]
-    [InlineData(false, false, "default (both filters)")]
-    [InlineData(true, false, "include history only")]
-    [InlineData(false, true, "include deleted only")]
-    [InlineData(true, true, "fully relaxed")]
+    [InlineData(null, null, "no filters")]
+    [InlineData(false, false, "current rows only")]
+    [InlineData(true, null, "history rows only")]
+    [InlineData(null, true, "deleted rows only")]
+    [InlineData(true, true, "history and deleted rows only")]
     public void GivenASystemWideMultiTypeResourceSourceWithAnyVisibilityCombination_WhenParsed_ThenItIsValidTSql(
-        bool includeHistory, bool includeDeleted, string _)
+        bool? isHistory, bool? isDeleted, string _)
     {
         // System-wide (AllTypes) with visibility: validates that the visibility clauses alone build a
         // correct WHERE clause when there is no type filter.
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [CteDefinition.MultiTypeResourceSource.AllTypes()],
             new CteRef(0),
@@ -620,18 +626,22 @@ public class EmitSqlGrammarTests
         SqlGrammar.AssertValid(SqlBuilder.Run(plan).Sql);
     }
 
-    // Multi-type WHERE text for all four visibility combinations, verified against the expected output.
-    // These lock in that the clause-list emitter produces byte-identical output to the former
-    // concatenate-then-strip approach. Any future refactor that changes WHERE formatting will fail here.
+    // Multi-type WHERE text across the tri-state visibility space, verified against the exact expected
+    // output. These lock in that the clause-list emitter renders each column value directly (0/1) and omits
+    // a column entirely when its axis is null. One row per row of the ResourceVersionTypes truth table plus
+    // the null-axis pins that only the tri-state model can express.
     [Theory]
+    [InlineData(null,  null,  "    WHERE ResourceTypeId IN (103, 104)")]
     [InlineData(false, false, "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0 AND IsDeleted = 0")]
-    [InlineData(true,  false, "    WHERE ResourceTypeId IN (103, 104) AND IsDeleted = 0")]
-    [InlineData(false, true,  "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0")]
-    [InlineData(true,  true,  "    WHERE ResourceTypeId IN (103, 104)")]
+    [InlineData(true,  null,  "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 1")]
+    [InlineData(null,  true,  "    WHERE ResourceTypeId IN (103, 104) AND IsDeleted = 1")]
+    [InlineData(false, null,  "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 0")]
+    [InlineData(null,  false, "    WHERE ResourceTypeId IN (103, 104) AND IsDeleted = 0")]
+    [InlineData(true,  true,  "    WHERE ResourceTypeId IN (103, 104) AND IsHistory = 1 AND IsDeleted = 1")]
     public void GivenAMultiTypeResourceSourceAcrossAllVisibilityCombinations_TheWhereClauseIsExact(
-        bool includeHistory, bool includeDeleted, string expectedWhereClause)
+        bool? isHistory, bool? isDeleted, string expectedWhereClause)
     {
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])],
             new CteRef(0),
@@ -640,16 +650,19 @@ public class EmitSqlGrammarTests
         SqlBuilder.Run(plan).Sql.ShouldContain(expectedWhereClause);
     }
 
-    // AllTypes (system-wide) WHERE text for all four visibility combinations.
+    // AllTypes (system-wide) WHERE text across the tri-state visibility space.
     [Theory]
+    [InlineData(null,  null,  null)]  // no axis constrained: no WHERE clause at all
     [InlineData(false, false, "    WHERE IsHistory = 0 AND IsDeleted = 0")]
-    [InlineData(true,  false, "    WHERE IsDeleted = 0")]
-    [InlineData(false, true,  "    WHERE IsHistory = 0")]
-    [InlineData(true,  true,  null)]  // fully relaxed: no WHERE clause
+    [InlineData(true,  null,  "    WHERE IsHistory = 1")]
+    [InlineData(null,  true,  "    WHERE IsDeleted = 1")]
+    [InlineData(false, null,  "    WHERE IsHistory = 0")]
+    [InlineData(null,  false, "    WHERE IsDeleted = 0")]
+    [InlineData(true,  true,  "    WHERE IsHistory = 1 AND IsDeleted = 1")]
     public void GivenAnAllTypesResourceSourceAcrossAllVisibilityCombinations_TheWhereClauseIsExact(
-        bool includeHistory, bool includeDeleted, string? expectedWhereClause)
+        bool? isHistory, bool? isDeleted, string? expectedWhereClause)
     {
-        var visibility = new ResourceVisibility(includeHistory, includeDeleted);
+        var visibility = new ResourceVisibility(isHistory, isDeleted);
         var plan = new QueryPlan(
             [CteDefinition.MultiTypeResourceSource.AllTypes()],
             new CteRef(0),

@@ -1322,7 +1322,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false));
+            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: false));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1350,7 +1350,7 @@ public class EmitTests
                 new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
             ],
             new CteRef(1),
-            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true));
+            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1367,7 +1367,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.NotReferencedSource(103, 96, 969)],
             new CteRef(0),
-            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true));
+            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
 
         var sql = SqlBuilder.Run(plan).Sql;
 

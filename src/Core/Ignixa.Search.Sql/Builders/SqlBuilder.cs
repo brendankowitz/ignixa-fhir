@@ -565,25 +565,33 @@ public static class SqlBuilder
 
     /// <summary>
     /// The current-row filter for a dbo.Resource scan under a given visibility, already prefixed with
-    /// " AND " and the caller's column qualifier, or empty when both relaxations are on.
+    /// " AND " and the caller's column qualifier, or empty when neither axis is constrained.
     /// </summary>
     /// <remarks>
     /// The leading space is load-bearing for a caller that embeds the result inline after another SQL
     /// token — dropping it yields <c>= @p0AND IsHistory = 0</c>, which only fails at parse time. A caller
     /// that instead places the filter on its own line trims it and supplies its own indentation; those
     /// two modes are the reason this returns a pre-joined string rather than the raw clauses.
+    /// <para>
+    /// Each axis is tri-state, mirroring <see cref="ResourceVisibility"/>: a <c>null</c> value emits no
+    /// clause for that column, <c>false</c> emits <c>= 0</c> (current/live row), <c>true</c> emits
+    /// <c>= 1</c> (superseded/deleted row). The predecessor of this helper emitted <c>= 0</c> when a flag
+    /// was clear and nothing when it was set, which could not express a "history rows only" (<c>= 1</c>)
+    /// filter at all; encoding the column value directly from the tri-state is what lets the same helper
+    /// serve a history-only or soft-deleted-only scan without a second code path.
+    /// </para>
     /// </remarks>
     private static string ResourceRowFilter(ResourceVisibility visibility, string qualifier)
     {
         var clauses = new List<string>(2);
-        if (!visibility.IncludeHistory)
+        if (visibility.IsHistory is { } isHistory)
         {
-            clauses.Add($"{qualifier}IsHistory = 0");
+            clauses.Add($"{qualifier}IsHistory = {(isHistory ? 1 : 0)}");
         }
 
-        if (!visibility.IncludeDeleted)
+        if (visibility.IsDeleted is { } isDeleted)
         {
-            clauses.Add($"{qualifier}IsDeleted = 0");
+            clauses.Add($"{qualifier}IsDeleted = {(isDeleted ? 1 : 0)}");
         }
 
         return clauses.Count == 0 ? string.Empty : " AND " + string.Join(" AND ", clauses);
@@ -601,9 +609,28 @@ public static class SqlBuilder
     /// This is the search-param-table counterpart of <see cref="ResourceRowFilter"/>, which belongs to
     /// dbo.Resource scans and additionally emits IsDeleted — a column no search-param table has.
     /// Returned unprefixed so each caller supplies its own separator.
+    /// <para>
+    /// Deliberately NOT a mechanical tri-state translation like <see cref="ResourceRowFilter"/>. The
+    /// clause is emitted only when the history axis is pinned to current rows (<c>IsHistory == false</c>);
+    /// for both <c>null</c> (history unconstrained) and <c>true</c> (history rows only) it renders empty.
+    /// This mirrors the legacy generator, whose AppendHistoryClause returns early for every table whose
+    /// name ends in "SearchParam" (bar the compartment-search special case) and so never constrains
+    /// IsHistory on a search-param index table at all. The reason the two engines agree here is that the
+    /// version a search RETURNS is selected once, at the dbo.Resource scan, by <see cref="ResourceRowFilter"/>;
+    /// the search-param table's job is only to say WHICH resources match the predicate. For a latest-only
+    /// search we additionally pin the index table to <c>IsHistory = 0</c> because TokenText's retained
+    /// superseded rows would otherwise let a value that was true of an old version spuriously match a
+    /// current resource. Once history is in scope that narrowing is not merely unnecessary but wrong: the
+    /// alternative — emitting <c>IsHistory = 1</c> for a history-only search — would restrict the match set
+    /// to resources whose predicate happened to be satisfied by a superseded index row, dropping any
+    /// resource whose matching value lives only on its current TokenText row (the common case), so a
+    /// history search for "status = final" would silently miss resources that are currently final. Emitting
+    /// nothing lets the resource-level filter do the version selection and leaves the predicate free to
+    /// match on any version's index row, which is exactly what legacy does.
+    /// </para>
     /// </remarks>
     private static string SearchParamTableHistoryClause(TableDescriptor table, ResourceVisibility visibility)
-        => !visibility.IncludeHistory && table.Columns.Any(c => c.Name == "IsHistory")
+        => visibility.IsHistory == false && table.Columns.Any(c => c.Name == "IsHistory")
             ? "IsHistory = 0"
             : string.Empty;
 
@@ -1070,14 +1097,14 @@ public static class SqlBuilder
             clauses.Add($"ResourceTypeId IN ({string.Join(", ", mts.ResourceTypeIds)})");
         }
 
-        if (!visibility.IncludeHistory)
+        if (visibility.IsHistory is { } isHistory)
         {
-            clauses.Add("IsHistory = 0");
+            clauses.Add($"IsHistory = {(isHistory ? 1 : 0)}");
         }
 
-        if (!visibility.IncludeDeleted)
+        if (visibility.IsDeleted is { } isDeleted)
         {
-            clauses.Add("IsDeleted = 0");
+            clauses.Add($"IsDeleted = {(isDeleted ? 1 : 0)}");
         }
 
         if (mts.Predicate is not null)
