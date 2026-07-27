@@ -4,17 +4,16 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.CommandLine;
-using Ignixa.ConformanceMatrix.Cli.Commands;
+using Ignixa.ConformanceMatrix.Runner.Commands;
 
-namespace Ignixa.ConformanceMatrix.Cli;
+namespace Ignixa.ConformanceMatrix.Runner;
 
 internal sealed class Program
 {
     private static async Task<int> Main(string[] args)
     {
-        var root = new RootCommand("ignixa-matrix - FHIR TestScript conformance matrix runner");
-        root.Subcommands.Add(RunCommand.Build());
-        root.Subcommands.Add(MergeCommand.Build());
+        var root = new RootCommand("ignixa-matrix-runner - FHIR TestScript load-test runner (Azure Load Testing / Locust sidecar)");
+        root.Subcommands.Add(ServeCommand.Build());
         return await root.Parse(args).InvokeAsync();
     }
 }

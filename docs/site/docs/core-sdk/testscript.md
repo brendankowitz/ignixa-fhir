@@ -297,13 +297,17 @@ aborting the run. `--fhir-version` sets the `fhirVersion` parameter on the `Acce
 version-gated suites. `merge` replaces an existing run with the same id rather than duplicating it,
 and refuses to proceed when a report file is unreadable.
 
-### `serve` — Load-Test Runner Mode
+### `ignixa-matrix-runner serve` — Load-Test Runner Mode
 
-`ignixa-matrix serve` hosts the same TestScript suites as a local runner instead of running them
-once and exiting — used as an Azure Load Testing / Locust sidecar:
+The separate `ignixa-matrix-runner` tool hosts the same TestScript suites as a local runner instead
+of running them once and exiting — used as an Azure Load Testing / Locust sidecar. It is its own
+dotnet tool (package `Ignixa.ConformanceMatrix.Runner`) because its Kestrel host needs the ASP.NET
+Core runtime, which the base `ignixa-matrix` tool deliberately does not require:
 
 ```bash
-ignixa-matrix serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --port 5599
+dotnet tool install -g Ignixa.ConformanceMatrix.Runner
+
+ignixa-matrix-runner serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --port 5599
 ```
 
 | Endpoint | Purpose |
@@ -314,7 +318,12 @@ ignixa-matrix serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --po
 
 Scripts are parsed once at startup; auth is a static `--auth-header`/`FHIR_AUTH_HEADER` or OAuth2
 client-credentials (`FHIR_TOKEN_URL`/`FHIR_CLIENT_ID`/`FHIR_CLIENT_SECRET`/`FHIR_SCOPES`, cached and
-refreshed automatically).
+refreshed automatically). Misconfigured credentials fail at startup, not on the first `/run`.
+
+`/run` has no authentication of its own — any caller that reaches it can drive FHIR traffic
+carrying the runner's configured credentials at any `fhirBaseUrl` it names — so the listener binds
+to `127.0.0.1` and refuses a non-loopback `--host-ip` unless `--allow-remote-hosts` explicitly
+opts in on a trusted network.
 
 ## Published FHIR Conformance Report
 

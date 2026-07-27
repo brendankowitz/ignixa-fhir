@@ -79,81 +79,12 @@ ran" from "the suite ran and 3 tests failed":
 `--out` is validated **before** the suite runs, so a bad path fails fast rather than discarding a
 completed run against a live server.
 
-## `serve`
+## Load-test runner mode
 
-Hosts TestScripts as a local load-test runner: a Kestrel listener that parses every `*.json` under
-`--tests` once at startup and evaluates one on demand per `POST /run`, instead of running a suite
-once and exiting. It is designed to run as a sidecar — spawned once per load-generator instance
-(e.g. an Azure Load Testing / Locust engine) and driven over `127.0.0.1`.
-
-```bash
-ignixa-matrix serve --tests ./src/Core/Ignixa.TestScript.Suites/testscripts --port 5599
-```
-
-| Option | Default | Meaning |
-|--------|---------|---------|
-| `--tests` | *(required)* | Folder containing TestScript `.json` files, scanned recursively. |
-| `--port` | `5599` | TCP port to listen on. |
-| `--host-ip` | `127.0.0.1` | IP address to bind the listener to. |
-| `--fhir-version` | *(none)* | Default FHIR version forwarded to every evaluation and the Accept header; a per-call `fhirVersion` in the `/run` request body overrides it. |
-| `--auth-header` | *(none)* | Static auth header applied to FHIR requests (e.g. `Bearer <token>`). Ignored when `FHIR_TOKEN_URL` configures client-credentials token auth. |
-
-### Endpoints
-
-- `GET /healthz` — `{ "status": "ok", "scripts": <count>, "invalidScripts": <count> }`. Locust's
-  `test_start` listener polls this before spawning users.
-- `GET /testscripts` — every loaded script: `{ "id", "name", "file", "valid", "error" }`. A script
-  that failed to parse is still listed, with `valid: false` and its parse error, rather than
-  silently dropped.
-- `POST /run` — evaluate one TestScript against a target server:
-
-  ```json
-  {
-    "testScriptId": "PatientSearch",
-    "fhirBaseUrl": "https://example.fhir.azurehealthcareapis.com",
-    "mode": "performance",
-    "fhirVersion": "4.0",
-    "options": { "runSetup": true, "runTeardown": true, "assertions": "full" }
-  }
-  ```
-
-  Returns `{ "passed", "testScriptId", "durationMs", "failedAssertionCount", "summary", "operations": [...] }`,
-  where each entry in `operations` carries `name`, `method`, `path`, `statusCode`, `durationMs`,
-  `responseBytes`, and `passed` — one per FHIR operation the evaluator executed (setup, then each
-  test case, then teardown, in order). This is what a locustfile fires as per-operation
-  `events.request.fire()` samples.
-
-  `options.assertions` accepts `"full"` (default) or `"none"` (test actions other than operations
-  are skipped). `"status-only"` is part of the contract but is a Phase 3 feature not yet
-  implemented — it is rejected with `400` rather than silently treated as `"full"`.
-
-  Error responses are `{ "error": "..." }`: `400` for a bad request body, `404` for an unknown
-  `testScriptId`, `422` when the identified script failed to parse, `500` on an unexpected
-  evaluator failure.
-
-### FHIR target caching
-
-One `HttpClient` (and its CapabilityStatement, fetched at most once) is cached per distinct
-`(fhirBaseUrl, fhirVersion)` pair for the life of the process, so repeated `/run` calls against the
-same server reuse both rather than re-establishing them per request.
-
-### Authentication
-
-Two mutually exclusive auth modes, in order of precedence:
-
-1. **Client-credentials token auth**, enabled by setting `FHIR_TOKEN_URL`. The runner acquires and
-   caches a bearer token (refreshed 60s before its reported expiry, single-flighted so concurrent
-   requests near expiry share one refresh) and applies it to every FHIR request. When this is set,
-   `--auth-header` / `FHIR_AUTH_HEADER` are ignored.
-2. **Static auth header** — `--auth-header`, or its `FHIR_AUTH_HEADER` environment equivalent when
-   the flag is omitted — applied verbatim to every FHIR request, same parsing rules as `run`.
-
-| Environment variable | Meaning |
-|-----------------------|---------|
-| `FHIR_TOKEN_URL` | OAuth2 token endpoint. Setting this enables client-credentials auth. |
-| `FHIR_CLIENT_ID` | Client id for the token request. |
-| `FHIR_CLIENT_SECRET` | Client secret for the token request. Never logged. |
-| `FHIR_SCOPES` | Space-separated scopes (optional). |
-| `FHIR_AUTH_HEADER` | Static auth header, used when `--auth-header` is not passed and `FHIR_TOKEN_URL` is unset. |
+Hosting TestScripts behind a local HTTP endpoint for load generation lives in the separate
+[`Ignixa.ConformanceMatrix.Runner`](../Ignixa.ConformanceMatrix.Runner/README.md) tool
+(`ignixa-matrix-runner serve`). It is packaged separately because its Kestrel host needs the
+ASP.NET Core runtime; keeping it out of this package lets `ignixa-matrix` keep running on machines
+with only the base .NET runtime.
 
 Built on the [Ignixa.TestScript](https://www.nuget.org/packages/Ignixa.TestScript) execution engine.

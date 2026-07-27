@@ -26,11 +26,12 @@
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
-  <!-- Kestrel + minimal APIs for the `serve` load-test runner mode; the legacy Microsoft.AspNetCore.Http
-       2.x package is pinned in Directory.Packages.props for another project and must not be referenced
-       here instead. -->
+  <!-- No FrameworkReference to Microsoft.AspNetCore.App here: the load-test runner (serve mode)
+       lives in the separate Ignixa.ConformanceMatrix.Runner tool precisely so this tool keeps
+       running on machines with only the Microsoft.NETCore.App runtime. -->
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Compile Include="..\Ignixa.ConformanceMatrix.Shared\AuthHeader.cs" Link="Shared\AuthHeader.cs" />
+    <Compile Include="..\Ignixa.ConformanceMatrix.Shared\ExitCodes.cs" Link="Shared\ExitCodes.cs" />
   </ItemGroup>
 
   <ItemGroup>

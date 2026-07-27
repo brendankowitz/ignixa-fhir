@@ -13,10 +13,17 @@ using NSubstitute;
 
 namespace Ignixa.TestScript.Tests.Evaluation;
 
-// The `ignixa-matrix serve` host builds one TestScriptEvaluator per HTTP request, all sharing the same
-// ITestRequestProvider/IFixtureProvider/IFhirSchemaProvider instances, and Kestrel dispatches
-// those requests concurrently. These tests reproduce that shape and look for cross-run
+// The `ignixa-matrix-runner serve` host builds one TestScriptEvaluator per HTTP request, all sharing
+// the same ITestRequestProvider/IFixtureProvider/IFhirSchemaProvider instances, and Kestrel
+// dispatches those requests concurrently. These tests reproduce that shape and look for cross-run
 // contamination through the shared seam rather than merely asserting "no exception".
+//
+// Deliberately NOT shared across runs: the capabilityStatement argument to ExecuteAsync. Every case
+// here omits it because ResourceJsonNode.ToElement (and the source-node tree under it) memoizes
+// lazily with no synchronization, so one node instance navigated by concurrent runs is unsafe. The
+// serve host upholds that by parsing a fresh CapabilityStatement node per run (see the runner's
+// FhirTarget), the same isolation TestScriptContext gives fixture and response bodies by
+// deep-cloning them.
 public class TestScriptEvaluatorConcurrencyTests
 {
     private const int ConcurrentRunCount = 32;
