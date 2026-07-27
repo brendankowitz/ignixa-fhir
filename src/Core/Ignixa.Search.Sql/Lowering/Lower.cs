@@ -24,8 +24,8 @@ public static class Lower
     /// system-level (cross-type) search of ordinary leaf/composite/AND/OR predicates. Even under system-level
     /// search, chain, :not/:missing=true, _not-referenced, :text, _include/_revinclude, and _sort still
     /// require a single target type and throw. The optional inputs -- paging caps, visibility, surrogate
-    /// range, hash gating, the base-set types, and the access constraints -- are grouped on
-    /// <see cref="LowerOptions"/> so each is passed by name.
+    /// range, hash gating, the base-set types, the access constraints, and the resource-type allow-list --
+    /// are grouped on <see cref="LowerOptions"/> so each is passed by name.
     /// </summary>
     public static LoweredPlan Run(
         Expression? expression,
@@ -54,6 +54,7 @@ public static class Lower
         }
 
         var accessConstraintApplier = new AccessConstraintApplier(options.AccessConstraints);
+        var allowedResourceTypeFilter = new AllowedResourceTypeFilter(options.AllowedResourceTypes, symbols);
         var context = new StructuralContext(symbols, options.ApproximationReferenceTime, accessConstraintApplier);
         CteRef match;
         Predicate? outerPredicate = null;
@@ -112,6 +113,18 @@ public static class Lower
             };
         }
 
+        // The allow-list is the other authorization control, enforced on the same row-producing stages but
+        // with allow-list rather than per-type-narrowing semantics: everything not permitted is removed, so
+        // a plain intersect with the allowed types' base set is correct for every match shape. A single-type
+        // match on an unpermitted type intersects to no rows; a multi-type / system-level / $everything match
+        // keeps only its allowed rows. Applied after the access constraints so both restrictions compose;
+        // order does not matter to the result set (both only remove rows), but running it last keeps the
+        // match's authorization narrowing in one contiguous block.
+        if (!allowedResourceTypeFilter.IsEmpty)
+        {
+            match = allowedResourceTypeFilter.RestrictMatch(match, context);
+        }
+
         // System-level search is deliberately excluded: the sort joins correlate on the match set's own
         // m.T1 rather than on a literal ResourceTypeId, so they never needed a single target type. A
         // wildcard compartment search is a different null-type case and keeps the original refusal.
@@ -163,6 +176,30 @@ public static class Lower
                     var bindings = accessConstraintApplier.BindIncludeStage(stage.OutputTypeIds, symbols, context, LowerScopedExpression);
                     return bindings is null ? stage : stage with { Constraints = bindings };
                 })
+                .ToList();
+        }
+
+        // Enforce the allow-list on each include/:iterate stage, the key structural enforcement point: the
+        // emitter already renders IncludeStage.OutputTypeIds as an "outputTypeColumn IN (...)" filter, which
+        // is exactly the shape the legacy SQL generator applies IncludeExpression.AllowedResourceTypesByScope
+        // in. RestrictStage intersects OutputTypeIds with the allowed ids (and turns a wildcard's null output
+        // types into the full allowed set -- the case most likely to fail open), substituting the unmatchable
+        // sentinel when the intersection is empty so an emptied stage renders "= -1" and returns nothing
+        // rather than emitting no filter and failing open. Run AFTER the access-constraint binding above so
+        // that binding observes each stage's original OutputTypeIds and its wildcard-conservative behaviour is
+        // unchanged; a stage the allow-list empties keeps its (now harmless) guards.
+        //
+        // Chain targets are DELIBERATELY not filtered here: the legacy FHIR Server carries the scope
+        // allow-list only on IncludeExpression, not on chain traversal, and a chain target is a join
+        // predicate rather than a returned row. Applying the allow-list to chain targets would diverge from
+        // that parity and could change which primary matches a legitimate chain admits. This is an
+        // intentional parity decision, not an oversight -- it mirrors AccessConstraintApplier, which does
+        // constrain chain targets (they can leak rows), whereas the allow-list, being purely about which
+        // types are returned, does not.
+        if (includeStages is { Count: > 0 } && !allowedResourceTypeFilter.IsEmpty)
+        {
+            includeStages = includeStages
+                .Select(allowedResourceTypeFilter.RestrictStage)
                 .ToList();
         }
 

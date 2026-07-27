@@ -87,7 +87,11 @@ public static class SearchCompiler
             searchParameterDefinitionManager,
             // Kept in step with the AccessConstraints forwarded to LowerOptions below: this entry point
             // lowers the same constraint predicates, so it needs their symbols resolved too.
-            accessConstraints: options.AccessConstraints);
+            accessConstraints: options.AccessConstraints,
+            // Likewise kept in step with LowerOptions.AllowedResourceTypes below: Lower's allow-list
+            // enforcement needs each permitted type's id, so its names must resolve here (an unknown one
+            // keeps the unmatchable sentinel rather than being dropped).
+            allowedResourceTypes: options.AllowedResourceTypes);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 
@@ -127,6 +131,7 @@ public static class SearchCompiler
                     {
                         ApproximationReferenceTime = approximationReferenceTime,
                         AccessConstraints = options.AccessConstraints,
+                        AllowedResourceTypes = options.AllowedResourceTypes,
                     });
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
@@ -177,6 +182,7 @@ public static class SearchCompiler
     /// <item><term><see cref="LowerOptions.SearchParameterHash"/></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. Reindex gating (confirming a resource was indexed against an expected search-parameter hash) is a distinct caller concern, not a search request — there is nothing on <see cref="SearchOptions"/> to forward.</description></item>
     /// <item><term><see cref="LowerOptions.ResourceTypes"/></term><description><see cref="SearchOptions.ResourceTypes"/>. Forwarded; without it a multi-<c>_type</c> system-level search silently returns every type. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingResourceTypes_...</c>.</description></item>
     /// <item><term><see cref="LowerOptions.AccessConstraints"/></term><description><see cref="SearchOptions.AccessConstraints"/>. Forwarded; without it an authorization constraint is accepted but never enforced. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingAccessConstraints_...</c>.</description></item>
+    /// <item><term><see cref="LowerOptions.AllowedResourceTypes"/></term><description><see cref="SearchOptions.AllowedResourceTypes"/>. Forwarded; without it the SMART clinical-scope allow-list is accepted but never enforced, so the match set is ungated and an <c>_include</c> could return a resource type the scope never granted -- a fail-open authorization bypass. Distinct from <see cref="LowerOptions.ResourceTypes"/> (caller intent) and enforced structurally alongside it (their intersection is the effective base set). See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingAllowedResourceTypes_...</c>.</description></item>
     /// <item><term><see cref="LowerOptions.IncludesOnly"/></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. The <c>$includes</c> operation does not call this compiler today — <c>IncludesResourceHandler</c> re-executes the full search through a different abstraction and filters Include entries out client-side — so nothing in the Application layer currently expresses an "includes only" intent for this method to carry.</description></item>
     /// <item><term><see cref="LowerOptions.SystemLevelSearch"/></term><description>Derived as <c>resourceType is null</c> from this method's own <c>resourceType</c> parameter, deliberately not from <see cref="SearchOptions.ResourceType"/> — the parameter exists precisely so Resolve, Lower, this flag, and the returned <see cref="SearchTrace.ResourceType"/> all observe one normalized value (see that parameter's own remarks above).</description></item>
     /// <item><term><see cref="LowerOptions.OffsetPage"/></term><description>The <c>offsetPage</c> method parameter. Not a <see cref="SearchOptions"/> property: constructing it requires decoding a legacy <see cref="SearchOptions.ContinuationToken"/> and driving a two-phase retry loop, which is adapter logic living in a different layer — a real architectural boundary, not an omission.</description></item>
@@ -228,7 +234,11 @@ public static class SearchCompiler
             additionalResourceTypes: options.ResourceTypes,
             // Likewise both halves: the constraints are forwarded to LowerOptions.AccessConstraints below
             // so they are enforced, and here so the symbols their predicates reference actually resolve.
-            accessConstraints: options.AccessConstraints);
+            accessConstraints: options.AccessConstraints,
+            // Both halves again: the allow-list is forwarded to LowerOptions.AllowedResourceTypes below so it
+            // is enforced, and here so each permitted type's name resolves to the id Lower needs (an unknown
+            // one keeps the unmatchable sentinel rather than being silently dropped).
+            allowedResourceTypes: options.AllowedResourceTypes);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 
@@ -276,6 +286,14 @@ public static class SearchCompiler
                         // never reaches Lower, so nothing narrows the match set or guards an include/chain
                         // target. See CompileFromOptionsTests.
                         AccessConstraints = options.AccessConstraints,
+
+                        // The security control this task exists for. Same class of defect as
+                        // AccessConstraints above if omitted: a caller setting AllowedResourceTypes (the
+                        // resource types a SMART clinical scope grants) would have it accepted by the API but
+                        // never reach Lower, so nothing would gate the match set or the include stages and an
+                        // _include could return a type the scope never permitted -- a fail-open authorization
+                        // bypass. See CompileFromOptionsTests.
+                        AllowedResourceTypes = options.AllowedResourceTypes,
 
                         // Same class of defect as ResourceTypes/AccessConstraints above: without this, a
                         // caller setting ResourceVersionTypes = History (or SoftDeleted) gets silent

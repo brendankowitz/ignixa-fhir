@@ -343,6 +343,49 @@ public class CompileFromOptionsTests
         trace.Sql.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task GivenSearchOptionsCarryingAllowedResourceTypes_WhenCompilingFromOptions_ThenTheEmittedSqlEnforcesThem()
+    {
+        // Arrange -- Patient?_revinclude=Observation:subject, with an allow-list of only Patient. The
+        // revinclude produces Observation, which the scope does not grant, so its output-type filter must
+        // collapse to the unmatchable sentinel. Deleting the AllowedResourceTypes forwarding in
+        // CompileFromOptionsAsync leaves the stage producing Observation (rsp.ResourceTypeId = 104) and the
+        // match ungated -- the exact fail-open bypass this forwarding exists to close: an _include returning
+        // a resource type the SMART scope never permitted.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 230;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            RevInclude = [new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false)],
+            AllowedResourceTypes = ["Patient"],
+        };
+
+        // Act
+        var trace = await SearchCompiler.CompileFromOptionsAsync(
+            options,
+            "Patient",
+            resolver,
+            compartmentDefinitionManager: null,
+            searchParameterDefinitionManager: null,
+            timeProvider: null,
+            cancellationToken: CancellationToken.None);
+
+        // Assert -- the match is gated to the allowed base set (ResourceTypeId IN (103)), and the disallowed
+        // revinclude produces no rows: its output filter is the unmatchable "rsp.ResourceTypeId = -1", never
+        // the Observation type id. Both can only appear if AllowedResourceTypes reached Lower.
+        trace.Failure.ShouldBeNull();
+        trace.Sql.ShouldNotBeNull();
+        trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({PatientTypeId})");
+        trace.Sql!.Sql.ShouldContain("rsp.ResourceTypeId = -1");
+        trace.Sql!.Sql.ShouldNotContain($"rsp.ResourceTypeId = {ObservationTypeId}");
+    }
+
     /// <summary>A wrapped token predicate ("&lt;param&gt; eq &lt;code&gt;"), the shape a real bound leaf takes -- mirrors AccessConstraintTests' TokenPredicate.</summary>
     private static Expression TokenPredicate(SearchParameterInfo parameter, string code)
         => new SearchParameterExpression(parameter, TokenPredicateLeaf(parameter, code));

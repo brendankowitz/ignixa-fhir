@@ -128,6 +128,26 @@ public class SearchOptions
     /// unrestricted. Enforced structurally by the compiler, not by rewriting the search expression.
     /// </summary>
     public IReadOnlyList<AccessConstraint> AccessConstraints { get; set; } = Array.Empty<AccessConstraint>();
+
+    /// <summary>
+    /// The global allow-list of resource types the caller is permitted to see. Null or empty means
+    /// unrestricted. Unlike <see cref="AccessConstraints"/>, which narrows the <em>listed</em> types and
+    /// leaves every <em>unlisted</em> type untouched, this is an allow-list: only the types named here may
+    /// appear in any result, and a type absent from a non-empty list is denied outright. That distinction
+    /// is why both concepts exist — a per-type narrowing cannot express "the caller may see nothing else",
+    /// so a resource type with no constraint reached through an <c>_include</c> would otherwise pass
+    /// unguarded, a fail-open authorization bypass. This is the concept SMART-on-FHIR clinical scopes
+    /// produce (the set of resource types a scope grants) and the reason a SMART request can be routed to
+    /// this compiler at all.
+    /// <para>
+    /// It is a caller <em>permission</em>, distinct from <see cref="ResourceTypes"/>, which is caller
+    /// <em>intent</em> (the <c>_type</c> the caller asked to search). Both may be set; the effective base
+    /// set is their intersection. Enforced structurally by the compiler on every row-producing stage — the
+    /// match set, every <c>_include</c>/<c>_revinclude</c>/<c>:iterate</c> stage — not by rewriting the
+    /// search expression, so no reachability path can navigate around it.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> AllowedResourceTypes { get; set; } = Array.Empty<string>();
 }
 
 /// <summary>
