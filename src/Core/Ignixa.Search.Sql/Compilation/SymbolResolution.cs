@@ -16,4 +16,10 @@ namespace Ignixa.Search.Sql.Compilation;
 internal sealed record SymbolResolution(
     ISymbolResolver Resolver,
     ICompartmentDefinitionManager? CompartmentDefinitionManager = null,
-    ISearchParameterDefinitionManager? SearchParameterDefinitionManager = null);
+    ISearchParameterDefinitionManager? SearchParameterDefinitionManager = null)
+{
+    /// <summary>Gets the resolver. Guarded here because <c>Ignixa.Search</c> compiles with nullable
+    /// disabled, so a null can reach this record without a compiler warning, and the failure would
+    /// otherwise surface as a <see cref="NullReferenceException"/> deep inside resolution.</summary>
+    public ISymbolResolver Resolver { get; } = Resolver ?? throw new ArgumentNullException(nameof(Resolver));
+}

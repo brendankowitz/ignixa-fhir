@@ -30,11 +30,11 @@ internal static class ResolveHarness
         var context = CompilationContextFactory.For(
             expression,
             targetResourceType,
-            includes,
-            revIncludes,
-            sort,
-            accessConstraints,
-            additionalResourceTypes);
+            includes: includes,
+            revIncludes: revIncludes,
+            sort: sort,
+            accessConstraints: accessConstraints,
+            resourceTypes: additionalResourceTypes);
 
         var deps = new SymbolResolution(resolver, compartmentDefinitionManager, searchParameterDefinitionManager);
 
