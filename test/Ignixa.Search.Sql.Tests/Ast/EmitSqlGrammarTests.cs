@@ -51,6 +51,7 @@ public class EmitSqlGrammarTests
         yield return ["includes-only, two stages", IncludesOnlyTwoStagesPlan()];
         yield return ["includes-only, :iterate", IncludesOnlyWithIteratePlan()];
         yield return ["includes-only, with projection", IncludesOnlyWithProjectionPlan()];
+        yield return ["includes-only, page with cursor", IncludesOnlyPageWithCursorPlan()];
         yield return ["patient $everything alone", EverythingAlonePlan()];
         yield return ["patient $everything with _since", EverythingWithSincePlan()];
         yield return ["patient $everything with _type", EverythingWithTypePlan()];
@@ -823,6 +824,25 @@ public class EmitSqlGrammarTests
             Includes: [stage],
             Projection: StandardProjection(),
             IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyPageWithCursorPlan()
+    {
+        // The $includes second page: two stages of mixed direction, paged globally and resumed from a
+        // cursor. Exercises the outer TOP + COUNT_BIG(*) OVER() derived table and the per-stage resume
+        // predicate through the ScriptDom grammar so a malformed shape fails here rather than at execution.
+        var stage0 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(
+            IncludeDirection.Reverse, ReferenceSearchParamId: 88, SeedTypeIds: [103], OutputTypeIds: [107],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage0, stage1],
+            IncludesOnly: true,
+            IncludeCursor: new IncludeCursor(105, 4200));
     }
 
     [Fact]

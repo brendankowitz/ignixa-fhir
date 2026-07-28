@@ -1354,6 +1354,36 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenLowerRunWithAnIncludeCursorButNotIncludesOnly_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // The resume cursor pages the union of include stages as one ordered stream, which exists only on
+        // an includes-only page. Without IncludesOnly the emitter keeps the match arm and never applies the
+        // resume predicate, so a caller expecting a second page would silently get a full first page back.
+        // Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [include],
+                revIncludes: [],
+                includeLimit: 1000,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                new LowerOptions { IncludeCursor = new IncludeCursor(105, 4200) }));
+    }
+
+    [Fact]
     public void GivenAUnionOfLegs_WhenLowered_ThenEachLegBecomesItsOwnCteJoinedByAUnion()
     {
         // Arrange -- the shape a SMART compartment expands to: several independent row-producing legs, each

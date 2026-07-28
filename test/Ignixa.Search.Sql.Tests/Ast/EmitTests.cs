@@ -2856,5 +2856,127 @@ public class EmitTests
         // The match arm must still be absent.
         sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
     }
+
+    // ─── IncludesOnly global-page (cursor) tests ─────────────────────────────────────────────────────
+
+    private static IncludeStage ReverseIncludeStage(short seedType, short outputType, int limit)
+        => new(IncludeDirection.Reverse, ReferenceSearchParamId: 211, SeedTypeIds: [seedType], OutputTypeIds: [outputType],
+               SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: limit);
+
+    private static QueryPlan TwoStageIncludesOnlyPageWithCursor()
+        => new(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 10)],
+            IncludesOnly: true,
+            IncludeCursor: new IncludeCursor(111, 5000));
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithACursorAndTwoStages_WhenEmitted_ThenTheBudgetIsAppliedOnceGloballyOrderedByT1Sid1()
+    {
+        // The $includes second page applies the row budget once across the union of every stage -- not once
+        // per stage -- and resumes under (T1, Sid1). So the whole statement must carry exactly one TOP (the
+        // outer global page), no per-stage limit companions, and the IsPartial window computed over the
+        // union. This is the shape the FHIR Server legacy $includes page emits.
+        var plan = TwoStageIncludesOnlyPageWithCursor();
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Exactly one TOP in the whole statement: the global page. No per-stage TOP, no incNlim companions.
+        System.Text.RegularExpressions.Regex.Matches(sql, @"TOP \(").Count.ShouldBe(1);
+        sql.ShouldContain("SELECT DISTINCT TOP (11) T1, Sid1, IsMatch,");
+        sql.ShouldContain("CAST(CASE WHEN COUNT_BIG(*) OVER() > 10 THEN 1 ELSE 0 END AS bit) AS IsPartial");
+        sql.ShouldNotContain("inc0lim");
+        sql.ShouldNotContain("inc1lim");
+
+        // Ordered by (T1, Sid1) so the resume predicate pages the union deterministically -- not the
+        // matches-first order the ordinary includes shape uses.
+        sql.TrimEnd().ShouldEndWith("ORDER BY T1 ASC, Sid1 ASC");
+        sql.ShouldNotContain("IsMatch DESC");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithAForwardStage_WhenEmittedWithACursor_ThenTheResumePredicateKeysOnTheResourceColumns()
+    {
+        // A forward include projects the included resource from dbo.Resource (r.*), so its page position --
+        // and therefore its resume predicate -- must key on r.ResourceTypeId / r.ResourceSurrogateId, the
+        // same columns the outer ORDER BY sees as (T1, Sid1). The two cursor values bind as parameters
+        // rather than inlining, and both stages share them.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludesOnly: true,
+            IncludeCursor: new IncludeCursor(111, 5000));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("(r.ResourceTypeId > @p1 OR (r.ResourceTypeId = @p1 AND r.ResourceSurrogateId > @p2))");
+        emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)111));
+        emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 5000L));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithAReverseStage_WhenEmittedWithACursor_ThenTheResumePredicateKeysOnTheReferenceColumns()
+    {
+        // A reverse include selects the output row directly from dbo.ReferenceSearchParam (rsp.*), so its
+        // page position keys on rsp.ResourceTypeId / rsp.ResourceSurrogateId -- the mirror of the forward
+        // case. Using r.* here would seek on the wrong resource and silently mis-page the reverse stage.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ReverseIncludeStage(103, 112, 10)],
+            IncludesOnly: true,
+            IncludeCursor: new IncludeCursor(112, 7000));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("(rsp.ResourceTypeId > @p1 OR (rsp.ResourceTypeId = @p1 AND rsp.ResourceSurrogateId > @p2))");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithMixedStages_WhenEmittedWithACursor_ThenEveryStageResumesFromTheSameSharedCursor()
+    {
+        // One cursor pages the union of all stages as a single ordered stream, so both a forward and a
+        // reverse stage must resume from the same @p1/@p2 -- a per-stage cursor would let one stage overtake
+        // another between pages and drop or duplicate rows at the boundary.
+        var plan = TwoStageIncludesOnlyPageWithCursor();
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("(r.ResourceTypeId > @p1 OR (r.ResourceTypeId = @p1 AND r.ResourceSurrogateId > @p2))");
+        sql.ShouldContain("(rsp.ResourceTypeId > @p1 OR (rsp.ResourceTypeId = @p1 AND rsp.ResourceSurrogateId > @p2))");
+    }
+
+    [Fact]
+    public void GivenAnIncludeCursorWithoutIncludesOnly_WhenEmitted_ThenItIsRefusedRatherThanSilentlyDroppingIncludeRows()
+    {
+        // QueryPlan is a public construction surface, so SqlBuilder must guard the cursor independently of
+        // Lower. Without IncludesOnly the emitter keeps the match arm and never applies the resume
+        // predicate, so a caller expecting a second page would instead get a full first page back. Refuse it.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            IncludeCursor: new IncludeCursor(111, 5000));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWhoseStagesHaveDifferingLimits_WhenEmitted_ThenItIsRefusedRatherThanPagingOnAnArbitraryBudget()
+    {
+        // The global page applies one TOP over the union of every stage, so the budget is a property of the
+        // whole ordered stream, not of any single stage. Differing per-stage limits have no single coherent
+        // meaning: the emitter would silently page on includes[0].Limit and return a wrong-sized page with
+        // no error. Refuse it rather than pick a budget arbitrarily.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 20)],
+            IncludesOnly: true);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
 }
 

@@ -37,6 +37,13 @@ public static class SqlLabels
     /// <summary>The range label for the final UNION ALL that stitches the result together.</summary>
     public const string Assembly = "assembly";
 
+    /// <summary>
+    /// The range label for the outer global-page SELECT of an includes-only page: the single
+    /// <c>TOP (@limit + 1)</c> over the union of every include stage that applies the row budget once
+    /// across all stages, rather than once per stage.
+    /// </summary>
+    public const string IncludePage = "includePage";
+
     /// <summary>The identifier for the include stage at <paramref name="index"/>.</summary>
     public static string IncludeLabel(int index) => $"inc{index}";
 

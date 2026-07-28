@@ -84,6 +84,35 @@ public static class SqlBuilder
                 "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
         }
 
+        if (plan.IncludesOnly && plan.Includes is { Count: > 0 } includeStages
+            && includeStages.Any(s => s.Limit != includeStages[0].Limit))
+        {
+            // The global page applies one TOP over the union of every stage (EmitGlobalIncludesPage takes
+            // the budget from includes[0].Limit), because the page budget is a property of the whole
+            // ordered stream, not of any single stage. Differing per-stage limits therefore have no single
+            // coherent meaning here: the emitter would silently page on whichever limit happened to be
+            // first and return a wrong-sized page with no error -- exactly the silent wrong answer the other
+            // guards exist to prevent. Refuse it rather than pick a budget arbitrarily.
+            throw new NotSupportedException(
+                "IncludesOnly was requested with include stages that do not all share one Limit. The page " +
+                "budget applies once across the union of every stage, so a per-stage limit has no coherent " +
+                "meaning here; the stages must agree on a single Limit. The mismatch is reported rather than " +
+                "silently paged on whichever limit is first.");
+        }
+
+        // Lower.Run rejects this at the lowering stage, but QueryPlan is a public construction surface, so
+        // the builder must guard independently. The resume predicate only pages a stream of include rows,
+        // which exists only when IncludesOnly drops the match arm; on an ordinary search the emitter would
+        // never apply it and the cursor's caller would silently get a full first page instead of a resumed
+        // one. Grammatically valid either way, so the grammar tests cannot catch it.
+        if (plan.IncludeCursor is not null && !plan.IncludesOnly)
+        {
+            throw new NotSupportedException(
+                "IncludeCursor was supplied without IncludesOnly. The resume cursor pages the union of " +
+                "include stages as one ordered stream, which exists only on an includes-only page; on an " +
+                "ordinary search there is no such stream for it to resume.");
+        }
+
         // Lower.Run rejects these two at the lowering stage, but QueryPlan is a public construction surface
         // -- a caller building one directly bypasses that guard entirely. TOP alongside OFFSET/FETCH is
         // SQL Server Msg 10741, and a keyset seek alongside OFFSET/FETCH pages the same rows twice by two
@@ -244,8 +273,12 @@ public static class SqlBuilder
     }
 
     /// <summary>
-    /// Emits the includes shape: the match-page CTE, a pair of CTEs per include stage, and the UNION ALL
-    /// that stitches them into one (T1, Sid1, IsMatch, IsPartial) result ordered matches-first.
+    /// Emits the includes shape: the match-page CTE, the include-stage CTEs, and the assembly that stitches
+    /// them into one (T1, Sid1, IsMatch, IsPartial) result. Two assemblies exist: the ordinary path unions
+    /// each stage's own limit companion and orders matches-first; the IncludesOnly path (a <c>$includes</c>
+    /// page) instead applies the row budget once, globally, over the union of the unlimited stage bodies and
+    /// orders by (T1, Sid1) so it can resume from a cursor. They are separated because the budget lives in a
+    /// different place — per stage versus once across the union — not merely because the ORDER BY differs.
     /// </summary>
     private static void EmitIncludesShape(
         QueryPlan plan,
@@ -259,12 +292,27 @@ public static class SqlBuilder
         writer.Append(",\n");
         WriteMatchPageCte(plan, writer, parameters);
 
+        // Bind the resume cursor once, after the match-page CTE and before the stage loop, so every stage
+        // resumes from the same @t/@sid — the union pages as one ordered stream, so a per-stage cursor
+        // would let one stage overtake another across pages. Include CTEs otherwise bind no parameters, so
+        // these are the first stage-level @pN and stay after the CTE-graph and match-page ordinals, keeping
+        // the leading-ordinal invariant EmitCteBlocks documents intact.
+        (string Type, string Surrogate)? resumeParams = plan is { IncludesOnly: true, IncludeCursor: { } cursor }
+            ? (EmitParam(new SqlParameterRef(cursor.TypeId), parameters), EmitParam(new SqlParameterRef(cursor.SurrogateId), parameters))
+            : null;
+
         for (var i = 0; i < includes.Count; i++)
         {
-            WriteIncludeStageCtes(writer, includes[i], i, visibility);
+            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly, resumeParams);
         }
 
         writer.Append("\n");
+
+        if (plan.IncludesOnly)
+        {
+            EmitGlobalIncludesPage(plan, includes, writer, visibility);
+            return;
+        }
 
         // The final UNION ALL stitches the match page to every include stage, so like the other
         // structural sections it belongs to no single plan row. Sectioned anyway: until it was, this
@@ -280,6 +328,94 @@ public static class SqlBuilder
             writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
         }
     }
+
+    /// <summary>The derived-table alias the global includes page wraps its stage union in.</summary>
+    private const string IncludeUnionAlias = "includeUnion";
+
+    /// <summary>
+    /// Emits the outer global-page SELECT for an IncludesOnly page: a single
+    /// <c>SELECT DISTINCT TOP (@limit + 1) T1, Sid1, IsMatch, &lt;IsPartial&gt;</c> over the UNION ALL of every
+    /// include stage body, ordered by (T1, Sid1). This mirrors the FHIR Server legacy $includes page, whose
+    /// row budget is applied once across the union rather than once per stage, so it can resume from a
+    /// cursor and page the whole include set as one ordered stream.
+    /// </summary>
+    /// <remarks>
+    /// Every stage shares the query's single include limit, so the global budget is taken from
+    /// <c>includes[0].Limit</c>; the outer TOP is that budget plus one row, the sentinel that tells a full
+    /// page from a truncated one. IsPartial is derived from <c>COUNT_BIG(*) OVER()</c> against the whole
+    /// union and cast to <c>bit</c> for the same reason <see cref="EmitIncludeLimitStage"/> casts it: the
+    /// column is unioned with a bit-typed IsMatch, and leaving it <c>int</c> would silently change the
+    /// result column's type. The order is <c>T1 ASC, Sid1 ASC</c> (not matches-first): an includes-only
+    /// page has no match rows, and this order is what the per-stage resume predicate keys on.
+    /// </remarks>
+    private static void EmitGlobalIncludesPage(
+        QueryPlan plan,
+        IReadOnlyList<IncludeStage> includes,
+        SqlTextWriter writer,
+        ResourceVisibility visibility)
+    {
+        var budget = includes[0].Limit;
+        var passThrough = ProjectionPassThroughColumns(plan.Projection);
+
+        using (writer.Section(IncludePage, SqlRangeKind.IncludePage))
+        {
+            writer.Append(
+                $"SELECT DISTINCT TOP ({budget + 1}) T1, Sid1, IsMatch,\n" +
+                $"       CAST(CASE WHEN COUNT_BIG(*) OVER() > {budget} THEN 1 ELSE 0 END AS bit) AS IsPartial{passThrough}\n" +
+                "FROM (\n");
+
+            using (writer.Section(Assembly, SqlRangeKind.Assembly))
+            {
+                writer.Append(string.Join("\nUNION ALL\n", BuildGlobalIncludesPageArms(plan, includes, visibility)));
+            }
+
+            writer.Append($"\n) {IncludeUnionAlias}\nORDER BY ");
+            using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
+            {
+                writer.Append("T1 ASC, Sid1 ASC");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the inner arms of the global includes page: one arm per include stage, each selecting its
+    /// unlimited body, tagging it <c>CAST(0 AS bit)</c> as a non-match, and excluding rows already on the
+    /// match page. The outer SELECT applies the single global TOP and IsPartial over their union.
+    /// </summary>
+    private static List<string> BuildGlobalIncludesPageArms(QueryPlan plan, IReadOnlyList<IncludeStage> includes, ResourceVisibility visibility)
+    {
+        var projectionCols = ProjectionColumns(plan.Projection);
+        var hasActiveProjection = projectionCols.Length > 0;
+        var projectionJoinFilter = hasActiveProjection ? ResourceRowFilter(visibility, "r.") : string.Empty;
+
+        var arms = new List<string>();
+        for (var i = 0; i < includes.Count; i++)
+        {
+            // Only the first arm names IsMatch: SQL Server takes a UNION ALL's column names from its first
+            // SELECT and the outer query reads them by ordinal, so aliasing every arm is redundant and
+            // aliasing none loses the name. Keyed on arms.Count so a future arm inserted ahead of this loop
+            // cannot silently move the alias off the first position.
+            var isMatchAlias = arms.Count == 0 ? " AS IsMatch" : string.Empty;
+            arms.Add(hasActiveProjection
+                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}{projectionCols} FROM {IncludeLabel(i)} i\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
+                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)"
+                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias} FROM {IncludeLabel(i)} i\n" +
+                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+        }
+
+        return arms;
+    }
+
+    /// <summary>
+    /// The projected columns as the outer global-page SELECT reads them from the union derived table:
+    /// bracket-quoted and unqualified, because SQL Server derives a derived table's column names from the
+    /// inner <c>r.[Col]</c> references (dropping the qualifier). Empty for a null or empty projection.
+    /// </summary>
+    private static string ProjectionPassThroughColumns(ProjectionSpec? projection)
+        => projection is null || projection.Columns.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", projection.Columns.Select(c => $"[{c.Replace("]", "]]", StringComparison.Ordinal)}]"));
 
     /// <summary>
     /// Writes the cteMatchPage CTE: the same match row set the no-includes shape selects directly, named so
@@ -328,13 +464,29 @@ public static class SqlBuilder
         }
     }
 
-    /// <summary>Writes one include stage's pair of CTEs: the unlimited body and its limit-applying companion.</summary>
-    private static void WriteIncludeStageCtes(SqlTextWriter writer, IncludeStage stage, int index, ResourceVisibility visibility)
+    /// <summary>
+    /// Writes an include stage's CTEs. The ordinary path writes two — the unlimited body and its
+    /// limit-applying companion. The IncludesOnly path writes only the body: its budget is applied once,
+    /// globally, by <see cref="EmitGlobalIncludesPage"/>, so a per-stage limit companion would apply the
+    /// budget twice.
+    /// </summary>
+    private static void WriteIncludeStageCtes(
+        SqlTextWriter writer,
+        IncludeStage stage,
+        int index,
+        ResourceVisibility visibility,
+        bool includesOnly,
+        (string Type, string Surrogate)? resumeParams)
     {
         writer.Append(",\n");
         using (writer.Section(IncludeLabel(index), SqlRangeKind.Include))
         {
-            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility)}\n)");
+            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly, resumeParams)}\n)");
+        }
+
+        if (includesOnly)
+        {
+            return;
         }
 
         writer.Append(",\n");
@@ -1132,8 +1284,35 @@ public static class SqlBuilder
                whereClause;
     }
 
-    /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>
-    private static string EmitIncludeStage(IncludeStage stage, ResourceVisibility visibility)
+    /// <summary>
+    /// Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by
+    /// reference param and type ids, seeded from the match page and/or earlier stages via EXISTS.
+    /// </summary>
+    /// <remarks>
+    /// The ordinary path selects <c>TOP (Limit + 1)</c> ordered by (T1, Sid1) so the stage's own limit
+    /// companion can detect truncation. The IncludesOnly path drops both: the budget is applied once,
+    /// globally, over the union of stages by <see cref="EmitGlobalIncludesPage"/>, so a per-stage TOP would
+    /// apply it twice. It would in fact be <em>safe</em> to keep — a row in the global top <c>Limit + 1</c>
+    /// has within-stage rank no worse than its rank across the union (rows the union places ahead of it can
+    /// only come from this same stage or from others, never fewer than zero), so truncating a stage at
+    /// <c>Limit + 1</c> can never hide a row the global page needed, even when one stage's rows all sort
+    /// before another's. It is dropped because it is redundant, not because it is unsafe. And once the TOP
+    /// is gone the ORDER BY must go too: a CTE's own ORDER BY is illegal T-SQL without TOP or OFFSET/FETCH
+    /// (SQL Server Msg 1033), so keeping the per-stage ORDER BY while dropping the per-stage TOP would not
+    /// even compile.
+    /// <para>
+    /// When a resume cursor is present each stage additionally carries the keyset predicate
+    /// <c>(type &gt; @t OR (type = @t AND sid &gt; @sid))</c> over its own output columns, so the page resumes
+    /// strictly after the previous page's last row under the global <c>ORDER BY T1 ASC, Sid1 ASC</c>. The
+    /// output columns differ by direction, so the predicate uses the same (type, surrogate) pair the SELECT
+    /// list projects: <c>r.*</c> for a forward include, <c>rsp.*</c> for a reverse one.
+    /// </para>
+    /// </remarks>
+    private static string EmitIncludeStage(
+        IncludeStage stage,
+        ResourceVisibility visibility,
+        bool includesOnly,
+        (string Type, string Surrogate)? resumeParams)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, outputSurrogateColumn, seedCorrelationAlias) = stage.Direction switch
         {
@@ -1169,20 +1348,33 @@ public static class SqlBuilder
             }
         }
 
+        if (resumeParams is { } resume)
+        {
+            whereClauses.Add(
+                $"({outputTypeColumn} > {resume.Type} OR " +
+                $"({outputTypeColumn} = {resume.Type} AND {outputSurrogateColumn} > {resume.Surrogate}))");
+        }
+
         var rowFilter = ResourceRowFilter(visibility, "r.");
 
         // Own-line placement, so the helper's leading space is replaced by this line's indentation.
         // An inline caller must not trim it; see ResourceRowFilter's remarks.
         var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
 
-        return $"    SELECT DISTINCT TOP ({stage.Limit + 1}) {selectColumns}\n" +
+        // Drop the per-stage TOP and its ORDER BY for the IncludesOnly page: the budget is applied once,
+        // globally, over the union of stages, and a CTE ORDER BY without TOP is illegal T-SQL anyway. See
+        // this method's remarks for why keeping the TOP would be safe but redundant.
+        var topClause = includesOnly ? string.Empty : $"TOP ({stage.Limit + 1}) ";
+        var orderByClause = includesOnly ? string.Empty : "\n    ORDER BY T1 ASC, Sid1 ASC";
+
+        return $"    SELECT DISTINCT {topClause}{selectColumns}\n" +
                $"    FROM dbo.ReferenceSearchParam rsp\n" +
                $"    INNER JOIN dbo.Resource r\n" +
                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
                rowFilterLine +
-               $"    WHERE {string.Join("\n      AND ", whereClauses)}\n" +
-               $"    ORDER BY T1 ASC, Sid1 ASC";
+               $"    WHERE {string.Join("\n      AND ", whereClauses)}" +
+               orderByClause;
     }
 
     /// <summary>Renders a "column = a OR column = b ..." type-id filter, parenthesized when there is more than one id.</summary>

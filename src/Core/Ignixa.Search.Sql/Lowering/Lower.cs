@@ -224,10 +224,24 @@ public static class Lower
                 "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
         }
 
+        // The resume cursor pages a stream of include rows; it only has meaning when the result IS that
+        // stream. Without IncludesOnly the emitter keeps the match arm and never applies the resume
+        // predicate to a match row, so a caller that passed a cursor expecting a second page would instead
+        // get a full first page back — the include rows it already holds, silently re-returned. Refuse the
+        // combination here, mirrored by SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
+        if (options.IncludeCursor is not null && !options.IncludesOnly)
+        {
+            throw new NotSupportedException(
+                "IncludeCursor was supplied without IncludesOnly. The resume cursor pages the union of " +
+                "include stages as one ordered stream, which exists only on an includes-only page; on an " +
+                "ordinary search there is no such stream for it to resume, so it is reported rather than " +
+                "silently ignored.");
+        }
+
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped),
+            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped, IncludeCursor: options.IncludeCursor),
             new PlanProvenance(context.Origins));
     }
 

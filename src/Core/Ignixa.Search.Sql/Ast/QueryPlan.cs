@@ -53,7 +53,16 @@ public sealed record QueryPlan(
     /// </summary>
     bool IncludesOnly = false,
     OffsetSpec? OffsetPage = null,
-    bool CountPhaseScoped = false)
+    bool CountPhaseScoped = false,
+    /// <summary>
+    /// The resume point for the second and subsequent pages of an <see cref="IncludesOnly"/> page: the
+    /// last include row the previous page returned. When set, each include stage carries a predicate that
+    /// skips everything up to and including it under the global <c>ORDER BY T1 ASC, Sid1 ASC</c>, so the
+    /// union of stages pages as one ordered stream. Only meaningful with <see cref="IncludesOnly"/>; the
+    /// emitter rejects it otherwise, because on an ordinary search the resume predicate would silently
+    /// drop included rows rather than page them.
+    /// </summary>
+    IncludeCursor? IncludeCursor = null)
 {
     /// <summary>The plan's visibility, defaulting to current non-deleted rows when the caller named none.</summary>
     public ResourceVisibility EffectiveVisibility => Visibility ?? ResourceVisibility.Current;
