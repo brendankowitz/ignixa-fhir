@@ -657,9 +657,14 @@ git commit -m "feat(search-sql): add CompilationContext and enforce SearchOption
 
 **Files:**
 - Modify: `src/Core/Ignixa.Search.Sql/Symbols/Resolve.cs:35-51`
+- Modify: `src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj` — add a temporary `InternalsVisibleTo` for the integration test project
 - Create: `test/Ignixa.Search.Sql.Tests/TestSupport/CompilationContextFactory.cs`
 - Create: `test/Ignixa.Search.Sql.Tests/TestSupport/ResolveHarness.cs`
-- Modify: every `Resolve.RunAsync(` call site in `test/` (23 of them) and in `src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs`
+- Modify: every `Resolve.RunAsync(` call site in `test/` (**91**, across 5 files in 2 projects) and both in `src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs`
+
+> **Correction found during execution.** The counts in the original draft were transposed. Verified totals in `test/`: `Resolve.RunAsync` **91**, `Lower.Run` **160**, `SqlBuilder.Run` **256**.
+>
+> More importantly, `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests` also hand-chains the stages (2 `Resolve.RunAsync` sites, 1 `Lower.Run`, 1 `SqlBuilder.Run`) and has **no `InternalsVisibleTo`** — only `Ignixa.Search.Sql.Tests` does. Since `RunAsync` must become `internal` once it takes the internal `CompilationContext` (CS0051 otherwise), and the facade that replaces those tests does not exist until Task 10, Task 3 adds a **temporary** `InternalsVisibleTo` for that project. Task 14 removes it after migrating those tests onto the facade.
 
 - [ ] **Step 1: Write the harness and the context factory**
 
@@ -761,7 +766,30 @@ internal static class ResolveHarness
 In `test/`, find/replace `Resolve.RunAsync(` → `ResolveHarness.RunAsync(` and add `using Ignixa.Search.Sql.Tests.TestSupport;` to each touched file.
 
 Run to find them: `git grep -n "Resolve\.RunAsync(" -- test`
-Expected before: 23 hits. Expected after: 0.
+Expected before: **91** hits across 5 files. Expected after: 0 in `Ignixa.Search.Sql.Tests`; the 2 in `Ignixa.DataLayer.SqlEntityFramework.IntegrationTests` are handled in Step 2b instead — they cannot reference `ResolveHarness`, which lives in the other test project.
+
+- [ ] **Step 2b: Bridge the integration test project**
+
+Add to `src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj`, next to the existing entry:
+
+```xml
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlEntityFramework.IntegrationTests" />
+```
+
+with an XML comment noting it is temporary and removed in Task 14.
+
+Then rewrite the 2 call sites — `CompiledSearchEndToEndTests.cs:74` and `SqlEntityFrameworkSymbolResolverTests.cs:86` — to build the context inline:
+
+```csharp
+        var symbolTable = (await Resolve.RunAsync(
+            CompilationContext.Create(
+                new SearchOptions { Expression = predicate },
+                "Patient",
+                new SearchPlanOptions(),
+                DateTimeOffset.UtcNow),
+            new SymbolResolution(resolver),
+            CancellationToken.None)).Symbols;
+```
 
 - [ ] **Step 3: Collapse the signature**
 
@@ -819,7 +847,17 @@ In `src/Core/Ignixa.Search.Sql/Tracing/SearchCompiler.cs`, both `Resolve.RunAsyn
             cancellationToken);
 ```
 
-For `CompileWithTimeProviderAsync` the `SearchPlanOptions` is `new SearchPlanOptions { OperationExpression = operationExpression }` and the `options.Expression = operationExpression` mutation at line 75 is **deleted** — `CompilationContext.Create` now applies the override without touching the caller's object.
+For `CompileWithTimeProviderAsync` the `SearchPlanOptions` is `new SearchPlanOptions { OperationExpression = operationExpression }`.
+
+> **Two corrections found during execution.**
+>
+> 1. **The `options.Expression = operationExpression` mutation at line 75 must NOT be deleted in this task.** `Lower.Run` further down still reads `options.Expression` directly, and is not collapsed onto the context until Task 4. Deleting the mutation here makes Lower lose the operation expression and the corpus baselines move. **Delete it in Task 4**, at the same time Lower starts reading `context.Expression`.
+>
+> 2. **`CompileFromOptionsAsync` (~line 214) cannot use `CompilationContext.Create`.** `Create` maps `ResourceVersionTypes` and the surrogate bounds eagerly and both can throw `NotSupportedException`. Today those mappings happen at lines ~276/287, **inside** the try whose catch at ~296 converts them into a recorded failure. Calling `Create` before that try converts a caught diagnostic into an escaped exception. This site therefore constructs the context directly with `Visibility = null, SurrogateRange = null` — inert, because `Resolve` reads neither, while the real values are still computed for `LowerOptions` below.
+>
+>    **Task 4 must resolve this properly:** build one context inside the try and share it between both stages. Adding a *second* context for `Lower` would recreate exactly the two-sources-of-truth divergence this refactor exists to remove.
+>
+> Also note: this task incidentally fixes a latent bug at the `CompileWithTimeProviderAsync` site, which previously forwarded `AccessConstraints` to `Resolve` but not `ResourceTypes`, despite the other entry point documenting that "both halves are required."
 
 - [ ] **Step 5: Build and run the full SQL test suite**
 
@@ -2353,6 +2391,12 @@ git commit -m "test(application): migrate search compilation tests onto the publ
 
 **Files:**
 - Modify: `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/CompiledSearchEndToEndTests.cs:74-76`
+- Modify: `test/Ignixa.DataLayer.SqlEntityFramework.IntegrationTests/SqlEntityFrameworkSymbolResolverTests.cs`
+- Modify: `src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj` — **remove** the temporary `InternalsVisibleTo` added in Task 3
+
+- [ ] **Step 0: Remove the temporary internals bridge**
+
+Task 3 added `<InternalsVisibleTo Include="Ignixa.DataLayer.SqlEntityFramework.IntegrationTests" />` so this project could keep hand-chaining the stages while the facade did not yet exist. Delete that line. The build failing after this deletion is the proof that Steps 1–2 actually moved these tests onto the public API; if it still builds, something in this project is still reaching into internals and must be migrated too.
 
 - [ ] **Step 1: Replace the hand-chained stages**
 

@@ -207,11 +207,19 @@ public static class SearchCompiler
         var approximationReferenceTime = (timeProvider ?? TimeProvider.System).GetUtcNow();
         var outcomes = new List<ParameterTrace>();
 
+        // Deliberately constructed rather than built by CompilationContext.Create: Create maps
+        // ResourceVersionTypes and the surrogate bounds eagerly, and both mappings can throw
+        // NotSupportedException. Today those throws happen at lines ~276/287, inside the try whose catch
+        // below turns them into a recorded failure rather than an escaped exception. Calling Create here
+        // would move them outside that try and change what a caller observes.
+        // Visibility and SurrogateRange are therefore left null: Resolve reads neither, and the real
+        // values are still computed for LowerOptions below. Task 4 must build one context inside the try
+        // and share it with both stages rather than adding a second one.
         var resolved = await Resolve.RunAsync(
             new CompilationContext
             {
                 Expression = options.Expression,
-                TargetResourceType = resourceType,
+                TargetResourceType = string.IsNullOrEmpty(resourceType) ? null : resourceType,
                 Includes = options.Include ?? [],
                 RevIncludes = options.RevInclude ?? [],
                 Sort = options.Sort ?? [],
