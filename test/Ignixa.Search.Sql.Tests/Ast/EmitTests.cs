@@ -697,6 +697,65 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenATypeAndLastUpdatedSort_WhenEmitted_ThenTheOrderByNamesBothColumnsExactlyOnceAndKeepsTheirDirections()
+    {
+        // Arrange -- Patient?_sort=-_type,-_lastUpdated. Both keys' value expressions are themselves the
+        // trailing keyset tiebreak columns ("m.T1" and "m.Sid1"), so appending the tiebreak unconditionally
+        // would name each twice, which SQL Server rejects with Msg 145. Worse than illegal, the appended
+        // terms are hard-coded ASC, so a descending sort would silently be contradicted. Only executing the
+        // SQL surfaces either problem, so both are pinned here as text-level invariants.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(null, SortKeyKind.ResourceType, SortOrder.Descending),
+                new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending),
+            ],
+            SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- neither key contributes a join: the match set already projects both columns.
+        emitted.Sql.ShouldNotContain("JOIN dbo.");
+        var orderBy = emitted.Sql[emitted.Sql.LastIndexOf("ORDER BY", StringComparison.Ordinal)..];
+        orderBy.Split("m.T1", StringSplitOptions.None).Length.ShouldBe(2);
+        orderBy.Split("m.Sid1", StringSplitOptions.None).Length.ShouldBe(2);
+        orderBy.ShouldBe("ORDER BY m.T1 DESC, m.Sid1 DESC");
+    }
+
+    [Fact]
+    public void GivenATypeAndLastUpdatedSortWithAPageBoundary_WhenEmitted_ThenTheSeekPredicateStepsThroughBothKeys()
+    {
+        // Arrange -- page two of Patient?_sort=_type,_lastUpdated. The boundary must carry one value per
+        // active key, and those values are the same (ResourceTypeId, ResourceSurrogateId) pair the
+        // continuation token already holds -- which is exactly what makes this sort keyset-pageable.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(null, SortKeyKind.ResourceType, SortOrder.Ascending),
+                new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending),
+            ],
+            SortPhase.Valued);
+        var page = new PageSpec(
+            [new SqlParameterRef((short)103), new SqlParameterRef(5000L)],
+            new SqlParameterRef((short)103),
+            new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the lexicographic branches over the two keys, then the (T1, Sid1) tiebreak branches.
+        // The tiebreak branches are logically dead here (their all-equal prefix already pins both columns),
+        // but EmitSeekPredicate appends them uniformly rather than special-casing resource-column keys.
+        emitted.Sql.ShouldContain("m.T1 > @p1");
+        emitted.Sql.ShouldContain("(m.T1 = @p1 AND m.Sid1 > @p2)");
+    }
+
+    [Fact]
     public void GivenNoSortButAPageBoundary_WhenEmitted_ThenTheSeekPredicateIsTheBareTypeAndSurrogateIdTupleOnly()
     {
         // Arrange -- an ordinary, unsorted paginated search (design §2's "no sort" keyset case).

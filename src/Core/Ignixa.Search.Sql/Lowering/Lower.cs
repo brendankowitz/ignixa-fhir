@@ -662,19 +662,20 @@ public static class Lower
 
         var keys = sort.Select(s => BuildSortKey(s, symbols)).ToList();
 
-        if (phase == SortPhase.MissingPrimary && keys[0].Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceId)
+        if (phase == SortPhase.MissingPrimary && keys[0].Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceType or SortKeyKind.ResourceId)
         {
             throw new NotSupportedException(
-                "_lastUpdated and _id are resource-column sort keys derived directly from ResourceSurrogateId " +
-                "and ResourceId -- both are non-nullable resource columns, so a value is never missing for " +
-                "either, and neither has a MissingPrimary segment. Only a search-parameter-table primary key " +
-                "(String, Date, or an aggregated leaf type) has a MissingPrimary phase.");
+                "_lastUpdated, _type and _id are resource-column sort keys derived directly from " +
+                "ResourceSurrogateId, ResourceTypeId and ResourceId -- all are non-nullable resource columns, " +
+                "so a value is never missing for any of them, and none has a MissingPrimary segment. Only a " +
+                "search-parameter-table primary key (String, Date, or an aggregated leaf type) has a " +
+                "MissingPrimary phase.");
         }
 
         return new SortSpec(keys, phase);
     }
 
-    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated or _id).</summary>
+    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceType/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated, _type or _id).</summary>
     internal static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
         if (sortExpression.Parameter.Code == "_lastUpdated")
@@ -687,14 +688,17 @@ public static class Lower
             return new SortKey(null, SortKeyKind.ResourceId, sortExpression.SortOrder);
         }
 
-        // _type is the third resource-column code, and the only one with no sort meaning. Resolve never
-        // collects a resource-column parameter, so without this it would reach the SearchParamId lookup
-        // below and surface as a KeyNotFoundException blaming Resolve for skipping a node kind.
-        if (ResourceColumnLoweringRule.IsResourceColumnCode(sortExpression.Parameter.Code))
+        // _type orders by the resource's type id, which the match set already projects as T1. It is not an
+        // ordering over type *names* - it is the storage layer's own type ordering, which is what a FHIR
+        // server sorting on _type over a partitioned Resource table gives a client, and what makes
+        // "_sort=_type,_lastUpdated" the natural (T1, Sid1) clustered order rather than a re-sort.
+        //
+        // These three are exactly the codes ResourceColumnLoweringRule.IsResourceColumnCode recognises, so
+        // every resource column is now sortable and no fall-through guard is needed: any code reaching the
+        // SearchParamId lookup below is a real search parameter that Resolve collected.
+        if (sortExpression.Parameter.Code == "_type")
         {
-            throw new NotSupportedException(
-                $"Sorting by '{sortExpression.Parameter.Code}' is not supported -- it names a resource type, " +
-                "not a value with an ordering. _lastUpdated and _id are the only sortable resource columns.");
+            return new SortKey(null, SortKeyKind.ResourceType, sortExpression.SortOrder);
         }
 
         var searchParamId = symbols.SearchParamId(sortExpression.Parameter);

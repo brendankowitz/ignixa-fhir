@@ -733,9 +733,9 @@ public static class SqlBuilder
             }
 
             var key = sort.Keys[i];
-            if (key.Kind == SortKeyKind.LastUpdated)
+            if (key.Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceType)
             {
-                continue; // resource-column key, no join needed.
+                continue; // resource-column key already projected by the match set, no join needed.
             }
 
             if (key.Kind == SortKeyKind.ResourceId)
@@ -787,11 +787,11 @@ public static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
         {
             throw new InvalidOperationException(
-                "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceId, or otherwise SearchParamId-less " +
-                "primary key reached Emit -- none of these are ever \"missing\" (all are non-nullable resource " +
-                "columns), so none has a MissingPrimary segment. Lower.BuildSortSpec already rejects this " +
-                "combination for LastUpdated and ResourceId; QueryPlan is a public construction surface, so this " +
-                "guard exists defensively rather than trusting every caller routes through Lower.");
+                "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceType, ResourceId, or otherwise " +
+                "SearchParamId-less primary key reached Emit -- none of these is ever \"missing\" (all are " +
+                "non-nullable resource columns), so none has a MissingPrimary segment. Lower.BuildSortSpec " +
+                "already rejects this combination for all three; QueryPlan is a public construction surface, " +
+                "so this guard exists defensively rather than trusting every caller routes through Lower.");
         }
 
         if (key.Kind == SortKeyKind.Aggregated)
@@ -822,6 +822,11 @@ public static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated)
         {
             return "m.Sid1";
+        }
+
+        if (key.Kind == SortKeyKind.ResourceType)
+        {
+            return "m.T1";
         }
 
         if (key.Kind == SortKeyKind.ResourceId)
@@ -883,13 +888,21 @@ public static class SqlBuilder
         var terms = activeIndices.Select(i =>
             $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}").ToList();
 
-        // SortValueExpr(LastUpdated) is literally "m.Sid1" -- if an active key is LastUpdated, appending
-        // "m.Sid1 ASC" again as the trailing tiebreak would reference the same column twice in one ORDER
-        // BY list, which SQL Server rejects (Msg 145, "A column has been specified more than once in the
-        // order by list"). m.T1 is never duplicated this way (no key's value expression is T1), so it is
-        // always safe to append.
+        // SortValueExpr renders LastUpdated as "m.Sid1" and ResourceType as "m.T1" -- if either is an active
+        // key, appending the same column again as the trailing tiebreak would reference it twice in one
+        // ORDER BY list, which SQL Server rejects (Msg 145, "A column has been specified more than once in
+        // the order by list"). Dropping the duplicate is safe rather than merely legal: a key that already
+        // orders by that column has fully determined it, and the tiebreak exists only to break ties the keys
+        // leave, so it has nothing left to contribute. Note the tiebreak is unconditionally ASC while a key
+        // may be DESC, so this also preserves a descending _type or _lastUpdated ordering that an appended
+        // ASC term could not have expressed.
         var hasLastUpdatedKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.LastUpdated);
-        terms.Add("m.T1 ASC");
+        var hasResourceTypeKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.ResourceType);
+        if (!hasResourceTypeKey)
+        {
+            terms.Add("m.T1 ASC");
+        }
+
         if (!hasLastUpdatedKey)
         {
             terms.Add("m.Sid1 ASC");

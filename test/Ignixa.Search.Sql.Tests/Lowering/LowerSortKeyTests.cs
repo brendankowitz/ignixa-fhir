@@ -74,19 +74,46 @@ public class LowerSortKeyTests
     }
 
     [Fact]
-    public void GivenASortByTheTypeResourceColumn_WhenLowered_ThenThrowsNotSupportedException()
+    public void GivenASortByTheTypeResourceColumn_WhenLowered_ThenReturnsResourceTypeKindWithNoSearchParamId()
     {
         // Arrange -- _type is a Token parameter, so without an explicit guard it would fall into the
         // Aggregated arm and hit the SearchParamId lookup. Resolve deliberately never collects a
         // resource-column parameter, so that lookup would throw KeyNotFoundException blaming Resolve for
         // skipping a node kind rather than naming the real problem.
         var typeParameter = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
-        var sortExpression = new SortExpression(typeParameter, Ignixa.Search.Expressions.SortOrder.Ascending);
+        var sortExpression = new SortExpression(typeParameter, Ignixa.Search.Expressions.SortOrder.Descending);
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
+        // Act
+        var key = Lower.BuildSortKey(sortExpression, symbols);
+
+        // Assert -- the match set already projects the resource's type id as T1, so no join and no
+        // search-param lookup is involved.
+        key.Kind.ShouldBe(SortKeyKind.ResourceType);
+        key.SearchParamId.ShouldBeNull();
+        key.Table.ShouldBeNull();
+        key.Column.ShouldBeNull();
+        key.Direction.ShouldBe(Ignixa.Search.Expressions.SortOrder.Descending);
+    }
+
+    [Fact]
+    public void GivenAResourceTypePrimarySortKeyInTheMissingPrimaryPhase_WhenLowered_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- ResourceTypeId is non-nullable, so a _type sort value is never "missing" and the key
+        // has no MissingPrimary segment. Without this rejection EmitMissingPrimaryFilter would interpolate
+        // a null SearchParamId into SQL text.
+        var typeParameter = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.BuildSortKey(sortExpression, symbols))
-            .Message.ShouldContain("_type");
+        Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+                sort: [new SortExpression(typeParameter, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.MissingPrimary, page: null))
+            .Message.ShouldContain("MissingPrimary");
     }
 
     [Fact]
