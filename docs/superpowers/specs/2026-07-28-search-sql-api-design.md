@@ -200,6 +200,7 @@ public sealed record SearchPlanOptions
     public bool CountPhaseScoped { get; init; }
     public bool IncludesOnly { get; init; }
     public int? Top { get; init; }
+    public PageSpec? Page { get; init; }
     public OffsetSpec? OffsetPage { get; init; }
     public (long Start, long End)? SurrogateIdRange { get; init; }
     public string? SearchParameterHash { get; init; }
@@ -223,7 +224,7 @@ caller's own `SearchOptions`.
 `SearchCompilationException`, `SearchCompilationDiagnostics`, `SearchDiagnosticsLevel`,
 `CompilationStage`, `QueryPlan` (and the AST records reachable from it, so rewriting is possible),
 `EmittedSqlParameter`, `ISymbolResolver`, `SqlCatalog`, `AccessConstraint`, `OffsetSpec`, `SortPhase`,
-`ResourceVisibility`.
+`ResourceVisibility`, `PageSpec`, `SqlParameterRef`.
 
 **Internal:** `Resolve`, `Lower`, `SqlBuilder`, `EmitOptions`, `LoweredPlan`, `ResolvedSymbols`,
 `SymbolTable`, `EmittedSql`.
@@ -283,8 +284,13 @@ Existing mapping rules preserved in `CompilationContext.Create`:
 - A half-open surrogate range (one of `StartSurrogateId`/`EndSurrogateId` set) throws
   `NotSupportedException` rather than scanning unbounded in one direction.
 - An explicit `SearchPlanOptions.SurrogateIdRange` wins over the `SearchOptions` pair.
-- `OffsetPage` cannot combine with keyset paging or `Top` (T-SQL error 10741).
+- `OffsetPage` cannot combine with keyset `Page` or `Top` (T-SQL error 10741).
 - `CountPhaseScoped` requires `CountOnly` and at least one sort key.
+
+`Page` is the keyset continuation boundary that `Lower.Run` accepts as a separate argument today.
+`SearchCompiler` always passed null for it, so the compiler supported keyset paging but no orchestrated
+entry point could ask for it. Putting it on `SearchPlanOptions` closes that gap rather than carrying it
+forward.
 
 ## Diagnostics
 
@@ -429,11 +435,34 @@ every existing case. A moved golden file means the refactor changed behaviour an
 
 ### Migration
 
-Roughly 27 files.
+Roughly 27 files, but the call-site count is what determines the approach:
+
+| Stage | Call sites in `test/` | Signature changes? | Work |
+|---|---|---|---|
+| `SqlBuilder.Run` | 191 | no — visibility only | **none**; `InternalsVisibleTo` already covers it |
+| `Lower.Run` | 91 | yes | mechanical rename to a test harness |
+| `Resolve.RunAsync` | 23 | yes | mechanical rename to a test harness |
+| `SearchCompiler.*` | 35 | replaced | rewritten against the facade |
+
+91 hand-edited `Lower.Run` call sites would be a large diff over the exact tests that prove this
+refactor changed nothing — precisely the diff a reviewer cannot check. So the stage tests do **not**
+migrate to the new argument shape. Instead:
+
+- `LowerOptions` **moves into the test project** as test support rather than being deleted outright. It
+  survives only as the harness's input record; no production code references it.
+- `LowerHarness.Run(...)` and `ResolveHarness.RunAsync(...)` in `Ignixa.Search.Sql.Tests/TestSupport/`
+  reproduce today's argument lists exactly, build a `CompilationContext`, and call the collapsed stage.
+- Migration is then a single find/replace per stage: `Lower.Run(` → `LowerHarness.Run(`. Every argument,
+  including named arguments and `new LowerOptions { … }` initialisers, is unchanged. The diff is one
+  token per line, so a reviewer can confirm by inspection that no test's meaning moved.
+
+New tests written after this refactor should use `CompilationContextFactory.For(expression, resourceType)`
+and call the stages directly; the harnesses exist to carry the existing corpus across, not to be the
+permanent idiom.
 
 | Project | Change |
 |---|---|
-| `Ignixa.Search.Sql.Tests` — `Lowering/*`, `Ast/Emit*`, `Symbols/*` (~20 files) | keep calling stages through the existing `InternalsVisibleTo`, constructing a `CompilationContext` instead of long argument lists. A test-only `CompilationContextFactory.For(expression, resourceType)` with defaults keeps each test naming only what it varies. |
+| `Ignixa.Search.Sql.Tests` — `Lowering/*`, `Ast/Emit*`, `Symbols/*` (~20 files) | find/replace onto the harnesses; no test body changes |
 | `Ignixa.Search.Sql.Tests/Tracing/*` | rewritten against the facade; `SearchTraceFixtures` becomes plan and diagnostics fixtures |
 | `Ignixa.Search.Sql.Tests/Corpus/CorpusCompiler` | facade; drops its manual stage wiring |
 | `Ignixa.Application.Tests/Search/Parsing/SearchTrace*Tests` | facade, **public API only** — proof the facade is sufficient without internals |
