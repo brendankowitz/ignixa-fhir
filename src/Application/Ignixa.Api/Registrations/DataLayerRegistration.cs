@@ -12,6 +12,7 @@ using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.DataLayer.SqlServer;
+using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.EntityFrameworkCore;
@@ -139,10 +140,12 @@ public static class DataLayerRegistration
         // Register package resource repository
         RegisterPackageRepository(builder);
 
-        // Register SqlSystemRepository for system URL normalization
-        builder.RegisterType<SqlSystemRepository>()
-            .As<ISystemRepository>()
-            .InstancePerDependency();
+        // ISystemRepository is deliberately not registered. The EF registration here could never resolve --
+        // SqlSystemRepository needs a FhirDbContext and only IDbContextFactory<FhirDbContext> is registered
+        // -- and nothing resolved it: its sole consumer, ImportTerminologyResourceActivity, constructs the
+        // repository and the importer by hand from a tenant-scoped context. Replacing a dead registration
+        // with an equally dead one would only look like wiring. Task 6 gives the terminology path its own
+        // per-tenant construction.
 
         return builder;
     }
@@ -251,6 +254,9 @@ public static class DataLayerRegistration
         .SingleInstance();
     }
 
+    // Package and conformance content is global rather than per-tenant, and lives in tenant 1's database.
+    private const int GlobalPackageTenantId = 1;
+
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
         // Package repository DbContext factory (also used by event store)
@@ -272,11 +278,14 @@ public static class DataLayerRegistration
         .AsSelf()
         .SingleInstance();
 
-        // SQL package resource repository
+        // SQL package resource repository (Phase F Task 5a: raw ADO.NET, no DbContext).
+        // Tenant 1 for the same reason PackageRepositoryDbContextFactory above uses it: package content is
+        // global, and dbo.PackageResource has no tenant column to scope it by.
         builder.Register<IPackageResourceRepository>(c =>
-            new SqlPackageResourceRepository(
-                c.Resolve<PackageRepositoryDbContextFactory>(),
-                c.Resolve<ILogger<SqlPackageResourceRepository>>()))
+            new SqlServerPackageResourceRepository(
+                c.Resolve<ISqlExecutionService>(),
+                GlobalPackageTenantId,
+                c.Resolve<ILogger<SqlServerPackageResourceRepository>>()))
             .InstancePerDependency();
     }
 }
