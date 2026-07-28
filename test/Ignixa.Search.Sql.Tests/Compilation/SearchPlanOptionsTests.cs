@@ -20,7 +20,7 @@ public class SearchPlanOptionsTests
         options.Top.ShouldBeNull();
         options.Page.ShouldBeNull();
         options.OffsetPage.ShouldBeNull();
-        options.SurrogateIdRange.ShouldBeNull();
+        options.SurrogateRange.ShouldBeNull();
         options.SearchParameterHash.ShouldBeNull();
         options.OperationExpression.ShouldBeNull();
         options.DiagnosticsLevel.ShouldBe(SearchDiagnosticsLevel.None);

@@ -202,7 +202,7 @@ public sealed record SearchPlanOptions
     public int? Top { get; init; }
     public PageSpec? Page { get; init; }
     public OffsetSpec? OffsetPage { get; init; }
-    public (long Start, long End)? SurrogateIdRange { get; init; }
+    public (long Start, long End)? SurrogateRange { get; init; }
     public string? SearchParameterHash { get; init; }
     public Expression? OperationExpression { get; init; }
     public SearchDiagnosticsLevel DiagnosticsLevel { get; init; } = SearchDiagnosticsLevel.None;
@@ -283,7 +283,7 @@ Existing mapping rules preserved in `CompilationContext.Create`:
   already treats as `ResourceVisibility.Current`.
 - A half-open surrogate range (one of `StartSurrogateId`/`EndSurrogateId` set) throws
   `NotSupportedException` rather than scanning unbounded in one direction.
-- An explicit `SearchPlanOptions.SurrogateIdRange` wins over the `SearchOptions` pair.
+- An explicit `SearchPlanOptions.SurrogateRange` wins over the `SearchOptions` pair.
 - `OffsetPage` cannot combine with keyset `Page` or `Top` (T-SQL error 10741).
 - `CountPhaseScoped` requires `CountOnly` and at least one sort key.
 

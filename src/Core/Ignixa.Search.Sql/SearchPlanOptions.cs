@@ -27,7 +27,10 @@ public sealed record SearchPlanOptions
     /// <summary>Return include-stage rows only, omitting the match page. The <c>$includes</c> second page.</summary>
     public bool IncludesOnly { get; init; }
 
-    /// <summary>A SQL <c>TOP</c> cap; null means no cap. Mutually exclusive with <see cref="OffsetPage"/>.</summary>
+    /// <summary>
+    /// A SQL <c>TOP</c> cap; null means no cap. May be combined with <see cref="Page"/> to cap a keyset
+    /// page. Mutually exclusive with <see cref="OffsetPage"/>, which carries its own row count.
+    /// </summary>
     public int? Top { get; init; }
 
     /// <summary>
@@ -41,9 +44,10 @@ public sealed record SearchPlanOptions
 
     /// <summary>
     /// An inclusive surrogate-id bound. When set it wins over <c>SearchOptions.StartSurrogateId</c>/
-    /// <c>EndSurrogateId</c>.
+    /// <c>EndSurrogateId</c>. Named to match <c>QueryPlan.SurrogateRange</c>, but typed as raw longs so a
+    /// caller never has to construct the AST's <c>SurrogateIdRange</c> node.
     /// </summary>
-    public (long Start, long End)? SurrogateIdRange { get; init; }
+    public (long Start, long End)? SurrogateRange { get; init; }
 
     /// <summary>
     /// The expected search-parameter hash for reindex gating; null when unused. Typed as a string so a
