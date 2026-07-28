@@ -17,7 +17,7 @@ public class SearchTraceTests
         data.Add("include", SearchTraceFixtures.TracePatientActiveWithIncludeAsync, [0]);
         data.Add("sort", SearchTraceFixtures.TracePatientActiveWithSortAsync, [0]);
         data.Add(":not", SearchTraceFixtures.TracePatientNameNotAsync, [0]);
-        data.Add(":missing", SearchTraceFixtures.TracePatientNameMissingAsync, []);
+        data.Add(":missing", SearchTraceFixtures.TracePatientNameMissingAsync, [0]);
         return data;
     }
 
@@ -65,6 +65,25 @@ public class SearchTraceTests
 
             trace.Sql!.Ranges.ShouldContain(r => r.Label == SqlLabels.CteLabel(i), $"{scenario}: {SqlLabels.CteLabel(i)} has no SQL text range");
         }
+    }
+
+    [Fact]
+    public async Task GivenAMissingModifierSearch_WhenTraced_ThenTheNegationClosesOverTheMissingParametersOrdinal()
+    {
+        // LowerParameterPresence used to build its ParamSource CTE with no CteOrigin at all, so :missing's
+        // presence-check CTE -- and, transitively, the Except CTE that negates it -- carried no link back to
+        // the "name:missing=true" parameter that produced them. ContributingOrdinals is the one a consumer
+        // asks "which parameters does this structural CTE draw from" through, so it is the one that matters
+        // here, not just the leaf's own ParameterOrdinal.
+        var trace = await SearchTraceFixtures.TracePatientNameMissingAsync();
+        var parameter = trace.Parameters.ShouldHaveSingleItem();
+
+        trace.Plan.ShouldNotBeNull();
+        var presenceCte = trace.Plan!.Ctes.Single(c => c.ParameterOrdinal == parameter.Ordinal);
+        presenceCte.ContributingOrdinals.ShouldBe([parameter.Ordinal]);
+
+        var negation = trace.Plan.Ctes.Single(c => c.ParameterOrdinal is null && c.ContributingOrdinals.Contains(parameter.Ordinal));
+        negation.ContributingOrdinals.ShouldBe([parameter.Ordinal]);
     }
 
     private static IEnumerable<Expression> Flatten(Expression node)

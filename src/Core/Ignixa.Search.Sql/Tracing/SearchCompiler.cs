@@ -496,7 +496,7 @@ public static class SearchCompiler
         _ => null,
     };
 
-    /// <summary>Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against every trace's IR subtree. Origins with no owner (:missing, compartment, structural CTEs) keep a null ordinal.</summary>
+    /// <summary>Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against every trace's IR subtree. Origins with no owner (compartment, structural CTEs) keep a null ordinal.</summary>
     private static QueryPlanTrace BuildPlanTrace(LoweredPlan lowered, IReadOnlyList<ParameterTrace> outcomes)
     {
         var rows = PlanExplainer.Describe(lowered.Plan);
