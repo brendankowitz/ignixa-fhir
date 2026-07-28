@@ -189,36 +189,45 @@ entity/schema divergence, benign here because the database is the narrower of th
 - [x] Registration deferred to Task 8 with the reasoning above.
 - [x] Verified: 6/6 new facts, All.sln 0/0, Search.Sql 848/848, Application 1125/0/1, Api 135/135.
 
-### Task 4: Port `SqlPackageResourceRepository`
+### Task 4: Port `SqlPackageResourceRepository` -- **COMPLETE**
 
-943 lines, 58 LINQ constructs — the first genuine rewrite.
+Bigger than the plan's "943 lines, 58 LINQ" implied: a **20-method** interface. `PackageResourceEntity`
+matches `dbo.PackageResource` exactly, so this was a genuine port and the EF version served as an oracle for
+the write path.
 
-**Files:**
-- Create: `src/DataLayer/Ignixa.DataLayer.SqlServer/Features/PackageManagement/SqlServerPackageResourceRepository.cs`
-- Read as spec: `src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Features/PackageManagement/SqlPackageResourceRepository.cs`, `Entities/PackageResourceEntity.cs`
-- Modify: `src/Application/Ignixa.Api/Registrations/DataLayerRegistration.cs`
-- Test: `test/Ignixa.DataLayer.SqlServer.IntegrationTests/Features/SqlServerPackageResourceRepositoryTests.cs`
+**Five inherited defects found.** Two fixed, three reproduced and pinned:
 
-**Interfaces:**
-- Produces: `SqlServerPackageResourceRepository : IPackageResourceRepository` — `UpsertAsync`, `BatchUpsertAsync`, `GetByCanonicalAsync(canonical, version?)`, `GetFromPackageAsync(packageId, packageVersion, canonical)`, `GetLatestByCanonicalAsync(canonical, resourceType?)`, `ListPackageResourcesAsync(packageId, packageVersion, …)` — read the interface file for the complete list and exact optional-parameter defaults.
-- Consumes: `ISqlExecutionService`.
+| Finding | Disposition |
+|---|---|
+| `fhirVersion` accepted and ignored on **7 methods** | Reproduced, documented at each site, pinned |
+| `tenantId` ignored on `PackageVersionExistsAsync` | Reproduced -- the table has no tenant column |
+| Version ordering lexical while claiming `PARSENAME` semver | **Fixed** (`SemanticVersionComparer`) |
+| Duplicate-key race detected by message substring | **Fixed** -- error numbers 2601/2627 |
+| `MapEntityToModel` read 11 of 17 columns | Reproduced, pinned |
 
-- [ ] **Step 1: Read the EF implementation in full and enumerate every public method**, writing down for each: its SQL shape, its ordering guarantee, and its null/empty return convention. This enumeration goes in the task report and is the checklist for Step 2.
+**Why `fhirVersion` was not fixed, despite that being the initial instruction.** Callers pass
+`"R4"`/`"R4B"`/`"R5"`/`"Stu3"`; the column holds what the NPM manifest declared (`"4.0.1"`, `"5.0.0"`). An
+equality filter matches nothing, so enabling it empties the CapabilityStatement's operations and the
+StructureDefinition summaries rather than narrowing them -- a demonstrable production regression. This is
+exactly the "exact matching strategy" the original TODO deferred. A real fix needs version normalisation
+plus set-membership, because manifests declare a *list*. Four tests pin the current behaviour and are meant
+to fail the day that lands.
 
-- [ ] **Step 2: Write one test per public method against EF.** `GetLatestByCanonicalAsync` needs explicit version-ordering coverage — seed three versions out of order and assert which one wins, since "latest" is a semantic the port could plausibly get wrong while still compiling. `BatchUpsertAsync` needs an update-existing-plus-insert-new mixed batch.
-Expected: all PASS against EF.
+**One defect introduced and caught by these tests.** CA1725 requires the interface parameter be named
+`tenantId`, so the constructor parameter became `connectionTenantId`. The rename swept single-line call
+sites; `PackageVersionExistsAsync`'s call is line-wrapped and silently rebound to the method parameter,
+compiling cleanly while trying to open a connection to whatever tenant the caller named. All 13 call sites
+were audited rather than only the failing one.
 
-- [ ] **Step 3: Implement.** `BatchUpsertAsync` must batch — follow `SqlServerMergeRepository`'s TVP/batching convention rather than issuing one statement per item.
+- [x] Confirm entity matches schema (it does -- unlike background jobs).
+- [x] Enumerate all 20 methods with their ordering and null conventions.
+- [x] Write the write-path contract against EF first (10 facts, green there, then repointed unchanged).
+- [x] Implement all 20 methods over `ISqlExecutionService`.
+- [x] Read-path and version-filter tests (19 further facts).
+- [x] Verified: **29/29** package-resource facts, All.sln 0/0.
 
-- [ ] **Step 4: Repoint, re-run, assertions unchanged.**
-
-- [ ] **Step 5: Swap the registration.**
-
-- [ ] **Step 6: Full verification.**
-
-- [ ] **Step 7: Commit** — `feat(sqlserver): port the package resource repository off EF`.
-
----
+**Registration deferred to Task 8**, with Task 3's: `RegisterPackageRepository` still constructs the EF
+repository from `PackageRepositoryDbContextFactory`, and the replacement needs the composition root moved.
 
 ### Task 5: Port `SqlTerminologyService`
 
