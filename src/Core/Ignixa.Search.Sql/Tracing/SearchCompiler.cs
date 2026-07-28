@@ -5,6 +5,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
+using Ignixa.Search.Sql.Compilation;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
@@ -76,18 +77,13 @@ public static class SearchCompiler
         }
 
         var resolved = await Resolve.RunAsync(
-            options.Expression,
-            options.Include,
-            options.RevInclude,
-            options.Sort,
-            resolver,
-            resourceType,
-            cancellationToken,
-            compartmentDefinitionManager,
-            searchParameterDefinitionManager,
-            // Kept in step with the AccessConstraints forwarded to LowerOptions below: this entry point
-            // lowers the same constraint predicates, so it needs their symbols resolved too.
-            accessConstraints: options.AccessConstraints);
+            CompilationContext.Create(
+                options,
+                resourceType,
+                new SearchPlanOptions { OperationExpression = operationExpression },
+                approximationReferenceTime),
+            new SymbolResolution(resolver, compartmentDefinitionManager, searchParameterDefinitionManager),
+            cancellationToken);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 
@@ -212,23 +208,30 @@ public static class SearchCompiler
         var outcomes = new List<ParameterTrace>();
 
         var resolved = await Resolve.RunAsync(
-            options.Expression,
-            options.Include,
-            options.RevInclude,
-            options.Sort,
-            resolver,
-            resourceType,
-            cancellationToken,
-            compartmentDefinitionManager,
-            searchParameterDefinitionManager,
-            // A system-level caller that resolved _type before compiling passes those names here rather
-            // than in the expression tree, so nothing collects them and they would resolve to the
-            // unmatchable sentinel -- a base set of IN (-1, -1) that emits cleanly and matches nothing.
-            // The same list is forwarded to LowerOptions.ResourceTypes below; both halves are required.
-            additionalResourceTypes: options.ResourceTypes,
-            // Likewise both halves: the constraints are forwarded to LowerOptions.AccessConstraints below
-            // so they are enforced, and here so the symbols their predicates reference actually resolve.
-            accessConstraints: options.AccessConstraints);
+            new CompilationContext
+            {
+                Expression = options.Expression,
+                TargetResourceType = resourceType,
+                Includes = options.Include ?? [],
+                RevIncludes = options.RevInclude ?? [],
+                Sort = options.Sort ?? [],
+                AccessConstraints = options.AccessConstraints ?? [],
+                ResourceTypes = options.ResourceTypes ?? [],
+                ApproximationReferenceTime = approximationReferenceTime,
+                Visibility = null,
+                SurrogateRange = null,
+                Options = new SearchPlanOptions
+                {
+                    CountOnly = countOnly,
+                    IncludeLimit = includeLimit,
+                    SortPhase = sortPhase,
+                    CountPhaseScoped = countPhaseScoped,
+                    OffsetPage = offsetPage,
+                    SurrogateRange = surrogateIdRange,
+                },
+            },
+            new SymbolResolution(resolver, compartmentDefinitionManager, searchParameterDefinitionManager),
+            cancellationToken);
 
         MarkUnresolved(outcomes, resolved.Unresolved);
 
@@ -250,10 +253,10 @@ public static class SearchCompiler
                     options.Expression,
                     resolved.Symbols,
                     resourceType,
-                    options.Include,
-                    options.RevInclude,
+                    options.Include ?? [],
+                    options.RevInclude ?? [],
                     includeLimit,
-                    options.Sort,
+                    options.Sort ?? [],
                     sortPhase,
                     page: null,
                     new LowerOptions

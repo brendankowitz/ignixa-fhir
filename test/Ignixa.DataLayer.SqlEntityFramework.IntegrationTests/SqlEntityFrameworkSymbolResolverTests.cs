@@ -8,6 +8,8 @@ using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql;
+using Ignixa.Search.Sql.Compilation;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.EntityFrameworkCore;
@@ -83,7 +85,14 @@ public class SqlEntityFrameworkSymbolResolverTests
             parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var symbolTable = (await Resolve.RunAsync(
+            CompilationContext.Create(
+                new SearchOptions { Expression = predicate },
+                "Patient",
+                new SearchPlanOptions(),
+                DateTimeOffset.UtcNow),
+            new SymbolResolution(resolver),
+            CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.SearchParamId(parameter).ShouldBe(seededSearchParamId);

@@ -28,6 +28,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.Search.Sql.Tests" />
+    <!-- Temporary: allows the integration-test project to call internal Resolve.RunAsync directly
+         while it still hand-chains the compiler stages. Removed in Task 14 once those tests
+         migrate onto the public facade. -->
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlEntityFramework.IntegrationTests" />
   </ItemGroup>
 
 </Project>

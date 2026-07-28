@@ -1,7 +1,8 @@
-using Ignixa.Search.Expressions;
+﻿using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Tests.Symbols;
@@ -30,7 +31,7 @@ public class ResolvedSymbolsTests
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, null, new StringSearchValue("Smith"));
 
-        var resolved = await Resolve.RunAsync(
+        var resolved = await ResolveHarness.RunAsync(
             predicate, includes: [], revIncludes: [], sort: [], new NullResolver(), "Patient", CancellationToken.None);
 
         resolved.Unresolved.ShouldContain(p => p.Code == "name");
@@ -62,7 +63,7 @@ public class ResolvedSymbolsTests
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, null, new StringSearchValue("Smith"));
 
-        var resolved = await Resolve.RunAsync(
+        var resolved = await ResolveHarness.RunAsync(
             predicate, includes: [], revIncludes: [], sort: [], new AlwaysResolvingResolver(), "Patient", CancellationToken.None);
 
         resolved.Unresolved.ShouldContain(p => p.Code == "name");

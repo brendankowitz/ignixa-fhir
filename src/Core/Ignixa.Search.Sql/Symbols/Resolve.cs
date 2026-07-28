@@ -2,6 +2,7 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Compilation;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Symbols;
@@ -32,23 +33,24 @@ namespace Ignixa.Search.Sql.Symbols;
 /// </remarks>
 public static class Resolve
 {
-    public static async Task<ResolvedSymbols> RunAsync(
-        Expression? expression,
-        IReadOnlyList<IncludeExpression> includes,
-        IReadOnlyList<IncludeExpression> revIncludes,
-        IReadOnlyList<SortExpression> sort,
-        ISymbolResolver resolver,
-        string? targetResourceType,
-        CancellationToken cancellationToken,
-        ICompartmentDefinitionManager? compartmentDefinitionManager = null,
-        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
-        IReadOnlyList<string>? additionalResourceTypes = null,
-        IReadOnlyList<AccessConstraint>? accessConstraints = null)
+    internal static async Task<ResolvedSymbols> RunAsync(
+        CompilationContext context,
+        SymbolResolution deps,
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(includes);
-        ArgumentNullException.ThrowIfNull(revIncludes);
-        ArgumentNullException.ThrowIfNull(sort);
-        ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(deps);
+
+        var expression = context.Expression;
+        var includes = context.Includes;
+        var revIncludes = context.RevIncludes;
+        var sort = context.Sort;
+        var resolver = deps.Resolver;
+        var targetResourceType = context.TargetResourceType;
+        var compartmentDefinitionManager = deps.CompartmentDefinitionManager;
+        var searchParameterDefinitionManager = deps.SearchParameterDefinitionManager;
+        var additionalResourceTypes = context.ResourceTypes;
+        var accessConstraints = context.AccessConstraints;
 
         var collector = new SymbolCollectingVisitor();
         if (expression is not null)
