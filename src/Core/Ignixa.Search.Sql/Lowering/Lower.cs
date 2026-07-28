@@ -270,10 +270,24 @@ public static class Lower
         return context.Intersect(match, baseSet);
     }
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).
+    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR,
+    /// union, chain, or compartment).
     /// A null <paramref name="resourceType"/> reaches here only under system-level search. Chain carries its own
     /// resource types rather than consuming the ambient one, so it needs an explicit guard here: without it a
-    /// type-less chain would fall through every null-type guard in <see cref="Run"/> and appear to work.</summary>
+    /// type-less chain would fall through every null-type guard in <see cref="Run"/> and appear to work.
+    /// <para>
+    /// <see cref="UnionExpression"/> and an OR both lower to the same set union. They are distinct nodes because
+    /// they say different things about their operands - an OR combines alternative <em>values</em> of one
+    /// parameter, a union combines independent row-producing <em>legs</em> (the shape a SMART compartment expands
+    /// to, where one leg is a compartment traversal, another a type filter, another an orphan scan) - but once
+    /// each operand has become a CTE that distinction has no expression left in the plan.
+    /// </para>
+    /// <para>
+    /// <see cref="UnionExpression.Operator"/> is deliberately not consulted. A CTE here yields a set of
+    /// <c>(ResourceTypeId, ResourceSurrogateId)</c> identities, so a duplicate is the same row admitted by two
+    /// legs, never two distinct results. UNION ALL would let such a row be counted twice by <c>_total</c> and
+    /// consume two slots of a page, so the distinct union is the only correct emission for either operator.
+    /// </para></summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
@@ -287,6 +301,14 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
+        UnionExpression when resourceType is null => throw new NotSupportedException(
+            "A union of row-producing legs is not supported in system-level search in this phase -- a leg that " +
+            "is purely resource-column predicates (the SMART compartment's 'the compartment resource itself' " +
+            "and 'universal resource types' legs both are) folds into a typed ResourceSource, which needs a " +
+            "concrete type to scope against. Guarding at the dispatch choke point rather than letting such a " +
+            "leg reach the leaf dispatcher, which would reject it with a message about the wrong problem."),
+        UnionExpression union => context.Union(
+            union.Expressions.Select(leg => LowerScopedExpression(leg, context, resourceType)).ToList()),
         ChainedExpression when resourceType is null => throw new NotSupportedException(
             "Chain is not supported in system-level search in this phase -- a chain resolves and joins against " +
             "a concrete referencing/target type, which a cross-type search has no single value for. Guarding at " +
@@ -523,9 +545,9 @@ public static class Lower
     }
 
     /// <summary>
-    /// Lowers a chain's target expression within its own scope, folding any resource-column predicates into
-    /// the scope's ResourceSource (a nested scope has no outer WHERE to attach them to) and intersecting
-    /// with the ordinary match when both are present.
+    /// Lowers a chain's target expression or a union leg within its own scope, folding any resource-column
+    /// predicates into the scope's ResourceSource (such a scope has no outer WHERE to attach them to) and
+    /// intersecting with the ordinary match when both are present.
     /// </summary>
     private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string resourceType)
     {

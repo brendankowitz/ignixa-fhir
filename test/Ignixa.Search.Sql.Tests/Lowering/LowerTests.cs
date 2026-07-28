@@ -1352,5 +1352,120 @@ public class LowerTests
                 page: null,
                 new LowerOptions { IncludesOnly = true }));
     }
-}
 
+    [Fact]
+    public void GivenAUnionOfLegs_WhenLowered_ThenEachLegBecomesItsOwnCteJoinedByAUnion()
+    {
+        // Arrange -- the shape a SMART compartment expands to: several independent row-producing legs, each
+        // admitting resources for a different reason, combined so a resource matching any one of them is
+        // visible. Written as UnionExpression rather than Or because the legs are set-producing subqueries
+        // over different tables, not alternative values of one parameter.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var tree = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null))),
+                new SearchParameterExpression(statusParam, new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))),
+            ]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 10, ["http://hl7.org/fhir/SearchParameter/Observation-status"] = 11 },
+            new Dictionary<string, short> { ["Observation"] = 96 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- the match is a union over both legs, not one leg with the other silently dropped. A
+        // dropped leg is the dangerous direction here: these legs are what grants access, so losing one
+        // hides rows the caller is entitled to, and losing all but one would still look like a working query.
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        union.Parts.Select(part => plan.Ctes[part.Index]).ShouldAllBe(cte => cte is CteDefinition.ParamSource);
+    }
+
+    [Fact]
+    public void GivenAUnionNestedUnderAnAnd_WhenLowered_ThenTheUnionIsIntersectedWithTheOtherConjunct()
+    {
+        // Arrange -- the real SMART shape: the access union ANDed with the caller's own filter. The union
+        // must narrow the result, never replace it, so a caller searching status=final inside a compartment
+        // cannot see a non-final resource just because the compartment admits it.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var accessUnion = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null))),
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "b", text: null))),
+            ]);
+        var tree = Expression.And(
+            accessUnion,
+            new SearchParameterExpression(statusParam, new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 10, ["http://hl7.org/fhir/SearchParameter/Observation-status"] = 11 },
+            new Dictionary<string, short> { ["Observation"] = 96 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes.ShouldContain(cte => cte is CteDefinition.Union);
+    }
+
+    [Fact]
+    public void GivenAUnionLegOfOnlyResourceColumns_WhenLowered_ThenTheLegFoldsIntoItsOwnScopedResourceSource()
+    {
+        // Arrange -- the SMART compartment's "the compartment resource itself" leg: _id and _type only. At the
+        // top level such predicates lift into the outer WHERE, but inside a union that would apply them to
+        // every leg and collapse the whole access set to one resource. They must stay scoped to their own leg.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var tree = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "p1", text: null))),
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null))),
+            ]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 10 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- the _id leg is a ResourceSource carrying its own predicate, and nothing leaked outward.
+        plan.OuterPredicate.ShouldBeNull();
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var idLeg = plan.Ctes[union.Parts[0].Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        idLeg.Predicate.ShouldNotBeNull().ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        plan.Ctes[union.Parts[1].Index].ShouldBeOfType<CteDefinition.ParamSource>();
+    }
+
+    [Fact]
+    public void GivenAUnionInSystemLevelSearch_WhenLowered_ThenItIsRejectedRatherThanLoweredWithoutAScope()
+    {
+        // Arrange -- a resource-column leg needs a concrete type to fold into. Without one it would reach the
+        // leaf dispatcher and be rejected with a message about the wrong problem, so the guard sits at dispatch.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "p1", text: null))),
+                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "p2", text: null))),
+            ]);
+        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+
+        // Act + Assert
+        Should.Throw<NotSupportedException>(() => Lower.Run(
+            tree,
+            symbols,
+            targetResourceType: null,
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [],
+            sortPhase: SortPhase.Valued,
+            page: null,
+            new LowerOptions { SystemLevelSearch = true }));
+    }
+}
