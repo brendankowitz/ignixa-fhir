@@ -40,6 +40,11 @@ internal sealed record CompilationContext
     /// one context both stages read. This is the only place that mapping happens;
     /// <see cref="CompilationContextMapping"/> is its enforced contract.
     /// </summary>
+    /// <remarks>
+    /// The collection properties are coalesced because <c>Ignixa.Search</c> compiles with nullable disabled,
+    /// so a caller can assign null to them without warning. Coalescing here turns that into an empty list at
+    /// the boundary rather than a null-reference deep inside lowering.
+    /// </remarks>
     public static CompilationContext Create(
         SearchOptions searchOptions,
         string? targetResourceType,
@@ -53,9 +58,9 @@ internal sealed record CompilationContext
         {
             Expression = options.OperationExpression ?? searchOptions.Expression,
             TargetResourceType = string.IsNullOrEmpty(targetResourceType) ? null : targetResourceType,
-            Includes = searchOptions.Include,
-            RevIncludes = searchOptions.RevInclude,
-            Sort = searchOptions.Sort,
+            Includes = searchOptions.Include ?? [],
+            RevIncludes = searchOptions.RevInclude ?? [],
+            Sort = searchOptions.Sort ?? [],
             AccessConstraints = searchOptions.AccessConstraints ?? [],
             ResourceTypes = searchOptions.ResourceTypes ?? [],
             ApproximationReferenceTime = approximationReferenceTime,

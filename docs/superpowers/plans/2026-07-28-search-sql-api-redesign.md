@@ -415,9 +415,9 @@ internal sealed record CompilationContext
         {
             Expression = options.OperationExpression ?? searchOptions.Expression,
             TargetResourceType = string.IsNullOrEmpty(targetResourceType) ? null : targetResourceType,
-            Includes = searchOptions.Include,
-            RevIncludes = searchOptions.RevInclude,
-            Sort = searchOptions.Sort,
+            Includes = searchOptions.Include ?? [],
+            RevIncludes = searchOptions.RevInclude ?? [],
+            Sort = searchOptions.Sort ?? [],
             AccessConstraints = searchOptions.AccessConstraints ?? [],
             ResourceTypes = searchOptions.ResourceTypes ?? [],
             ApproximationReferenceTime = approximationReferenceTime,

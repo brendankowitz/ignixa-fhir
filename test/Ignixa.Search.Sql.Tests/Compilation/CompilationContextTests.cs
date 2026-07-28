@@ -56,6 +56,62 @@ public class CompilationContextTests
     }
 
     [Fact]
+    public void GivenNullCollectionsOnSearchOptions_WhenCreatingTheContext_ThenTheyBecomeEmptyLists()
+    {
+        var searchOptions = new SearchOptions
+        {
+            Include = null,
+            RevInclude = null,
+            Sort = null,
+            AccessConstraints = null,
+            ResourceTypes = null,
+        };
+
+        var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
+
+        context.Includes.ShouldBeEmpty();
+        context.RevIncludes.ShouldBeEmpty();
+        context.Sort.ShouldBeEmpty();
+        context.AccessConstraints.ShouldBeEmpty();
+        context.ResourceTypes.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenResourceVersionTypesSoftDeleted_WhenCreatingTheContext_ThenVisibilityIncludesDeleted()
+    {
+        var searchOptions = new SearchOptions
+        {
+            ResourceVersionTypes = ResourceVersionTypes.Latest | ResourceVersionTypes.SoftDeleted,
+        };
+
+        var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
+
+        context.Visibility.ShouldNotBeNull();
+        context.Visibility!.IncludeDeleted.ShouldBeTrue();
+        context.Visibility.IncludeHistory.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenNeitherAnExplicitRangeNorSearchOptionsBounds_WhenCreatingTheContext_ThenTheSurrogateRangeIsNull()
+    {
+        var context = CompilationContext.Create(new SearchOptions(), "Patient", new SearchPlanOptions(), ReferenceTime);
+
+        context.SurrogateRange.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenOnlySearchOptionsBounds_WhenCreatingTheContext_ThenTheSurrogateRangeIsBuiltFromThem()
+    {
+        var searchOptions = new SearchOptions { StartSurrogateId = 1, EndSurrogateId = 2 };
+
+        var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
+
+        context.SurrogateRange.ShouldNotBeNull();
+        context.SurrogateRange!.Start.Value.ShouldBe(1L);
+        context.SurrogateRange.End.Value.ShouldBe(2L);
+    }
+
+    [Fact]
     public void GivenOnlyAStartSurrogateId_WhenCreatingTheContext_ThenItThrows()
     {
         var searchOptions = new SearchOptions { StartSurrogateId = 1 };
