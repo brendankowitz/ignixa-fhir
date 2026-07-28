@@ -188,6 +188,27 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
         "{\"code\":\"building\",\"display\":\"Building\"}" +
         "]}";
 
+    /// <summary>
+    /// A flat CodeSystem of <paramref name="conceptCount"/> concepts, for straddling the importer's
+    /// 1,000-concept bulk threshold. Flat rather than nested because the point is which insert path runs,
+    /// not the hierarchy — and below the threshold the hierarchy would be discarded anyway.
+    /// </summary>
+    public static string FlatCodeSystemJson(string url, int conceptCount)
+    {
+        var concepts = string.Join(",", Enumerable.Range(0, conceptCount)
+            .Select(i => $"{{\"code\":\"c{i}\",\"display\":\"Concept {i}\"}}"));
+
+        return "{" +
+            "\"resourceType\":\"CodeSystem\"," +
+            $"\"url\":\"{url}\"," +
+            "\"version\":\"1.0.0\"," +
+            "\"status\":\"active\"," +
+            "\"content\":\"complete\"," +
+            "\"caseSensitive\":true," +
+            $"\"concept\":[{concepts}]" +
+            "}";
+    }
+
     public async ValueTask DisposeAsync()
     {
         foreach (var cache in _caches)
