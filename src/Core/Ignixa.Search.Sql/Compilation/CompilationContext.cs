@@ -40,9 +40,10 @@ internal sealed record CompilationContext
     /// every production caller derives — but is settable so the two distinct null-target cases can be told
     /// apart: a system-level search (<c>true</c>, leaves lower cross-type) versus a wildcard compartment
     /// search (<c>false</c>, an ordinary typed predicate or _sort alongside it has no single type to scope
-    /// against and is refused in <see cref="Ast.QueryPlan"/> lowering). Production never sets it, so the
-    /// derivation stands; only the lowering test harness supplies it to reproduce the pre-collapse two-input
-    /// signature.
+    /// against and is refused by the guards in <see cref="Lowering.Lower.Run"/>). No production caller sets it
+    /// today, so the derivation stands for every compile the facade drives; it is settable because wildcard
+    /// compartment search is a real mode this compiler lowers, and once the public API can express it the
+    /// derivation alone would silently admit the predicates those guards exist to refuse.
     /// </summary>
     public bool SystemLevelSearch
     {
