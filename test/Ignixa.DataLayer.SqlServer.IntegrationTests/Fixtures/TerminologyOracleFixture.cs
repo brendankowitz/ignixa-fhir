@@ -48,6 +48,9 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
     // lifetimes so callers do not have to.
     private readonly List<MemoryCache> _caches = [];
 
+    // Reference-data caches created for the ported importer; disposed with the fixture.
+    private readonly List<global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache> _searchCaches = [];
+
     private TerminologyOracleFixture(
         TestTenantDatabase database,
         SqlEntityFrameworkRepositoryFactory factory,
@@ -159,6 +162,30 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
             context, systemRepository, NullLogger<SqlCodeSystemImporter>.Instance);
 
         return (importer, context);
+    }
+
+    /// <summary>
+    /// The ported CodeSystem importer, built the way the composition root will build it: over
+    /// <see cref="ISqlExecutionService"/> alone, with no DbContext and no composition root. It resolves
+    /// system ids through the ported <c>SqlServerSystemRepository</c>, so this exercises both.
+    /// </summary>
+    public SqlServerCodeSystemImporter CreateSqlServerImporter()
+    {
+        var searchIndexCache = new global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache(
+            SqlExecutionService,
+            SystemConstants.SystemPartitionId,
+            NullLogger<global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache>.Instance);
+
+        _searchCaches.Add(searchIndexCache);
+
+        var systemRepository = new SqlServerSystemRepository(
+            searchIndexCache, NullLogger<SqlServerSystemRepository>.Instance);
+
+        return new SqlServerCodeSystemImporter(
+            SqlExecutionService,
+            SystemConstants.SystemPartitionId,
+            systemRepository,
+            NullLogger<SqlServerCodeSystemImporter>.Instance);
     }
 
     public Task<T> ExecuteScalarAsync<T>(string sql, CancellationToken cancellationToken = default)
@@ -292,6 +319,11 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
         foreach (var cache in _caches)
         {
             cache.Dispose();
+        }
+
+        foreach (var searchCache in _searchCaches)
+        {
+            searchCache.Dispose();
         }
 
         await _database.DisposeAsync();
