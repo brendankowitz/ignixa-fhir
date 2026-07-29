@@ -17,8 +17,8 @@ public class GroupExpression : Expression
         IEnumerable<ParameterExpression> parameters,
         string? extends,
         IEnumerable<RuleExpression> rules,
-        ISourcePositionInfo? location = null,
-        GroupTypeMode typeMode = GroupTypeMode.None) : base(location)
+        GroupTypeMode typeMode = GroupTypeMode.None,
+        ISourcePositionInfo? location = null) : base(location)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Parameters = parameters?.ToList() ?? [];
@@ -45,6 +45,11 @@ public class GroupExpression : Expression
         if (Extends is not null)
         {
             result += $" extends {Extends}";
+        }
+
+        if (TypeMode != GroupTypeMode.None)
+        {
+            result += TypeMode == GroupTypeMode.TypeAndTypes ? " <<type+>>" : " <<types>>";
         }
 
         if (Rules.Count > 0)

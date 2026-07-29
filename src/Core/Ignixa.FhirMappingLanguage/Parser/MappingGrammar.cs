@@ -552,8 +552,8 @@ internal static class MappingGrammar
             parameters,
             extends,
             rules,
-            CreatePosition(groupToken),
-            typeMode);
+            typeMode,
+            CreatePosition(groupToken));
 
     // Map: map "url" = "Identifier" [conceptMaps]* [uses]* [imports]* [constants]* [groups]*
     public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =

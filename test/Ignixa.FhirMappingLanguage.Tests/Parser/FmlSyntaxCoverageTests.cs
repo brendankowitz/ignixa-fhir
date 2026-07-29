@@ -189,9 +189,10 @@ public class FmlSyntaxCoverageTests
     }
 
     [Theory]
-    [InlineData("<<types>>")]
-    [InlineData("<<type+>>")]
-    public void GivenAGroupTypeModeAnnotation_WhenRoundTripping_ThenTheAnnotationSurvives(string annotation)
+    [InlineData("<<types>>", GroupTypeMode.Types)]
+    [InlineData("<<type+>>", GroupTypeMode.TypeAndTypes)]
+    public void GivenAGroupTypeModeAnnotation_WhenRoundTripping_ThenTheAnnotationSurvives(
+        string annotation, GroupTypeMode expected)
     {
         // Arrange
         var fml = $$"""
@@ -206,7 +207,26 @@ public class FmlSyntaxCoverageTests
         var reparsed = new MappingParser().Parse(new FmlSerializer().Serialize(new MappingParser().Parse(fml)));
 
         // Assert
-        reparsed.Groups[0].TypeMode.ShouldBe(new MappingParser().Parse(fml).Groups[0].TypeMode);
+        reparsed.Groups[0].TypeMode.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GivenNoTypeModeAnnotation_WhenSerializing_ThenNoAnnotationIsEmitted()
+    {
+        // Arrange
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var serialized = new FmlSerializer().Serialize(new MappingParser().Parse(Fml));
+
+        // Assert
+        serialized.ShouldNotContain("<<");
     }
 
     [Fact]
