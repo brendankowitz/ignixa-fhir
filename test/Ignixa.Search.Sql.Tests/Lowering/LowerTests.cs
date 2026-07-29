@@ -1324,20 +1324,61 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenThrowsNotSupportedException()
+    public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenCarriesTheSortPhaseAsAFilterRatherThanRefusing()
     {
-        // _sort orders the match rows, but an IncludesOnly page drops the match arm and pages its include
-        // rows by (T1, Sid1). The sort key has nothing to order, so the combination is refused rather than
-        // silently dropped -- mirroring the IncludesOnly + CountOnly and IncludesOnly + no-stages guards.
+        // _sort has two roles here, and an includes-only page keeps only one. The ordering role drops -- the
+        // page has no match rows to order and pages its include rows by (T1, Sid1) -- but the SortPhase is a
+        // *filter* that partitions the match set into rows missing the sort value and rows that have it. The
+        // page bounds its match set by a surrogate window and seeds its includes from it, so the phase decides
+        // which windowed rows are matches and therefore which resources are included. Lower must carry the sort
+        // through (its phase reaches the match-page CTE independently of ORDER BY), not refuse it.
         var orgParam = new SearchParameterInfo(
             "organization", "organization", SearchParamType.Reference,
             new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
             targetResourceTypes: ["Organization"]);
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var dateParam = new SearchParameterInfo("birthdate", "birthdate", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Patient-birthdate"));
         var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
         var symbols = new SymbolTable(
-            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [dateParam.Url.ToString()] = 203 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [include],
+            revIncludes: [],
+            includeLimit: 1000,
+            sort: [new SortExpression(dateParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+            sortPhase: SortPhase.MissingPrimary,
+            page: null,
+            new LowerOptions { IncludesOnly = true }).Plan;
+
+        // The sort survives lowering with its phase intact -- that is what makes the phase predicate
+        // load-bearing on the includes-only match set downstream.
+        plan.IncludesOnly.ShouldBeTrue();
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+        plan.Sort.Keys.ShouldHaveSingleItem().Kind.ShouldBe(SortKeyKind.Date);
+    }
+
+    [Fact]
+    public void GivenLowerRunWithIncludesOnlyAndAPage_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // A keyset Page seeks the match rows by the sort-key boundary -- a second paging mechanism the
+        // includes-only page does not use, since its match window is a surrogate range and its include rows
+        // page from a cursor. Letting it through would let the sort key decide which match rows (and therefore
+        // which included resources) exist, so it is refused. This is the genuinely unsound combination, as
+        // distinct from a sort with no Page, which is allowed for its filtering role.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+        var page = new PageSpec([], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L));
 
         Should.Throw<NotSupportedException>(() =>
             Lower.Run(
@@ -1347,9 +1388,9 @@ public class LowerTests
                 includes: [include],
                 revIncludes: [],
                 includeLimit: 1000,
-                sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sort: [],
                 sortPhase: SortPhase.Valued,
-                page: null,
+                page: page,
                 new LowerOptions { IncludesOnly = true }));
     }
 

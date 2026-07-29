@@ -211,17 +211,28 @@ public static class Lower
                 "matches nothing, so it is reported rather than silently emitted.");
         }
 
-        // _sort orders the match rows; an IncludesOnly page returns include-stage rows only and drops the
-        // match arm, so there is no match row for the sort key to order and the remaining include rows are
-        // ordered by (T1, Sid1) for keyset paging, not by the sort key. The combination is therefore
-        // meaningless -- and silently dropping the sort would be worse than refusing it -- so it is
-        // reported rather than silently emitted.
-        if (options.IncludesOnly && sort.Count > 0)
+        // _sort has two independent roles, and an includes-only page keeps one while dropping the other.
+        // The ordering role does drop: the page returns no match rows for the sort key to order, and its
+        // include rows are paged by (T1, Sid1), not by the sort key -- so the sort never reaches ORDER BY.
+        // But the SortPhase (MissingPrimary / Valued) is a *filter*: it partitions the match set into rows
+        // that lack a value for the sort parameter and rows that have one. An includes-only page bounds its
+        // match set by a surrogate-id window and seeds its include stages from exactly that set, so the
+        // phase predicate decides which rows in the window are matches and therefore which include rows
+        // exist. Dropping it would return the includes of rows the other phase owns. The phase predicate
+        // rides into the match-page CTE independently of ORDER BY (SortSpec.Phase -> the Valued primary-key
+        // INNER join / the MissingPrimary NOT EXISTS filter), so the sort is carried through, not refused.
+        //
+        // A keyset Page is the genuinely unsound combination and is still refused below: it seeks the match
+        // rows by the sort-key boundary, which is a second paging mechanism the includes-only page does not
+        // use -- its window is the surrogate range and its include cursor pages the stages.
+        if (options.IncludesOnly && page is not null)
         {
             throw new NotSupportedException(
-                "IncludesOnly was requested together with _sort, but an includes-only page returns no match " +
-                "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
-                "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
+                "IncludesOnly was requested together with a keyset Page. An includes-only page bounds its " +
+                "match set by a surrogate-id range and pages its include rows by a cursor over (T1, Sid1); a " +
+                "keyset Page instead seeks the match rows by the sort-key boundary, a second paging mechanism " +
+                "the includes-only page does not use. The combination is reported rather than silently applying " +
+                "a match-side seek that would change which resources are included.");
         }
 
         // The resume cursor pages a stream of include rows; it only has meaning when the result IS that

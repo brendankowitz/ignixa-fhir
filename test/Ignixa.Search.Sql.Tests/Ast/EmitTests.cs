@@ -2930,18 +2930,72 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanWithASort_WhenEmitted_ThenThrowsNotSupportedException()
+    public void GivenAnIncludesOnlyPlanWithAMissingPrimarySort_WhenEmitted_ThenTheMatchSourceCarriesTheMissingValuePredicateButNothingOrdersOrSeeksOnTheSortKey()
     {
-        // Dropping the match arm leaves the include arm's projected sort columns unaliased (bare ", NULL")
-        // while the outer ORDER BY still references SortValueN, so the emitted SQL would bind SortValueN to
-        // a nonexistent column. A sort orders match rows; an includes-only page returns none and pages its
-        // include rows by (T1, Sid1), so the sort key is meaningless here. The emitter refuses the
-        // combination rather than emitting SQL that fails only at execution time.
+        // The measured $includes scenario: Patient?_sort=date, first (missing-date) phase. The SortPhase is a
+        // filter, not an order: it bounds the match set that seeds the includes to rows with NO date value, so
+        // an engine that ignored it would return the includes of the dated rows too (the very over-return the
+        // FHIR Server measurement caught). The predicate must therefore appear against the match source (m.*),
+        // while the include rows must still page by (T1, Sid1) -- the sort key must never reach an ORDER BY or
+        // a seek.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.MissingPrimary),
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The phase predicate bounds the match set the includes seed from -- the filtering role, preserved.
+        sql.ShouldContain("cteMatchPage AS (");
+        sql.ShouldContain(
+            "NOT EXISTS (SELECT 1 FROM dbo.DateTimeSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 203)");
+        // The ordering role is dropped: the include rows page by (T1, Sid1), and no SortValueN column, no
+        // sort-key join, and no keyset seek on the date column is emitted anywhere.
+        sql.ShouldContain("ORDER BY T1 ASC, Sid1 ASC");
+        sql.ShouldNotContain("SortValue");
+        sql.ShouldNotContain("StartDateTime");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAValuedSort_WhenEmitted_ThenTheMatchSourceGatesOnTheSortValueButProjectsNoSortColumns()
+    {
+        // The second (valued) phase of the same sort. Here the phase filter is the primary-key INNER join --
+        // it bounds the match set that seeds the includes to rows that HAVE a date value. The join must stay
+        // (it is the filter), but the SortValueN columns it exists to project on an ordinary page must not:
+        // an includes-only page never orders by them, so projecting them would be dead weight that implies an
+        // ordering role the page does not have.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The has-value gate that bounds the match set -- the filtering role, preserved.
+        sql.ShouldContain("INNER JOIN dbo.DateTimeSearchParam sk0");
+        // No ordering role: no projected sort columns, and the include rows still page by (T1, Sid1).
+        sql.ShouldNotContain("SortValue");
+        sql.ShouldContain("ORDER BY T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAKeysetPage_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // A sort is allowed on an includes-only page (its phase filters the match set), but a keyset Page is
+        // not: EmitSeekPredicate would seek the match rows by the sort-key boundary, a second paging mechanism
+        // the includes-only page does not use -- its match window is the surrogate range and its include rows
+        // page from a cursor. Letting it through would let the sort key decide which resources are included, so
+        // the emitter refuses it.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
+            Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
             IncludesOnly: true);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));

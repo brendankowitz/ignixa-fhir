@@ -70,18 +70,23 @@ public static class SqlBuilder
                 "result. This is a caller error rather than a query that legitimately matches nothing.");
         }
 
-        if (plan.IncludesOnly && plan.Sort is not null)
+        if (plan.IncludesOnly && plan.Page is not null)
         {
-            // Dropping the match arm leaves the include arm's projected sort columns unaliased while the
-            // outer ORDER BY still references SortValueN, so the emitted SQL would bind to a nonexistent
-            // column (SQL Server error 207) -- and the grammar tests cannot catch it because an unbound
-            // identifier is grammatically valid. A sort orders match rows; an includes-only page returns
-            // none and pages its include rows by (T1, Sid1), so the sort key is meaningless here. Refuse
-            // it rather than silently emit invalid SQL.
+            // A sort is allowed on an includes-only page: its SortPhase filters the match set that seeds the
+            // include stages (WriteMatchPageCte applies the Valued primary-key INNER join / the MissingPrimary
+            // NOT EXISTS filter), while the include rows are paged by (T1, Sid1) in EmitGlobalIncludesPage, so
+            // the sort never reaches an ORDER BY on the sort key. A keyset Page is different: EmitSeekPredicate
+            // would seek the MATCH rows by the sort-key boundary, letting the sort key decide which match rows
+            // -- and therefore which include rows -- exist, via a paging mechanism the includes-only page does
+            // not use (its match window is the surrogate range; its include rows page from a cursor). The two
+            // are mutually exclusive here, so a match-side keyset seek is refused. Grammatically valid, so the
+            // grammar tests cannot catch it.
             throw new NotSupportedException(
-                "IncludesOnly was requested together with a sort, but an includes-only page returns no match " +
-                "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
-                "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
+                "IncludesOnly was requested together with a keyset Page, but an includes-only page bounds its " +
+                "match set by a surrogate-id range and pages its include rows by a cursor over (T1, Sid1). A " +
+                "keyset Page seeks the match rows by the sort-key boundary, a second paging mechanism the " +
+                "includes-only page does not use, so it is reported rather than silently applying a match-side " +
+                "seek that would change which resources are included.");
         }
 
         if (plan.IncludesOnly && plan.Includes is { Count: > 0 } includeStages
@@ -472,7 +477,15 @@ public static class SqlBuilder
     {
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
         var sortJoins = EmitSortJoins(plan.Sort);
-        var sortColumns = EmitSortSelectColumns(plan.Sort);
+
+        // An includes-only page never orders by the sort key -- EmitGlobalIncludesPage pages the union of
+        // include stages by (T1, Sid1) -- so the match CTE projects no SortValueN columns: they exist only to
+        // feed an outer ORDER BY this shape does not have, and no include seed reads them. The sort JOINs stay:
+        // the Valued phase's primary-key INNER join is the filter that bounds the match set to rows that HAVE
+        // the sort value, and the include stages seed from exactly that bounded set (the MissingPrimary phase's
+        // NOT EXISTS filter rides in through BuildMatchWhereClauses). Suppressing the columns while keeping the
+        // join is what preserves the phase's filtering role without reintroducing its ordering role.
+        var sortColumns = plan.IncludesOnly ? string.Empty : EmitSortSelectColumns(plan.Sort);
 
         // Emit the resource join inside cteMatchPage when any plan feature referencing an r. column
         // requires it. Projection is handled in the UNION ALL assembly rather than here, so

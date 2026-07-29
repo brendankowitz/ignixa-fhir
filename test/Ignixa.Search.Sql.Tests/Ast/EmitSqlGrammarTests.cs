@@ -53,6 +53,8 @@ public class EmitSqlGrammarTests
         yield return ["includes-only, :iterate", IncludesOnlyWithIteratePlan()];
         yield return ["includes-only, with projection", IncludesOnlyWithProjectionPlan()];
         yield return ["includes-only, page with cursor", IncludesOnlyPageWithCursorPlan()];
+        yield return ["includes-only, custom sort (missing-value phase)", IncludesOnlyWithMissingPrimarySortPlan()];
+        yield return ["includes-only, custom sort (valued phase)", IncludesOnlyWithValuedSortPlan()];
         yield return ["patient $everything alone", EverythingAlonePlan()];
         yield return ["patient $everything with _since", EverythingWithSincePlan()];
         yield return ["patient $everything with _type", EverythingWithTypePlan()];
@@ -863,23 +865,58 @@ public class EmitSqlGrammarTests
             IncludeCursor: new IncludeCursor(105, 4200));
     }
 
-    [Fact]
-    public void GivenAnIncludesOnlyPlanWithASort_WhenEmitted_ThenItIsRefusedRatherThanEmittingUnboundSql()
+    private static QueryPlan IncludesOnlyWithMissingPrimarySortPlan()
     {
-        // Dropping the match arm leaves the include arm's projected sort columns unaliased (bare ", NULL")
-        // while the outer ORDER BY still references SortValueN, so the emitted SQL would bind to a
-        // nonexistent column (SQL Server error 207 at execution). The grammar tests cannot catch it -- an
-        // unbound identifier is grammatically valid -- so the combination is guarded in SqlBuilder.Run the
-        // same way IncludesOnly + CountOnly and IncludesOnly + no-stages already are.
+        // Patient?_sort=date $includes page, missing-value phase. The sort is carried for its filtering role
+        // (the NOT EXISTS that bounds the match set to undated rows); it must never reach an ORDER BY. Run
+        // through ScriptDom to prove the match-page CTE and the global includes page still parse with the
+        // phase filter present but no sort-key ORDER BY or seek.
         var stage = new IncludeStage(
             IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
             SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.MissingPrimary),
+            IncludesOnly: true);
+    }
+
+    private static QueryPlan IncludesOnlyWithValuedSortPlan()
+    {
+        // Same page, valued phase: the phase filter is the primary-key INNER join that bounds the match set to
+        // dated rows. The join stays but projects no SortValueN columns; ScriptDom confirms an INNER join whose
+        // table is referenced only in the join predicate (not the SELECT list) is still valid T-SQL.
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage],
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued),
+            IncludesOnly: true);
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAKeysetPage_WhenEmitted_ThenItIsRefusedRatherThanSeekingTheMatchRowsBySortKey()
+    {
+        // A sort is now allowed on an includes-only page (its phase filters the match set that seeds the
+        // includes), but a keyset Page is not: EmitSeekPredicate would seek the match rows by the sort-key
+        // boundary, a second paging mechanism the includes-only page does not use -- its match window is the
+        // surrogate range and its include rows page from a cursor. Grammatically valid either way, so the
+        // grammar check cannot catch it; the combination is guarded in SqlBuilder.Run the same way
+        // IncludesOnly + CountOnly and IncludesOnly + no-stages already are.
+        var stage = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var sort = new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued);
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage],
             Sort: sort,
+            Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
             IncludesOnly: true);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
