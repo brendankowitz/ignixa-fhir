@@ -179,6 +179,66 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
         status.ShouldBe("Failed");
     }
 
+    private static string CodeSystemWithContentJson(string url, string content) =>
+        "{\"resourceType\":\"CodeSystem\"," +
+        $"\"url\":\"{url}\",\"version\":\"1.0.0\",\"status\":\"active\",\"content\":\"{content}\"," +
+        "\"concept\":[{\"code\":\"car\",\"display\":\"Car\"}]}";
+
+    [Fact]
+    public async Task GivenACodeSystemSupplement_WhenImported_ThenItIsSkippedRatherThanShadowingTheRealCodeSystem()
+    {
+        // A supplement adds properties to concepts belonging to another CodeSystem and carries that
+        // CodeSystem's url. Importing it as an ordinary CodeSystem puts a second TermCodeSystem row under the
+        // same SystemId, and LookupCodeAsync breaks ties by ImportedDate DESC — so the supplement's concepts
+        // would shadow the real ones. Both implementations skip supplements; merging them is unimplemented.
+        await ImportAsync(SystemUrl);
+
+        var supplement = await _fixture.SeedPackageResourceAsync(
+            "CodeSystem", SystemUrl, CodeSystemWithContentJson(SystemUrl, "supplement"));
+
+        var result = await _fixture.CreateSqlServerImporter().ImportCodeSystemAsync(
+            _fixture.SystemPartitionId, supplement, CancellationToken.None);
+
+        result.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Skipped);
+
+        // Still exactly one code system under this url, still the original four concepts.
+        var codeSystemRows = await _fixture.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM dbo.TermCodeSystem cs " +
+            "JOIN dbo.System s ON s.SystemId = cs.SystemId " +
+            $"WHERE s.Value = '{SystemUrl}'", CancellationToken.None);
+
+        codeSystemRows.ShouldBe(1);
+        (await ConceptCountAsync(SystemUrl)).ShouldBe(4);
+
+        var status = await _fixture.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {supplement.PackageResourceId}", CancellationToken.None);
+
+        status.ShouldBe("Skipped");
+    }
+
+    [Fact]
+    public async Task GivenACodeSystemWithContentNotPresent_WhenImported_ThenNothingIsImported()
+    {
+        var url = "http://example.org/fhir/CodeSystem/ported-not-present";
+
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "CodeSystem", url, CodeSystemWithContentJson(url, "not-present"));
+
+        var result = await _fixture.CreateSqlServerImporter().ImportCodeSystemAsync(
+            _fixture.SystemPartitionId, packageResource, CancellationToken.None);
+
+        result.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Skipped);
+        (await ConceptCountAsync(url)).ShouldBe(0);
+
+        // The hash is stamped on the skip path too, so an unchanged package is not reconsidered forever.
+        var hash = await _fixture.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 ISNULL(ContentHash, '') FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
+
+        hash.ShouldNotBeEmpty();
+    }
+
     [Fact]
     public async Task GivenAWrongResourceType_WhenImportedAsACodeSystem_ThenItIsRejected()
     {

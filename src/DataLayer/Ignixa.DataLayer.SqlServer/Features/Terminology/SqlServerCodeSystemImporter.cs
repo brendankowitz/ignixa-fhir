@@ -27,9 +27,11 @@ namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 /// client-side would let a failure leave a code system with no concepts.
 /// </para>
 /// <para>
-/// <b>ValueSet and ConceptMap import are not yet ported.</b> Both are covered by the oracle but their
-/// compose-expansion path is substantial, and this type is deliberately not registered anywhere until they
-/// are done — production still resolves the EF importer. See the Phase F plan.
+/// ValueSet and ConceptMap import follow the same shape — build the rows client-side, hand them to one
+/// procedure as a table-valued parameter — and carry their own corrections. Both previously resolved a
+/// missing system URI to id <c>0</c>, which no row in <c>dbo.System</c> has, so a <c>contains</c> entry
+/// without a system or a <c>group</c> without a target failed the entire import on a foreign key violation
+/// reported as an opaque SQL error. See <see cref="SqlServerValueSetComposer"/> for the compose-side fixes.
 /// </para>
 /// </summary>
 public sealed class SqlServerCodeSystemImporter(
@@ -42,53 +44,65 @@ public sealed class SqlServerCodeSystemImporter(
 
     private static readonly TableDescriptor Packages = SqlCatalog.Default.Table("PackageResource");
 
-    public async Task<TerminologyImportResult> ImportCodeSystemAsync(
+    public Task<TerminologyImportResult> ImportCodeSystemAsync(
         int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
+        => ImportAsync(tenantId, packageResource, "CodeSystem", ImportCodeSystemCoreAsync, cancellationToken);
+
+    public Task<TerminologyImportResult> ImportValueSetAsync(
+        int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
+        => ImportAsync(tenantId, packageResource, "ValueSet", ImportValueSetCoreAsync, cancellationToken);
+
+    public Task<TerminologyImportResult> ImportConceptMapAsync(
+        int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
+        => ImportAsync(tenantId, packageResource, "ConceptMap", ImportConceptMapCoreAsync, cancellationToken);
+
+    /// <summary>
+    /// The part all three imports share: reject the wrong resource type, require the package row, skip
+    /// unchanged content, and turn any failure into a status on the package row rather than an exception.
+    /// </summary>
+    private async Task<TerminologyImportResult> ImportAsync(
+        int tenantId,
+        PackageResource packageResource,
+        string resourceType,
+        Func<PackageResource, JsonObject, string, CancellationToken, Task<TerminologyImportResult>> import,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(packageResource);
 
-        if (packageResource.ResourceType != "CodeSystem")
+        if (packageResource.ResourceType != resourceType)
         {
             throw new ArgumentException(
-                $"Expected ResourceType 'CodeSystem', got '{packageResource.ResourceType}'", nameof(packageResource));
+                $"Expected ResourceType '{resourceType}', got '{packageResource.ResourceType}'", nameof(packageResource));
         }
 
         logger.LogInformation(
-            "Starting CodeSystem import for '{Canonical}' (PackageResourceId: {PackageResourceId})",
-            packageResource.Canonical, packageResource.PackageResourceId);
+            "Starting {ResourceType} import for '{Canonical}' (PackageResourceId: {PackageResourceId})",
+            resourceType, packageResource.Canonical, packageResource.PackageResourceId);
 
+        // Outside the try deliberately: with no package row there is nothing to record a failure onto, so
+        // this is the one error the caller sees as an exception.
         var existing = await ReadPackageRowAsync(packageResource.PackageResourceId, cancellationToken)
             ?? throw new InvalidOperationException(
                 $"PackageResource {packageResource.PackageResourceId} not found in tenant {tenantId}");
 
         try
         {
-            var codeSystem = ParseResourceJson(packageResource.ResourceJson, "CodeSystem");
+            var resource = ParseResourceJson(packageResource.ResourceJson, resourceType);
             var contentHash = packageResource.ComputeContentHash();
 
             // Unchanged content that already completed is skipped before any write, which is what keeps
-            // re-loading a package from multiplying its concepts.
+            // re-loading a package from multiplying its rows.
             if (string.Equals(existing.ContentHash, contentHash, StringComparison.Ordinal)
                 && string.Equals(existing.Status, nameof(TerminologyImportStatus.Completed), StringComparison.Ordinal))
             {
                 logger.LogInformation(
-                    "CodeSystem '{Canonical}' content unchanged (hash: {Hash}), skipping import",
-                    packageResource.Canonical, contentHash);
+                    "{ResourceType} '{Canonical}' content unchanged (hash: {Hash}), skipping import",
+                    resourceType, packageResource.Canonical, contentHash);
 
                 return TerminologyImportResult.CreateSkipped();
             }
 
-            var metadata = ExtractMetadata(codeSystem);
-            var systemId = await systemRepository.GetOrCreateAsync(metadata.Url, cancellationToken);
-            var concepts = FlattenConcepts(codeSystem["concept"]?.AsArray());
-
-            logger.LogInformation(
-                "Importing {ConceptCount} concepts for CodeSystem '{Canonical}'",
-                concepts.Count, packageResource.Canonical);
-
-            await ExecuteImportAsync(packageResource, contentHash, systemId, metadata, concepts, cancellationToken);
-
-            return TerminologyImportResult.CreateSuccess(concepts.Count);
+            return await import(packageResource, resource, contentHash, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -96,8 +110,8 @@ public sealed class SqlServerCodeSystemImporter(
             // the status column is the error channel, and a caller that ignores the result sees nothing.
             logger.LogError(
                 ex,
-                "Failed to import CodeSystem '{Canonical}' (PackageResourceId: {PackageResourceId}): {ErrorMessage}",
-                packageResource.Canonical, packageResource.PackageResourceId, ex.Message);
+                "Failed to import {ResourceType} '{Canonical}' (PackageResourceId: {PackageResourceId}): {ErrorMessage}",
+                resourceType, packageResource.Canonical, packageResource.PackageResourceId, ex.Message);
 
             await RecordFailureAsync(packageResource.PackageResourceId, ex, cancellationToken);
 
@@ -105,39 +119,106 @@ public sealed class SqlServerCodeSystemImporter(
         }
     }
 
-    public Task<TerminologyImportResult> ImportValueSetAsync(
-        int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
+    private async Task<TerminologyImportResult> ImportCodeSystemCoreAsync(
+        PackageResource packageResource, JsonObject codeSystem, string contentHash, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(packageResource);
+        var metadata = ExtractMetadata(codeSystem);
 
-        if (packageResource.ResourceType != "ValueSet")
+        var (skip, skipReason) = SkipDecisionFor(metadata.Content);
+        if (skip)
         {
-            throw new ArgumentException(
-                $"Expected ResourceType 'ValueSet', got '{packageResource.ResourceType}'", nameof(packageResource));
+            logger.LogInformation(
+                "CodeSystem '{Canonical}' has content={Content}, skipping import",
+                packageResource.Canonical, metadata.Content);
+
+            await RecordSkippedAsync(packageResource.PackageResourceId, contentHash, skipReason, cancellationToken);
+
+            return TerminologyImportResult.CreateSkipped();
         }
 
-        throw new NotImplementedException(
-            "ValueSet import is not ported yet (Phase F Task 6). This type is not registered anywhere; " +
-            "SqlCodeSystemImporter still serves production.");
+        var systemId = await systemRepository.GetOrCreateAsync(metadata.Url, cancellationToken);
+        var concepts = FlattenConcepts(codeSystem["concept"]?.AsArray());
+
+        logger.LogInformation(
+            "Importing {ConceptCount} concepts for CodeSystem '{Canonical}'",
+            concepts.Count, packageResource.Canonical);
+
+        await ExecuteCodeSystemImportAsync(packageResource, contentHash, systemId, metadata, concepts, cancellationToken);
+
+        return TerminologyImportResult.CreateSuccess(concepts.Count);
     }
 
-    public Task<TerminologyImportResult> ImportConceptMapAsync(
-        int tenantId, PackageResource packageResource, CancellationToken cancellationToken)
+    /// <summary>
+    /// Two <c>content</c> values mean "do not build a CodeSystem from this".
+    /// <para>
+    /// <c>not-present</c> declares that the concepts live elsewhere, so there is nothing to import.
+    /// <c>supplement</c> is the load-bearing one: a supplement adds properties to concepts belonging to
+    /// <b>another</b> CodeSystem and carries that CodeSystem's <c>url</c>. Importing it as an ordinary
+    /// CodeSystem would put a second <c>dbo.TermCodeSystem</c> row under the same <c>SystemId</c>, and
+    /// <c>LookupCodeAsync</c> resolves ties by <c>ImportedDate DESC</c> — so the supplement would shadow the
+    /// real CodeSystem's concepts. Merging supplements is unimplemented in both implementations; skipping
+    /// them is what keeps that from silently corrupting lookups.
+    /// </para>
+    /// </summary>
+    private static (bool Skip, string? Reason) SkipDecisionFor(string content) => content switch
     {
-        ArgumentNullException.ThrowIfNull(packageResource);
+        "not-present" => (true, null),
+        "supplement" => (true, "Supplement import not yet implemented"),
+        _ => (false, null),
+    };
 
-        if (packageResource.ResourceType != "ConceptMap")
+    /// <summary>
+    /// A pre-computed <c>expansion</c> wins over <c>compose</c>, which is what makes an import cheap for the
+    /// packages that ship one. Neither present is legal and produces a ValueSet row with no codes.
+    /// </summary>
+    private async Task<TerminologyImportResult> ImportValueSetCoreAsync(
+        PackageResource packageResource, JsonObject valueSet, string contentHash, CancellationToken cancellationToken)
+    {
+        var metadata = ExtractValueSetMetadata(valueSet);
+
+        IReadOnlyList<ValueSetExpansionRow> entries = [];
+        var isPartial = false;
+        string? partialReason = null;
+
+        if (valueSet["expansion"] is JsonObject expansion)
         {
-            throw new ArgumentException(
-                $"Expected ResourceType 'ConceptMap', got '{packageResource.ResourceType}'", nameof(packageResource));
+            entries = await BuildExpansionRowsAsync(expansion, cancellationToken);
+        }
+        else if (valueSet["compose"] is JsonObject compose)
+        {
+            var composed = await SqlServerValueSetComposer.ComposeAsync(
+                compose, sqlExecutionService, systemPartitionId, systemRepository, logger, cancellationToken);
+
+            entries = composed.Entries;
+            isPartial = composed.IsPartial;
+            partialReason = composed.PartialReason;
+
+            if (isPartial)
+            {
+                logger.LogWarning(
+                    "ValueSet '{Canonical}' has partial expansion ({Count} codes). Reason: {Reason}",
+                    packageResource.Canonical, entries.Count, partialReason);
+            }
         }
 
-        throw new NotImplementedException(
-            "ConceptMap import is not ported yet (Phase F Task 6). This type is not registered anywhere; " +
-            "SqlCodeSystemImporter still serves production.");
+        await ExecuteValueSetImportAsync(
+            packageResource, contentHash, metadata, entries, isPartial, partialReason, cancellationToken);
+
+        return TerminologyImportResult.CreateSuccess(entries.Count);
     }
 
-    private async Task ExecuteImportAsync(
+    private async Task<TerminologyImportResult> ImportConceptMapCoreAsync(
+        PackageResource packageResource, JsonObject conceptMap, string contentHash, CancellationToken cancellationToken)
+    {
+        var metadata = ExtractConceptMapMetadata(conceptMap);
+        var elements = await BuildConceptMapElementsAsync(conceptMap, cancellationToken);
+
+        await ExecuteConceptMapImportAsync(packageResource, contentHash, metadata, elements, cancellationToken);
+
+        return TerminologyImportResult.CreateSuccess(elements.Count);
+    }
+
+    private async Task ExecuteCodeSystemImportAsync(
         PackageResource packageResource,
         string contentHash,
         int systemId,
@@ -193,6 +274,256 @@ public sealed class SqlServerCodeSystemImporter(
 
         return table;
     }
+
+    private async Task ExecuteValueSetImportAsync(
+        PackageResource packageResource,
+        string contentHash,
+        ValueSetMetadata metadata,
+        IReadOnlyList<ValueSetExpansionRow> entries,
+        bool isPartialExpansion,
+        string? partialExpansionReason,
+        CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand("dbo.ImportTermValueSet") { CommandType = CommandType.StoredProcedure };
+
+        command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
+        command.Parameters.AddWithValue("@Canonical", metadata.Url);
+        command.Parameters.AddWithValue("@Version", (object?)metadata.Version ?? DBNull.Value);
+        command.Parameters.AddWithValue("@Name", metadata.Name);
+        command.Parameters.AddWithValue("@Immutable", metadata.Immutable);
+        command.Parameters.AddWithValue("@IsPartialExpansion", isPartialExpansion);
+        command.Parameters.AddWithValue("@PartialExpansionReason", (object?)partialExpansionReason ?? DBNull.Value);
+
+        var entriesParameter = command.Parameters.AddWithValue("@Entries", BuildExpansionTable(entries));
+        entriesParameter.SqlDbType = SqlDbType.Structured;
+        entriesParameter.TypeName = "dbo.TermValueSetExpansionList";
+
+        await sqlExecutionService.ExecuteReaderAsync(
+            systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
+
+        await StampContentHashAsync(packageResource.PackageResourceId, contentHash, cancellationToken);
+    }
+
+    private async Task ExecuteConceptMapImportAsync(
+        PackageResource packageResource,
+        string contentHash,
+        ConceptMapMetadata metadata,
+        IReadOnlyList<ConceptMapElementRow> elements,
+        CancellationToken cancellationToken)
+    {
+        using var command = new SqlCommand("dbo.ImportTermConceptMap") { CommandType = CommandType.StoredProcedure };
+
+        command.Parameters.AddWithValue("@PackageResourceId", packageResource.PackageResourceId);
+        command.Parameters.AddWithValue("@Canonical", metadata.Url);
+        command.Parameters.AddWithValue("@Version", (object?)metadata.Version ?? DBNull.Value);
+        command.Parameters.AddWithValue("@Name", metadata.Name);
+        command.Parameters.AddWithValue("@SourceCanonical", (object?)metadata.SourceCanonical ?? DBNull.Value);
+        command.Parameters.AddWithValue("@TargetCanonical", (object?)metadata.TargetCanonical ?? DBNull.Value);
+
+        var elementsParameter = command.Parameters.AddWithValue("@Elements", BuildConceptMapElementTable(elements));
+        elementsParameter.SqlDbType = SqlDbType.Structured;
+        elementsParameter.TypeName = "dbo.TermConceptMapElementList";
+
+        await sqlExecutionService.ExecuteReaderAsync(
+            systemPartitionId, command, reader => reader.GetInt64(0), cancellationToken);
+
+        await StampContentHashAsync(packageResource.PackageResourceId, contentHash, cancellationToken);
+    }
+
+    private static DataTable BuildExpansionTable(IReadOnlyList<ValueSetExpansionRow> entries)
+    {
+        var table = new DataTable();
+        table.Columns.Add("SystemId", typeof(int));
+        table.Columns.Add("Code", typeof(string));
+        table.Columns.Add("Display", typeof(string));
+        table.Columns.Add("SystemVersion", typeof(string));
+        table.Columns.Add("IsActive", typeof(bool));
+        table.Columns.Add("Ordinal", typeof(int));
+
+        for (var ordinal = 0; ordinal < entries.Count; ordinal++)
+        {
+            var entry = entries[ordinal];
+
+            table.Rows.Add(
+                entry.SystemId,
+                entry.Code,
+                (object?)entry.Display ?? DBNull.Value,
+                (object?)entry.SystemVersion ?? DBNull.Value,
+                true,
+                ordinal);
+        }
+
+        return table;
+    }
+
+    private static DataTable BuildConceptMapElementTable(IReadOnlyList<ConceptMapElementRow> elements)
+    {
+        var table = new DataTable();
+        table.Columns.Add("SourceSystemId", typeof(int));
+        table.Columns.Add("SourceCode", typeof(string));
+        table.Columns.Add("SourceDisplay", typeof(string));
+        table.Columns.Add("TargetSystemId", typeof(int));
+        table.Columns.Add("TargetCode", typeof(string));
+        table.Columns.Add("TargetDisplay", typeof(string));
+        table.Columns.Add("Equivalence", typeof(string));
+        table.Columns.Add("Comment", typeof(string));
+        table.Columns.Add("GroupIndex", typeof(int));
+
+        foreach (var element in elements)
+        {
+            table.Rows.Add(
+                element.SourceSystemId,
+                element.SourceCode,
+                (object?)element.SourceDisplay ?? DBNull.Value,
+                (object?)element.TargetSystemId ?? DBNull.Value,
+                (object?)element.TargetCode ?? DBNull.Value,
+                (object?)element.TargetDisplay ?? DBNull.Value,
+                element.Equivalence,
+                (object?)element.Comment ?? DBNull.Value,
+                element.GroupIndex);
+        }
+
+        return table;
+    }
+
+    /// <summary>
+    /// Flattens <c>expansion.contains</c> breadth-first. The EF implementation read only the top level, so a
+    /// hierarchical expansion — a grouping entry with its real codes nested underneath — imported as the
+    /// groupers alone, or as nothing at all when they carried no code of their own.
+    /// </summary>
+    private async Task<IReadOnlyList<ValueSetExpansionRow>> BuildExpansionRowsAsync(
+        JsonObject expansion, CancellationToken cancellationToken)
+    {
+        var rows = new List<ValueSetExpansionRow>();
+        var queue = new Queue<JsonObject>(ObjectsOf(expansion["contains"]));
+
+        while (queue.Count > 0)
+        {
+            var entry = queue.Dequeue();
+
+            foreach (var child in ObjectsOf(entry["contains"]))
+            {
+                queue.Enqueue(child);
+            }
+
+            var code = entry["code"]?.GetValue<string>();
+            var system = entry["system"]?.GetValue<string>();
+
+            if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(system))
+            {
+                // A contains entry may legally carry only a display and nest its members underneath, and a
+                // code without a system cannot be stored: TermValueSetExpansion.SystemId is a foreign key.
+                // The EF implementation wrote id 0 for these, which no System row has, so one such entry
+                // failed the whole import on a constraint violation.
+                logger.LogWarning(
+                    "Skipping expansion entry without a code or system: {Entry}", entry.ToJsonString());
+                continue;
+            }
+
+            rows.Add(new ValueSetExpansionRow(
+                SystemId: await systemRepository.GetOrCreateAsync(system, cancellationToken),
+                Code: code,
+                Display: entry["display"]?.GetValue<string>(),
+                SystemVersion: entry["version"]?.GetValue<string>()));
+        }
+
+        return rows;
+    }
+
+    private async Task<IReadOnlyList<ConceptMapElementRow>> BuildConceptMapElementsAsync(
+        JsonObject conceptMap, CancellationToken cancellationToken)
+    {
+        var rows = new List<ConceptMapElementRow>();
+        var groupIndex = -1;
+
+        foreach (var group in ObjectsOf(conceptMap["group"]))
+        {
+            groupIndex++;
+
+            var source = group["source"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(source))
+            {
+                // TermConceptMapElement.SourceSystemId is NOT NULL and a foreign key, so a group without a
+                // source has nowhere to put its elements. Stated here rather than left to fail as a
+                // constraint violation on id 0, which is what the EF implementation produced.
+                throw new InvalidOperationException(
+                    $"ConceptMap.group[{groupIndex}].source is required: mapping elements cannot be stored without a source system");
+            }
+
+            var target = group["target"]?.GetValue<string>();
+
+            rows.AddRange(BuildGroupElements(
+                group,
+                groupIndex,
+                sourceSystemId: await systemRepository.GetOrCreateAsync(source, cancellationToken),
+                // Null rather than a placeholder id when the group declares no target: the column is
+                // nullable precisely because a mapping can name a target code whose system it never states.
+                targetSystemId: string.IsNullOrEmpty(target)
+                    ? null
+                    : await systemRepository.GetOrCreateAsync(target, cancellationToken)));
+        }
+
+        return rows;
+    }
+
+    private IEnumerable<ConceptMapElementRow> BuildGroupElements(
+        JsonObject group, int groupIndex, int sourceSystemId, int? targetSystemId)
+    {
+        foreach (var element in ObjectsOf(group["element"]))
+        {
+            var sourceCode = element["code"]?.GetValue<string>();
+
+            if (string.IsNullOrEmpty(sourceCode))
+            {
+                logger.LogWarning("ConceptMap element missing source code, skipping");
+                continue;
+            }
+
+            foreach (var row in BuildTargetRows(element, sourceCode, groupIndex, sourceSystemId, targetSystemId))
+            {
+                yield return row;
+            }
+        }
+    }
+
+    private static IEnumerable<ConceptMapElementRow> BuildTargetRows(
+        JsonObject element, string sourceCode, int groupIndex, int sourceSystemId, int? targetSystemId)
+    {
+        var sourceDisplay = element["display"]?.GetValue<string>();
+        var targets = ObjectsOf(element["target"]).ToList();
+
+        if (targets.Count == 0)
+        {
+            // An element with no target is a code the map deliberately leaves unmapped, and is kept as a row
+            // so the map can answer "no equivalent" rather than "never heard of it".
+            yield return new ConceptMapElementRow(
+                sourceSystemId, sourceCode, sourceDisplay, null, null, null, "unmatched", null, groupIndex);
+            yield break;
+        }
+
+        foreach (var target in targets)
+        {
+            var targetCode = target["code"]?.GetValue<string>();
+
+            yield return new ConceptMapElementRow(
+                SourceSystemId: sourceSystemId,
+                SourceCode: sourceCode,
+                SourceDisplay: sourceDisplay,
+                TargetSystemId: targetCode is null ? null : targetSystemId,
+                TargetCode: targetCode,
+                TargetDisplay: target["display"]?.GetValue<string>(),
+                // R5 renamed equivalence to relationship. Reading both matches how source and target
+                // canonicals are already read, and stops an R5 map storing every mapping as "equivalent".
+                Equivalence: target["equivalence"]?.GetValue<string>()
+                    ?? target["relationship"]?.GetValue<string>()
+                    ?? "equivalent",
+                Comment: target["comment"]?.GetValue<string>(),
+                GroupIndex: groupIndex);
+        }
+    }
+
+    private static IEnumerable<JsonObject> ObjectsOf(JsonNode? node)
+        => node is JsonArray array ? array.OfType<JsonObject>() : [];
 
     /// <summary>
     /// Flattens nested <c>concept[]</c> breadth-first, carrying each concept's parent <b>code</b>. Ids
@@ -286,8 +617,11 @@ public sealed class SqlServerCodeSystemImporter(
         Url: codeSystem["url"]?.GetValue<string>()
             ?? throw new InvalidOperationException("CodeSystem.url is required"),
         Version: codeSystem["version"]?.GetValue<string>(),
-        Content: codeSystem["content"]?.GetValue<string>()
-            ?? throw new InvalidOperationException("CodeSystem.content is required"),
+        // Whitespace counts as missing: content drives the skip decision below, and an empty string would
+        // fall through it into a full import.
+        Content: codeSystem["content"]?.GetValue<string>() is { } content && !string.IsNullOrWhiteSpace(content)
+            ? content
+            : throw new InvalidOperationException("CodeSystem.content is required"),
         Count: codeSystem["count"]?.GetValue<int>(),
         CaseSensitive: codeSystem["caseSensitive"]?.GetValue<bool>() ?? true,
         HierarchyMeaning: codeSystem["hierarchyMeaning"]?.GetValue<string>(),
@@ -343,6 +677,31 @@ public sealed class SqlServerCodeSystemImporter(
         await sqlExecutionService.ExecuteNonQueryAsync(systemPartitionId, command, cancellationToken);
     }
 
+    /// <summary>
+    /// Marks the package row Skipped and stamps the content hash, so the same unchanged content is not
+    /// re-examined on every package load. The hash has to be written here as well as on the success path —
+    /// without it a skipped CodeSystem is reconsidered forever.
+    /// </summary>
+    private async Task RecordSkippedAsync(
+        long packageResourceId, string contentHash, string? reason, CancellationToken cancellationToken)
+    {
+#pragma warning disable CA2100
+        using var command = new SqlCommand(
+            $"UPDATE {Packages.SchemaName}.{Packages.TableName} SET " +
+            $"{Packages.Column("TerminologyImportStatus").Name} = 'Skipped', " +
+            $"{Packages.Column("ContentHash").Name} = @contentHash, " +
+            $"{Packages.Column("ImportStartDate").Name} = SYSDATETIMEOFFSET(), " +
+            $"{Packages.Column("ImportCompletedDate").Name} = SYSDATETIMEOFFSET(), " +
+            $"{Packages.Column("ImportErrorMessage").Name} = @reason " +
+            $"WHERE {Packages.Column("PackageResourceId").Name} = @packageResourceId");
+#pragma warning restore CA2100
+        command.Parameters.AddWithValue("@contentHash", contentHash);
+        command.Parameters.AddWithValue("@reason", (object?)reason ?? DBNull.Value);
+        command.Parameters.AddWithValue("@packageResourceId", packageResourceId);
+
+        await sqlExecutionService.ExecuteNonQueryAsync(systemPartitionId, command, cancellationToken);
+    }
+
     private async Task RecordFailureAsync(long packageResourceId, Exception ex, CancellationToken cancellationToken)
     {
         // ImportErrorMessage is NVARCHAR(1000). The EF version wrote message plus stack trace into it and
@@ -376,6 +735,47 @@ public sealed class SqlServerCodeSystemImporter(
             logger.LogError(saveEx, "Failed to record import failure for PackageResourceId {PackageResourceId}", packageResourceId);
         }
     }
+
+    private static ValueSetMetadata ExtractValueSetMetadata(JsonObject valueSet) => new(
+        Url: valueSet["url"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("ValueSet.url is required"),
+        Version: valueSet["version"]?.GetValue<string>(),
+        // Mandatory here even though FHIR treats it as optional, because dbo.TermValueSet.Name is NOT NULL.
+        Name: valueSet["name"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("ValueSet.name is required"),
+        Immutable: valueSet["immutable"]?.GetValue<bool>() ?? false);
+
+    private static ConceptMapMetadata ExtractConceptMapMetadata(JsonObject conceptMap) => new(
+        Url: conceptMap["url"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("ConceptMap.url is required"),
+        Version: conceptMap["version"]?.GetValue<string>(),
+        Name: conceptMap["name"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("ConceptMap.name is required"),
+        // R4 spells these sourceUri/targetUri, R5 sourceCanonical/targetCanonical.
+        SourceCanonical: conceptMap["sourceUri"]?.GetValue<string>()
+            ?? conceptMap["sourceCanonical"]?.GetValue<string>(),
+        TargetCanonical: conceptMap["targetUri"]?.GetValue<string>()
+            ?? conceptMap["targetCanonical"]?.GetValue<string>());
+
+    private sealed record ValueSetMetadata(string Url, string? Version, string Name, bool Immutable);
+
+    private sealed record ConceptMapMetadata(
+        string Url,
+        string? Version,
+        string Name,
+        string? SourceCanonical,
+        string? TargetCanonical);
+
+    private sealed record ConceptMapElementRow(
+        int SourceSystemId,
+        string SourceCode,
+        string? SourceDisplay,
+        int? TargetSystemId,
+        string? TargetCode,
+        string? TargetDisplay,
+        string Equivalence,
+        string? Comment,
+        int GroupIndex);
 
     private sealed record ConceptRow(
         string Code,
