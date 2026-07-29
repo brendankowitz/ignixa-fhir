@@ -86,22 +86,29 @@ public sealed class SearchSqlCompiler(
         }
 
         var outcomes = new List<ParameterTrace>();
+        var traced = options.DiagnosticsLevel != SearchDiagnosticsLevel.None;
 
         SearchOptions searchOptions;
         try
         {
             searchOptions = optionsBuilder.Build(resourceType, parameters, schemaProvider: null, outcomes);
         }
+        // Diagnostics carry whatever the builder collected before it threw, on the same terms as every
+        // other failure path. Implicit parameters are necessarily empty: detecting them compares the
+        // caller's parameters against the built SearchOptions, and there is no built SearchOptions yet.
         catch (FhirException ex) when (!rethrowBuildFailures)
         {
             return new SearchPlanResult(
                 Plan: null,
-                new SearchCompilationFailure(CompilationStage.Build, ex.Message, ParameterCode: null, Span: null, ex));
+                new SearchCompilationFailure(CompilationStage.Build, ex.Message, ParameterCode: null, Span: null, ex)
+                {
+                    Diagnostics = Diagnostics(traced, outcomes, implicitParameters: [], planTrace: null),
+                });
         }
 
-        IReadOnlyList<ImplicitParameter> implicitParameters = options.DiagnosticsLevel == SearchDiagnosticsLevel.None
-            ? []
-            : CompilationDiagnosticsBuilder.DetectImplicit(parameters, searchOptions);
+        IReadOnlyList<ImplicitParameter> implicitParameters = traced
+            ? CompilationDiagnosticsBuilder.DetectImplicit(parameters, searchOptions)
+            : [];
 
         return await RunAsync(searchOptions, resourceType, options, outcomes, implicitParameters, cancellationToken);
     }

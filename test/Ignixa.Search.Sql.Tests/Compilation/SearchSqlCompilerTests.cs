@@ -126,4 +126,25 @@ public class SearchSqlCompilerTests
         result.Failure!.Stage.ShouldBe(CompilationStage.Build);
         result.Failure.Exception.ShouldBeOfType<BadSearchRequestException>();
     }
+
+    [Fact]
+    public async Task GivenDiagnosticsLevelParameters_WhenABuildFailureIsCaptured_ThenTheFailureStillCarriesDiagnostics()
+    {
+        var compiler = CompilerFixtures.WithThrowingOptionsBuilder();
+        var options = new SearchPlanOptions { DiagnosticsLevel = SearchDiagnosticsLevel.Parameters };
+
+        var result = await compiler.TryCreatePlanAsync("Patient", [new QueryParameter("name", "smith")], options);
+
+        result.Failure!.Diagnostics.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task GivenDiagnosticsLevelNone_WhenABuildFailureIsCaptured_ThenNoDiagnosticsAreAttached()
+    {
+        var compiler = CompilerFixtures.WithThrowingOptionsBuilder();
+
+        var result = await compiler.TryCreatePlanAsync("Patient", [new QueryParameter("name", "smith")]);
+
+        result.Failure!.Diagnostics.ShouldBeNull();
+    }
 }
