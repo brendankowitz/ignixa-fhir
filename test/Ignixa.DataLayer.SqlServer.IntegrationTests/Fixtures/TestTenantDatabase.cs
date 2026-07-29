@@ -210,16 +210,40 @@ public sealed class TestTenantDatabase
         return builder.ConnectionString;
     }
 
+    /// <summary>
+    /// Serialises CREATE DATABASE across the whole test process.
+    /// <para>
+    /// SQL Server already serialises database creation internally — it copies <c>model</c> — so sixteen
+    /// xUnit collections issuing it at once do not go any faster; they queue on the server while each
+    /// client's 30-second command timeout runs down. Tests at the back of that queue failed in fixture
+    /// setup with "Execution Timeout Expired" after 1ms of their own work, scattered randomly across
+    /// classes on every run. Queueing on this side of the wire makes the wait visible instead of fatal.
+    /// </para>
+    /// </summary>
+    private static readonly SemaphoreSlim DatabaseCreationGate = new(1, 1);
+
+    private const int DatabaseLifecycleCommandTimeoutSeconds = 180;
+
     private static async Task CreateEmptyDatabaseAsync(string databaseName, CancellationToken cancellationToken)
     {
-        var masterConnectionString = BuildConnectionStringForDatabase("master");
-        await using var connection = new SqlConnection(masterConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
+        await DatabaseCreationGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            var masterConnectionString = BuildConnectionStringForDatabase("master");
+            await using var connection = new SqlConnection(masterConnectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandTimeout = DatabaseLifecycleCommandTimeoutSeconds;
 #pragma warning disable CA2100
-        command.CommandText = $"CREATE DATABASE [{databaseName}]";
+            command.CommandText = $"CREATE DATABASE [{databaseName}]";
 #pragma warning restore CA2100
-        await command.ExecuteNonQueryAsync(cancellationToken);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally
+        {
+            DatabaseCreationGate.Release();
+        }
     }
 
     private static async Task DropDatabaseAsync(string databaseName, CancellationToken cancellationToken)
@@ -228,6 +252,7 @@ public sealed class TestTenantDatabase
         await using var connection = new SqlConnection(masterConnectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
+        command.CommandTimeout = DatabaseLifecycleCommandTimeoutSeconds;
 #pragma warning disable CA2100
         command.CommandText = $"""
             IF DB_ID('{databaseName}') IS NOT NULL
