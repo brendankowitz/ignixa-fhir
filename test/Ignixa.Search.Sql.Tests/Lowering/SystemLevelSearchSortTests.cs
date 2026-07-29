@@ -49,7 +49,7 @@ public class SystemLevelSearchSortTests
 
         var emitted = SqlBuilder.Run(lowered.Plan);
         emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]

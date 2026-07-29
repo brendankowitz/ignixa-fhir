@@ -567,7 +567,7 @@ public class EmitTests
             "INNER JOIN dbo.StringSearchParam sk0\n" +
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
-            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -588,12 +588,151 @@ public class EmitTests
             "WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
             "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
-            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(4);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
         emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", (short)103));
         emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5000L));
     }
+
+    [Fact]
+    public void GivenATypelessPageWithASingleCustomSortKey_WhenEmitted_ThenTheSeekOmitsTheTypeColumnAndTheOrderByOmitsTheTypeTiebreak()
+    {
+        // Arrange -- a multi-type _sort=name continuation page. The boundary carries no resource type
+        // (BoundaryResourceTypeId null), mirroring the legacy custom-sort token [sortValue, surrogateId].
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the seek's final branch compares only m.Sid1, never m.T1, and the ORDER BY tiebreak is
+        // Sid1 alone so it agrees with that type-free seek.
+        emitted.Sql.ShouldContain(
+            "WHERE (sk0.Text > @p1\n" +
+            "       OR (sk0.Text = @p1 AND m.Sid1 > @p2))\n" +
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        // The identity SELECT still projects m.T1 (the router needs the type back); what must be absent is
+        // any reference to the type column in the seek or the ORDER BY.
+        emitted.Sql.ShouldNotContain("m.T1 =");
+        emitted.Sql.ShouldNotContain("m.T1 >");
+        emitted.Sql.ShouldNotContain("m.T1 ASC");
+        emitted.Parameters.Count.ShouldBe(3);
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 5000L));
+    }
+
+    [Fact]
+    public void GivenATypelessPageWithNoSortKeys_WhenEmitted_ThenItIsRejected()
+    {
+        // Arrange -- a typeless boundary with no sort at all. A sortless search orders by (T1, Sid1), so a
+        // Sid1-only seek would disagree with that type-major ORDER BY and page unsoundly. Only a custom sort
+        // makes the ORDER BY type-free, so a typeless page without one must be refused, not emitted.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var page = new PageSpec([], BoundaryResourceTypeId: null, new SqlParameterRef(7000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Page: page);
+
+        // Act / Assert
+        var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        ex.Message.ShouldContain("typeless");
+        ex.Message.ShouldContain("custom");
+    }
+
+    [Fact]
+    public void GivenATypelessPageWithAResourceTypeSortKey_WhenEmitted_ThenItIsRejected()
+    {
+        // Arrange -- a _type sort orders by the very column a typeless seek omits, so the two disagree on
+        // row order; the combination must be refused rather than emitted as unsound SQL.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceType, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef((short)103)], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act / Assert
+        var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        ex.Message.ShouldContain("typeless");
+        ex.Message.ShouldContain("ResourceType");
+    }
+
+    [Fact]
+    public void GivenATypedPageWithACustomSortKey_WhenEmitted_ThenTheTypeBoundaryIsUnchanged()
+    {
+        // Arrange -- the same shape as the typeless test but with a resource type on the boundary. This
+        // guards that the additive typeless path leaves the historical typed seek and ORDER BY untouched.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the typed seek keeps both m.T1 branches (the single-type adapter still supplies a type on
+        // the boundary), but the ORDER BY is type-free by sort shape (custom sort drops the m.T1 tiebreak).
+        // For a single-type search the two agree because m.T1 is constant, so today's typed page still works.
+        emitted.Sql.ShouldContain(
+            "WHERE (sk0.Text > @p1\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
+            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(4);
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", (short)103));
+        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5000L));
+    }
+
+    [Fact]
+    public void GivenACustomSortQueryShape_WhenPageOneAndATypelessPageTwoAreEmitted_ThenTheirOrderByClausesAreIdentical()
+    {
+        // A keyset walk is sound only if every page shares one ordering. Page 1 carries no PageSpec while a
+        // later page carries a typeless boundary, so were the ORDER BY decided by the boundary's presence the
+        // two would order differently -- page 1 keeping m.T1, page 2 dropping it -- and rows could be skipped
+        // or repeated across the page-1/page-2 seam. Because the sort is custom, both order by (Text, Sid1).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+
+        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var typelessPage = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: typelessPage);
+
+        var pageOneOrderBy = LastOrderBy(SqlBuilder.Run(pageOnePlan).Sql);
+        var pageTwoOrderBy = LastOrderBy(SqlBuilder.Run(pageTwoPlan).Sql);
+
+        pageOneOrderBy.ShouldBe("ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        pageTwoOrderBy.ShouldBe(pageOneOrderBy);
+    }
+
+    [Fact]
+    public void GivenACustomSortIncludeShape_WhenPageOneAndATypelessPageTwoAreEmitted_ThenTheOuterIncludeOrderByClausesAreIdentical()
+    {
+        // The include path's outer ORDER BY (EmitOuterOrderByForIncludes) must honour the same invariant: the
+        // match/include union has to be ordered identically on page 1 (no boundary) and on a typeless page 2,
+        // or the walk skips rows at the page seam. A custom sort drops the T1 tiebreak on both.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+
+        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Includes: [includeStage]);
+        var typelessPage = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: typelessPage, Includes: [includeStage]);
+
+        var pageOneOrderBy = LastOrderBy(SqlBuilder.Run(pageOnePlan).Sql);
+        var pageTwoOrderBy = LastOrderBy(SqlBuilder.Run(pageTwoPlan).Sql);
+
+        pageOneOrderBy.ShouldBe("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
+        pageTwoOrderBy.ShouldBe(pageOneOrderBy);
+    }
+
+    // The final (outer) ORDER BY of an emitted statement -- the one a keyset walk pages against.
+    private static string LastOrderBy(string sql) =>
+        sql[sql.LastIndexOf("ORDER BY", StringComparison.Ordinal)..].TrimEnd();
 
     [Fact]
     public void GivenTheMissingPrimaryPhase_WhenEmitted_ThenTheJoinIsReplacedByNotExistsAndTheOrderByOmitsTheMissingKey()
@@ -607,12 +746,13 @@ public class EmitTests
         // Act
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert
+        // Assert -- the missing-name segment of a custom sort is type-free too: its ORDER BY is m.Sid1 alone,
+        // never m.T1, so a multi-type search (which has no single type to substitute into a seek) can page it.
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain(
             "SELECT TOP (10) m.T1, m.Sid1 FROM cte0 m\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)\n" +
-            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY m.Sid1 ASC");
     }
 
     [Fact]
@@ -650,7 +790,7 @@ public class EmitTests
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p2)\n" +
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 > @p3))\n" +
-            "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -804,14 +944,14 @@ public class EmitTests
             "INNER JOIN dbo.StringSearchParam sk0\n" +
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
-            "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
+            "    ORDER BY sk0.Text ASC, m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage\n" +
             "UNION ALL\n" +
             "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
-            "ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+            "ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -928,11 +1068,11 @@ public class EmitTests
             "    WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
             "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
-            "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
+            "    ORDER BY sk0.Text ASC, m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -962,14 +1102,14 @@ public class EmitTests
             "    SELECT TOP (10) m.T1, m.Sid1\n" +
             "    FROM cte0 m\n" +
             "    WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)\n" +
-            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            "    ORDER BY m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )");
         emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, Sid1 ASC");
     }
 
     [Fact]
@@ -1004,7 +1144,7 @@ public class EmitTests
             "WHERE r.ResourceId = @p1 AND (sk0.Text > @p2\n" +
             "       OR (sk0.Text = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
             "       OR (sk0.Text = @p2 AND m.T1 > @p3))\n" +
-            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(5);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "123"));
         emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", "Adams"));
@@ -1043,7 +1183,7 @@ public class EmitTests
             "AND (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p1\n" +
             "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
             "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 > @p2))\n" +
-            "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
     [Fact]

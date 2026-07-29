@@ -50,7 +50,7 @@ public class EmitSortAggregatedTests
             "    WHERE SearchParamId = 77\n" +
             "    GROUP BY ResourceTypeId, ResourceSurrogateId\n" +
             ") sk0 ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
-            "ORDER BY sk0.AggValue ASC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.AggValue ASC, m.Sid1 ASC");
     }
 
     [Fact]

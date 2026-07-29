@@ -65,10 +65,23 @@ public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase);
 /// The keyset boundary a caller decodes from a continuation token; a null PageSpec means "first page."
 /// Boundary carries one value per active key for the current phase — Keys.Count values in Valued,
 /// Keys.Count-1 in MissingPrimary (Keys[0] has no value there). Values must already have Emit's
-/// ISNULL/sentinel substitution applied, so a decoded token compares equal to a live column. All three
-/// fields render as bound parameters, never inlined literals, because they are client-controlled input.
+/// ISNULL/sentinel substitution applied, so a decoded token compares equal to a live column. Every
+/// non-null field renders as a bound parameter, never an inlined literal, because they are
+/// client-controlled input.
+/// <para>
+/// <see cref="BoundaryResourceTypeId"/> is null for a <em>typeless</em> boundary: the seek then compares
+/// only the sort-value key(s) and the surrogate id, with no resource-type component. This is the shape a
+/// multi-type search with a custom (search-parameter) <c>_sort</c> needs — the legacy continuation token
+/// for such a sort is <c>[sortValue, resourceSurrogateId]</c>, carrying no type slot, and no single type
+/// exists to substitute across more than one resource type. It is sound because
+/// <c>ResourceSurrogateId</c> is globally unique across resource types (a single
+/// <c>dbo.ResourceSurrogateIdUniquifierSequence</c> hands out per-transaction ranges), so a seek on the
+/// surrogate id alone is already a total order; the composite <c>(ResourceTypeId, ResourceSurrogateId)</c>
+/// key exists only because the table is partitioned on <c>ResourceTypeId</c>. When it is non-null the
+/// historical typed seek — <c>(… T1 = @t AND Sid1 &gt; @sid) OR (… T1 &gt; @t)</c> — is emitted unchanged.
+/// </para>
 /// </summary>
 public sealed record PageSpec(
     IReadOnlyList<SqlParameterRef> Boundary,
-    SqlParameterRef BoundaryResourceTypeId,
+    SqlParameterRef? BoundaryResourceTypeId,
     SqlParameterRef BoundarySurrogateId);

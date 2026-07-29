@@ -1327,7 +1327,7 @@ public class EndToEndCompilationTests
         plan.Explain().ShouldContain("sort = SortSpec([String:202 ASC], Valued)");
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1366,7 +1366,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
         emitted.Sql.ShouldContain("SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -1405,7 +1405,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain("LEFT JOIN dbo.DateTimeSearchParam sk1");
         emitted.Sql.ShouldContain("sk1.IsMax = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1443,7 +1443,7 @@ public class EndToEndCompilationTests
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1672,7 +1672,7 @@ public class EndToEndCompilationTests
             "sort = SortSpec([String:77 ASC], Valued)");
         emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]

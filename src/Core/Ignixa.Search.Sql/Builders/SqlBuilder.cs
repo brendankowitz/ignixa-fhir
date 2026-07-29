@@ -124,7 +124,54 @@ public static class SqlBuilder
                 "rejected by SQL Server, and a keyset seek alongside OFFSET/FETCH applies two independent " +
                 "paging mechanisms to one query.");
         }
+
+        // A typeless seek breaks its final tie on Sid1 alone and never mentions the type column, so it is
+        // sound only against a type-free ORDER BY -- (sort keys…, Sid1). EmitOrderBy produces that shape only
+        // for a custom (search-parameter) sort; every other sort keeps m.T1 as a tiebreak (a plain search
+        // orders by (T1, Sid1); a _type sort orders by the type itself), so a typeless seek would disagree
+        // with the ORDER BY and keyset paging would silently drop rows across a page boundary within a tie.
+        // Refuse the mismatch here: it is grammatically valid SQL, so the grammar tests cannot catch it, and
+        // this is the construction surface a caller reaches when building a QueryPlan directly.
+        if (IsTypelessPage(plan) && !HasCustomSortKey(plan.Sort))
+        {
+            throw new NotSupportedException(
+                "A typeless keyset Page (BoundaryResourceTypeId is null) requires a custom (search-parameter) " +
+                "_sort such as name or birthdate. The plan's sort is " +
+                (plan.Sort is null ? "absent" : "a resource-column sort (_lastUpdated / _type / _id)") +
+                ", whose keyset order includes the resource type, so a type-free seek would disagree with the " +
+                "ORDER BY and paging would be unsound. Use a typed Page here, or a custom sort for a typeless Page.");
+        }
     }
+
+    /// <summary>
+    /// A keyset page whose boundary carries no resource-type component. Its seek compares only the sort
+    /// key(s) and the surrogate id; the emitter drops the m.T1 tiebreak from the matching ORDER BY so the
+    /// two stay in step. Sound because ResourceSurrogateId is globally unique, so Sid1 is a total order on
+    /// its own.
+    /// </summary>
+    private static bool IsTypelessPage(QueryPlan plan) => plan.Page is { BoundaryResourceTypeId: null };
+
+    /// <summary>
+    /// A search-parameter-backed sort key (a String/Date sort such as name or birthdate, or an Aggregated
+    /// Token/Number/Quantity/Reference/Uri sort) as opposed to the resource-column keys (_lastUpdated / _type
+    /// / _id). These are the keys whose legacy continuation token is [sortValue, resourceSurrogateId] with no
+    /// type slot, so their keyset order is (sortValue…, Sid1) -- type-free.
+    /// </summary>
+    private static bool IsCustomSortKey(SortKeyKind kind)
+        => kind is SortKeyKind.String or SortKeyKind.Date or SortKeyKind.Aggregated;
+
+    /// <summary>
+    /// True when the sort has any custom (search-parameter) key, so the ORDER BY drops the m.T1 tiebreak and
+    /// orders by (sort keys…, Sid1). Decided by the sort's own keys -- never by whether this request carries a
+    /// page boundary -- so page 1 (which has no Page) and every later page of one keyset walk share a single
+    /// ordering; keying it off the boundary would let page 1 keep m.T1 while a later typeless page dropped it,
+    /// reintroducing the very row-skipping this avoids. All keys are considered, not just the phase's active
+    /// ones, so the missing-value segment of a custom sort (whose active keys may be empty) stays type-free and
+    /// remains pageable in a multi-type search where no single type can substitute into the seek. Sound because
+    /// ResourceSurrogateId is globally unique, making (sort keys…, Sid1) a total order without the type column.
+    /// </summary>
+    private static bool HasCustomSortKey(SortSpec? sort)
+        => sort is not null && sort.Keys.Any(k => IsCustomSortKey(k.Kind));
 
     /// <summary>Renders every <see cref="CteDefinition"/> as a named "cteN AS (...)" block, in plan order.</summary>
     /// <remarks>
@@ -1033,7 +1080,12 @@ public static class SqlBuilder
             "after confirming the real DDL column type, matching the varchar/decimal families already handled."),
     };
 
-    /// <summary>Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then the (T1, Sid1) tiebreak.</summary>
+    /// <summary>
+    /// Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then
+    /// the (T1, Sid1) tiebreak. For a custom (search-parameter) sort the m.T1 tiebreak is dropped so every
+    /// page orders by (sort keys…, Sid1) -- see <see cref="HasCustomSortKey"/> for why this is keyed off the
+    /// sort shape rather than the presence of a page boundary, and why Sid1 alone is a total order.
+    /// </summary>
     private static string EmitOrderBy(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
@@ -1050,7 +1102,15 @@ public static class SqlBuilder
         // ASC term could not have expressed.
         var hasLastUpdatedKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.LastUpdated);
         var hasResourceTypeKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.ResourceType);
-        if (!hasResourceTypeKey)
+
+        // Drop the m.T1 tiebreak for a custom sort: its keyset order is (sort keys…, Sid1), type-free, and a
+        // typeless page's Sid1-only seek must be able to reproduce it exactly. Legacy is the cautionary tale
+        // here -- it orders (sortValue, T1, Sid1) yet seeks (sortValue, Sid1), so within a run of tied sort
+        // values a type X row with a higher surrogate id can sort before a type Y row with a lower one, and
+        // the Sid1-only seek for the next page starts past the Y row and drops it. Keeping m.T1 out of the
+        // ORDER BY closes that gap; Sid1's global uniqueness makes what remains a total order. This decision
+        // never consults the page boundary, so page 1 and every later page of the walk order identically.
+        if (!hasResourceTypeKey && !HasCustomSortKey(sort))
         {
             terms.Add("m.T1 ASC");
         }
@@ -1063,13 +1123,24 @@ public static class SqlBuilder
         return string.Join(", ", terms);
     }
 
-    /// <summary>Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the projected SortValueN columns, then the (T1, Sid1) tiebreak.</summary>
+    /// <summary>
+    /// Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the
+    /// projected SortValueN columns, then the (T1, Sid1) tiebreak. A custom sort drops the T1 tiebreak here
+    /// for the same reason as <see cref="EmitOrderBy"/>, ordering matches by (SortValueN…, Sid1) so page 1
+    /// and every later (possibly typeless) page of the walk share one ordering.
+    /// </summary>
     private static string EmitOuterOrderByForIncludes(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select((idx, ordinal) =>
-            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
-        return string.Join(", ", terms.Prepend("IsMatch DESC").Append("T1 ASC").Append("Sid1 ASC"));
+            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}")
+            .Prepend("IsMatch DESC");
+        if (!HasCustomSortKey(sort))
+        {
+            terms = terms.Append("T1 ASC");
+        }
+
+        return string.Join(", ", terms.Append("Sid1 ASC"));
     }
 
     /// <summary>Renders the ", SortValueN AS ..." select-list columns that project each active key's value for the outer ORDER BY to read.</summary>
@@ -1083,8 +1154,11 @@ public static class SqlBuilder
 
     /// <summary>
     /// Renders the keyset-seek WHERE predicate that skips everything up to the page boundary: an OR of
-    /// lexicographic branches over the active sort keys, then the (T1, Sid1) tiebreak, so it stays in step
-    /// with the ORDER BY. Throws if the boundary value count does not match the current phase's active keys.
+    /// lexicographic branches over the active sort keys, then the surrogate-id tiebreak, so it stays in step
+    /// with the ORDER BY. A typed <see cref="PageSpec"/> (BoundaryResourceTypeId non-null) breaks the final
+    /// tie on (T1, Sid1); a typeless one breaks it on Sid1 alone and never references the type column, which
+    /// is sound because ResourceSurrogateId is globally unique so Sid1 is already a total order. Throws if
+    /// the boundary value count does not match the current phase's active keys.
     /// </summary>
     private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {
@@ -1098,8 +1172,6 @@ public static class SqlBuilder
         }
 
         var boundaryParams = page.Boundary.Select(b => EmitParam(b, parameters)).ToList();
-        var typeParam = EmitParam(page.BoundaryResourceTypeId, parameters);
-        var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
 
         var branches = new List<string>();
         for (var level = 0; level < activeIndices.Count; level++)
@@ -1118,8 +1190,22 @@ public static class SqlBuilder
 
         var allEqual = activeIndices.Select((idx, j) => $"{SortValueExpr(sort!, idx)} = {boundaryParams[j]}").ToList();
         var allEqualPrefix = allEqual.Count > 0 ? string.Join(" AND ", allEqual) + " AND " : string.Empty;
-        branches.Add($"({allEqualPrefix}m.T1 = {typeParam} AND m.Sid1 > {sidParam})");
-        branches.Add($"({allEqualPrefix}m.T1 > {typeParam})");
+
+        // Bind the type parameter (when present) before the surrogate id, so a typed page keeps its
+        // historical @pN ordinals exactly; a typeless page binds no type parameter at all and its seek
+        // omits the type column entirely.
+        if (page.BoundaryResourceTypeId is { } boundaryType)
+        {
+            var typeParam = EmitParam(boundaryType, parameters);
+            var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
+            branches.Add($"({allEqualPrefix}m.T1 = {typeParam} AND m.Sid1 > {sidParam})");
+            branches.Add($"({allEqualPrefix}m.T1 > {typeParam})");
+        }
+        else
+        {
+            var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
+            branches.Add($"({allEqualPrefix}m.Sid1 > {sidParam})");
+        }
 
         return branches.Count == 1
             ? branches[0]

@@ -151,7 +151,10 @@ public static class PlanExplainer
             boundary.Add($"@p{parameterOrdinal++}");
         }
 
-        var typeParam = $"@p{parameterOrdinal++}";
+        // A typeless page (BoundaryResourceTypeId is null) binds no type parameter -- its seek compares only
+        // the sort key(s) and the surrogate id -- so consume no ordinal for it, keeping the printed @pN
+        // sequence aligned with the parameters Emit actually binds.
+        var typeParam = page.BoundaryResourceTypeId is null ? "none" : $"@p{parameterOrdinal++}";
         var sidParam = $"@p{parameterOrdinal++}";
         return $"PageSpec(boundary=[{string.Join(",", boundary)}], type={typeParam}, sid={sidParam})";
     }

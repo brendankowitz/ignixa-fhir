@@ -36,6 +36,7 @@ public class EmitSqlGrammarTests
         yield return ["projection + includes", ProjectionWithIncludesPlan()];
         yield return ["projection + sort", ProjectionWithSortPlan()];
         yield return ["projection + paging", ProjectionWithPagingPlan()];
+        yield return ["typeless multi-type paging", TypelessPagingPlan()];
         yield return ["surrogate range alone", SurrogateRangeAlonePlan()];
         yield return ["surrogate range + outer predicate", SurrogateRangeWithOuterPredicatePlan()];
         yield return ["surrogate range + sort + paging", SurrogateRangeWithSortAndPagingPlan()];
@@ -412,6 +413,23 @@ public class EmitSqlGrammarTests
             Top: 10,
             OuterPredicate: outer,
             SurrogateRange: StandardRange());
+    }
+
+    private static QueryPlan TypelessPagingPlan()
+    {
+        // A multi-type _sort=name continuation page: the boundary carries no resource type, so the seek
+        // and ORDER BY break their final tie on the surrogate id alone. Exercised through the grammar
+        // checker to confirm the type-free seek is still valid T-SQL.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        return new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 10,
+            Sort: sort,
+            Page: page);
     }
 
     private static QueryPlan SurrogateRangeWithSortAndPagingPlan()
