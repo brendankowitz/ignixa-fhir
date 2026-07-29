@@ -10,11 +10,6 @@ using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql;
-using Ignixa.Search.Sql.Ast;
-using Ignixa.Search.Sql.Builders;
-using Ignixa.Search.Sql.Compilation;
-using Ignixa.Search.Sql.Lowering;
-using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -73,25 +68,22 @@ public class CompiledSearchEndToEndTests
         var resolver = new SqlEntityFrameworkSymbolResolver(cache);
 
         // Act
-        var compilation = CompilationContext.Create(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             new SearchOptions { Expression = predicate },
             "Patient",
-            new SearchPlanOptions(),
-            DateTimeOffset.UtcNow);
+            cancellationToken: CancellationToken.None);
 
-        var symbolTable = (await Resolve.RunAsync(
-            compilation, new SymbolResolution(resolver), CancellationToken.None)).Symbols;
-        var plan = Lower.Run(compilation, symbolTable).Plan;
-        var emitted = SqlBuilder.Run(plan);
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan!.Compile();
 
-        // CA2100 suppressed: emitted.Sql is SqlBuilder.Run's compiler-generated, fully parameterized T-SQL
-        // text (no user value is ever inlined into it -- that is this whole test's point), not
-        // ad hoc string concatenation of user input.
+        // CA2100 suppressed: compiled.Sql is the compiler's fully parameterized T-SQL text (no user
+        // value is ever inlined into it -- that is this whole test's point), not ad hoc string
+        // concatenation of user input.
 #pragma warning disable CA2100
-        await using var command = new SqlCommand(emitted.Sql, (SqlConnection)context.Database.GetDbConnection());
+        await using var command = new SqlCommand(compiled.Sql, (SqlConnection)context.Database.GetDbConnection());
 #pragma warning restore CA2100
         await context.Database.OpenConnectionAsync();
-        foreach (var p in emitted.Parameters) command.Parameters.AddWithValue(p.Name, p.Value);
+        foreach (var p in compiled.Parameters) command.Parameters.AddWithValue(p.Name, p.Value);
         await using var reader = await command.ExecuteReaderAsync();
 
         // Assert

@@ -9,8 +9,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql;
-using Ignixa.Search.Sql.Compilation;
-using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Ast;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,9 +22,11 @@ namespace Ignixa.DataLayer.SqlEntityFramework.IntegrationTests;
 /// Server: seeds one real <c>dbo.SearchParam</c> row via the existing
 /// <see cref="SearchIndexReferenceDataCache.SyncSearchParametersToDatabase"/> mechanism (the same
 /// one <c>CompartmentDataSeeder.cs</c> and production's search-parameter sync path already use --
-/// no hand-rolled catalog-seeding SQL), then resolves it through the real
-/// <see cref="Resolve.RunAsync"/> pipeline (Phase 3 Task 4) and this real resolver, asserting the
-/// returned <c>SearchParamId</c> matches the row that was actually seeded.
+/// no hand-rolled catalog-seeding SQL), then compiles a search through the real
+/// <see cref="SearchSqlCompiler.TryCreatePlanFromOptionsAsync"/> pipeline driving this real resolver,
+/// asserting the <c>SearchParamId</c> carried on the resulting plan's <c>ParamSource</c> CTE matches
+/// the row that was actually seeded. Driving the whole pipeline (rather than calling the resolver
+/// directly) is the point: it proves the compiler actually consults the resolver.
 /// <para>
 /// THIS IS A MANUAL HARNESS, NOT CI COVERAGE. Every test that touches the database is
 /// <c>[Fact(Skip = ...)]</c> and runs only when a developer sets <c>TEST_SQL_CONNECTION_STRING</c> and
@@ -85,17 +86,17 @@ public class SqlEntityFrameworkSymbolResolverTests
             parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
-            CompilationContext.Create(
-                new SearchOptions { Expression = predicate },
-                "Patient",
-                new SearchPlanOptions(),
-                DateTimeOffset.UtcNow),
-            new SymbolResolution(resolver),
-            CancellationToken.None)).Symbols;
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
+            new SearchOptions { Expression = predicate },
+            "Patient",
+            cancellationToken: CancellationToken.None);
 
-        // Assert
-        symbolTable.SearchParamId(parameter).ShouldBe(seededSearchParamId);
+        // Assert -- the resolved id is carried on the compiled plan's ParamSource CTE, so asserting on
+        // it proves the resolution pipeline actually consulted this EF-backed resolver (a direct
+        // resolver call would pass without exercising that pipeline).
+        result.Succeeded.ShouldBeTrue();
+        var paramSource = result.Plan!.Query.Ctes.OfType<CteDefinition.ParamSource>().ShouldHaveSingleItem();
+        paramSource.SearchParamId.ShouldBe(seededSearchParamId);
     }
 
     [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
