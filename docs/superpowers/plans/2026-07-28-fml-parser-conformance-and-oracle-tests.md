@@ -31,8 +31,11 @@ Six root causes, in dependency order:
 | 4 | No `<<types>>` / `<<type+>>` group annotation | `unexpected '+'` / `unexpected '<'` | all cross-version maps |
 | 5 | No `///` metadata declarations; `map` header mandatory | `unexpected uses 'uses', expected map` | all R6-form maps |
 | 6 | Wildcard `imports ".../*4to6"` not resolvable | runtime, not parse | deferred — see Follow-ups |
+| 7 | No `'(' fpExpression ')'` transform in target position | `unexpected leftparen '('` | **found by Task 8** — blocks 3 of 6 in-scope oracle cases |
 
 Defects 1-5 are in scope. Defect 6 is deferred (it is an `ImportResolver` concern, not a parser concern, and no in-scope oracle case needs it).
+
+**Defect 7 was not visible to the original probe.** The probe reported only the *first* parse error per file, and every file failed on defects 1-5 first. Once those were fixed, Task 8's corpus gate measured r5 at 9/15 and r4b at 7/12 and exposed this as the next layer. It is in scope and is handled by Task 5b, because three of the six in-scope oracle cases (`qr2pat-gender.map`, `qr2pat-humannametwice.map`, `qr2pat-humannameshared.map`) cannot parse without it — Task 11 would otherwise silently exercise half its intended coverage.
 
 ---
 
@@ -1563,6 +1566,47 @@ Update the `[InlineData]` values to the counts you actually achieved and re-run 
 git add test/Ignixa.FhirMappingLanguage.Tests/Conformance/FmlCorpusParseTests.cs
 git commit -m "Gate FML parser on the official structure-mapping corpus parse rate"
 ```
+
+---
+
+## Task 5b: Parenthesized FHIRPath transforms (defect 7)
+
+Discovered by Task 8's corpus gate, which measured r5 at 9/15 and r4b at 7/12. Every remaining failure is `unexpected leftparen '('`. Runs **after** Task 8 exists (it is what measures the fix) but is a Part A parser change.
+
+**Why this is in scope and not deferred:** three of the six in-scope oracle cases — `qr2pat-gender.map`, `qr2pat-humannametwice.map`, `qr2pat-humannameshared.map` — fail on it. Task 11's transform oracle would run at half coverage while appearing green.
+
+**The construct**, from the official `mapping.g4`:
+
+```
+transform
+  : ...
+  | '(' fpExpression ')'      // fhirpath based expressions
+```
+
+Real corpus instances:
+
+```
+src.item as item where linkId.value in ('patient.sex') -> tgt.gender = (item.answer.valueString);
+src -> tgt.identifer as ext, ext.system = ('urn:uuid:' + r.lower()) "rootuuid";
+ext.value as value -> tgt.birthDate = (%value + 5 days) "plus";
+```
+
+**Files:**
+- Modify: `src/Core/Ignixa.FhirMappingLanguage/Parser/MappingGrammar.cs`
+- Modify: `test/Ignixa.FhirMappingLanguage.Tests/Parser/FmlSyntaxCoverageTests.cs`
+- Modify: `test/Ignixa.FhirMappingLanguage.Tests/Conformance/FmlCorpusParseTests.cs` (ratchet the counts up)
+
+**Critical constraint — do not reuse `FhirPathExpression` directly.**
+
+`FhirPathExpression` (`MappingGrammar.cs` ~line 135) has two branches. The `(`-branch does correct balanced-paren collection and is exactly what we want. The `else` branch greedily consumes tokens until a terminator, and its terminator set is `Arrow, Semicolon, RightBrace, Default, Where, Check, Log, Comma` — which does **not** include `As`, any list mode, or `StringLiteral`. Adding `FhirPathExpression` to `Target`'s expression alternation would therefore let `tgt.x = foo as v "name";` be swallowed whole as a single FHIRPath.
+
+Add a **parenthesized-only** parser instead. This is also the conformant reading: the official grammar permits `'(' fpExpression ')'` as a transform, never a bare unparenthesized `fpExpression`.
+
+**Scope limits:**
+- `tgt.field = (expr)` is the required form. The bare `ruleTarget : '(' fpExpression ')' alias?` form (a target with no context and no `=`) appears in no corpus file — do not implement it speculatively.
+- Nested function calls in transform arguments — `evaluate(src, iif(src.is(X),"a","b"))` in `qr2cda-eval.map` — are **out of scope**. `TransformArgumentExpression` accepts only literals and qualified identifiers, and widening it hits the same greedy-fallback hazard *plus* an unbalanced-`)` problem, since `RightParen` is not a terminator. `qr2cda-eval.map` backs only `qr2cd-eval-fml`, a CDA case already excluded from the oracle for XML output, so this costs the oracle nothing. Record it as a known gap.
+
+**Expected outcome:** r5 **14/15**, r4b **11/12**, with only `qr2cda-eval.map` failing in each. Ratchet `FmlCorpusParseTests` to those numbers and name `qr2cda-eval.map` as the expected failure with its reason.
 
 ---
 
