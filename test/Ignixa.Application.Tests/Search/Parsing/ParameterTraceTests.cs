@@ -71,7 +71,7 @@ public class ParameterTraceTests
     [Fact]
     public void GivenAnOutcomeRestamp_WhenCopied_ThenOnlyTheOutcomeChanges()
     {
-        // Outcome is the one init property: SearchCompiler restamps it when a later stage attributes a
+        // Outcome is the one init property: SearchSqlCompiler restamps it when a later stage attributes a
         // failure back to this parameter. Everything else must survive the copy unchanged.
         var original = Valid();
 
