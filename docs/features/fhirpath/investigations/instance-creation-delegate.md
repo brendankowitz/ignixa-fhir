@@ -21,39 +21,41 @@ hand object construction off to the host's model/type system.
 
 ## Approach
 
-Add an optional factory seam to `EvaluationContext`, **replacing** the
+Add an optional creation delegate to `EvaluationContext`, **replacing** the
 `ISchema? Schema` property (the only engine consumer of `Schema` is
-`VisitInstanceSelector` at `FhirPathEvaluator.cs:1857`, so the factory subsumes
-it — see Evidence). The host-side factory holds whatever schema/model it needs
-internally; the engine's context no longer references `ISchema` at all:
+`VisitInstanceSelector` at `FhirPathEvaluator.cs:1857`, so the delegate subsumes
+it — see Evidence). The host-side implementation holds whatever schema/model it
+needs internally; the engine's context no longer references `ISchema` at all.
+The shape mirrors the existing `resolve()` hook
+(`FhirEvaluationContext.ElementResolver`) — a delegate on the context, not an
+interface, so a host can wire a lambda or a method group:
 
 ```csharp
-public interface IInstanceFactory
-{
-    // Returns a first-class IElement (same kind the engine already navigates),
-    // or null if the host cannot construct the type.
-    IElement? Create(string typeName, string? namespacePrefix,
-        IReadOnlyList<(string name, IReadOnlyList<IElement> values)> elements);
-}
+public sealed record InstanceCreationRequest(
+    string TypeName,
+    string? NamespacePrefix,
+    IReadOnlyList<InstanceElement> Elements);
 
 public record EvaluationContext
 {
     // Replaces `ISchema? Schema` / `WithSchema(...)`.
-    public IInstanceFactory? InstanceFactory { get; init; }
-    public EvaluationContext WithInstanceFactory(IInstanceFactory factory) => ...;
+    // Returns a first-class IElement (same kind the engine already navigates),
+    // or null if the host cannot construct the type.
+    public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
+    public EvaluationContext WithInstanceCreator(Func<InstanceCreationRequest, IElement?> creator) => ...;
 }
 ```
 
 `VisitInstanceSelector` becomes: enforce the singleton-input rule, evaluate each
 element's value expression (dropping empty-valued elements per spec), then:
 
-1. If `InstanceFactory` is set → delegate construction; the host returns a
+1. If `InstanceCreator` is set → delegate construction; the host returns a
    real node (JSON/source-node-backed `SchemaAwareElement`, or a Firely
    POCO-backed node via the `Ignixa.Extensions.FirelySdk6` adapter).
-2. If no factory is set → fall back to `ComplexElement`, documented as a
+2. If no creator is set → fall back to `ComplexElement`, documented as a
    **transient, navigation-only, no-round-trip** node.
 
-The host (Validation / DataLayer / Api / mapping) wires the factory. The engine
+The host (Validation / DataLayer / Api / mapping) wires the delegate. The engine
 stays model-agnostic.
 
 ## Tradeoffs
@@ -130,11 +132,12 @@ a standalone issue, and the pivot should address them:
 1. **Fallback when no factory is wired**: degrade to `ComplexElement`
    (recommended — preserves test/schema-less usage) vs. throw
    "instance creation not supported in this context".
-2. **Factory ownership**: a new `IInstanceFactory` (engine context drops
-   `ISchema` entirely) vs. extending `ISchema` with a `Create(...)` method
-   (context keeps an `ISchema` reference, used for construction not metadata
-   attachment). Leaning separate interface — construction and metadata lookup
-   are distinct concerns, and it lets the context shed `ISchema` cleanly.
+2. **Creation-hook ownership**: ~~a new `IInstanceFactory` (engine context drops
+   `ISchema` entirely) vs. extending `ISchema` with a `Create(...)` method~~ —
+   **resolved (2026-07-28): a delegate on the context.** Construction and
+   metadata lookup are distinct concerns, and the delegate mirrors the existing
+   `resolve()` hook (`ElementResolver`), so hosts wire a lambda or method group
+   with no interface to implement. The context sheds `ISchema` cleanly.
 3. **Node backing**: ~~source-node-backed vs. Firely-POCO-backed~~ —
    **resolved (2026-06-16): source-node-backed.** `SourceNodeInstanceFactory`
    in `Ignixa.Serialization` builds the node natively (see below); no Firely
@@ -223,6 +226,26 @@ Still deferred:
   `create` mechanism, so this is lower priority — deferred.
 - **Namespace `System.` construction**: factory declines it; no consumer needs
   System-type construction yet.
+
+### Delegate pivot (2026-07-28)
+
+Collapsed the `IInstanceFactory` interface into a delegate on the context, so the
+creation hook reads the same as `resolve()`:
+
+- `Ignixa.Abstractions`: `IInstanceFactory` deleted; `InstanceElement` and the new
+  `InstanceCreationRequest` record each live in their own file.
+- `EvaluationContext`: `InstanceFactory`/`WithInstanceFactory(IInstanceFactory)` →
+  `InstanceCreator`/`WithInstanceCreator(Func<InstanceCreationRequest, IElement?>)`,
+  mirroring `FhirEvaluationContext.ElementResolver`/`WithElementResolver`.
+- `SourceNodeInstanceFactory` keeps its name and behavior but no longer implements
+  an interface; `Create(InstanceCreationRequest)` is wired as a method group
+  (`.WithInstanceCreator(new SourceNodeInstanceFactory(schema).Create)`).
+- Tests wire lambdas/method groups instead of declaring test-double classes.
+
+Why: one fewer public type in Abstractions, hosts wire a lambda without declaring
+a class, and the two host hooks on the context (`resolve()` and instance creation)
+are now shaped identically. Reversible — an interface can be reintroduced as a
+wrapper without touching the engine.
 
 ## Verdict
 

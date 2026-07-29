@@ -77,9 +77,9 @@ public class FhirPathInvariantCheck : IValidationCheck
         _evaluator = new Lazy<FhirPathEvaluator>(() => new FhirPathEvaluator());
 
         // Instance selectors (Type { ... }) delegate object construction to a
-        // schema-backed factory so created instances are first-class nodes.
+        // schema-backed creator so created instances are first-class nodes.
         _evaluationContext = new Lazy<EvaluationContext>(() =>
-            new EvaluationContext().WithInstanceFactory(new SourceNodeInstanceFactory(_schema)));
+            new EvaluationContext().WithInstanceCreator(new SourceNodeInstanceFactory(_schema).Create));
         _compiledExpression = new Lazy<FhirPath.Expressions.Expression?>(() =>
         {
             try
@@ -267,8 +267,9 @@ public class FhirPathInvariantCheck : IValidationCheck
 
     /// <summary>
     /// Builds the FHIRPath evaluation context from the validation scope. Always carries the
-    /// instance factory so instance selectors (<c>Type { ... }</c>) construct schema-backed nodes;
-    /// resource scope (%resource / %rootResource / resolve()) is layered on when seeded.
+    /// instance-creation delegate so instance selectors (<c>Type { ... }</c>) construct
+    /// schema-backed nodes; resource scope (%resource / %rootResource / resolve()) is layered
+    /// on when seeded.
     /// </summary>
     private EvaluationContext BuildEvaluationContext(ValidationState state)
     {
@@ -283,7 +284,7 @@ public class FhirPathInvariantCheck : IValidationCheck
             Resource = scope.Resource,
             RootResource = scope.RootResource,
             ElementResolver = scope.Resolver,
-            InstanceFactory = _evaluationContext.Value.InstanceFactory
+            InstanceCreator = _evaluationContext.Value.InstanceCreator
         };
     }
 

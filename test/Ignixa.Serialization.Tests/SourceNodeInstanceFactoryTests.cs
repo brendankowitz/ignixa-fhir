@@ -1,6 +1,6 @@
 /*
  * Tests for SourceNodeInstanceFactory - the native source-node-backed
- * IInstanceFactory used for FHIRPath instance-selector object creation.
+ * instance-creation delegate used for FHIRPath instance-selector object creation.
  */
 
 #nullable enable
@@ -34,7 +34,7 @@ public class SourceNodeInstanceFactoryTests
         };
 
         // Act
-        var result = _factory.Create("Coding", null, elements);
+        var result = Create("Coding", null, elements);
 
         // Assert - first-class node: correct type, schema metadata, navigable
         Assert.NotNull(result);
@@ -56,7 +56,7 @@ public class SourceNodeInstanceFactoryTests
         };
 
         // Act
-        var result = _factory.Create("Coding", null, elements);
+        var result = Create("Coding", null, elements);
         var json = result!.Meta<JsonNode>();
 
         // Assert - the created node is backed by real JSON (round-trippable)
@@ -69,7 +69,7 @@ public class SourceNodeInstanceFactoryTests
     public void GivenEmptyElements_WhenCreate_ThenReturnsEmptyTypedObject()
     {
         // Act
-        var result = _factory.Create("Period", null, []);
+        var result = Create("Period", null, []);
 
         // Assert
         Assert.NotNull(result);
@@ -84,7 +84,7 @@ public class SourceNodeInstanceFactoryTests
         var elements = new[] { new InstanceElement("value", [Prim("final", "string")]) };
 
         // Act
-        var result = _factory.Create("code", null, elements);
+        var result = Create("code", null, elements);
 
         // Assert - a primitive node, not a complex object with a "value" child
         Assert.NotNull(result);
@@ -97,7 +97,7 @@ public class SourceNodeInstanceFactoryTests
     [Fact]
     public void GivenUnknownType_WhenCreate_ThenReturnsNull()
     {
-        var result = _factory.Create("CompletelyMadeUpType", null, []);
+        var result = Create("CompletelyMadeUpType", null, []);
 
         Assert.Null(result);
     }
@@ -105,10 +105,13 @@ public class SourceNodeInstanceFactoryTests
     [Fact]
     public void GivenSystemNamespace_WhenCreate_ThenReturnsNull()
     {
-        var result = _factory.Create("String", "System", [new InstanceElement("value", [Prim("x", "string")])]);
+        var result = Create("String", "System", [new InstanceElement("value", [Prim("x", "string")])]);
 
         Assert.Null(result);
     }
+
+    private IElement? Create(string typeName, string? namespacePrefix, IReadOnlyList<InstanceElement> elements) =>
+        _factory.Create(new InstanceCreationRequest(typeName, namespacePrefix, elements));
 
     private static IElement Prim(object value, string type) => new PrimitiveValueElement(value, type);
 

@@ -9,23 +9,26 @@ using Ignixa.Abstractions;
 namespace Ignixa.Serialization.SourceNodes;
 
 /// <summary>
-/// <see cref="IInstanceFactory"/> backed by Ignixa's native source-node model.
+/// Instance-selector object creation backed by Ignixa's native source-node model.
+/// Wire <see cref="Create"/> as the <c>InstanceCreator</c> delegate on an evaluation context.
 /// Builds a JSON object for the requested type and returns it as a first-class
 /// <see cref="SchemaAwareElement"/> — the same node kind the FHIRPath engine
 /// navigates elsewhere — so created instances support full navigation and
 /// round-trip to JSON. Declines (returns null) for types unknown to the schema.
 /// </summary>
-public sealed class SourceNodeInstanceFactory(ISchema schema) : IInstanceFactory
+public sealed class SourceNodeInstanceFactory(ISchema schema)
 {
     private readonly ISchema _schema = schema ?? throw new ArgumentNullException(nameof(schema));
 
-    public IElement? Create(string typeName, string? namespacePrefix, IReadOnlyList<InstanceElement> elements)
+    public IElement? Create(InstanceCreationRequest request)
     {
-        ArgumentNullException.ThrowIfNull(typeName);
-        ArgumentNullException.ThrowIfNull(elements);
+        ArgumentNullException.ThrowIfNull(request);
+
+        var typeName = request.TypeName;
+        var elements = request.Elements;
 
         // This factory constructs FHIR types; System-namespace primitives are out of scope.
-        if (string.Equals(namespacePrefix, "System", StringComparison.Ordinal))
+        if (string.Equals(request.NamespacePrefix, "System", StringComparison.Ordinal))
         {
             return null;
         }

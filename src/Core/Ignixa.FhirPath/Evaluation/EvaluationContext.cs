@@ -147,11 +147,13 @@ public record EvaluationContext
     public Action<NodeEvaluationEntry>? NodeEvaluationHandler { get; init; }
 
     /// <summary>
-    /// Optional host-provided factory for instance-selector object creation.
-    /// When set, the engine delegates construction; otherwise it falls back to a
-    /// transient, navigation-only node. Replaces the former Schema property.
+    /// Optional host-provided delegate for instance-selector object creation
+    /// (<c>Type { element: value, ... }</c>). Mirrors the <c>resolve()</c> hook
+    /// (<see cref="FhirEvaluationContext.ElementResolver"/>): when set, the engine
+    /// delegates construction; otherwise it falls back to a transient, navigation-only node.
+    /// Return null to decline a type — the engine then yields an empty result.
     /// </summary>
-    public IInstanceFactory? InstanceFactory { get; init; }
+    public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
 
     /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).
@@ -308,11 +310,12 @@ public record EvaluationContext
     }
 
     /// <summary>
-    /// Creates a new context with the specified instance-creation factory.
+    /// Creates a new context with the specified instance-creation delegate.
+    /// The delegate is invoked when an instance selector (<c>Type { ... }</c>) is evaluated.
     /// </summary>
-    public EvaluationContext WithInstanceFactory(IInstanceFactory instanceFactory)
+    public EvaluationContext WithInstanceCreator(Func<InstanceCreationRequest, IElement?> instanceCreator)
     {
-        return this with { InstanceFactory = instanceFactory };
+        return this with { InstanceCreator = instanceCreator };
     }
 
     /// <summary>

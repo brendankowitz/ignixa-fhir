@@ -498,30 +498,30 @@ public class InstanceSelectorTests
 
     #endregion
 
-    #region Instance Factory Seam (spike)
+    #region Instance Creation Delegate Seam (spike)
 
     [Fact]
-    public void GivenInstanceFactory_WhenInstanceSelector_ThenDelegatesConstruction()
+    public void GivenInstanceCreator_WhenInstanceSelector_ThenDelegatesConstruction()
     {
         // Arrange
         var expression = "Coding { system: 'http://example.org', code: 'c1' }";
         var ast = _parser.Parse(expression);
-        var factory = new RecordingInstanceFactory();
+        var recorder = new RecordingInstanceCreator();
         var context = new EvaluationContext()
             .WithFocus(CreateIntegerElement(1))
-            .WithInstanceFactory(factory);
+            .WithInstanceCreator(recorder.Create);
 
         // Act
         var result = ast.AcceptVisitor(_evaluator, context).ToList();
 
-        // Assert - the engine handed construction to the factory with the right inputs
-        Assert.Equal(1, factory.CallCount);
-        Assert.Equal("Coding", factory.LastTypeName);
-        Assert.Null(factory.LastNamespacePrefix);
+        // Assert - the engine handed construction to the delegate with the right inputs
+        Assert.Equal(1, recorder.CallCount);
+        Assert.Equal("Coding", recorder.LastRequest?.TypeName);
+        Assert.Null(recorder.LastRequest?.NamespacePrefix);
         var expectedNames = new[] { "system", "code" };
-        Assert.Equal(expectedNames, factory.LastElements.Select(e => e.Name).ToArray());
+        Assert.Equal(expectedNames, recorder.LastRequest!.Elements.Select(e => e.Name).ToArray());
 
-        // ...and returned the factory's node, which the engine navigates normally
+        // ...and returned the delegate's node, which the engine navigates normally
         Assert.Single(result);
         Assert.Equal("Coding", result[0].InstanceType);
         Assert.Equal("http://example.org", result[0].Children("system").Single().Value);
@@ -529,13 +529,13 @@ public class InstanceSelectorTests
     }
 
     [Fact]
-    public void GivenInstanceFactoryReturningNull_WhenInstanceSelector_ThenResultIsEmpty()
+    public void GivenInstanceCreatorReturningNull_WhenInstanceSelector_ThenResultIsEmpty()
     {
         // Arrange - host cannot construct the type
         var ast = _parser.Parse("Coding { code: 'c1' }");
         var context = new EvaluationContext()
             .WithFocus(CreateIntegerElement(1))
-            .WithInstanceFactory(new NullInstanceFactory());
+            .WithInstanceCreator(_ => null);
 
         // Act
         var result = ast.AcceptVisitor(_evaluator, context).ToList();
@@ -545,31 +545,31 @@ public class InstanceSelectorTests
     }
 
     [Fact]
-    public void GivenNamespacePrefix_WhenInstanceSelector_ThenFactoryReceivesPrefix()
+    public void GivenNamespacePrefix_WhenInstanceSelector_ThenCreatorReceivesPrefix()
     {
-        // Arrange - namespace prefix is now flowed to the factory (was dropped before)
+        // Arrange - namespace prefix is now flowed to the creator (was dropped before)
         var ast = _parser.Parse("FHIR.Coding { code: 'c1' }");
-        var factory = new RecordingInstanceFactory();
+        var recorder = new RecordingInstanceCreator();
         var context = new EvaluationContext()
             .WithFocus(CreateIntegerElement(1))
-            .WithInstanceFactory(factory);
+            .WithInstanceCreator(recorder.Create);
 
         // Act
         _ = ast.AcceptVisitor(_evaluator, context).ToList();
 
         // Assert
-        Assert.Equal("Coding", factory.LastTypeName);
-        Assert.Equal("FHIR", factory.LastNamespacePrefix);
+        Assert.Equal("Coding", recorder.LastRequest?.TypeName);
+        Assert.Equal("FHIR", recorder.LastRequest?.NamespacePrefix);
     }
 
     [Fact]
-    public void GivenNoFactory_WhenInstanceSelector_ThenFallsBackToTransientNode()
+    public void GivenNoInstanceCreator_WhenInstanceSelector_ThenFallsBackToTransientNode()
     {
         // Arrange
         var expression = "Coding { system: 'http://example.org', code: 'c1' }";
         var ast = _parser.Parse(expression);
 
-        // Act - no factory wired
+        // Act - no creator wired
         var result = _evaluator.Evaluate(CreateIntegerElement(1), ast).ToList();
 
         // Assert - fallback node is navigable but carries no schema-driven type metadata
@@ -579,28 +579,19 @@ public class InstanceSelectorTests
         Assert.Null(result[0].Type);
     }
 
-    private sealed class RecordingInstanceFactory : IInstanceFactory
+    private sealed class RecordingInstanceCreator
     {
         public int CallCount { get; private set; }
-        public string? LastTypeName { get; private set; }
-        public string? LastNamespacePrefix { get; private set; }
-        public IReadOnlyList<InstanceElement> LastElements { get; private set; } = [];
+        public InstanceCreationRequest? LastRequest { get; private set; }
 
-        public IElement? Create(string typeName, string? namespacePrefix, IReadOnlyList<InstanceElement> elements)
+        public IElement? Create(InstanceCreationRequest request)
         {
             CallCount++;
-            LastTypeName = typeName;
-            LastNamespacePrefix = namespacePrefix;
-            LastElements = elements;
+            LastRequest = request;
 
-            var children = elements.SelectMany(e => e.Values.Select(v => (e.Name, v))).ToList();
-            return new FactoryNode(typeName, children);
+            var children = request.Elements.SelectMany(e => e.Values.Select(v => (e.Name, v))).ToList();
+            return new FactoryNode(request.TypeName, children);
         }
-    }
-
-    private sealed class NullInstanceFactory : IInstanceFactory
-    {
-        public IElement? Create(string typeName, string? namespacePrefix, IReadOnlyList<InstanceElement> elements) => null;
     }
 
     private sealed class FactoryNode : IElement

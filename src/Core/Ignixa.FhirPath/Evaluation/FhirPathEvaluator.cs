@@ -1867,13 +1867,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         // Preferred path: hand construction to the host's model/type system.
-        if (context.InstanceFactory is { } factory)
+        if (context.InstanceCreator is { } createInstance)
         {
-            var created = factory.Create(typeName, expression.NamespacePrefix, elements);
+            var created = createInstance(new InstanceCreationRequest(typeName, expression.NamespacePrefix, elements));
             return created is null ? [] : [created];
         }
 
-        // Fallback (no factory wired): transient, navigation-only node with no
+        // Fallback (no creator wired): transient, navigation-only node with no
         // round-trip and no schema-driven type metadata. See investigation doc.
         var children = elements
             .SelectMany(e => e.Values.Select(v => (e.Name, v)))
