@@ -16,12 +16,23 @@ namespace Ignixa.Search.Definition;
 public class SearchableSearchParameterDefinitionManager : ISearchParameterDefinitionManager
 {
     private readonly SearchParameterDefinitionManager _inner;
+    private readonly Func<bool> _includePartiallyIndexedSearchParameters;
 
-    public SearchableSearchParameterDefinitionManager(SearchParameterDefinitionManager inner)
+    /// <param name="inner">The definition manager holding every known parameter, searchable or not.</param>
+    /// <param name="includePartiallyIndexedSearchParameters">
+    /// Decides, per call, whether parameters that are merely <em>supported</em> - registered but not yet
+    /// reindexed - should be admitted alongside searchable ones. Applying such a parameter filters on an
+    /// index that is still being populated, so it returns too few resources; it is only correct when the
+    /// caller has explicitly asked for partially indexed results. Defaults to refusing them.
+    /// </param>
+    public SearchableSearchParameterDefinitionManager(
+        SearchParameterDefinitionManager inner,
+        Func<bool> includePartiallyIndexedSearchParameters = null)
     {
         EnsureArg.IsNotNull(inner, nameof(inner));
 
         _inner = inner;
+        _includePartiallyIndexedSearchParameters = includePartiallyIndexedSearchParameters ?? (() => false);
     }
 
     public IEnumerable<SearchParameterInfo> AllSearchParameters => GetAllSearchParameters();
@@ -30,6 +41,12 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
+        if (_includePartiallyIndexedSearchParameters())
+        {
+            return _inner.GetSearchParameters(resourceType)
+                .Where(x => x.IsSupported);
+        }
+
         return _inner.GetSearchParameters(resourceType)
             .Where(x => x.IsSearchable);
     }
@@ -40,7 +57,9 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
         if (_inner.TryGetSearchParameters(resourceType, out IEnumerable<SearchParameterInfo> innerSearchParameters))
         {
-            searchParameters = innerSearchParameters.Where(x => x.IsSearchable);
+            searchParameters = _includePartiallyIndexedSearchParameters()
+                ? innerSearchParameters.Where(x => x.IsSupported)
+                : innerSearchParameters.Where(x => x.IsSearchable);
             return true;
         }
 
@@ -100,15 +119,15 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
     public bool TryGetSearchParameter(Uri definitionUri, out SearchParameterInfo value)
     {
-        _inner.TryGetSearchParameter(definitionUri, out SearchParameterInfo parameter);
+        value = null;
 
-        if (parameter.IsSearchable || UsePartialSearchParams(parameter))
+        if (_inner.TryGetSearchParameter(definitionUri, out SearchParameterInfo parameter) &&
+            (parameter.IsSearchable || UsePartialSearchParams(parameter)))
         {
             value = parameter;
             return true;
         }
 
-        value = null;
         return false;
     }
 
@@ -119,11 +138,16 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
     private IEnumerable<SearchParameterInfo> GetAllSearchParameters()
     {
+        if (_includePartiallyIndexedSearchParameters())
+        {
+            return _inner.AllSearchParameters.Where(x => x.IsSupported);
+        }
+
         return _inner.AllSearchParameters.Where(x => x.IsSearchable);
     }
 
     private bool UsePartialSearchParams(SearchParameterInfo parameter)
     {
-        return parameter.IsSupported;
+        return _includePartiallyIndexedSearchParameters() && parameter.IsSupported;
     }
 }
