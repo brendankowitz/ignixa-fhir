@@ -15,7 +15,7 @@ public class SearchPlanTests
         var compiled = plan.Compile();
 
         compiled.Sql.ShouldNotBeNullOrWhiteSpace();
-        compiled.Plan.ShouldBeSameAs(plan.Query);
+        compiled.Query.ShouldBeSameAs(plan.Query);
     }
 
     [Fact]

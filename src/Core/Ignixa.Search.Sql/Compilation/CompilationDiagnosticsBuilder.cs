@@ -10,7 +10,7 @@ using Ignixa.Search.Sql.Tracing;
 namespace Ignixa.Search.Sql.Compilation;
 
 /// <summary>
-/// The attribution and provenance logic behind <c>SearchCompilationDiagnostics</c>: which parameter
+/// The attribution and provenance logic behind <see cref="SearchCompilationDiagnostics"/>: which parameter
 /// owns which CTE, which parameter a lowering failure belongs to, and which control values took effect
 /// without the caller sending them.
 /// </summary>

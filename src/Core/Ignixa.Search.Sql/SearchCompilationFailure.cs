@@ -1,3 +1,4 @@
+using System.Text;
 using Ignixa.Search.Expressions;
 
 namespace Ignixa.Search.Sql;
@@ -23,4 +24,36 @@ public sealed record SearchCompilationFailure(
 {
     /// <summary>Whatever diagnostics had been gathered when the failure occurred; null at <see cref="SearchDiagnosticsLevel.None"/>.</summary>
     public SearchCompilationDiagnostics? Diagnostics { get; init; }
+
+    /// <summary>
+    /// Prints <see cref="Exception"/> as its type name. The generated implementation would call
+    /// <see cref="Exception.ToString"/>, embedding a full multi-line stack trace in what reads as a
+    /// one-line record rendering — the message and the attributed <see cref="ParameterCode"/> are what a
+    /// log line wants, and the exception itself is still on the property for a caller that needs it.
+    /// </summary>
+    /// <remarks>
+    /// Only the rendering changes. Value equality is left untouched deliberately: two failures carrying
+    /// different exception instances are different occurrences, so reference equality on that member is the
+    /// honest answer, and widening it here would be a larger decision than this rendering fix.
+    /// </remarks>
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append("Stage = ");
+        builder.Append(Stage);
+        builder.Append(", Message = ");
+        builder.Append(Message);
+        builder.Append(", ParameterCode = ");
+        builder.Append(ParameterCode);
+        builder.Append(", Span = ");
+        builder.Append(Span);
+        builder.Append(", Exception = ");
+        if (Exception is not null)
+        {
+            builder.Append(Exception.GetType());
+        }
+
+        builder.Append(", Diagnostics = ");
+        builder.Append(Diagnostics);
+        return true;
+    }
 }

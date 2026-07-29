@@ -14,6 +14,6 @@ public class SearchCompilationDiagnosticsTests
         diagnostics.Parameters.ShouldBeEmpty();
         diagnostics.Implicit.ShouldBeEmpty();
         diagnostics.SqlTextRanges.ShouldBeEmpty();
-        diagnostics.Plan.ShouldBeNull();
+        diagnostics.PlanTrace.ShouldBeNull();
     }
 }
