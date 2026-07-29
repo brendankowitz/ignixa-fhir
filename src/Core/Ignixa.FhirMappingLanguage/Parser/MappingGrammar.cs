@@ -519,13 +519,14 @@ internal static class MappingGrammar
 
     // Group type mode annotation: <<types>> or <<type+>>
     // Note: '<<' is two LeftAngle tokens - the lexer deliberately has no '<<' token.
+    // The grammar is closed: only <<types>> and <<type+>> are valid; <<type>> is rejected.
     private static readonly TokenListParser<MappingTokenKind, GroupTypeMode> GroupTypeModeAnnotation =
         from open1 in Token.EqualTo(MappingTokenKind.LeftAngle)
         from open2 in Token.EqualTo(MappingTokenKind.LeftAngle)
         from mode in Token.EqualTo(MappingTokenKind.Types).Value(GroupTypeMode.Types)
             .Or(from typeToken in Token.EqualTo(MappingTokenKind.Type)
-                from plus in Token.EqualTo(MappingTokenKind.Plus).Optional()
-                select plus.HasValue ? GroupTypeMode.TypeAndTypes : GroupTypeMode.Types)
+                from plus in Token.EqualTo(MappingTokenKind.Plus)
+                select GroupTypeMode.TypeAndTypes)
         from close1 in Token.EqualTo(MappingTokenKind.RightAngle)
         from close2 in Token.EqualTo(MappingTokenKind.RightAngle)
         select mode;

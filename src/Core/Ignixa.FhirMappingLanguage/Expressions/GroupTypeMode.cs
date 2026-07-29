@@ -15,9 +15,14 @@ public enum GroupTypeMode
     /// <summary>No annotation present. The group is only invoked by explicit reference.</summary>
     None = 0,
 
-    /// <summary>Declared &lt;&lt;types&gt;&gt;: the group is a candidate for type-based dispatch.</summary>
+    /// <summary>
+    /// Declared &lt;&lt;types&gt;&gt;: the group is the default mapping group for the specified
+    /// types <em>and</em> for the primary source type.
+    /// </summary>
     Types,
 
-    /// <summary>Declared &lt;&lt;type+&gt;&gt;: the group is the default for type-based dispatch.</summary>
+    /// <summary>
+    /// Declared &lt;&lt;type+&gt;&gt;: the group is the default mapping group for the specified types.
+    /// </summary>
     TypeAndTypes
 }

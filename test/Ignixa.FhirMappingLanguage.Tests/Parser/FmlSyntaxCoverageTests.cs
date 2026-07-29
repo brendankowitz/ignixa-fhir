@@ -208,4 +208,44 @@ public class FmlSyntaxCoverageTests
         // Assert
         reparsed.Groups[0].TypeMode.ShouldBe(new MappingParser().Parse(fml).Groups[0].TypeMode);
     }
+
+    [Fact]
+    public void GivenABareTypeAnnotation_WhenParsing_ThenItIsRejected()
+    {
+        // Arrange
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) <<type>> {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+        ex.Message.ShouldContain("expected plus");
+    }
+
+    [Theory]
+    [InlineData("<<types>>", GroupTypeMode.Types)]
+    [InlineData("<<type+>>", GroupTypeMode.TypeAndTypes)]
+    public void GivenAGroupWithExtendsAndTypeModeAnnotation_WhenRoundTripping_ThenBothSurvive(
+        string annotation, GroupTypeMode expectedMode)
+    {
+        // Arrange
+        var fml = $$"""
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) extends Base {{annotation}} {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var reparsed = new MappingParser().Parse(new FmlSerializer().Serialize(new MappingParser().Parse(fml)));
+
+        // Assert
+        reparsed.Groups[0].Extends.ShouldBe("Base");
+        reparsed.Groups[0].TypeMode.ShouldBe(expectedMode);
+    }
 }
