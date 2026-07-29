@@ -238,10 +238,10 @@ public static class SearchCompiler
 
         QueryPlanTrace? planTrace = null;
         EmittedSqlTrace? sqlTrace = null;
-        var resolveFailure2 = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved);
-        TraceFailure? failure = resolveFailure2 is null
+        var resolveFailure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved);
+        TraceFailure? failure = resolveFailure is null
             ? null
-            : new TraceFailure(ToTraceStage(resolveFailure2.Stage), resolveFailure2.Message, resolveFailure2.Span);
+            : new TraceFailure(ToTraceStage(resolveFailure.Stage), resolveFailure.Message, resolveFailure.Span);
 
         // Declared here, not inside the `if` block below, even though it's only ever assigned inside it --
         // the final `return`'s `CompiledPlan = lowered?.Plan` needs it in scope whether or not that block
@@ -269,8 +269,8 @@ public static class SearchCompiler
             }
             catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
             {
-                var compilationFailure2 = CompilationDiagnosticsBuilder.RecordFailure(outcomes, lowered is null ? CompilationStage.Lower : CompilationStage.Emit, ex);
-                failure = new TraceFailure(ToTraceStage(compilationFailure2.Stage), compilationFailure2.Message, compilationFailure2.Span);
+                var compilationFailure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, lowered is null ? CompilationStage.Lower : CompilationStage.Emit, ex);
+                failure = new TraceFailure(ToTraceStage(compilationFailure.Stage), compilationFailure.Message, compilationFailure.Span);
             }
         }
 
