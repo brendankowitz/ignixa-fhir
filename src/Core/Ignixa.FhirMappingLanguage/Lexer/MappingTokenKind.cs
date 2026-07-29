@@ -93,6 +93,9 @@ public enum MappingTokenKind
     LessOrEqual,         // <=
     GreaterOrEqual,      // >=
 
+    // Metadata declarations (R6 FML header form)
+    MetadataLine,        // /// key = 'value'
+
     // Comments (for trivia mode)
     LineComment,         // //
     BlockComment,        // /* */

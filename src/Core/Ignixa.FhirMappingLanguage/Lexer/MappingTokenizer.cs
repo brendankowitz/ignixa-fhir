@@ -24,6 +24,9 @@ public static class MappingTokenizer
     public static Tokenizer<MappingTokenKind> CreateWithTrivia()
     {
         return new TokenizerBuilder<MappingTokenKind>()
+            // Metadata declarations (must precede the comment rules - '///' is a prefix of '//')
+            .Match(Span.Regex(@"///[^\r\n]*"), MappingTokenKind.MetadataLine, requireDelimiters: false)
+
             // Comments (must come before other operators to avoid capturing // as division)
             .Match(Comment.CStyle, MappingTokenKind.BlockComment, requireDelimiters: true)
             .Match(Comment.CPlusPlusStyle, MappingTokenKind.LineComment)
@@ -127,6 +130,9 @@ public static class MappingTokenizer
     public static Tokenizer<MappingTokenKind> Create()
     {
         return new TokenizerBuilder<MappingTokenKind>()
+            // Metadata declarations (must precede the comment rules - '///' is a prefix of '//')
+            .Match(Span.Regex(@"///[^\r\n]*"), MappingTokenKind.MetadataLine, requireDelimiters: false)
+
             // Comments (ignore for standard parsing)
             .Ignore(Comment.CStyle)
             .Ignore(Comment.CPlusPlusStyle)

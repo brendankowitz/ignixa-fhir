@@ -10,6 +10,7 @@ using Ignixa.FhirMappingLanguage.Lexer;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
+using System.Text.RegularExpressions;
 
 namespace Ignixa.FhirMappingLanguage.Parser;
 
@@ -556,23 +557,74 @@ internal static class MappingGrammar
             CreatePosition(groupToken));
 
     // Map: map "url" = "Identifier" [conceptMaps]* [uses]* [imports]* [constants]* [groups]*
-    public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
-        from mapToken in Token.EqualTo(MappingTokenKind.Map)
+    //   OR metadata-based R6 form: /// key = 'value' … [groups]*
+    private static readonly Regex MetadataLinePattern = new(
+        @"^///\s*(?<key>[A-Za-z_][A-Za-z0-9_.\-]*)\s*=\s*(?<value>.*?)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly TokenListParser<MappingTokenKind, KeyValuePair<string, string>?> MetadataDeclaration =
+        Token.EqualTo(MappingTokenKind.MetadataLine)
+            .Select(t =>
+            {
+                var match = MetadataLinePattern.Match(t.ToStringValue());
+                if (!match.Success)
+                {
+                    return (KeyValuePair<string, string>?)null;
+                }
+
+                return new KeyValuePair<string, string>(
+                    match.Groups["key"].Value,
+                    UnescapeString(match.Groups["value"].Value));
+            });
+
+    private sealed record MapHeaderInfo(string Url, string Identifier, ISourcePositionInfo Position);
+
+    private static readonly TokenListParser<MappingTokenKind, MapHeaderInfo?> MapHeader =
+        (from mapToken in Token.EqualTo(MappingTokenKind.Map)
         from url in StringLiteral
         from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
         from identifier in StringLiteral
-        from conceptMaps in ConceptMapDeclaration.Many()
-        from uses in Uses.Many()
-        from imports in Imports.Many()
-        from constants in Constant.Many()
-        from groups in Group.Many()
-        select new MapExpression(
-            url.Value.ToString()!,
-            identifier.Value.ToString()!,
+        select new MapHeaderInfo(url.Value.ToString()!, identifier.Value.ToString()!, CreatePosition(mapToken)))
+        .Select(h => (MapHeaderInfo?)h);
+
+    private static MapExpression BuildMap(
+        KeyValuePair<string, string>?[] metadataLines,
+        MapHeaderInfo? header,
+        ConceptMapDeclarationExpression[] conceptMaps,
+        UsesExpression[] uses,
+        ImportsExpression[] imports,
+        ConstantDeclarationExpression[] constants,
+        GroupExpression[] groups)
+    {
+        var metaDict = metadataLines
+            .Where(kvp => kvp.HasValue)
+            .ToDictionary(
+                kvp => kvp!.Value.Key,
+                kvp => kvp!.Value.Value,
+                StringComparer.Ordinal);
+
+        var url = header?.Url ?? (metaDict.GetValueOrDefault("url") ?? string.Empty);
+        var identifier = header?.Identifier ?? (metaDict.GetValueOrDefault("name") ?? string.Empty);
+
+        return new MapExpression(
+            url,
+            identifier,
             uses,
             imports,
             groups,
             conceptMaps,
             constants,
-            CreatePosition(mapToken));
+            metaDict,
+            header?.Position);
+    }
+
+    public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
+        from metadataLines in MetadataDeclaration.Many()
+        from header in MapHeader.OptionalOrDefault()
+        from conceptMaps in ConceptMapDeclaration.Many()
+        from uses in Uses.Many()
+        from imports in Imports.Many()
+        from constants in Constant.Many()
+        from groups in Group.Many()
+        select BuildMap(metadataLines, header, conceptMaps, uses, imports, constants, groups);
 }

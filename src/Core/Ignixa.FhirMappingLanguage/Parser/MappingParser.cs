@@ -66,6 +66,15 @@ public class MappingParser
                     result.ErrorPosition);
             }
 
+            if (result.Value.Groups.Count == 0 &&
+                string.IsNullOrEmpty(result.Value.Url) &&
+                string.IsNullOrEmpty(result.Value.Identifier))
+            {
+                throw new ParseException(
+                    "The input contains no map header, metadata declarations, or groups.",
+                    Position.Zero);
+            }
+
             return result.Value;
         }
         catch (ParseException)

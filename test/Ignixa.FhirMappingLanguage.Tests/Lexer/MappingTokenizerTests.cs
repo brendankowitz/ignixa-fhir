@@ -406,6 +406,67 @@ public class MappingTokenizerTests
         kinds.ShouldBe(new[] { MappingTokenKind.LineComment });
     }
 
+    #region Metadata declaration tokenization (Task 5)
+
+    [Fact]
+    public void GivenMetadataDeclarationLine_WhenTokenizingWithCreate_ThenItIsMetadataLine()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize("/// url = 'http://example.org'").ToList();
+
+        // Assert — the '///' line is preserved as a single MetadataLine token in standard mode
+        result.ShouldHaveSingleItem();
+        result[0].Kind.ShouldBe(MappingTokenKind.MetadataLine);
+    }
+
+    [Fact]
+    public void GivenMetadataDeclarationLine_WhenTokenizingWithCreateWithTrivia_ThenItIsMetadataLine()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var result = tokenizer.Tokenize("/// url = 'http://example.org'").ToList();
+
+        // Assert — the '///' line is preserved as a single MetadataLine token in trivia mode
+        result.ShouldContain(t => t.Kind == MappingTokenKind.MetadataLine);
+        result[0].Kind.ShouldBe(MappingTokenKind.MetadataLine);
+    }
+
+    [Fact]
+    public void GivenMetadataLineFollowedByNormalComment_WhenTokenizingWithCreate_ThenEachIsClassifiedCorrectly()
+    {
+        // Arrange — '///' is MetadataLine; '//' is ignored in standard mode
+        var tokenizer = MappingTokenizer.Create();
+        var input = "/// key = 'value'\n// ordinary comment\nmap";
+
+        // Act
+        var kinds = tokenizer.Tokenize(input).Select(t => t.Kind).ToList();
+
+        // Assert — only MetadataLine and Map survive (ordinary comment is ignored)
+        kinds.ShouldBe(new[] { MappingTokenKind.MetadataLine, MappingTokenKind.Map });
+    }
+
+    [Fact]
+    public void GivenMetadataLineFollowedByNormalComment_WhenTokenizingWithCreateWithTrivia_ThenEachIsClassifiedCorrectly()
+    {
+        // Arrange — '///' is MetadataLine; '//' is LineComment in trivia mode
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+        var input = "/// key = 'value'\n// ordinary comment";
+
+        // Act
+        var kinds = tokenizer.Tokenize(input).Where(t => t.Kind != MappingTokenKind.Whitespace).Select(t => t.Kind).ToList();
+
+        // Assert — MetadataLine precedes LineComment, not the other way around
+        kinds[0].ShouldBe(MappingTokenKind.MetadataLine);
+        kinds[1].ShouldBe(MappingTokenKind.LineComment);
+    }
+
+    #endregion
+
     #endregion
 
     #region Whitespace Tests

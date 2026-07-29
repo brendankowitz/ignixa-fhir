@@ -268,4 +268,68 @@ public class FmlSyntaxCoverageTests
         reparsed.Groups[0].Extends.ShouldBe("Base");
         reparsed.Groups[0].TypeMode.ShouldBe(expectedMode);
     }
+
+    #region R6 metadata-declaration form (Task 5)
+
+    [Fact]
+    public void GivenMetadataDeclarationsInsteadOfAMapHeader_WhenParsing_ThenUrlAndNameAreDerivedFromMetadata()
+    {
+        // Arrange
+        const string Fml = """
+            /// url = 'http://hl7.org/fhir/uv/xver/StructureMap/Element4to6'
+            /// name = 'Element4to6'
+            /// title = 'Element Transforms: R4 to R6'
+
+            group Element(source src, target tgt) {
+              src.id as v -> tgt.id = v;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Url.ShouldBe("http://hl7.org/fhir/uv/xver/StructureMap/Element4to6");
+        map.Identifier.ShouldBe("Element4to6");
+        map.Metadata["title"].ShouldBe("Element Transforms: R4 to R6");
+    }
+
+    [Fact]
+    public void GivenOnlyCommentsAndWhitespace_WhenParsing_ThenAParseExceptionIsThrown()
+    {
+        // Arrange
+        const string Fml = """
+            // nothing to see here
+            """;
+
+        // Act & Assert
+        Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+    }
+
+    [Fact]
+    public void GivenBothExplicitHeaderAndMetadata_WhenParsing_ThenExplicitHeaderWinsForUrlAndName()
+    {
+        // Arrange — explicit 'map' header overrides any metadata declarations with the same keys
+        const string Fml = """
+            /// url = 'http://metadata.example.org/ShouldNotWin'
+            /// name = 'MetadataName'
+            /// title = 'A Title From Metadata'
+            map 'http://header.example.org/ShouldWin' = 'HeaderName'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert — explicit header values win
+        map.Url.ShouldBe("http://header.example.org/ShouldWin");
+        map.Identifier.ShouldBe("HeaderName");
+        // Metadata dict still populated (title is metadata-only)
+        map.Metadata["title"].ShouldBe("A Title From Metadata");
+    }
+
+    #endregion
 }
