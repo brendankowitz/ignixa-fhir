@@ -138,7 +138,7 @@ internal static class CompilationDiagnosticsBuilder
     }
 
     /// <summary>The predicate a CTE definition filters on, or null for the definitions that compose other CTEs rather than filter a table.</summary>
-    public static Predicate? PredicateOf(CteDefinition definition) => definition switch
+    private static Predicate? PredicateOf(CteDefinition definition) => definition switch
     {
         CteDefinition.ParamSource source => source.Predicate,
         CteDefinition.ResourceSource source => source.Predicate,
@@ -150,7 +150,7 @@ internal static class CompilationDiagnosticsBuilder
     /// The unsatisfiable term that makes a whole predicate tree unsatisfiable, or null when the tree can
     /// still hold. An <c>And</c> falls to either side being false; an <c>Or</c> needs both.
     /// </summary>
-    public static Predicate.False? FindFalse(Predicate? predicate) => predicate switch
+    private static Predicate.False? FindFalse(Predicate? predicate) => predicate switch
     {
         Predicate.False unsatisfiable => unsatisfiable,
         Predicate.And and => FindFalse(and.Left) ?? FindFalse(and.Right),
@@ -199,7 +199,7 @@ internal static class CompilationDiagnosticsBuilder
     /// children — so the walk terminates. The visited set exists for a diamond, where two branches share a
     /// child; ordinals land in a set, so revisiting would be harmless but wasteful.
     /// </remarks>
-    public static IReadOnlyList<int> ContributingOrdinals(int index, QueryPlan plan, int?[] directOrdinals)
+    private static IReadOnlyList<int> ContributingOrdinals(int index, QueryPlan plan, int?[] directOrdinals)
     {
         var ordinals = new SortedSet<int>();
         var visited = new HashSet<int>();
@@ -262,7 +262,7 @@ internal static class CompilationDiagnosticsBuilder
     /// parameter, a wrapper names a composite's own identity, and :missing names its subject -- each of
     /// which Resolve can report unresolved without any leaf predicate mentioning it.
     /// </summary>
-    public static IEnumerable<(SearchParameterInfo Parameter, SourceSpan? Span)> ParametersOf(Expression node)
+    private static IEnumerable<(SearchParameterInfo Parameter, SourceSpan? Span)> ParametersOf(Expression node)
     {
         switch (node)
         {
@@ -285,7 +285,7 @@ internal static class CompilationDiagnosticsBuilder
     }
 
     /// <summary>Returns a leaf/composite node's own span, or null for any other node kind.</summary>
-    public static SourceSpan? ExtractSpan(Expression node) => node switch
+    private static SourceSpan? ExtractSpan(Expression node) => node switch
     {
         SearchParameterPredicateExpression p => p.Span,
         CompositeComponentExpression c => c.Span,
@@ -293,7 +293,7 @@ internal static class CompilationDiagnosticsBuilder
     };
 
     /// <summary>Yields <paramref name="node"/> and every descendant reachable through this parser's container node kinds, so a caller can search a whole IR subtree for a specific node reference without a full visitor.</summary>
-    public static IEnumerable<Expression> Flatten(Expression node)
+    private static IEnumerable<Expression> Flatten(Expression node)
     {
         yield return node;
 
