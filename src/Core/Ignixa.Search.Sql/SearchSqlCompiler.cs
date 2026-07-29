@@ -177,6 +177,7 @@ public sealed class SearchSqlCompiler(
         var plan = new SearchPlan
         {
             Query = lowered.Plan,
+            ResourceType = context.TargetResourceType,
             DiagnosticsLevel = options.DiagnosticsLevel,
             Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace),
         };

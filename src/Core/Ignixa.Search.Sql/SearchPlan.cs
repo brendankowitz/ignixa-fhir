@@ -16,6 +16,12 @@ public sealed record SearchPlan
     /// <summary>The lowered plan.</summary>
     public required QueryPlan Query { get; init; }
 
+    /// <summary>
+    /// The resource type this plan was compiled against, normalized: null means a system-level (cross-type)
+    /// search. Exposed so callers read the compiler's own normalization rather than reimplementing it.
+    /// </summary>
+    public string? ResourceType { get; init; }
+
     /// <summary>Build, Resolve, and Lower diagnostics. Null when <see cref="DiagnosticsLevel"/> is <see cref="SearchDiagnosticsLevel.None"/>.</summary>
     public SearchCompilationDiagnostics? Diagnostics { get; init; }
 

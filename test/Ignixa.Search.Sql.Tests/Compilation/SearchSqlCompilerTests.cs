@@ -75,6 +75,28 @@ public class SearchSqlCompilerTests
     }
 
     [Fact]
+    public async Task GivenATypedSearch_WhenCreatingAPlan_ThenThePlanCarriesTheResourceType()
+    {
+        var compiler = CompilerFixtures.ForPatient();
+
+        var plan = await compiler.CreatePlanAsync("Patient", [new QueryParameter("name", "smith")]);
+
+        plan.ResourceType.ShouldBe("Patient");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public async Task GivenNoResourceType_WhenCreatingAPlan_ThenThePlanReportsASystemLevelSearch(string? resourceType)
+    {
+        var compiler = CompilerFixtures.ForPatient();
+
+        var plan = await compiler.CreatePlanAsync(resourceType, [new QueryParameter("name", "smith")]);
+
+        plan.ResourceType.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task GivenDiagnosticsLevelNone_WhenCreatingAPlan_ThenNoDiagnosticsAreAttached()
     {
         var compiler = CompilerFixtures.ForPatient();
