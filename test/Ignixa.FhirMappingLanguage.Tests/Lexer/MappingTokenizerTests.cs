@@ -139,6 +139,50 @@ public class MappingTokenizerTests
 
     // NOTE: DoubleColon (::) test removed - not part of FHIR Mapping Language spec
 
+    [Theory]
+    [InlineData("+", MappingTokenKind.Plus)]
+    [InlineData("-", MappingTokenKind.Minus)]
+    [InlineData("%", MappingTokenKind.Percent)]
+    [InlineData("/", MappingTokenKind.Slash)]
+    [InlineData("|", MappingTokenKind.Pipe)]
+    [InlineData("&", MappingTokenKind.Ampersand)]
+    [InlineData("<=", MappingTokenKind.LessOrEqual)]
+    [InlineData(">=", MappingTokenKind.GreaterOrEqual)]
+    public void GivenAnOperator_WhenTokenizing_ThenTheOperatorTokenIsProduced(string input, MappingTokenKind expected)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var tokens = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("+", MappingTokenKind.Plus)]
+    [InlineData("-", MappingTokenKind.Minus)]
+    [InlineData("%", MappingTokenKind.Percent)]
+    [InlineData("/", MappingTokenKind.Slash)]
+    [InlineData("|", MappingTokenKind.Pipe)]
+    [InlineData("&", MappingTokenKind.Ampersand)]
+    [InlineData("<=", MappingTokenKind.LessOrEqual)]
+    [InlineData(">=", MappingTokenKind.GreaterOrEqual)]
+    public void GivenAnOperator_WhenTokenizingWithTrivia_ThenTheOperatorTokenIsProduced(string input, MappingTokenKind expected)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var tokens = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(expected);
+    }
+
     #endregion
 
     #region Literal Tests
@@ -323,6 +367,19 @@ public class MappingTokenizerTests
         result[0].Kind.ShouldBe(MappingTokenKind.Map);
     }
 
+    [Fact]
+    public void GivenALineComment_WhenTokenizingWithTrivia_ThenItIsStillACommentNotTwoSlashes()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var kinds = tokenizer.Tokenize("// hello").Select(t => t.Kind).ToList();
+
+        // Assert
+        kinds.ShouldBe(new[] { MappingTokenKind.LineComment });
+    }
+
     #endregion
 
     #region Whitespace Tests
@@ -436,6 +493,44 @@ public class MappingTokenizerTests
         result[4].Kind.ShouldBe(MappingTokenKind.Identifier); // tgt
         result[5].Kind.ShouldBe(MappingTokenKind.Dot);
         result[6].Kind.ShouldBe(MappingTokenKind.Identifier); // name
+    }
+
+    [Fact]
+    public void GivenAPercentConstantWithDateArithmetic_WhenTokenizing_ThenAllTokensAreProduced()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var kinds = tokenizer.Tokenize("%value + 5 days").Select(t => t.Kind).ToList();
+
+        // Assert
+        kinds.ShouldBe(new[]
+        {
+            MappingTokenKind.Percent,
+            MappingTokenKind.Identifier,
+            MappingTokenKind.Plus,
+            MappingTokenKind.IntegerLiteral,
+            MappingTokenKind.Identifier
+        });
+    }
+
+    [Fact]
+    public void GivenAnArrow_WhenTokenizing_ThenItIsStillASingleArrowNotMinus()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var kinds = tokenizer.Tokenize("src -> tgt").Select(t => t.Kind).ToList();
+
+        // Assert
+        kinds.ShouldBe(new[]
+        {
+            MappingTokenKind.Identifier,
+            MappingTokenKind.Arrow,
+            MappingTokenKind.Identifier
+        });
     }
 
     #endregion

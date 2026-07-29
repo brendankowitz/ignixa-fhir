@@ -90,6 +90,8 @@ public static class MappingTokenizer
             .Match(Span.EqualTo("~="), MappingTokenKind.RelatedTo)
             .Match(Span.EqualTo("!="), MappingTokenKind.NotEquals)
             .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
+            .Match(Span.EqualTo("<="), MappingTokenKind.LessOrEqual)
+            .Match(Span.EqualTo(">="), MappingTokenKind.GreaterOrEqual)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -106,6 +108,14 @@ public static class MappingTokenizer
             .Match(Character.EqualTo('>'), MappingTokenKind.RightAngle)
             .Match(Character.EqualTo('['), MappingTokenKind.LeftBracket)
             .Match(Character.EqualTo(']'), MappingTokenKind.RightBracket)
+
+            // Arithmetic / FHIRPath operators (after multi-character forms so -> and <= win)
+            .Match(Character.EqualTo('+'), MappingTokenKind.Plus)
+            .Match(Character.EqualTo('-'), MappingTokenKind.Minus)
+            .Match(Character.EqualTo('%'), MappingTokenKind.Percent)
+            .Match(Character.EqualTo('/'), MappingTokenKind.Slash)
+            .Match(Character.EqualTo('|'), MappingTokenKind.Pipe)
+            .Match(Character.EqualTo('&'), MappingTokenKind.Ampersand)
 
             .Build();
     }
@@ -180,6 +190,8 @@ public static class MappingTokenizer
             .Match(Span.EqualTo("~="), MappingTokenKind.RelatedTo)
             .Match(Span.EqualTo("!="), MappingTokenKind.NotEquals)
             .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
+            .Match(Span.EqualTo("<="), MappingTokenKind.LessOrEqual)
+            .Match(Span.EqualTo(">="), MappingTokenKind.GreaterOrEqual)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -196,6 +208,14 @@ public static class MappingTokenizer
             .Match(Character.EqualTo('>'), MappingTokenKind.RightAngle)
             .Match(Character.EqualTo('['), MappingTokenKind.LeftBracket)
             .Match(Character.EqualTo(']'), MappingTokenKind.RightBracket)
+
+            // Arithmetic / FHIRPath operators (after multi-character forms so -> and <= win)
+            .Match(Character.EqualTo('+'), MappingTokenKind.Plus)
+            .Match(Character.EqualTo('-'), MappingTokenKind.Minus)
+            .Match(Character.EqualTo('%'), MappingTokenKind.Percent)
+            .Match(Character.EqualTo('/'), MappingTokenKind.Slash)
+            .Match(Character.EqualTo('|'), MappingTokenKind.Pipe)
+            .Match(Character.EqualTo('&'), MappingTokenKind.Ampersand)
 
             // Whitespace (ignore for standard parsing)
             .Ignore(Span.WhiteSpace)

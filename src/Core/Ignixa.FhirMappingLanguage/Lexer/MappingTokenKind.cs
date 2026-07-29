@@ -82,6 +82,16 @@ public enum MappingTokenKind
     LeftBracket,         // [
     RightBracket,        // ]
 
+    // Arithmetic and FHIRPath operators (appear inside embedded FHIRPath and in <<type+>>)
+    Plus,                // +
+    Minus,               // -
+    Percent,             // % (FHIRPath environment variable prefix)
+    Slash,               // /
+    Pipe,                // |
+    Ampersand,           // &
+    LessOrEqual,         // <=
+    GreaterOrEqual,      // >=
+
     // Comments (for trivia mode)
     LineComment,         // //
     BlockComment,        // /* */
