@@ -176,6 +176,20 @@ closed; each has regression tests plus a corpus ratchet as its acceptance test.
 Defects 5 and 6 were both surfaced *by the corpus gate itself* rather than by inspection, which is the
 main argument for keeping the gate.
 
+Fixing defect 4 **tightens** the accepted input surface, which is the one behaviour change on this branch
+that could affect previously-valid maps: a `///` line used to lex as an ordinary `//` comment and be
+ignored, and now must be a well-formed `/// key = value` metadata declaration or the parse fails. A map
+using `///` decoratively (`/// ----`, `/// TODO`) parsed before and does not now. This is deliberate — the
+official HL7 grammar defines `METADATA_PREFIX` as `'/// '` and `LINE_COMMENT` as `'//' ~[/]`, so `///` is
+the metadata production, not a comment — and it is covered by dedicated malformed-input tests. Everything
+else on this branch is strictly more permissive.
+
+One further defect was found by the final review and deferred: `StructureMapParser.ParseGroups` never
+propagates `typeMode` when reading a StructureMap **resource** back into FML, so the reverse direction of
+the round-trip silently loses `<<types>>` / `<<type+>>`. The FML-text direction and the
+FML → StructureMap direction are both correct and tested; only StructureMap-JSON → FML is lossy, and no
+oracle case exercises it. Tracked as [#377](https://github.com/brendankowitz/ignixa-fhir/issues/377).
+
 Still open, deliberately: nested function calls as a transform argument (`evaluate(src, iif(...))`) — the
 one remaining parse failure; wildcard imports (`imports "…/*3to4"` *parses*, but `ImportResolver` has no
 glob semantics, so the group closure is never resolved); and unit-bearing date arithmetic (`%value + 5 days`
