@@ -1,6 +1,6 @@
 using Ignixa.Search.Sql.Ast;
 
-namespace Ignixa.Search.Sql.Tracing;
+namespace Ignixa.Search.Sql;
 
 /// <summary>The explained plan plus each CTE's provenance.</summary>
 /// <remarks>

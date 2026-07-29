@@ -1,6 +1,6 @@
 using Ignixa.Search.Expressions;
 
-namespace Ignixa.Search.Sql.Tracing;
+namespace Ignixa.Search.Sql;
 
 /// <summary>One CTE's link back to the parameter that produced it. Null ordinal where exempt —
 /// :missing, compartment, and structural CTEs have no source text.</summary>

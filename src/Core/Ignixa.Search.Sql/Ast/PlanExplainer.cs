@@ -27,7 +27,7 @@ public static class PlanExplainer
     /// <summary>
     /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
     /// the label kept apart from the body. Tooling needs the label to address a row (and to join it to the
-    /// owning parameter via <see cref="Tracing.CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
+    /// owning parameter via <see cref="CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
     /// terms of this method so the two can never disagree.
     /// </summary>
     /// <remarks>

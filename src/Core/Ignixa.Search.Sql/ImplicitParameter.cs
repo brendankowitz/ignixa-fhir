@@ -1,4 +1,4 @@
-namespace Ignixa.Search.Sql.Tracing;
+namespace Ignixa.Search.Sql;
 
 /// <summary>
 /// A control parameter the server resolved to a value the caller never sent, with why it did.
