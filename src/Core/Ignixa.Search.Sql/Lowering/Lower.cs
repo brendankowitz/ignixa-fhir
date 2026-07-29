@@ -236,15 +236,15 @@ public static class Lower
                 "a match-side seek that would change which resources are included.");
         }
 
-        // The resume cursor pages a stream of include rows; it only has meaning when the result IS that
+        // The resume boundary pages a stream of include rows; it only has meaning when the result IS that
         // stream. Without IncludesOnly the emitter keeps the match arm and never applies the resume
-        // predicate to a match row, so a caller that passed a cursor expecting a second page would instead
+        // predicate to a match row, so a caller that passed a boundary expecting a second page would instead
         // get a full first page back — the include rows it already holds, silently re-returned. Refuse the
         // combination here, mirrored by SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
-        if (options.IncludeCursor is not null && !options.IncludesOnly)
+        if (options.IncludeBoundary is not null && !options.IncludesOnly)
         {
             throw new NotSupportedException(
-                "IncludeCursor was supplied without IncludesOnly. The resume cursor pages the union of " +
+                "IncludeBoundary was supplied without IncludesOnly. The resume boundary pages the union of " +
                 "include stages as one ordered stream, which exists only on an includes-only page; on an " +
                 "ordinary search there is no such stream for it to resume, so it is reported rather than " +
                 "silently ignored.");
@@ -252,10 +252,38 @@ public static class Lower
 
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
+        // A custom (search-parameter) sort orders by (sort keys…, Sid1) with no type component, so its
+        // boundary must be typeless to seek the same order. A type on the boundary makes the emitted seek
+        // type-major while the ORDER BY stays type-free: within a run of tied sort values a row of a lower
+        // type id but higher surrogate id sorts after the boundary yet is excluded by the seek, and vanishes
+        // at the page seam. Refused here so a caller lowering a real search gets the error at its own call
+        // site; mirrored by SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
+        if (page is { BoundaryResourceTypeId: not null } && HasCustomSortKey(sortSpec))
+        {
+            throw new NotSupportedException(
+                "A typed keyset Page (BoundaryResourceTypeId is non-null) cannot be combined with a custom " +
+                "(search-parameter) _sort such as name or birthdate: the emitted ORDER BY is (sort keys…, Sid1) " +
+                "while a typed boundary seeks type-major, so rows are silently dropped at the page seam. Decode " +
+                "the continuation token to a typeless Page (BoundaryResourceTypeId: null) for a custom sort; the " +
+                "type component is redundant because ResourceSurrogateId is globally unique.");
+        }
+
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped, IncludeCursor: options.IncludeCursor),
+            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped, IncludeBoundary: options.IncludeBoundary),
             new PlanProvenance(context.Origins));
     }
+
+    /// <summary>
+    /// True when the sort has any search-parameter-backed key (String/Date, or an Aggregated
+    /// Token/Number/Quantity/Reference/Uri sort) as opposed to only resource-column keys
+    /// (_lastUpdated / _type / _id). Deliberately duplicated from SqlBuilder rather than shared: each layer
+    /// guards its own construction surface, and the emitter must stay correct for a QueryPlan built without
+    /// going through Lower at all. All keys are considered, not just the current phase's active ones, so the
+    /// missing-value segment of a custom sort is treated as type-free too — matching what the emitter does.
+    /// </summary>
+    private static bool HasCustomSortKey(SortSpec? sort)
+        => sort is not null
+           && sort.Keys.Any(k => k.Kind is SortKeyKind.String or SortKeyKind.Date or SortKeyKind.Aggregated);
 
     /// <summary>Names why there is no single target resource type, so a guard's message diagnoses the caller's
     /// actual situation rather than always blaming a wildcard compartment search.</summary>

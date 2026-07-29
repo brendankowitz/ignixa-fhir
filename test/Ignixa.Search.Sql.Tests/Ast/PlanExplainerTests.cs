@@ -249,13 +249,36 @@ public class PlanExplainerTests
     }
 
     [Fact]
-    public void GivenAPlanWithSortAndAPageBoundary_WhenExplained_ThenPrintsBothAsTrailingLines()
+    public void GivenAPlanWithACustomSortAndATypelessPageBoundary_WhenExplained_ThenPrintsBothAsTrailingLinesAndConsumesNoTypeOrdinal()
     {
-        // Arrange
+        // Arrange -- a custom sort requires a typeless boundary (SqlBuilder rejects the typed pairing), so
+        // this is the shape a _sort=name continuation page actually has.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert -- "type=none", and the surrogate id takes @p2 rather than @p3: a typeless page binds no
+        // type parameter, so printing one would misalign every later ordinal against what Emit binds.
+        explained.ShouldBe(
+            "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "sort = SortSpec([String:202 ASC], Valued)\n" +
+            "page = PageSpec(boundary=[@p1], type=none, sid=@p2)");
+    }
+
+    [Fact]
+    public void GivenAPlanWithAResourceColumnSortAndATypedPageBoundary_WhenExplained_ThenPrintsTheTypeParameterOrdinal()
+    {
+        // Arrange -- the other half of the enforced pairing: a resource-column sort keeps the m.T1 tiebreak,
+        // so its boundary carries a type and the printed ordinals must account for it.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef(5000L)], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act
@@ -264,7 +287,7 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe(
             "root = StringSearchParam[103,202]  Text = @p0\n" +
-            "sort = SortSpec([String:202 ASC], Valued)\n" +
+            "sort = SortSpec([LastUpdated:- ASC], Valued)\n" +
             "page = PageSpec(boundary=[@p1], type=@p2, sid=@p3)");
     }
 

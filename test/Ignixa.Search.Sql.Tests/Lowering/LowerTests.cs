@@ -1410,9 +1410,9 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenLowerRunWithAnIncludeCursorButNotIncludesOnly_WhenCalled_ThenThrowsNotSupportedException()
+    public void GivenLowerRunWithAnIncludeBoundaryButNotIncludesOnly_WhenCalled_ThenThrowsNotSupportedException()
     {
-        // The resume cursor pages the union of include stages as one ordered stream, which exists only on
+        // The resume boundary pages the union of include stages as one ordered stream, which exists only on
         // an includes-only page. Without IncludesOnly the emitter keeps the match arm and never applies the
         // resume predicate, so a caller expecting a second page would silently get a full first page back.
         // Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
@@ -1436,7 +1436,72 @@ public class LowerTests
                 sort: [],
                 sortPhase: SortPhase.Valued,
                 page: null,
-                new LowerOptions { IncludeCursor = new IncludeCursor(105, 4200) }));
+                new LowerOptions { IncludeBoundary = new IncludeBoundary(105, 4200) }));
+    }
+
+    [Fact]
+    public void GivenLowerRunWithATypedPageAndACustomSort_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // A custom (search-parameter) sort emits ORDER BY (sort keys…, Sid1) -- type-free -- but a type on
+        // the boundary makes the seek type-major. Within a run of tied sort values a row of a lower type id
+        // but higher surrogate id then sorts after the boundary yet is excluded by the seek, and is dropped
+        // at the page seam with no error. Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
+        var nameParam = new SearchParameterInfo(
+            "name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var typedPage = new PageSpec(
+            [new SqlParameterRef("Adams")],
+            new SqlParameterRef((short)103),
+            BoundarySurrogateId: new SqlParameterRef(5000L));
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+                sortPhase: SortPhase.Valued,
+                page: typedPage));
+
+        ex.Message.ShouldContain("typed keyset Page");
+        ex.Message.ShouldContain("page seam");
+    }
+
+    [Fact]
+    public void GivenLowerRunWithATypelessPageAndACustomSort_WhenCalled_ThenTheSortAndPageBothSurviveLowering()
+    {
+        // The permitted half of the same pairing: a typeless boundary matches the type-free ORDER BY a
+        // custom sort emits, so lowering carries both through untouched.
+        var nameParam = new SearchParameterInfo(
+            "name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var typelessPage = new PageSpec(
+            [new SqlParameterRef("Adams")],
+            BoundaryResourceTypeId: null,
+            BoundarySurrogateId: new SqlParameterRef(5000L));
+
+        var plan = Lower.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+            sortPhase: SortPhase.Valued,
+            page: typelessPage).Plan;
+
+        plan.Page.ShouldNotBeNull();
+        plan.Page!.BoundaryResourceTypeId.ShouldBeNull();
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Keys.ShouldHaveSingleItem().Kind.ShouldBe(SortKeyKind.String);
     }
 
     [Fact]

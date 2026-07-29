@@ -80,6 +80,14 @@ public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase);
 /// key exists only because the table is partitioned on <c>ResourceTypeId</c>. When it is non-null the
 /// historical typed seek — <c>(… T1 = @t AND Sid1 &gt; @sid) OR (… T1 &gt; @t)</c> — is emitted unchanged.
 /// </para>
+/// <para>
+/// The pairing is an enforced invariant, not a convention: <c>SqlBuilder.Run</c> rejects both mismatches
+/// before emitting any text. A typed boundary requires a non-custom sort (absent, or a
+/// <c>_lastUpdated</c> / <c>_type</c> / <c>_id</c> resource-column sort), whose ORDER BY keeps the
+/// <c>m.T1</c> tiebreak the type-major seek needs; a typeless boundary requires a custom
+/// (search-parameter) sort, whose ORDER BY drops that tiebreak. Either mismatch leaves the seek and the
+/// ORDER BY disagreeing, which silently drops rows at a page seam rather than failing.
+/// </para>
 /// </summary>
 public sealed record PageSpec(
     IReadOnlyList<SqlParameterRef> Boundary,

@@ -619,11 +619,12 @@ public class EmitTests
     [Fact]
     public void GivenASortWithAPageBoundary_WhenEmitted_ThenTheSeekPredicateAppearsInTheWhereClause()
     {
-        // Arrange -- Patient?_sort=name, second page.
+        // Arrange -- Patient?_sort=name, second page. A custom sort pages on a typeless boundary: its
+        // ORDER BY is (Text, Sid1), so the seek must break its final tie on Sid1 alone.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act
@@ -632,13 +633,11 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldContain(
             "WHERE (sk0.Text > @p1\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
+            "       OR (sk0.Text = @p1 AND m.Sid1 > @p2))\n" +
             "ORDER BY sk0.Text ASC, m.Sid1 ASC");
-        emitted.Parameters.Count.ShouldBe(4);
+        emitted.Parameters.Count.ShouldBe(3);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
-        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", (short)103));
-        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5000L));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 5000L));
     }
 
     [Fact]
@@ -706,30 +705,25 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenATypedPageWithACustomSortKey_WhenEmitted_ThenTheTypeBoundaryIsUnchanged()
+    public void GivenATypedPageWithACustomSortKey_WhenEmitted_ThenItIsRejected()
     {
-        // Arrange -- the same shape as the typeless test but with a resource type on the boundary. This
-        // guards that the additive typeless path leaves the historical typed seek and ORDER BY untouched.
+        // Arrange -- the mirror of the typeless guard, and unsound for the mirrored reason. A custom sort
+        // makes EmitOrderBy drop the m.T1 tiebreak (ordering by (Text, Sid1)) whatever the boundary looks
+        // like, while a type on the boundary still makes EmitSeekPredicate emit a type-major seek. In a
+        // multi-type search a row of a lower type id but higher surrogate id then sorts after the boundary
+        // yet is excluded by "m.T1 > @t", and vanishes at the page seam. Only a single-type search hid this,
+        // because m.T1 is constant there.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
-        // Act
-        var emitted = SqlBuilder.Run(plan);
-
-        // Assert -- the typed seek keeps both m.T1 branches (the single-type adapter still supplies a type on
-        // the boundary), but the ORDER BY is type-free by sort shape (custom sort drops the m.T1 tiebreak).
-        // For a single-type search the two agree because m.T1 is constant, so today's typed page still works.
-        emitted.Sql.ShouldContain(
-            "WHERE (sk0.Text > @p1\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
-            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
-        emitted.Parameters.Count.ShouldBe(4);
-        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", (short)103));
-        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5000L));
+        // Act / Assert
+        var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        ex.Message.ShouldContain("typed keyset Page");
+        ex.Message.ShouldContain("custom");
+        ex.Message.ShouldContain("silently dropped at the page seam");
     }
 
     [Fact]
@@ -816,7 +810,7 @@ public class EmitTests
             SortPhase.Valued);
         var page = new PageSpec(
             [new SqlParameterRef("Zorro"), new SqlParameterRef("2000-01-01T00:00:00.0000000")],
-            new SqlParameterRef((short)103),
+            BoundaryResourceTypeId: null,
             new SqlParameterRef(9000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
@@ -834,8 +828,7 @@ public class EmitTests
         emitted.Sql.ShouldContain(
             "WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p2)\n" +
-            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
-            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 > @p3))\n" +
+            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.Sid1 > @p3))\n" +
             "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
@@ -1059,7 +1052,9 @@ public class EmitTests
                 new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
             ],
             SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Zorro")], new SqlParameterRef((short)103), new SqlParameterRef(9000L));
+        // The boundary is typeless because the sort is custom; a typed one would be refused by
+        // RejectUnsupportedCombinations first and this test would stop exercising the count guard at all.
+        var page = new PageSpec([new SqlParameterRef("Zorro")], BoundaryResourceTypeId: null, new SqlParameterRef(9000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act & Assert
@@ -1074,8 +1069,10 @@ public class EmitTests
         // throw rather than silently misalign boundaryParams against the wrong keys.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        // The boundary is typeless because the sort is custom; a typed one would be refused by
+        // RejectUnsupportedCombinations first and this test would stop exercising the count guard at all.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act & Assert
@@ -1090,7 +1087,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
@@ -1112,8 +1109,7 @@ public class EmitTests
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
             "    WHERE (sk0.Text > @p1\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
+            "       OR (sk0.Text = @p1 AND m.Sid1 > @p2))\n" +
             "    ORDER BY sk0.Text ASC, m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
@@ -1170,7 +1166,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
@@ -1184,14 +1180,13 @@ public class EmitTests
 
         // Assert -- the outer filter is ANDed against the whole parenthesized OR chain as a single
         // unit, not just its first branch. If the seek predicate's OR chain were unparenthesized, this
-        // exact "WHERE {outer} AND (...)" text would not appear -- the second/third OR branches would
+        // exact "WHERE {outer} AND (...)" text would not appear -- the trailing OR branch would
         // instead sit at the top level, bypassing r.ResourceId = @p1 entirely.
         emitted.Sql.ShouldContain(
             "WHERE r.ResourceId = @p1 AND (sk0.Text > @p2\n" +
-            "       OR (sk0.Text = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
-            "       OR (sk0.Text = @p2 AND m.T1 > @p3))\n" +
+            "       OR (sk0.Text = @p2 AND m.Sid1 > @p3))\n" +
             "ORDER BY sk0.Text ASC, m.Sid1 ASC");
-        emitted.Parameters.Count.ShouldBe(5);
+        emitted.Parameters.Count.ShouldBe(4);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "123"));
         emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", "Adams"));
     }
@@ -1200,8 +1195,8 @@ public class EmitTests
     public void GivenTheMissingPrimaryPhaseWithAMultiBranchPageBoundary_WhenEmitted_ThenTheNotExistsFilterAppliesToEveryBranchOfTheParenthesizedSeekPredicate()
     {
         // Arrange -- Patient?_sort=name,-birthdate, missing-name phase, second page: a two-key sort so
-        // the MissingPrimary phase's seek predicate has 3 branches (one active-key level plus the two
-        // type/sid tie-break branches), not just the 2-branch degenerate case -- proving NOT EXISTS
+        // the MissingPrimary phase's seek predicate is a multi-branch OR chain (one active-key level plus
+        // the surrogate-id tie-break branch), not the single-branch degenerate case -- proving NOT EXISTS
         // combines correctly with EVERY branch, not merely the first one it happens to sit beside.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
@@ -1213,22 +1208,21 @@ public class EmitTests
             SortPhase.MissingPrimary);
         var page = new PageSpec(
             [new SqlParameterRef("2000-01-01T00:00:00.0000000")],
-            new SqlParameterRef((short)103),
+            BoundaryResourceTypeId: null,
             new SqlParameterRef(9000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- before the fix, this "NOT EXISTS(...) AND (branch0 OR branch1 OR branch2)" text
-        // would not exist: NOT EXISTS would only bind to branch0 via AND, and branch1/branch2 would sit
-        // at the top level unfiltered, letting rows WITH a name value (that NOT EXISTS was meant to
-        // exclude) leak into the missing-name phase's page 2+ results.
+        // Assert -- before the fix, this "NOT EXISTS(...) AND (branch0 OR branch1)" text would not exist:
+        // NOT EXISTS would only bind to branch0 via AND, and branch1 would sit at the top level
+        // unfiltered, letting rows WITH a name value (that NOT EXISTS was meant to exclude) leak into the
+        // missing-name phase's page 2+ results.
         emitted.Sql.ShouldContain(
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
             "AND (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p1\n" +
-            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 > @p2))\n" +
+            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.Sid1 > @p2))\n" +
             "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
@@ -1796,7 +1790,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
@@ -1807,7 +1801,7 @@ public class EmitTests
 
         var emitted = SqlBuilder.Run(plan);
 
-        // Range params must be bound *after* the seek params. The seek predicate allocates @p1-@p3;
+        // Range params must be bound *after* the seek params. The seek predicate allocates @p1-@p2;
         // the range must follow, not precede, them — verified by comparing value indices rather than
         // relying on absolute ordinals (which would break if seek param count ever changes).
         var allValues = emitted.Parameters.Select(p => p.Value).ToList();
@@ -2899,7 +2893,7 @@ public class EmitTests
     [Fact]
     public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenOnlyFirstIncludeArmNamesIsMatch()
     {
-        // In a UNION ALL, column names come from the first SELECT.  The first include arm must name
+        // In a UNION, column names come from the first SELECT.  The first include arm must name
         // IsMatch explicitly; subsequent arms must not double-alias it (which SQL Server would accept
         // but which would make the assertion below brittle rather than structural).
         var plan = new QueryPlan(
@@ -2916,9 +2910,9 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenIsMatchAliasIsOnTheFirstUnionAllArm()
+    public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenIsMatchAliasIsOnTheFirstUnionArm()
     {
-        // SQL Server takes a UNION ALL's column names from its first SELECT. Keying the alias off
+        // SQL Server takes a UNION's column names from its first SELECT. Keying the alias off
         // unionBlocks.Count == 0 (first arm appended overall) rather than i == 0 (first include-stage
         // index) ensures that any future arm inserted before the loop cannot silently break the ordinal
         // contract that callers rely on. This test verifies the alias is on the structurally-first arm,
@@ -2933,9 +2927,12 @@ public class EmitTests
 
         // Split the entire SQL on the assembly separator — no CTE emits "AS IsMatch", so any match
         // in arms[0] must come from the first assembly arm (which is at the end of that element).
-        // This is the structural check: the alias must be in the first UNION ALL arm overall,
-        // not on a subsequent arm that happens to be the first *include-stage* index.
-        var arms = sql.Split("\nUNION ALL\n");
+        // This is the structural check: the alias must be in the first UNION arm overall (the
+        // IncludesOnly global page joins its stage arms with plain UNION, not UNION ALL, so that
+        // COUNT_BIG(*) OVER() sees the same deduplicated rows as the outer DISTINCT — see
+        // SqlBuilder.EmitGlobalIncludesPage), not on a subsequent arm that happens to be the first
+        // *include-stage* index.
+        var arms = sql.Split("\nUNION\n");
 
         // The alias must be on the first arm — not on a later arm, and not merely in the SQL overall.
         arms[0].ShouldContain(" AS IsMatch");
@@ -3103,22 +3100,22 @@ public class EmitTests
         => new(IncludeDirection.Reverse, ReferenceSearchParamId: 211, SeedTypeIds: [seedType], OutputTypeIds: [outputType],
                SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: limit);
 
-    private static QueryPlan TwoStageIncludesOnlyPageWithCursor()
+    private static QueryPlan TwoStageIncludesOnlyPageWithBoundary()
         => new(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 10)],
             IncludesOnly: true,
-            IncludeCursor: new IncludeCursor(111, 5000));
+            IncludeBoundary: new IncludeBoundary(111, 5000));
 
     [Fact]
-    public void GivenAnIncludesOnlyPageWithACursorAndTwoStages_WhenEmitted_ThenTheBudgetIsAppliedOnceGloballyOrderedByT1Sid1()
+    public void GivenAnIncludesOnlyPageWithABoundaryAndTwoStages_WhenEmitted_ThenTheBudgetIsAppliedOnceGloballyOrderedByT1Sid1()
     {
         // The $includes second page applies the row budget once across the union of every stage -- not once
         // per stage -- and resumes under (T1, Sid1). So the whole statement must carry exactly one TOP (the
         // outer global page), no per-stage limit companions, and the IsPartial window computed over the
         // union. This is the shape the FHIR Server legacy $includes page emits.
-        var plan = TwoStageIncludesOnlyPageWithCursor();
+        var plan = TwoStageIncludesOnlyPageWithBoundary();
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3135,70 +3132,123 @@ public class EmitTests
         sql.ShouldNotContain("IsMatch DESC");
     }
 
-    [Fact]
-    public void GivenAnIncludesOnlyPageWithAForwardStage_WhenEmittedWithACursor_ThenTheResumePredicateKeysOnTheResourceColumns()
+    /// <summary>The text of the "incN AS ( ... )" CTE block, from its opening label to its own closing paren.</summary>
+    private static string IncludeStageBody(string sql, int index)
     {
-        // A forward include projects the included resource from dbo.Resource (r.*), so its page position --
-        // and therefore its resume predicate -- must key on r.ResourceTypeId / r.ResourceSurrogateId, the
-        // same columns the outer ORDER BY sees as (T1, Sid1). The two cursor values bind as parameters
-        // rather than inlining, and both stages share them.
+        var start = sql.IndexOf($"inc{index} AS (", StringComparison.Ordinal);
+        start.ShouldBeGreaterThanOrEqualTo(0);
+
+        // A CTE closes with ")" in the first column; every paren inside the body is indented.
+        var end = sql.IndexOf("\n)", start, StringComparison.Ordinal);
+        end.ShouldBeGreaterThanOrEqualTo(0);
+        return sql[start..(end + 2)];
+    }
+
+    private const string GlobalResumePredicate = "(T1 > @p1 OR (T1 = @p1 AND Sid1 > @p2))";
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithAForwardStage_WhenEmittedWithABoundary_ThenTheResumePredicateFiltersTheUnionRatherThanTheStageBody()
+    {
+        // The cursor is a position in the global paged output stream, not a property of any one stage's row
+        // set, so it filters the union derived table on its own (T1, Sid1) -- the exact columns the outer
+        // ORDER BY sees. Keeping it out of the stage body is what lets a downstream :iterate stage seed from
+        // the complete body. The two cursor values still bind as parameters rather than inlining.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
             IncludesOnly: true,
-            IncludeCursor: new IncludeCursor(111, 5000));
+            IncludeBoundary: new IncludeBoundary(111, 5000));
 
         var emitted = SqlBuilder.Run(plan);
 
-        emitted.Sql.ShouldContain("(r.ResourceTypeId > @p1 OR (r.ResourceTypeId = @p1 AND r.ResourceSurrogateId > @p2))");
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+        IncludeStageBody(emitted.Sql, 0).ShouldNotContain("@p");
         emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)111));
         emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 5000L));
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPageWithAReverseStage_WhenEmittedWithACursor_ThenTheResumePredicateKeysOnTheReferenceColumns()
+    public void GivenAnIncludesOnlyPageWithAReverseStage_WhenEmittedWithABoundary_ThenTheResumePredicateStillFiltersTheUnionRatherThanTheStageBody()
     {
-        // A reverse include selects the output row directly from dbo.ReferenceSearchParam (rsp.*), so its
-        // page position keys on rsp.ResourceTypeId / rsp.ResourceSurrogateId -- the mirror of the forward
-        // case. Using r.* here would seek on the wrong resource and silently mis-page the reverse stage.
+        // A reverse stage projects rsp.* where a forward one projects r.*, but the union derived table
+        // exposes both as (T1, Sid1), so the direction no longer changes the predicate at all -- which is
+        // the point: one predicate over the union cannot key on the wrong resource for one of the stages.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ReverseIncludeStage(103, 112, 10)],
             IncludesOnly: true,
-            IncludeCursor: new IncludeCursor(112, 7000));
+            IncludeBoundary: new IncludeBoundary(112, 7000));
 
-        var sql = SqlBuilder.Run(plan).Sql;
+        var emitted = SqlBuilder.Run(plan);
 
-        sql.ShouldContain("(rsp.ResourceTypeId > @p1 OR (rsp.ResourceTypeId = @p1 AND rsp.ResourceSurrogateId > @p2))");
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+        IncludeStageBody(emitted.Sql, 0).ShouldNotContain("@p");
+        emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)112));
+        emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 7000L));
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPageWithMixedStages_WhenEmittedWithACursor_ThenEveryStageResumesFromTheSameSharedCursor()
+    public void GivenAnIncludesOnlyPageWithMixedStages_WhenEmittedWithABoundary_ThenTheSharedCursorIsAppliedExactlyOnceOverTheUnion()
     {
-        // One cursor pages the union of all stages as a single ordered stream, so both a forward and a
-        // reverse stage must resume from the same @p1/@p2 -- a per-stage cursor would let one stage overtake
-        // another between pages and drop or duplicate rows at the boundary.
-        var plan = TwoStageIncludesOnlyPageWithCursor();
+        // One cursor pages the union of all stages as a single ordered stream. Applying it once, after the
+        // union, is what makes that literal: no stage can overtake another between pages, and no stage body
+        // is narrowed to the rows this page happens to return.
+        var plan = TwoStageIncludesOnlyPageWithBoundary();
 
-        var sql = SqlBuilder.Run(plan).Sql;
+        var emitted = SqlBuilder.Run(plan);
 
-        sql.ShouldContain("(r.ResourceTypeId > @p1 OR (r.ResourceTypeId = @p1 AND r.ResourceSurrogateId > @p2))");
-        sql.ShouldContain("(rsp.ResourceTypeId > @p1 OR (rsp.ResourceTypeId = @p1 AND rsp.ResourceSurrogateId > @p2))");
+        System.Text.RegularExpressions.Regex
+            .Matches(emitted.Sql, System.Text.RegularExpressions.Regex.Escape(GlobalResumePredicate))
+            .Count.ShouldBe(1);
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+        IncludeStageBody(emitted.Sql, 0).ShouldNotContain("@p");
+        IncludeStageBody(emitted.Sql, 1).ShouldNotContain("@p");
+        emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)111));
+        emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 5000L));
     }
 
     [Fact]
-    public void GivenAnIncludeCursorWithoutIncludesOnly_WhenEmitted_ThenItIsRefusedRatherThanSilentlyDroppingIncludeRows()
+    public void GivenAnIncludesOnlyPageWithABoundaryAndAnIterateStage_WhenEmitted_ThenTheSeedReadsTheUnfilteredStageBodyNotTheAbsentLimitCompanion()
     {
-        // QueryPlan is a public construction surface, so SqlBuilder must guard the cursor independently of
+        // An IncludesOnly page emits no limit companion -- the budget is global -- so an :iterate stage
+        // seeding from inc0lim would reference a CTE that was never defined (SQL Server Msg 207). It seeds
+        // from inc0 instead, and inc0 must stay uncursored: filtering the seed set by the page cursor would
+        // make page 2 blind to iterate targets reachable only through resources page 1 already returned.
+        var stage1 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 211, SeedTypeIds: [(short)111], OutputTypeIds: [(short)111],
+            SeedStages: [0], SeedFromMatch: false, Iterate: true, Limit: 10);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), stage1],
+            IncludesOnly: true,
+            IncludeBoundary: new IncludeBoundary(111, 5000));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("SELECT 1 FROM inc0 m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+        emitted.Sql.ShouldNotContain("inc0lim");
+        IncludeStageBody(emitted.Sql, 1).ShouldNotContain("@p");
+
+        System.Text.RegularExpressions.Regex
+            .Matches(emitted.Sql, System.Text.RegularExpressions.Regex.Escape(GlobalResumePredicate))
+            .Count.ShouldBe(1);
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+    }
+
+    [Fact]
+    public void GivenAnIncludeBoundaryWithoutIncludesOnly_WhenEmitted_ThenItIsRefusedRatherThanSilentlyDroppingIncludeRows()
+    {
+        // QueryPlan is a public construction surface, so SqlBuilder must guard the boundary independently of
         // Lower. Without IncludesOnly the emitter keeps the match arm and never applies the resume
         // predicate, so a caller expecting a second page would instead get a full first page back. Refuse it.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludeCursor: new IncludeCursor(111, 5000));
+            IncludeBoundary: new IncludeBoundary(111, 5000));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3217,6 +3267,41 @@ public class EmitTests
             IncludesOnly: true);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithTwoStagesThatCanReachTheSameResource_WhenEmitted_ThenTheDerivedTableArmsAreJoinedByPlainUnion()
+    {
+        // Stands in for: a resource reachable via two different reference paths (e.g. a forward
+        // Patient:organization include and a reverse Observation:subject include that both land on the
+        // same (T1, Sid1) row). T-SQL evaluates COUNT_BIG(*) OVER() in the SELECT phase, before the outer
+        // DISTINCT dedups its input, so if the two stage arms were joined with UNION ALL that shared row
+        // would be counted twice and could wrongly flag an exactly-`budget`-sized page of distinct rows as
+        // IsPartial = 1. Joining the arms with plain UNION dedups them before the window function runs, so
+        // the two stages contribute exactly one row for that resource and a full page of distinct rows
+        // correctly reports IsPartial = 0.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 111, 10)],
+            IncludesOnly: true);
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var unionStart = sql.IndexOf("FROM (\n", StringComparison.Ordinal);
+        var unionEnd = sql.IndexOf(") includeUnion", StringComparison.Ordinal);
+        unionStart.ShouldBeGreaterThanOrEqualTo(0);
+        unionEnd.ShouldBeGreaterThan(unionStart);
+        var derivedTable = sql[unionStart..unionEnd];
+
+        derivedTable.ShouldContain("\nUNION\n");
+        derivedTable.ShouldNotContain("UNION ALL");
+
+        var fragment = SqlGrammar.Parse(sql);
+        var unions = SqlGrammar.FindAll<Microsoft.SqlServer.TransactSql.ScriptDom.BinaryQueryExpression>(fragment);
+        var derivedTableUnion = unions.ShouldHaveSingleItem();
+        derivedTableUnion.BinaryQueryExpressionType.ShouldBe(Microsoft.SqlServer.TransactSql.ScriptDom.BinaryQueryExpressionType.Union);
+        derivedTableUnion.All.ShouldBeFalse();
     }
 }
 

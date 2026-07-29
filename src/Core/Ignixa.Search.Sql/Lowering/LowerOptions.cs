@@ -86,10 +86,10 @@ public sealed record LowerOptions
     public bool CountPhaseScoped { get; init; }
 
     /// <summary>
-    /// The resume point for the second and subsequent pages of an <see cref="IncludesOnly"/> page: the
-    /// last include row the previous page returned. Only meaningful together with
-    /// <see cref="IncludesOnly"/>; <see cref="Lower.Run"/> rejects it otherwise, because the resume
-    /// predicate only pages a stream of include rows and on an ordinary search would silently drop them.
+    /// The keyset-pagination continuation token (boundary) for the second and subsequent pages of an
+    /// <see cref="IncludesOnly"/> page: the last include row the previous page returned. Only meaningful
+    /// together with <see cref="IncludesOnly"/>; <see cref="Lower.Run"/> rejects it otherwise, because the
+    /// resume predicate only pages a stream of include rows and on an ordinary search would silently drop them.
     /// </summary>
-    public IncludeCursor? IncludeCursor { get; init; }
+    public IncludeBoundary? IncludeBoundary { get; init; }
 }

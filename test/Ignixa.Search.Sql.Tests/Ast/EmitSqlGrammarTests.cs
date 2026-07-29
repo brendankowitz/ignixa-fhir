@@ -52,7 +52,8 @@ public class EmitSqlGrammarTests
         yield return ["includes-only, two stages", IncludesOnlyTwoStagesPlan()];
         yield return ["includes-only, :iterate", IncludesOnlyWithIteratePlan()];
         yield return ["includes-only, with projection", IncludesOnlyWithProjectionPlan()];
-        yield return ["includes-only, page with cursor", IncludesOnlyPageWithCursorPlan()];
+        yield return ["includes-only, page with boundary", IncludesOnlyPageWithBoundaryPlan()];
+        yield return ["includes-only, :iterate page with boundary", IncludesOnlyIteratePageWithBoundaryPlan()];
         yield return ["includes-only, custom sort (missing-value phase)", IncludesOnlyWithMissingPrimarySortPlan()];
         yield return ["includes-only, custom sort (valued phase)", IncludesOnlyWithValuedSortPlan()];
         yield return ["patient $everything alone", EverythingAlonePlan()];
@@ -70,6 +71,21 @@ public class EmitSqlGrammarTests
         var emitted = SqlBuilder.Run(plan);
 
         SqlGrammar.AssertValid(emitted.Sql);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllPlanShapes))]
+    public void GivenAnEmittedPlan_WhenItsTableReferencesAreResolved_ThenEveryReferencedCteIsDefined(string shape, QueryPlan plan)
+    {
+        // Grammar validity is not reference validity: a CTE name that no WITH clause defines parses cleanly
+        // and only fails at execution (Msg 207, invalid object name). Every shape must therefore be checked
+        // for dangling CTE references too -- this is what catches an IncludesOnly :iterate stage seeding
+        // from the limit companion that IncludesOnly never emits.
+        _ = shape;
+
+        var emitted = SqlBuilder.Run(plan);
+
+        SqlGrammar.AssertEveryReferencedCteIsDefined(emitted.Sql);
     }
 
     [Fact]
@@ -380,7 +396,7 @@ public class EmitSqlGrammarTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         return new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
@@ -439,7 +455,7 @@ public class EmitSqlGrammarTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SearchSortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         return new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
@@ -846,11 +862,12 @@ public class EmitSqlGrammarTests
             IncludesOnly: true);
     }
 
-    private static QueryPlan IncludesOnlyPageWithCursorPlan()
+    private static QueryPlan IncludesOnlyPageWithBoundaryPlan()
     {
         // The $includes second page: two stages of mixed direction, paged globally and resumed from a
-        // cursor. Exercises the outer TOP + COUNT_BIG(*) OVER() derived table and the per-stage resume
-        // predicate through the ScriptDom grammar so a malformed shape fails here rather than at execution.
+        // keyset-pagination continuation token (boundary). Exercises the outer TOP + COUNT_BIG(*) OVER()
+        // derived table and the per-stage resume predicate through the ScriptDom grammar so a malformed
+        // shape fails here rather than at execution.
         var stage0 = new IncludeStage(
             IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
             SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
@@ -862,7 +879,27 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage0, stage1],
             IncludesOnly: true,
-            IncludeCursor: new IncludeCursor(105, 4200));
+            IncludeBoundary: new IncludeBoundary(105, 4200));
+    }
+
+    private static QueryPlan IncludesOnlyIteratePageWithBoundaryPlan()
+    {
+        // The two IncludesOnly features that interact: a keyset-pagination continuation token (boundary) and
+        // an :iterate stage seeded from an earlier stage. The seed must read the earlier stage's body (inc0),
+        // because an IncludesOnly page emits no inc0lim companion, and that body must stay unbounded so the
+        // iterate stage can still reach targets whose seeds were returned on an earlier page.
+        var stage0 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
+            SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+        var stage1 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 88, SeedTypeIds: [105], OutputTypeIds: [105],
+            SeedStages: [0], SeedFromMatch: true, Iterate: true, Limit: 1000);
+        return new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [stage0, stage1],
+            IncludesOnly: true,
+            IncludeBoundary: new IncludeBoundary(105, 4200));
     }
 
     private static QueryPlan IncludesOnlyWithMissingPrimarySortPlan()

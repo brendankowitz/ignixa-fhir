@@ -108,12 +108,12 @@ public static class SqlBuilder
         // Lower.Run rejects this at the lowering stage, but QueryPlan is a public construction surface, so
         // the builder must guard independently. The resume predicate only pages a stream of include rows,
         // which exists only when IncludesOnly drops the match arm; on an ordinary search the emitter would
-        // never apply it and the cursor's caller would silently get a full first page instead of a resumed
+        // never apply it and the boundary's caller would silently get a full first page instead of a resumed
         // one. Grammatically valid either way, so the grammar tests cannot catch it.
-        if (plan.IncludeCursor is not null && !plan.IncludesOnly)
+        if (plan.IncludeBoundary is not null && !plan.IncludesOnly)
         {
             throw new NotSupportedException(
-                "IncludeCursor was supplied without IncludesOnly. The resume cursor pages the union of " +
+                "IncludeBoundary was supplied without IncludesOnly. The resume boundary pages the union of " +
                 "include stages as one ordered stream, which exists only on an includes-only page; on an " +
                 "ordinary search there is no such stream for it to resume.");
         }
@@ -145,6 +145,22 @@ public static class SqlBuilder
                 (plan.Sort is null ? "absent" : "a resource-column sort (_lastUpdated / _type / _id)") +
                 ", whose keyset order includes the resource type, so a type-free seek would disagree with the " +
                 "ORDER BY and paging would be unsound. Use a typed Page here, or a custom sort for a typeless Page.");
+        }
+
+        // The mirror of the guard above, and unsound for the mirrored reason. EmitOrderBy drops m.T1 for any
+        // custom sort regardless of the boundary's shape, but EmitSeekPredicate still emits a type-major seek
+        // whenever BoundaryResourceTypeId is non-null, so the two disagree in exactly the direction that loses
+        // rows. Also grammatically valid, so the grammar tests cannot catch it.
+        if (plan.Page is { BoundaryResourceTypeId: not null } && HasCustomSortKey(plan.Sort))
+        {
+            throw new NotSupportedException(
+                "A typed keyset Page (BoundaryResourceTypeId is non-null) cannot be combined with a custom " +
+                "(search-parameter) _sort. EmitOrderBy drops the m.T1 tiebreak for a custom sort, ordering by " +
+                "(sort keys…, Sid1), while a typed boundary makes EmitSeekPredicate emit a type-major seek. " +
+                "Within a run of tied sort values a row of a lower type id but higher surrogate id then sorts " +
+                "after the boundary yet is excluded by the seek, and is silently dropped at the page seam. " +
+                "Use a typeless Page (BoundaryResourceTypeId: null) for a custom sort; the type component is " +
+                "redundant because ResourceSurrogateId is globally unique.");
         }
     }
 
@@ -344,25 +360,24 @@ public static class SqlBuilder
         writer.Append(",\n");
         WriteMatchPageCte(plan, writer, parameters);
 
-        // Bind the resume cursor once, after the match-page CTE and before the stage loop, so every stage
-        // resumes from the same @t/@sid — the union pages as one ordered stream, so a per-stage cursor
-        // would let one stage overtake another across pages. Include CTEs otherwise bind no parameters, so
-        // these are the first stage-level @pN and stay after the CTE-graph and match-page ordinals, keeping
-        // the leading-ordinal invariant EmitCteBlocks documents intact.
-        (string Type, string Surrogate)? resumeParams = plan is { IncludesOnly: true, IncludeCursor: { } cursor }
-            ? (EmitParam(new SqlParameterRef(cursor.TypeId), parameters), EmitParam(new SqlParameterRef(cursor.SurrogateId), parameters))
+        // Bind the boundary here — after the match-page CTE and before the stage loop — even though
+        // the predicate it feeds is emitted later, by EmitGlobalIncludesPage. Include CTEs bind no
+        // parameters, so binding at this point keeps these the first stage-level @pN, after the CTE-graph
+        // and match-page ordinals, preserving the leading-ordinal invariant EmitCteBlocks documents.
+        (string Type, string Surrogate)? resumeParams = plan is { IncludesOnly: true, IncludeBoundary: { } boundary }
+            ? (EmitParam(new SqlParameterRef(boundary.TypeId), parameters), EmitParam(new SqlParameterRef(boundary.SurrogateId), parameters))
             : null;
 
         for (var i = 0; i < includes.Count; i++)
         {
-            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly, resumeParams);
+            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly);
         }
 
         writer.Append("\n");
 
         if (plan.IncludesOnly)
         {
-            EmitGlobalIncludesPage(plan, includes, writer, visibility);
+            EmitGlobalIncludesPage(plan, includes, writer, visibility, resumeParams);
             return;
         }
 
@@ -386,7 +401,7 @@ public static class SqlBuilder
 
     /// <summary>
     /// Emits the outer global-page SELECT for an IncludesOnly page: a single
-    /// <c>SELECT DISTINCT TOP (@limit + 1) T1, Sid1, IsMatch, &lt;IsPartial&gt;</c> over the UNION ALL of every
+    /// <c>SELECT DISTINCT TOP (@limit + 1) T1, Sid1, IsMatch, &lt;IsPartial&gt;</c> over the UNION of every
     /// include stage body, ordered by (T1, Sid1). This mirrors the FHIR Server legacy $includes page, whose
     /// row budget is applied once across the union rather than once per stage, so it can resume from a
     /// cursor and page the whole include set as one ordered stream.
@@ -398,13 +413,33 @@ public static class SqlBuilder
     /// union and cast to <c>bit</c> for the same reason <see cref="EmitIncludeLimitStage"/> casts it: the
     /// column is unioned with a bit-typed IsMatch, and leaving it <c>int</c> would silently change the
     /// result column's type. The order is <c>T1 ASC, Sid1 ASC</c> (not matches-first): an includes-only
-    /// page has no match rows, and this order is what the per-stage resume predicate keys on.
+    /// page has no match rows, and this order is what the resume predicate keys on.
+    /// <para>
+    /// The resume cursor's keyset predicate lives here, on the union derived table's own (T1, Sid1), rather
+    /// than inside each stage body: the cursor is a position in the global paged output stream, and a stage
+    /// body doubles as the seed set for downstream <c>:iterate</c> stages (see <see cref="EmitSeedExists"/>),
+    /// so filtering it would make later pages blind to iterate targets reachable only through resources
+    /// already returned. Placing it in this WHERE also keeps IsPartial honest: T-SQL evaluates WHERE before
+    /// <c>COUNT_BIG(*) OVER()</c>, so the window counts only the rows at or after the cursor and IsPartial
+    /// reflects this page's truncation rather than the whole stream's.
+    /// </para>
+    /// <para>
+    /// The stage arms inside the derived table are joined with plain <c>UNION</c>, not <c>UNION ALL</c> (see
+    /// <see cref="BuildGlobalIncludesPageArms"/>): T-SQL evaluates window functions such as
+    /// <c>COUNT_BIG(*) OVER()</c> in the SELECT phase, before the outer <c>DISTINCT</c> dedups its input. A
+    /// resource reachable via two different include stages produces the same (T1, Sid1) row from two arms;
+    /// under <c>UNION ALL</c> that duplicate survives into the SELECT phase and the window function counts
+    /// it twice, so a page of exactly <c>budget</c> distinct rows could be wrongly flagged
+    /// <c>IsPartial = 1</c>. <c>UNION</c> dedups the arms before the count is taken, so the window function
+    /// and the outer <c>DISTINCT</c> see the same already-deduplicated row set.
+    /// </para>
     /// </remarks>
     private static void EmitGlobalIncludesPage(
         QueryPlan plan,
         IReadOnlyList<IncludeStage> includes,
         SqlTextWriter writer,
-        ResourceVisibility visibility)
+        ResourceVisibility visibility,
+        (string Type, string Surrogate)? resumeParams)
     {
         var budget = includes[0].Limit;
         var passThrough = ProjectionPassThroughColumns(plan.Projection);
@@ -418,10 +453,21 @@ public static class SqlBuilder
 
             using (writer.Section(Assembly, SqlRangeKind.Assembly))
             {
-                writer.Append(string.Join("\nUNION ALL\n", BuildGlobalIncludesPageArms(plan, includes, visibility)));
+                writer.Append(string.Join("\nUNION\n", BuildGlobalIncludesPageArms(plan, includes, visibility)));
             }
 
-            writer.Append($"\n) {IncludeUnionAlias}\nORDER BY ");
+            writer.Append($"\n) {IncludeUnionAlias}");
+
+            if (resumeParams is { } resume)
+            {
+                WriteWhereSection(
+                    writer,
+                    [$"(T1 > {resume.Type} OR (T1 = {resume.Type} AND Sid1 > {resume.Surrogate}))"],
+                    seekClauseIndex: 0,
+                    indent: string.Empty);
+            }
+
+            writer.Append("\nORDER BY ");
             using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
             {
                 writer.Append("T1 ASC, Sid1 ASC");
@@ -434,6 +480,14 @@ public static class SqlBuilder
     /// unlimited body, tagging it <c>CAST(0 AS bit)</c> as a non-match, and excluding rows already on the
     /// match page. The outer SELECT applies the single global TOP and IsPartial over their union.
     /// </summary>
+    /// <remarks>
+    /// The caller (<see cref="EmitGlobalIncludesPage"/>) joins these arms with plain <c>UNION</c>, not
+    /// <c>UNION ALL</c>. A resource reachable through two different reference paths can appear as the same
+    /// (T1, Sid1) row in two arms; T-SQL evaluates <c>COUNT_BIG(*) OVER()</c> in the SELECT phase, before the
+    /// outer <c>DISTINCT</c> dedups, so a <c>UNION ALL</c> duplicate would be double-counted and could flag
+    /// an exactly-full page of distinct rows as partial. <c>UNION</c> removes the duplicate before the count
+    /// runs, keeping the window function and the outer <c>DISTINCT</c> looking at the same row set.
+    /// </remarks>
     private static List<string> BuildGlobalIncludesPageArms(QueryPlan plan, IReadOnlyList<IncludeStage> includes, ResourceVisibility visibility)
     {
         var projectionCols = ProjectionColumns(plan.Projection);
@@ -443,7 +497,7 @@ public static class SqlBuilder
         var arms = new List<string>();
         for (var i = 0; i < includes.Count; i++)
         {
-            // Only the first arm names IsMatch: SQL Server takes a UNION ALL's column names from its first
+            // Only the first arm names IsMatch: SQL Server takes a UNION's column names from its first
             // SELECT and the outer query reads them by ordinal, so aliasing every arm is redundant and
             // aliasing none loses the name. Keyed on arms.Count so a future arm inserted ahead of this loop
             // cannot silently move the alias off the first position.
@@ -535,13 +589,12 @@ public static class SqlBuilder
         IncludeStage stage,
         int index,
         ResourceVisibility visibility,
-        bool includesOnly,
-        (string Type, string Surrogate)? resumeParams)
+        bool includesOnly)
     {
         writer.Append(",\n");
         using (writer.Section(IncludeLabel(index), SqlRangeKind.Include))
         {
-            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly, resumeParams)}\n)");
+            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly)}\n)");
         }
 
         if (includesOnly)
@@ -1420,18 +1473,18 @@ public static class SqlBuilder
     /// (SQL Server Msg 1033), so keeping the per-stage ORDER BY while dropping the per-stage TOP would not
     /// even compile.
     /// <para>
-    /// When a resume cursor is present each stage additionally carries the keyset predicate
-    /// <c>(type &gt; @t OR (type = @t AND sid &gt; @sid))</c> over its own output columns, so the page resumes
-    /// strictly after the previous page's last row under the global <c>ORDER BY T1 ASC, Sid1 ASC</c>. The
-    /// output columns differ by direction, so the predicate uses the same (type, surrogate) pair the SELECT
-    /// list projects: <c>r.*</c> for a forward include, <c>rsp.*</c> for a reverse one.
+    /// The stage body is never filtered by the <c>$includes</c> resume cursor, whatever page is being served.
+    /// It doubles as the seed set for downstream <c>:iterate</c> stages (see <see cref="EmitSeedExists"/>),
+    /// and the cursor is a position in the global paged output stream, not a property of any one stage's row
+    /// set. Filtering the body by it would make page 2 and beyond blind to iterate targets reachable only
+    /// through resources page 1 already returned to the caller, silently dropping them. The cursor is applied
+    /// once instead, by <see cref="EmitGlobalIncludesPage"/>, over the union of every stage body.
     /// </para>
     /// </remarks>
     private static string EmitIncludeStage(
         IncludeStage stage,
         ResourceVisibility visibility,
-        bool includesOnly,
-        (string Type, string Surrogate)? resumeParams)
+        bool includesOnly)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, outputSurrogateColumn, seedCorrelationAlias) = stage.Direction switch
         {
@@ -1457,7 +1510,7 @@ public static class SqlBuilder
         }
 
         whereClauses.Add("rsp.BaseUri IS NULL");
-        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias));
+        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, includesOnly));
 
         if (stage.Constraints is { Count: > 0 } constraints)
         {
@@ -1465,13 +1518,6 @@ public static class SqlBuilder
             {
                 whereClauses.Add(EmitConstraintGuard(constraint, outputTypeColumn, outputSurrogateColumn));
             }
-        }
-
-        if (resumeParams is { } resume)
-        {
-            whereClauses.Add(
-                $"({outputTypeColumn} > {resume.Type} OR " +
-                $"({outputTypeColumn} = {resume.Type} AND {outputSurrogateColumn} > {resume.Surrogate}))");
         }
 
         var rowFilter = ResourceRowFilter(visibility, "r.");
@@ -1503,8 +1549,20 @@ public static class SqlBuilder
         return typeIds.Count > 1 ? $"({filter})" : filter;
     }
 
-    /// <summary>Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier stages — unioned together.</summary>
-    private static string EmitSeedExists(IncludeStage stage, string correlationAlias)
+    /// <summary>
+    /// Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier
+    /// stages — unioned together.
+    /// </summary>
+    /// <param name="includesOnly">
+    /// Which label an earlier stage is read through. The ordinary path seeds from that stage's limit
+    /// companion (<see cref="IncludeLimitLabel"/>), the CTE downstream SQL reads there. An IncludesOnly page
+    /// emits no limit companion at all — <see cref="WriteIncludeStageCtes"/> skips it because the budget is
+    /// applied once, globally, by <see cref="EmitGlobalIncludesPage"/> — so seeding from that label would
+    /// reference an undefined CTE (SQL Server Msg 207). The stage body (<see cref="IncludeLabel"/>) is the
+    /// correct seed set there for a second reason as well: it is complete and uncursored, so an
+    /// <c>:iterate</c> stage on page 2 still sees targets reachable only through resources page 1 returned.
+    /// </param>
+    private static string EmitSeedExists(IncludeStage stage, string correlationAlias, bool includesOnly)
     {
         var branches = new List<string>();
         if (stage.SeedFromMatch)
@@ -1514,7 +1572,8 @@ public static class SqlBuilder
 
         foreach (var seedStageIndex in stage.SeedStages)
         {
-            branches.Add($"SELECT 1 FROM {IncludeLimitLabel(seedStageIndex)} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            var seedLabel = includesOnly ? IncludeLabel(seedStageIndex) : IncludeLimitLabel(seedStageIndex);
+            branches.Add($"SELECT 1 FROM {seedLabel} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";

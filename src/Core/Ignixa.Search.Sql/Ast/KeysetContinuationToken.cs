@@ -12,6 +12,14 @@ namespace Ignixa.Search.Sql.Ast;
 /// </summary>
 public static class KeysetContinuationToken
 {
+    /// <summary>
+    /// Encodes a boundary. Note <paramref name="resourceTypeId"/> is always written, so a decoded token
+    /// always carries a type component — but <see cref="PageSpec"/> only accepts one when the sort is
+    /// non-custom (<c>SqlBuilder.Run</c> rejects a typed boundary alongside a custom search-parameter
+    /// <c>_sort</c>). Any future token-to-<see cref="PageSpec"/> adapter must therefore map to
+    /// <c>BoundaryResourceTypeId: null</c> whenever the sort is custom, discarding the encoded type rather
+    /// than forwarding it; the type is redundant there because <c>ResourceSurrogateId</c> is globally unique.
+    /// </summary>
     public static string Encode(IReadOnlyList<string> boundaryValues, int resourceTypeId, long surrogateId)
     {
         var state = new TokenState
