@@ -5,6 +5,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -35,7 +36,7 @@ public class SystemLevelSearchSortTests
         var symbols = Symbols();
 
         // Act -- must NOT throw.
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             StatusFinal(), symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(NameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
             SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
@@ -64,7 +65,7 @@ public class SystemLevelSearchSortTests
         var symbols = Symbols();
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             StatusFinal(), symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(NameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
             SortPhase.Valued, page: null,
@@ -89,7 +90,7 @@ public class SystemLevelSearchSortTests
         var symbols = Symbols();
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             StatusFinal(), symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(NameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
             SortPhase.MissingPrimary, page: null,
@@ -121,7 +122,7 @@ public class SystemLevelSearchSortTests
         // Act & Assert -- note: no SystemLevelSearch option, so this stays a genuine wildcard
         // compartment search.
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(NameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
                 SortPhase.Valued, page: null))

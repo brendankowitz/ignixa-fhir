@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
 using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
@@ -305,7 +306,7 @@ public class EmitSqlGrammarTests
     }
 
     private static QueryPlan EverythingPlan(PatientEverythingExpression expression)
-        => Lower.Run(expression, EverythingSymbols(), "Patient", includes: [], revIncludes: [], includeLimit: 100, sort: [], SortPhase.Valued, page: null).Plan;
+        => LowerHarness.Run(expression, EverythingSymbols(), "Patient", includes: [], revIncludes: [], includeLimit: 100, sort: [], SortPhase.Valued, page: null).Plan;
 
     private static QueryPlan EverythingAlonePlan() => EverythingPlan(new PatientEverythingExpression("pat-1"));
 
@@ -707,7 +708,7 @@ public class EmitSqlGrammarTests
     public void GivenAConstrainedMatchOnlyPlan_WhenParsed_ThenItIsValidTSql()
     {
         var f = AccessConstraintFixture();
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -719,7 +720,7 @@ public class EmitSqlGrammarTests
     {
         var f = AccessConstraintFixture();
         var revinclude = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false);
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [revinclude], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -731,7 +732,7 @@ public class EmitSqlGrammarTests
     {
         var f = AccessConstraintFixture();
         var iterate = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: true);
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [iterate], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -748,7 +749,7 @@ public class EmitSqlGrammarTests
             targetResourceTypes: ["Patient"],
             reversed: true,
             expression: AcTokenPredicate(f.StatusParam, "final"));
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             chain, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 

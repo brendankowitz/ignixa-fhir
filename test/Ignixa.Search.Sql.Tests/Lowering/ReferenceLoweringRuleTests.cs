@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -351,7 +352,7 @@ public class ReferenceLoweringRuleTests
             new Dictionary<string, short> { [parameter.Url!.ToString()] = 210 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate,
             symbols,
             "Patient",
@@ -388,7 +389,7 @@ public class ReferenceLoweringRuleTests
             new Dictionary<string, short> { [parameter.Url!.ToString()] = 211 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111, ["Practitioner"] = 114 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate,
             symbols,
             "Patient",

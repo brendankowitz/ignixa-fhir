@@ -2,6 +2,7 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
+using Ignixa.Search.Sql.Compilation;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 
@@ -20,26 +21,27 @@ public static class Lower
     /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source when there is none) into the CTE graph,
     /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed for a
-    /// wildcard compartment search, or -- when <see cref="LowerOptions.SystemLevelSearch"/> is set -- for a
-    /// system-level (cross-type) search of ordinary leaf/composite/AND/OR predicates. Even under system-level
-    /// search, chain, :not/:missing=true, _not-referenced, :text, _include/_revinclude, and _sort still
-    /// require a single target type and throw. The optional inputs -- paging caps, visibility, surrogate
-    /// range, hash gating, the base-set types, and the access constraints -- are grouped on
-    /// <see cref="LowerOptions"/> so each is passed by name.
+    /// wildcard compartment search, or -- when <see cref="CompilationContext.SystemLevelSearch"/> is derived
+    /// (a null target type) -- for a system-level (cross-type) search of ordinary leaf/composite/AND/OR
+    /// predicates. Even under system-level search, chain, :not/:missing=true, _not-referenced, :text,
+    /// _include/_revinclude, and _sort still require a single target type and throw. Every input -- the
+    /// expression, target type, includes/sort, paging caps, visibility, surrogate range, hash gating, the
+    /// base-set types, and the access constraints -- is read from the one <see cref="CompilationContext"/>
+    /// both this stage and Resolve share.
     /// </summary>
-    public static LoweredPlan Run(
-        Expression? expression,
-        SymbolTable symbols,
-        string? targetResourceType,
-        IReadOnlyList<IncludeExpression> includes,
-        IReadOnlyList<IncludeExpression> revIncludes,
-        int includeLimit,
-        IReadOnlyList<SortExpression> sort,
-        SortPhase sortPhase,
-        PageSpec? page,
-        LowerOptions? options = null)
+    internal static LoweredPlan Run(CompilationContext context, SymbolTable symbols)
     {
-        options ??= new LowerOptions();
+        ArgumentNullException.ThrowIfNull(context);
+
+        var options = context.Options;
+        var expression = context.Expression;
+        var targetResourceType = context.TargetResourceType;
+        var includes = context.Includes;
+        var revIncludes = context.RevIncludes;
+        var includeLimit = options.IncludeLimit;
+        var sort = context.Sort;
+        var sortPhase = options.SortPhase;
+        var page = options.Page;
 
         if (options.OffsetPage is not null && (page is not null || options.Top is not null))
         {
@@ -53,8 +55,8 @@ public static class Lower
                 "CountPhaseScoped requires CountOnly with at least one sort key: there is no sort phase to scope the count to otherwise.");
         }
 
-        var accessConstraintApplier = new AccessConstraintApplier(options.AccessConstraints);
-        var context = new StructuralContext(symbols, options.ApproximationReferenceTime, accessConstraintApplier);
+        var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);
+        var lowerContext = new StructuralContext(symbols, context.ApproximationReferenceTime, accessConstraintApplier);
         CteRef match;
         Predicate? outerPredicate = null;
 
@@ -67,18 +69,18 @@ public static class Lower
 
         if (expression is null)
         {
-            match = LowerBaseSet(context, targetResourceType, options.ResourceTypes);
+            match = LowerBaseSet(lowerContext, targetResourceType, context.ResourceTypes);
         }
         else
         {
-            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
+            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, lowerContext.LeafContext);
             outerPredicate = extractedPredicate;
             matchSource = remaining;
             match = remaining switch
             {
-                null => LowerBaseSet(context, targetResourceType, options.ResourceTypes),
-                CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
-                _ when targetResourceType is null && !options.SystemLevelSearch => throw new NotSupportedException(
+                null => LowerBaseSet(lowerContext, targetResourceType, context.ResourceTypes),
+                CompartmentSearchExpression compartment => lowerContext.LowerCompartment(compartment),
+                _ when targetResourceType is null && !context.SystemLevelSearch => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
                     "combine with a CompartmentSearchExpression and resource-column predicates -- an ordinary " +
                     "typed search parameter alongside it has no single resource type to scope it against, " +
@@ -86,10 +88,10 @@ public static class Lower
                 // targetResourceType may be null here, but only under SystemLevelSearch: the leaves lower
                 // with no type scope and the requested types narrow the result set instead.
                 _ => NarrowToRequestedTypes(
-                    LowerNode(remaining, context, targetResourceType),
-                    context,
+                    LowerNode(remaining, lowerContext, targetResourceType),
+                    lowerContext,
                     targetResourceType,
-                    options.ResourceTypes),
+                    context.ResourceTypes),
             };
         }
 
@@ -106,16 +108,16 @@ public static class Lower
             // each constrained type in place, exactly as it does for a multi-_type or wildcard match.
             match = (targetResourceType, matchSource) switch
             {
-                (_, PatientEverythingExpression) => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
-                ({ } matchType, _) => accessConstraintApplier.Apply(match, matchType, context, LowerScopedExpression),
-                _ => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
+                (_, PatientEverythingExpression) => accessConstraintApplier.ApplyToTypes(match, lowerContext, LowerScopedExpression),
+                ({ } matchType, _) => accessConstraintApplier.Apply(match, matchType, lowerContext, LowerScopedExpression),
+                _ => accessConstraintApplier.ApplyToTypes(match, lowerContext, LowerScopedExpression),
             };
         }
 
         // System-level search is deliberately excluded: the sort joins correlate on the match set's own
         // m.T1 rather than on a literal ResourceTypeId, so they never needed a single target type. A
         // wildcard compartment search is a different null-type case and keeps the original refusal.
-        if (targetResourceType is null && !options.SystemLevelSearch && sort.Count > 0)
+        if (targetResourceType is null && !context.SystemLevelSearch && sort.Count > 0)
         {
             throw new NotSupportedException(
                 "_sort combined with a wildcard compartment search (no single target resource type) is not " +
@@ -139,7 +141,7 @@ public static class Lower
             if (includes.Count > 0 || revIncludes.Count > 0)
             {
                 throw new NotSupportedException(
-                    $"_include/_revinclude combined with {NoTargetTypeReason(options.SystemLevelSearch)} (no single " +
+                    $"_include/_revinclude combined with {NoTargetTypeReason(context.SystemLevelSearch)} (no single " +
                     "target resource type) is not supported -- BuildIncludeStages needs a concrete match resource " +
                     "type to compute SeedFromMatch.");
             }
@@ -152,7 +154,7 @@ public static class Lower
         }
 
         // Bind constraints to each include/:iterate stage. This lowers the constraint predicates into
-        // context.Ctes (emitted before any include CTE, so no forward reference) and records per-stage
+        // lowerContext.Ctes (emitted before any include CTE, so no forward reference) and records per-stage
         // bindings the emitter turns into type-guarded EXISTS filters. A wildcard stage whose output types
         // are unknown is constrained conservatively; see AccessConstraintApplier.BindIncludeStage.
         if (includeStages is { Count: > 0 } && !accessConstraintApplier.IsEmpty)
@@ -160,7 +162,7 @@ public static class Lower
             includeStages = includeStages
                 .Select(stage =>
                 {
-                    var bindings = accessConstraintApplier.BindIncludeStage(stage.OutputTypeIds, symbols, context, LowerScopedExpression);
+                    var bindings = accessConstraintApplier.BindIncludeStage(stage.OutputTypeIds, symbols, lowerContext, LowerScopedExpression);
                     return bindings is null ? stage : stage with { Constraints = bindings };
                 })
                 .ToList();
@@ -190,8 +192,8 @@ public static class Lower
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped),
-            new PlanProvenance(context.Origins));
+            new QueryPlan(lowerContext.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, context.Visibility, SurrogateRange: context.SurrogateRange, SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped),
+            new PlanProvenance(lowerContext.Origins));
     }
 
     /// <summary>Names why there is no single target resource type, so a guard's message diagnoses the caller's

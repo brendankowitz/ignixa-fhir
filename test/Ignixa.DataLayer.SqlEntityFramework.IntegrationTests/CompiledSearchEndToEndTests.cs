@@ -73,15 +73,15 @@ public class CompiledSearchEndToEndTests
         var resolver = new SqlEntityFrameworkSymbolResolver(cache);
 
         // Act
+        var compilation = CompilationContext.Create(
+            new SearchOptions { Expression = predicate },
+            "Patient",
+            new SearchPlanOptions(),
+            DateTimeOffset.UtcNow);
+
         var symbolTable = (await Resolve.RunAsync(
-            CompilationContext.Create(
-                new SearchOptions { Expression = predicate },
-                "Patient",
-                new SearchPlanOptions(),
-                DateTimeOffset.UtcNow),
-            new SymbolResolution(resolver),
-            CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+            compilation, new SymbolResolution(resolver), CancellationToken.None)).Symbols;
+        var plan = Lower.Run(compilation, symbolTable).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // CA2100 suppressed: emitted.Sql is SqlBuilder.Run's compiler-generated, fully parameterized T-SQL

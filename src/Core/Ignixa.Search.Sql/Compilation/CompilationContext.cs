@@ -33,7 +33,22 @@ internal sealed record CompilationContext
 
     public required SearchPlanOptions Options { get; init; }
 
-    public bool SystemLevelSearch => TargetResourceType is null;
+    private readonly bool? _systemLevelSearch;
+
+    /// <summary>
+    /// True for a system-level (cross-type) search. Defaults to <c>TargetResourceType is null</c> — the value
+    /// every production caller derives — but is settable so the two distinct null-target cases can be told
+    /// apart: a system-level search (<c>true</c>, leaves lower cross-type) versus a wildcard compartment
+    /// search (<c>false</c>, an ordinary typed predicate or _sort alongside it has no single type to scope
+    /// against and is refused in <see cref="Ast.QueryPlan"/> lowering). Production never sets it, so the
+    /// derivation stands; only the lowering test harness supplies it to reproduce the pre-collapse two-input
+    /// signature.
+    /// </summary>
+    public bool SystemLevelSearch
+    {
+        get => _systemLevelSearch ?? TargetResourceType is null;
+        init => _systemLevelSearch = value;
+    }
 
     /// <summary>
     /// Maps a built <see cref="SearchOptions"/> and the caller's <see cref="SearchPlanOptions"/> onto the

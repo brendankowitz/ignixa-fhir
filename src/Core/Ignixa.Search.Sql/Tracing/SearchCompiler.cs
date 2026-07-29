@@ -76,12 +76,14 @@ public static class SearchCompiler
             options.Expression = operationExpression;
         }
 
+        var context = CompilationContext.Create(
+            options,
+            resourceType,
+            new SearchPlanOptions { OperationExpression = operationExpression },
+            approximationReferenceTime);
+
         var resolved = await Resolve.RunAsync(
-            CompilationContext.Create(
-                options,
-                resourceType,
-                new SearchPlanOptions { OperationExpression = operationExpression },
-                approximationReferenceTime),
+            context,
             new SymbolResolution(resolver, compartmentDefinitionManager, searchParameterDefinitionManager),
             cancellationToken);
 
@@ -109,21 +111,7 @@ public static class SearchCompiler
 
             try
             {
-                lowered = Lower.Run(
-                    options.Expression,
-                    resolved.Symbols,
-                    resourceType,
-                    options.Include,
-                    options.RevInclude,
-                    includeLimit: 0,
-                    options.Sort,
-                    SortPhase.Valued,
-                    page: null,
-                    new LowerOptions
-                    {
-                        ApproximationReferenceTime = approximationReferenceTime,
-                        AccessConstraints = options.AccessConstraints,
-                    });
+                lowered = Lower.Run(context, resolved.Symbols);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
                 MarkKnownMisses(outcomes, lowered);
@@ -156,27 +144,27 @@ public static class SearchCompiler
     /// <see cref="SearchTrace.Failure"/>, never thrown, matching CompileAsync's own contract.
     /// </summary>
     /// <remarks>
-    /// This method is the only place a <see cref="LowerOptions"/> gets built from a caller-supplied
+    /// This method is the only place a <c>LowerOptions</c> gets built from a caller-supplied
     /// <see cref="SearchOptions"/>. Three properties have, one at a time, been added to
     /// <see cref="SearchOptions"/>, accepted here, and never forwarded — each one a control that looked
     /// live and silently did nothing (<see cref="AccessConstraints"/>, then <see cref="ResourceTypes"/>,
     /// then <see cref="ResourceVersionTypes"/>). The table below is the contract every future
-    /// <see cref="LowerOptions"/> property must be checked against, so the next one is caught here instead
-    /// of by a fourth review. One row per <see cref="LowerOptions"/> property:
+    /// <c>LowerOptions</c> property must be checked against, so the next one is caught here instead
+    /// of by a fourth review. One row per <c>LowerOptions</c> property:
     /// <list type="table">
     /// <listheader><term>LowerOptions property</term><description>Source in this method, or why not</description></listheader>
-    /// <item><term><see cref="LowerOptions.CountOnly"/></term><description>The <c>countOnly</c> method parameter, not a <see cref="SearchOptions"/> property. Count-mode is an execution-shape control the caller states directly, the same as <c>includeLimit</c>/<c>sortPhase</c>/<c>countPhaseScoped</c> below.</description></item>
-    /// <item><term><see cref="LowerOptions.Top"/></term><description>Not set (always null on this path). No <see cref="SearchOptions"/> mapping exists, and none should be added naively: <see cref="SearchOptions.MaxItemCount"/> is not a safe 1:1 source because real callers already transform it before a search runs (e.g. <c>SearchResourcesHandler</c> requests <c>MaxItemCount + 1</c> to detect "has more"), so forwarding it here would silently fight that transformation. Row-capping on this path is done via <see cref="LowerOptions.OffsetPage"/> or keyset paging (the <c>page</c> parameter to <see cref="Lower.Run"/>, always null here today), both mutually exclusive with <see cref="LowerOptions.Top"/>. Flagged as a real gap in the row-capping story, not fixed here: nothing calls this method wanting <c>Top</c> driven from <see cref="SearchOptions"/> today.</description></item>
-    /// <item><term><see cref="LowerOptions.ApproximationReferenceTime"/></term><description>The <c>timeProvider</c> method parameter. Not a <see cref="SearchOptions"/> concept — an <c>:ap</c> comparator needs a clock, not caller intent.</description></item>
-    /// <item><term><see cref="LowerOptions.Visibility"/></term><description><see cref="SearchOptions.ResourceVersionTypes"/>, mapped through a local <c>ToVisibility</c> helper (<see cref="ResourceVersionTypes.None"/> throws <see cref="NotSupportedException"/>; <see cref="ResourceVersionTypes.Latest"/> alone maps to null, which <see cref="QueryPlan.EffectiveVisibility"/> already treats as <see cref="ResourceVisibility.Current"/>). The third instance of this defect class, fixed alongside this table: was accepted by <see cref="SearchOptions"/>, never reached Lower, so a caller asking for history or soft-deleted rows got silent Latest-only results.</description></item>
-    /// <item><term><see cref="LowerOptions.SurrogateRange"/></term><description>The <c>surrogateIdRange</c> method parameter when the caller supplies one (the explicit path an export partition worker uses today), falling back to <see cref="SearchOptions.StartSurrogateId"/>/<see cref="SearchOptions.EndSurrogateId"/> when it is null — those two properties ARE populated and read elsewhere in this repository (<c>ExportWorkerActivity</c> sets them; <c>FileBasedSearchService</c> and <c>SqlEntityFrameworkSearchService</c> read them), so leaving them unforwarded here was the fourth instance of this defect class. A half-open pair (only one of the two set) throws <see cref="NotSupportedException"/> rather than silently scanning unbounded in one direction. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingOnlySurrogateBounds_...</c>.</description></item>
-    /// <item><term><see cref="LowerOptions.SearchParameterHash"/></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. Reindex gating (confirming a resource was indexed against an expected search-parameter hash) is a distinct caller concern, not a search request — there is nothing on <see cref="SearchOptions"/> to forward.</description></item>
-    /// <item><term><see cref="LowerOptions.ResourceTypes"/></term><description><see cref="SearchOptions.ResourceTypes"/>. Forwarded; without it a multi-<c>_type</c> system-level search silently returns every type. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingResourceTypes_...</c>.</description></item>
-    /// <item><term><see cref="LowerOptions.AccessConstraints"/></term><description><see cref="SearchOptions.AccessConstraints"/>. Forwarded; without it an authorization constraint is accepted but never enforced. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingAccessConstraints_...</c>.</description></item>
-    /// <item><term><see cref="LowerOptions.IncludesOnly"/></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. The <c>$includes</c> operation does not call this compiler today — <c>IncludesResourceHandler</c> re-executes the full search through a different abstraction and filters Include entries out client-side — so nothing in the Application layer currently expresses an "includes only" intent for this method to carry.</description></item>
-    /// <item><term><see cref="LowerOptions.SystemLevelSearch"/></term><description>Derived as <c>resourceType is null</c> from this method's own <c>resourceType</c> parameter, deliberately not from <see cref="SearchOptions.ResourceType"/> — the parameter exists precisely so Resolve, Lower, this flag, and the returned <see cref="SearchTrace.ResourceType"/> all observe one normalized value (see that parameter's own remarks above).</description></item>
-    /// <item><term><see cref="LowerOptions.OffsetPage"/></term><description>The <c>offsetPage</c> method parameter. Not a <see cref="SearchOptions"/> property: constructing it requires decoding a legacy <see cref="SearchOptions.ContinuationToken"/> and driving a two-phase retry loop, which is adapter logic living in a different layer — a real architectural boundary, not an omission.</description></item>
-    /// <item><term><see cref="LowerOptions.CountPhaseScoped"/></term><description>The <c>countPhaseScoped</c> method parameter, the same class as <see cref="LowerOptions.OffsetPage"/> immediately above — the compiler-side half of two-phase sort execution, orchestrated by the caller.</description></item>
+    /// <item><term><c>LowerOptions.CountOnly</c></term><description>The <c>countOnly</c> method parameter, not a <see cref="SearchOptions"/> property. Count-mode is an execution-shape control the caller states directly, the same as <c>includeLimit</c>/<c>sortPhase</c>/<c>countPhaseScoped</c> below.</description></item>
+    /// <item><term><c>LowerOptions.Top</c></term><description>Not set (always null on this path). No <see cref="SearchOptions"/> mapping exists, and none should be added naively: <see cref="SearchOptions.MaxItemCount"/> is not a safe 1:1 source because real callers already transform it before a search runs (e.g. <c>SearchResourcesHandler</c> requests <c>MaxItemCount + 1</c> to detect "has more"), so forwarding it here would silently fight that transformation. Row-capping on this path is done via <c>LowerOptions.OffsetPage</c> or keyset paging (the <c>page</c> parameter to <see cref="Lower.Run"/>, always null here today), both mutually exclusive with <c>LowerOptions.Top</c>. Flagged as a real gap in the row-capping story, not fixed here: nothing calls this method wanting <c>Top</c> driven from <see cref="SearchOptions"/> today.</description></item>
+    /// <item><term><c>LowerOptions.ApproximationReferenceTime</c></term><description>The <c>timeProvider</c> method parameter. Not a <see cref="SearchOptions"/> concept — an <c>:ap</c> comparator needs a clock, not caller intent.</description></item>
+    /// <item><term><c>LowerOptions.Visibility</c></term><description><see cref="SearchOptions.ResourceVersionTypes"/>, mapped through a local <c>ToVisibility</c> helper (<see cref="ResourceVersionTypes.None"/> throws <see cref="NotSupportedException"/>; <see cref="ResourceVersionTypes.Latest"/> alone maps to null, which <see cref="QueryPlan.EffectiveVisibility"/> already treats as <see cref="ResourceVisibility.Current"/>). The third instance of this defect class, fixed alongside this table: was accepted by <see cref="SearchOptions"/>, never reached Lower, so a caller asking for history or soft-deleted rows got silent Latest-only results.</description></item>
+    /// <item><term><c>LowerOptions.SurrogateRange</c></term><description>The <c>surrogateIdRange</c> method parameter when the caller supplies one (the explicit path an export partition worker uses today), falling back to <see cref="SearchOptions.StartSurrogateId"/>/<see cref="SearchOptions.EndSurrogateId"/> when it is null — those two properties ARE populated and read elsewhere in this repository (<c>ExportWorkerActivity</c> sets them; <c>FileBasedSearchService</c> and <c>SqlEntityFrameworkSearchService</c> read them), so leaving them unforwarded here was the fourth instance of this defect class. A half-open pair (only one of the two set) throws <see cref="NotSupportedException"/> rather than silently scanning unbounded in one direction. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingOnlySurrogateBounds_...</c>.</description></item>
+    /// <item><term><c>LowerOptions.SearchParameterHash</c></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. Reindex gating (confirming a resource was indexed against an expected search-parameter hash) is a distinct caller concern, not a search request — there is nothing on <see cref="SearchOptions"/> to forward.</description></item>
+    /// <item><term><c>LowerOptions.ResourceTypes</c></term><description><see cref="SearchOptions.ResourceTypes"/>. Forwarded; without it a multi-<c>_type</c> system-level search silently returns every type. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingResourceTypes_...</c>.</description></item>
+    /// <item><term><c>LowerOptions.AccessConstraints</c></term><description><see cref="SearchOptions.AccessConstraints"/>. Forwarded; without it an authorization constraint is accepted but never enforced. See <c>CompileFromOptionsTests.GivenSearchOptionsCarryingAccessConstraints_...</c>.</description></item>
+    /// <item><term><c>LowerOptions.IncludesOnly</c></term><description>Not set. No corresponding <see cref="SearchOptions"/> property exists. The <c>$includes</c> operation does not call this compiler today — <c>IncludesResourceHandler</c> re-executes the full search through a different abstraction and filters Include entries out client-side — so nothing in the Application layer currently expresses an "includes only" intent for this method to carry.</description></item>
+    /// <item><term><c>LowerOptions.SystemLevelSearch</c></term><description>Derived as <c>resourceType is null</c> from this method's own <c>resourceType</c> parameter, deliberately not from <see cref="SearchOptions.ResourceType"/> — the parameter exists precisely so Resolve, Lower, this flag, and the returned <see cref="SearchTrace.ResourceType"/> all observe one normalized value (see that parameter's own remarks above).</description></item>
+    /// <item><term><c>LowerOptions.OffsetPage</c></term><description>The <c>offsetPage</c> method parameter. Not a <see cref="SearchOptions"/> property: constructing it requires decoding a legacy <see cref="SearchOptions.ContinuationToken"/> and driving a two-phase retry loop, which is adapter logic living in a different layer — a real architectural boundary, not an omission.</description></item>
+    /// <item><term><c>LowerOptions.CountPhaseScoped</c></term><description>The <c>countPhaseScoped</c> method parameter, the same class as <c>LowerOptions.OffsetPage</c> immediately above — the compiler-side half of two-phase sort execution, orchestrated by the caller.</description></item>
     /// </list>
     /// </remarks>
     public static async Task<SearchTrace> CompileFromOptionsAsync(
@@ -213,32 +201,34 @@ public static class SearchCompiler
         // in the try below, whose catch turns them into a recorded failure rather than an escaped
         // exception. Calling Create here would move them outside that try and change what a caller
         // observes.
-        // Visibility and SurrogateRange are therefore left null: Resolve reads neither, and the real
-        // values are still computed for LowerOptions below. Task 4 must build one context inside the try
-        // and share it with both stages rather than adding a second one.
-        var resolved = await Resolve.RunAsync(
-            new CompilationContext
+        // Visibility and SurrogateRange are therefore left null here: Resolve reads neither. The real
+        // values are computed inside the try below and layered onto this same context with a `with`
+        // expression, so both stages share one context rather than constructing a second one.
+        var context = new CompilationContext
+        {
+            Expression = options.Expression,
+            TargetResourceType = string.IsNullOrEmpty(resourceType) ? null : resourceType,
+            Includes = options.Include ?? [],
+            RevIncludes = options.RevInclude ?? [],
+            Sort = options.Sort ?? [],
+            AccessConstraints = options.AccessConstraints ?? [],
+            ResourceTypes = options.ResourceTypes ?? [],
+            ApproximationReferenceTime = approximationReferenceTime,
+            Visibility = null,
+            SurrogateRange = null,
+            Options = new SearchPlanOptions
             {
-                Expression = options.Expression,
-                TargetResourceType = string.IsNullOrEmpty(resourceType) ? null : resourceType,
-                Includes = options.Include ?? [],
-                RevIncludes = options.RevInclude ?? [],
-                Sort = options.Sort ?? [],
-                AccessConstraints = options.AccessConstraints ?? [],
-                ResourceTypes = options.ResourceTypes ?? [],
-                ApproximationReferenceTime = approximationReferenceTime,
-                Visibility = null,
-                SurrogateRange = null,
-                Options = new SearchPlanOptions
-                {
-                    CountOnly = countOnly,
-                    IncludeLimit = includeLimit,
-                    SortPhase = sortPhase,
-                    CountPhaseScoped = countPhaseScoped,
-                    OffsetPage = offsetPage,
-                    SurrogateRange = surrogateIdRange,
-                },
+                CountOnly = countOnly,
+                IncludeLimit = includeLimit,
+                SortPhase = sortPhase,
+                CountPhaseScoped = countPhaseScoped,
+                OffsetPage = offsetPage,
+                SurrogateRange = surrogateIdRange,
             },
+        };
+
+        var resolved = await Resolve.RunAsync(
+            context,
             new SymbolResolution(resolver, compartmentDefinitionManager, searchParameterDefinitionManager),
             cancellationToken);
 
@@ -258,43 +248,13 @@ public static class SearchCompiler
         {
             try
             {
-                lowered = Lower.Run(
-                    options.Expression,
-                    resolved.Symbols,
-                    resourceType,
-                    options.Include ?? [],
-                    options.RevInclude ?? [],
-                    includeLimit,
-                    options.Sort ?? [],
-                    sortPhase,
-                    page: null,
-                    new LowerOptions
-                    {
-                        CountOnly = countOnly,
-                        ApproximationReferenceTime = approximationReferenceTime,
-                        SystemLevelSearch = resourceType is null,
+                var loweringContext = context with
+                {
+                    Visibility = ToVisibility(options.ResourceVersionTypes),
+                    SurrogateRange = ToSurrogateRange(surrogateIdRange, options),
+                };
 
-                        // Without this forwarding a multi-_type search silently returns EVERY resource type
-                        // rather than the requested subset: the cross-type leaves carry no ResourceTypeId of
-                        // their own, so nothing else narrows them. Same class of defect as the AccessConstraints
-                        // omission above -- accepted by the API, never reaching Lower, invisible to a green build.
-                        // See CompileFromOptionsTests.
-                        ResourceTypes = options.ResourceTypes,
-                        OffsetPage = offsetPage,
-                        CountPhaseScoped = countPhaseScoped,
-                        SurrogateRange = ToSurrogateRange(surrogateIdRange, options),
-                        // The forwarding this task exists for: without it, a caller setting AccessConstraints
-                        // on options gets silent non-enforcement -- the constraint is accepted by the API but
-                        // never reaches Lower, so nothing narrows the match set or guards an include/chain
-                        // target. See CompileFromOptionsTests.
-                        AccessConstraints = options.AccessConstraints,
-
-                        // Same class of defect as ResourceTypes/AccessConstraints above: without this, a
-                        // caller setting ResourceVersionTypes = History (or SoftDeleted) gets silent
-                        // Latest-only results -- the control is accepted by the API but never reaches Lower.
-                        // See CompileFromOptionsTests.
-                        Visibility = ToVisibility(options.ResourceVersionTypes),
-                    });
+                lowered = Lower.Run(loweringContext, resolved.Symbols);
 
                 planTrace = BuildPlanTrace(lowered, outcomes);
                 MarkKnownMisses(outcomes, lowered);
@@ -345,7 +305,7 @@ public static class SearchCompiler
     /// instance of the same defect class as <see cref="AccessConstraints"/>, <see cref="ResourceTypes"/>, and
     /// <see cref="ResourceVersionTypes"/>: a <see cref="SearchOptions"/> property that looked live and reached
     /// nothing. The explicit parameter wins when both are supplied, matching the adapter-parameter boundary
-    /// <see cref="LowerOptions.OffsetPage"/> uses.
+    /// <c>LowerOptions.OffsetPage</c> uses.
     /// </summary>
     private static SurrogateIdRange? ToSurrogateRange((long Start, long End)? explicitRange, SearchOptions options)
     {

@@ -1,6 +1,7 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Shouldly;
 using Xunit;
 
@@ -15,7 +16,7 @@ public class PlanProvenanceTests
         var (expression, symbols) = LowerTestFixtures.SingleStringPredicate();
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             expression, symbols, targetResourceType: "Patient",
             includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null);
@@ -32,7 +33,7 @@ public class PlanProvenanceTests
         var (wrapper, inner, symbols) = LowerTestFixtures.NotModifiedPredicate();
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             wrapper, symbols, targetResourceType: "Patient",
             includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null);
@@ -48,7 +49,7 @@ public class PlanProvenanceTests
         var (wrapper, alternative1, alternative2, symbols) = LowerTestFixtures.OrOfCompositeAlternatives();
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             wrapper, symbols, targetResourceType: "Observation",
             includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null);

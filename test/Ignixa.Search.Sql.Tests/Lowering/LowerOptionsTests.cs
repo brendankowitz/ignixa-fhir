@@ -4,6 +4,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -12,23 +13,6 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class LowerOptionsTests
 {
-    [Fact]
-    public void GivenLowerOptions_WhenSettingAsAddedInputs_ThenEachIsReadableByName()
-    {
-        // Arrange & Act
-        var options = new LowerOptions
-        {
-            SystemLevelSearch = true,
-            OffsetPage = new OffsetSpec(20, 10),
-            CountPhaseScoped = true,
-        };
-
-        // Assert
-        options.SystemLevelSearch.ShouldBeTrue();
-        options.OffsetPage!.Offset.ShouldBe(20);
-        options.CountPhaseScoped.ShouldBeTrue();
-    }
-
     [Fact]
     public void GivenAQueryPlan_WhenConstructedWithNamedTailArguments_ThenEachSlotHoldsItsOwnValue()
     {
@@ -66,7 +50,7 @@ public class LowerOptionsTests
         var options = new LowerOptions { OffsetPage = new OffsetSpec(0, 10) };
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: page, options: options));
     }
@@ -84,7 +68,7 @@ public class LowerOptionsTests
         var options = new LowerOptions { CountPhaseScoped = true, CountOnly = false };
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, options: options));
     }

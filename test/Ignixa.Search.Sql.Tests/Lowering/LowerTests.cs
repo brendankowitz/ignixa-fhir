@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -26,7 +27,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -50,7 +51,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -73,7 +74,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -95,7 +96,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("does not support");
     }
 
@@ -114,7 +115,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
     [Fact]
@@ -132,7 +133,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldContain(c => c is CteDefinition.ParamSource);
@@ -151,7 +152,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldContain(c => c is CteDefinition.Except);
@@ -168,7 +169,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
     [Fact]
@@ -185,7 +186,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -218,7 +219,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act -- iterate entry listed FIRST in the includes list, to prove ordering is by the sort, not input order.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- non-iterate stage always sorts first (design §4.1); inc0 is Organization:organization, inc1 is the iterate.
         plan.Includes!.Count.ShouldBe(2);
@@ -250,7 +251,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110, ["Encounter"] = 111 });
 
         // Act -- Encounter listed first in the input list.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- inc0 is the Encounter stage (ref=22), matching its position in the input list.
         plan.Includes!.Count.ShouldBe(2);
@@ -274,7 +275,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
+            LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("cycle");
     }
 
@@ -293,7 +294,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- the degenerate stage was dropped, not emitted with an empty EXISTS.
         plan.Includes.ShouldBeNull();
@@ -309,7 +310,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -335,7 +336,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110 });
 
         // Act -- note: misplacedRevInclude is passed as `includes` (forward), not `revIncludes`.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -361,7 +362,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
+            LowerHarness.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("no single resource type");
     }
 
@@ -390,7 +391,7 @@ public class LowerTests
             });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
@@ -417,7 +418,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
+            LowerHarness.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("SeedFromMatch");
     }
 
@@ -432,7 +433,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -455,7 +456,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(lastUpdatedParam, Ignixa.Search.Expressions.SortOrder.Descending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -478,7 +479,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [
                     new SortExpression(p1, Ignixa.Search.Expressions.SortOrder.Ascending),
@@ -502,7 +503,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -530,7 +531,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("wildcard compartment search");
@@ -558,7 +559,7 @@ public class LowerTests
 
         // Act & Assert
         var ex = Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000,
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null));
         ex.Message.ShouldContain("wildcard compartment search");
@@ -580,7 +581,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(lastUpdated, Ignixa.Search.Expressions.SortOrder.Ascending)],
                 sortPhase: SortPhase.MissingPrimary, page: null))
@@ -598,7 +599,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
@@ -617,7 +618,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -636,7 +637,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -655,7 +656,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -683,7 +684,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null));
     }
@@ -700,7 +701,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("Special");
@@ -726,7 +727,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missing, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -755,7 +756,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("Number");
@@ -782,7 +783,7 @@ public class LowerTests
 
         // Act & Assert -- should throw NotSupportedException, not NullReferenceException
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("unresolved");
@@ -817,7 +818,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = fixedTime }).Plan;
 
@@ -843,7 +844,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldNotContain(cte => cte is CteDefinition.ResourceSource);
@@ -866,7 +867,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldContain(cte => cte is CteDefinition.ResourceSource);
@@ -893,7 +894,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- no search-param CTE is needed for a query that only filters resource columns
         plan.OuterPredicate.ShouldNotBeNull();
@@ -920,7 +921,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Observation"] = 96 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
@@ -949,7 +950,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
@@ -969,7 +970,7 @@ public class LowerTests
             notReferencedPaths: new Dictionary<(string, string), SearchParameterInfo> { [("Observation", "subject")] = subjectParam });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
@@ -988,7 +989,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
@@ -1008,7 +1009,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
@@ -1037,7 +1038,7 @@ public class LowerTests
             systemIds: new Dictionary<string, int?> { ["http://ignixa.io/testscript/suite/ms-not-referenced"] = 5 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
@@ -1052,7 +1053,7 @@ public class LowerTests
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1073,7 +1074,7 @@ public class LowerTests
     {
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1101,7 +1102,7 @@ public class LowerTests
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1125,7 +1126,7 @@ public class LowerTests
         // An empty IN list would be dropped, producing a full-table scan — wrong and dangerous.
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1151,7 +1152,7 @@ public class LowerTests
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1194,7 +1195,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate,
             symbols,
             targetResourceType: null,
@@ -1229,7 +1230,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
 
@@ -1254,7 +1255,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["NotAType"] = SymbolTable.UnmatchableResourceTypeId });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             TypeList("Patient", "NotAType"), symbols, targetResourceType: null, includes: [], revIncludes: [],
             includeLimit: 0, sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
 
@@ -1286,7 +1287,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null,
                 symbols,
                 targetResourceType: "Patient",
@@ -1310,7 +1311,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null,
                 symbols,
                 targetResourceType: "Patient",
@@ -1340,7 +1341,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null,
                 symbols,
                 targetResourceType: "Patient",
