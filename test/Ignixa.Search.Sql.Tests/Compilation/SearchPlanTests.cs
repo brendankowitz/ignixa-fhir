@@ -1,4 +1,6 @@
+using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql;
+using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Tests.TestSupport;
 using Shouldly;
 using Xunit;
@@ -89,6 +91,30 @@ public class SearchPlanTests
         };
 
         plan.Compile().Diagnostics!.SqlTextRanges.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAPageBoundaryThatDoesNotMatchTheSortPhase_WhenTryCompilingIt_ThenItReturnsAFailureRatherThanThrowing()
+    {
+        // PageSpec.Boundary is client input decoded from a continuation token, and nothing between
+        // SearchPlanOptions.Page and emission compares its length against the sort phase. So plan creation
+        // succeeds and the mismatch only bites at Compile -- where TryCompile has to hand it back as data.
+        // A caller who picked the Try* API precisely to avoid exceptions would otherwise get an unhandled
+        // throw out of the one method whose contract says it never throws.
+        var compiler = CompilerFixtures.ForPatient();
+        var options = new SearchPlanOptions
+        {
+            Page = new PageSpec(
+                [new SqlParameterRef("Smith")], new SqlParameterRef((short)103), new SqlParameterRef(9000L)),
+        };
+
+        var plan = await compiler.CreatePlanAsync("Patient", [new QueryParameter("name", "smith")], options);
+
+        var result = plan.TryCompile();
+
+        result.Succeeded.ShouldBeFalse();
+        result.Failure!.Stage.ShouldBe(CompilationStage.Emit);
+        result.Failure.Exception.ShouldBeOfType<NotSupportedException>();
     }
 
     [Fact]

@@ -147,4 +147,45 @@ public class SearchSqlCompilerTests
 
         result.Failure!.Diagnostics.ShouldBeNull();
     }
+
+    [Fact]
+    public void GivenANullResolver_WhenConstructingTheCompiler_ThenItIsRejected()
+    {
+        Should.Throw<ArgumentNullException>(() => new SearchSqlCompiler(null!));
+    }
+
+    [Fact]
+    public async Task GivenNullParameters_WhenCreatingAPlan_ThenItIsRejected()
+    {
+        var compiler = CompilerFixtures.ForPatient();
+
+        await Should.ThrowAsync<ArgumentNullException>(() => compiler.CreatePlanAsync("Patient", null!));
+    }
+
+    [Fact]
+    public async Task GivenNullSearchOptions_WhenCreatingAPlanFromOptions_ThenItIsRejected()
+    {
+        var compiler = CompilerFixtures.ForPatient();
+
+        await Should.ThrowAsync<ArgumentNullException>(() => compiler.CreatePlanFromOptionsAsync(null!, "Patient"));
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsWithAHalfOpenSurrogateRange_WhenCreatingAPlanFromOptions_ThenItThrows()
+    {
+        // The Try sibling is covered above; this pins the throwing entry point's own delegation, which is
+        // the only thing standing between a caller and a silently swallowed options-mapping error.
+        var compiler = CompilerFixtures.ForPatient();
+        var searchOptions = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Expression = PlanFixtures.EverythingExpression(),
+            StartSurrogateId = 1,
+        };
+
+        var exception = await Should.ThrowAsync<SearchCompilationException>(
+            () => compiler.CreatePlanFromOptionsAsync(searchOptions, "Patient"));
+
+        exception.Failure.Stage.ShouldBe(CompilationStage.Lower);
+    }
 }

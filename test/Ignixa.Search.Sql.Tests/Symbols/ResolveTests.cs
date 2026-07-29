@@ -303,8 +303,9 @@ public class ResolveTests
     [Fact]
     public async Task GivenACompartmentMemberParameterWithNoUrl_WhenResolved_ThenItIsSkippedRatherThanThrowing()
     {
-        // Arrange -- SearchParameterInfo's Url is typed non-null but nullable at runtime, and CompileAsync
-        // awaits Resolve outside its try/catch, so a dereference here would escape as an NRE.
+        // Arrange -- SearchParameterInfo's Url is typed non-null but nullable at runtime, and
+        // SearchSqlCompiler.RunAsync awaits Resolve outside its try/catch, so a dereference here would
+        // escape as an NRE.
         var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
         var urllessParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, url: null);
 

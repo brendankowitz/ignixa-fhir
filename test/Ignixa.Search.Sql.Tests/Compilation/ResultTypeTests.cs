@@ -12,7 +12,7 @@ public class ResultTypeTests
         var failure = new SearchCompilationFailure(
             CompilationStage.Emit, "boom", ParameterCode: null, Span: null, Exception: null);
 
-        var result = new SearchCompilationResult(Compiled: null, failure);
+        var result = SearchCompilationResult.Failed(failure);
 
         result.Succeeded.ShouldBeFalse();
         result.Failure.ShouldBeSameAs(failure);
@@ -24,10 +24,22 @@ public class ResultTypeTests
         var failure = new SearchCompilationFailure(
             CompilationStage.Resolve, "boom", ParameterCode: null, Span: null, Exception: null);
 
-        var result = new SearchPlanResult(Plan: null, failure);
+        var result = SearchPlanResult.Failed(failure);
 
         result.Succeeded.ShouldBeFalse();
         result.Failure.ShouldBeSameAs(failure);
+    }
+
+    [Fact]
+    public void GivenTheResultFactories_WhenPassedNull_ThenTheyRejectItRatherThanMintingAnUninhabitedResult()
+    {
+        // The factories are the only construction route precisely so "exactly one member is non-null"
+        // holds by construction; a null argument would produce a result that is neither a success nor a
+        // failure, which is the state MemberNotNullWhen(false, nameof(Failure)) promises cannot exist.
+        Should.Throw<ArgumentNullException>(() => SearchPlanResult.Success(null!));
+        Should.Throw<ArgumentNullException>(() => SearchPlanResult.Failed(null!));
+        Should.Throw<ArgumentNullException>(() => SearchCompilationResult.Success(null!));
+        Should.Throw<ArgumentNullException>(() => SearchCompilationResult.Failed(null!));
     }
 
     [Fact]

@@ -26,7 +26,7 @@ public sealed record SearchPlan
     public CompiledSearch Compile()
     {
         var result = TryCompile();
-        return result.Succeeded ? result.Compiled : throw new SearchCompilationException(result.Failure!);
+        return result.Succeeded ? result.Compiled : throw new SearchCompilationException(result.Failure);
     }
 
     /// <summary>Emits SQL, returning the failure as data when the plan cannot be emitted.</summary>
@@ -47,7 +47,7 @@ public sealed record SearchPlan
                 Diagnostics = DiagnosticsLevel == SearchDiagnosticsLevel.None ? null : Diagnostics,
             };
 
-            return new SearchCompilationResult(Compiled: null, failure);
+            return SearchCompilationResult.Failed(failure);
         }
 
         var compiled = new CompiledSearch(emitted.Sql, emitted.Parameters, Query)
@@ -60,6 +60,6 @@ public sealed record SearchPlan
                 },
         };
 
-        return new SearchCompilationResult(compiled, Failure: null);
+        return SearchCompilationResult.Success(compiled);
     }
 }

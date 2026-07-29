@@ -894,12 +894,20 @@ internal static class SqlBuilder
     /// lexicographic branches over the active sort keys, then the (T1, Sid1) tiebreak, so it stays in step
     /// with the ORDER BY. Throws if the boundary value count does not match the current phase's active keys.
     /// </summary>
+    /// <remarks>
+    /// The mismatch is a <see cref="NotSupportedException"/>, not an <see cref="InvalidOperationException"/>,
+    /// because the boundary is caller input rather than a compiler-produced shape: it arrives from
+    /// <c>SearchPlanOptions.Page</c>, decoded from a client continuation token, and nothing between there and
+    /// here checks its length against the sort phase. Only the two catchable types reach a
+    /// <c>SearchCompilationFailure</c>, so throwing anything else here would escape <c>SearchPlan.TryCompile</c>
+    /// -- the one method whose contract is that it never throws -- and surface as a 500.
+    /// </remarks>
     private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {
         var activeIndices = ActiveKeyIndices(sort);
         if (page.Boundary.Count != activeIndices.Count)
         {
-            throw new InvalidOperationException(
+            throw new NotSupportedException(
                 $"PageSpec.Boundary has {page.Boundary.Count} value(s) but the current SortSpec phase has " +
                 $"{activeIndices.Count} active key(s) -- boundary values must be freshly decoded for the " +
                 "current phase, never reused across a Valued/MissingPrimary transition.");

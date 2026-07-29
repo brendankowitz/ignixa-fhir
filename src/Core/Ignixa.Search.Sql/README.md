@@ -153,7 +153,7 @@ When a query-shape problem should be data rather than an exception, use the `Try
 var result = await compiler.TryCreatePlanAsync("Patient", parameters, cancellationToken: cancellationToken);
 if (!result.Succeeded)
 {
-    logger.LogWarning("Search failed at {Stage}: {Message}", result.Failure!.Stage, result.Failure.Message);
+    logger.LogWarning("Search failed at {Stage}: {Message}", result.Failure.Stage, result.Failure.Message);
     return;
 }
 ```

@@ -31,6 +31,27 @@ public class SearchCompilationFailureTests
     }
 
     [Fact]
+    public void GivenAFailureCarryingAnException_WhenWrappingItInAnException_ThenTheOriginalCauseIsChainedAsTheInnerException()
+    {
+        // A Try* caller that decides to rethrow, and every caller of the throwing entry points, relies on
+        // the original exception surviving as InnerException -- it is the only route back to the real
+        // stack once the failure has been flattened into a message and a stage.
+        var cause = new NotSupportedException("half-open surrogate range");
+        var failure = new SearchCompilationFailure(
+            CompilationStage.Lower, cause.Message, ParameterCode: null, Span: null, cause);
+
+        var exception = new SearchCompilationException(failure);
+
+        exception.InnerException.ShouldBeSameAs(cause);
+    }
+
+    [Fact]
+    public void GivenANullFailure_WhenWrappingItInAnException_ThenItIsRejected()
+    {
+        Should.Throw<ArgumentNullException>(() => new SearchCompilationException(null!));
+    }
+
+    [Fact]
     public void GivenAnAttributedLoweringFailure_WhenRecordingIt_ThenTheFailureNamesTheParameterAndItsSpan()
     {
         // Arrange -- an empty symbol table makes the leaf dispatcher throw, and it enriches the exception

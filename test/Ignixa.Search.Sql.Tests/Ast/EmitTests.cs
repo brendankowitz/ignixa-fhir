@@ -801,11 +801,13 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAPageBoundaryWithFewerValuesThanActiveSortKeys_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
+    public void GivenAPageBoundaryWithFewerValuesThanActiveSortKeys_WhenEmitted_ThenThrowsNotSupportedExceptionMentioningTheMismatch()
     {
         // Arrange -- a 2-key Valued sort needs a 2-value boundary; this one only carries 1. Silently
         // pairing boundaryParams[0] against the wrong key's expression is exactly the silent-wrong-
-        // pagination failure class this guard exists to prevent.
+        // pagination failure class this guard exists to prevent. NotSupportedException rather than
+        // InvalidOperationException because the boundary is caller input, so the facade has to be able
+        // to record it as a SearchCompilationFailure instead of letting it escape TryCompile.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec(
@@ -818,11 +820,11 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("1 value(s)");
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("1 value(s)");
     }
 
     [Fact]
-    public void GivenAMissingPrimaryPhaseBoundaryReusedFromTheValuedPhaseShape_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
+    public void GivenAMissingPrimaryPhaseBoundaryReusedFromTheValuedPhaseShape_WhenEmitted_ThenThrowsNotSupportedExceptionMentioningTheMismatch()
     {
         // Arrange -- MissingPrimary excludes Keys[0] from ActiveKeyIndices, so its boundary should carry
         // Keys.Count - 1 values. Handing it a full Keys.Count-sized boundary (the Valued-phase shape) must
@@ -834,7 +836,7 @@ public class EmitTests
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("active key(s)");
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("active key(s)");
     }
 
     [Fact]

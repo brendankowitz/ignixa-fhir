@@ -35,7 +35,7 @@ public sealed class SearchSqlCompiler(
         CancellationToken cancellationToken = default)
     {
         var result = await TryCreatePlanCoreAsync(resourceType, parameters, options, rethrowBuildFailures: true, cancellationToken);
-        return result.Succeeded ? result.Plan : throw new SearchCompilationException(result.Failure!);
+        return result.Succeeded ? result.Plan : throw new SearchCompilationException(result.Failure);
     }
 
     public async Task<SearchPlanResult> TryCreatePlanAsync(
@@ -52,7 +52,7 @@ public sealed class SearchSqlCompiler(
         CancellationToken cancellationToken = default)
     {
         var result = await TryCreatePlanFromOptionsAsync(searchOptions, resourceType, options, cancellationToken);
-        return result.Succeeded ? result.Plan : throw new SearchCompilationException(result.Failure!);
+        return result.Succeeded ? result.Plan : throw new SearchCompilationException(result.Failure);
     }
 
     public async Task<SearchPlanResult> TryCreatePlanFromOptionsAsync(
@@ -98,8 +98,7 @@ public sealed class SearchSqlCompiler(
         // caller's parameters against the built SearchOptions, and there is no built SearchOptions yet.
         catch (FhirException ex) when (!rethrowBuildFailures)
         {
-            return new SearchPlanResult(
-                Plan: null,
+            return SearchPlanResult.Failed(
                 new SearchCompilationFailure(CompilationStage.Build, ex.Message, ParameterCode: null, Span: null, ex)
                 {
                     Diagnostics = Diagnostics(traced, outcomes, implicitParameters: [], planTrace: null),
@@ -136,8 +135,7 @@ public sealed class SearchSqlCompiler(
         catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Lower, ex);
-            return new SearchPlanResult(
-                Plan: null,
+            return SearchPlanResult.Failed(
                 failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
         }
 
@@ -151,8 +149,7 @@ public sealed class SearchSqlCompiler(
             }
 
             var resolveFailure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved)!;
-            return new SearchPlanResult(
-                Plan: null,
+            return SearchPlanResult.Failed(
                 resolveFailure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
         }
 
@@ -164,8 +161,7 @@ public sealed class SearchSqlCompiler(
         catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Lower, ex);
-            return new SearchPlanResult(
-                Plan: null,
+            return SearchPlanResult.Failed(
                 failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
         }
 
@@ -187,7 +183,7 @@ public sealed class SearchSqlCompiler(
             Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace),
         };
 
-        return new SearchPlanResult(plan, Failure: null);
+        return SearchPlanResult.Success(plan);
     }
 
     private static SearchCompilationDiagnostics? Diagnostics(
