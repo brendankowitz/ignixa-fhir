@@ -110,20 +110,20 @@ public static class ResourceColumnLoweringRule
                 new Predicate.LessThanOrEqual(column, context.Parameter(ToSurrogateIdUpperBound(widenedEnd))));
         }
 
-        if (value.Start != value.End)
-        {
-            throw new NotSupportedException(
-                "_lastUpdated only supports an exact instant (Start == End) for now -- partial-precision " +
-                "ranges need a point-column-vs-search-range comparator formula that has no live reference " +
-                "implementation to verify against (the real pipeline's ProcessResourceLastUpdatedExpressionAsync " +
-                "only ever compares against one already-resolved instant); deliberately deferred, not an oversight.");
-        }
-
-        // A single instant addresses a whole millisecond bucket [floor, floor + 79999], because the
-        // database appends a uniquifier at write time. Every comparator is expressed against that closed
-        // range; comparing against the bare floor would match only uniquifier 0.
+        // The search value is a closed range [Start, End] that already encodes FHIR partial-date precision;
+        // an exact instant is the degenerate case where the two coincide. A stored row, by contrast, is a
+        // single point: its ResourceSurrogateId encodes one millisecond plus a write-time uniquifier. So the
+        // FHIR prefix table (search.html), which relates the parameter range to the resource range, collapses
+        // here to a point-vs-range comparison -- the same relations DateTimeRangeComparison builds for
+        // [StartDateTime, EndDateTime] columns, with both column roles played by ResourceSurrogateId.
+        //
+        // Each endpoint is widened to the whole millisecond bucket it names, because the database appends a
+        // uniquifier at write time: the lower bound floors to [ms] and the upper bound extends to
+        // [ms + MaxUniquifier]. Comparing against a bare floor would match only uniquifier 0. This mirrors the
+        // data layer's own _lastUpdated-to-surrogate-id conversion, which likewise rounds each bound outwards
+        // to a millisecond boundary rather than comparing sub-millisecond precision it cannot resolve.
         var lowerParam = context.Parameter(ToSurrogateId(value.Start));
-        var upperParam = context.Parameter(ToSurrogateIdUpperBound(value.Start));
+        var upperParam = context.Parameter(ToSurrogateIdUpperBound(value.End));
 
         return predicate.Comparator switch
         {

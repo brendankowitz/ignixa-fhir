@@ -29,7 +29,7 @@ public class PlanExplainDescribeTests
             "root = Intersect(cte0, cte1) WHERE ResourceId = @p2\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)\n" +
             "sort = SortSpec([String:202 ASC], Valued)\n" +
-            "page = PageSpec(boundary=[@p3], type=@p4, sid=@p5)");
+            "page = PageSpec(boundary=[@p3], type=none, sid=@p4)");
     }
 
     [Fact]
@@ -225,6 +225,6 @@ public class PlanExplainDescribeTests
             OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")),
             Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)],
             Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
-            Page: new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L)));
+            Page: new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L)));
     }
 }

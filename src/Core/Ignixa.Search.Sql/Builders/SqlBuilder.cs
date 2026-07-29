@@ -70,18 +70,52 @@ public static class SqlBuilder
                 "result. This is a caller error rather than a query that legitimately matches nothing.");
         }
 
-        if (plan.IncludesOnly && plan.Sort is not null)
+        if (plan.IncludesOnly && plan.Page is not null)
         {
-            // Dropping the match arm leaves the include arm's projected sort columns unaliased while the
-            // outer ORDER BY still references SortValueN, so the emitted SQL would bind to a nonexistent
-            // column (SQL Server error 207) -- and the grammar tests cannot catch it because an unbound
-            // identifier is grammatically valid. A sort orders match rows; an includes-only page returns
-            // none and pages its include rows by (T1, Sid1), so the sort key is meaningless here. Refuse
-            // it rather than silently emit invalid SQL.
+            // A sort is allowed on an includes-only page: its SortPhase filters the match set that seeds the
+            // include stages (WriteMatchPageCte applies the Valued primary-key INNER join / the MissingPrimary
+            // NOT EXISTS filter), while the include rows are paged by (T1, Sid1) in EmitGlobalIncludesPage, so
+            // the sort never reaches an ORDER BY on the sort key. A keyset Page is different: EmitSeekPredicate
+            // would seek the MATCH rows by the sort-key boundary, letting the sort key decide which match rows
+            // -- and therefore which include rows -- exist, via a paging mechanism the includes-only page does
+            // not use (its match window is the surrogate range; its include rows page from a resume boundary).
+            // The two are mutually exclusive here, so a match-side keyset seek is refused. Grammatically
+            // valid, so the grammar tests cannot catch it.
             throw new NotSupportedException(
-                "IncludesOnly was requested together with a sort, but an includes-only page returns no match " +
-                "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
-                "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
+                "IncludesOnly was requested together with a keyset Page, but an includes-only page bounds its " +
+                "match set by a surrogate-id range and pages its include rows by a resume boundary over (T1, Sid1). A " +
+                "keyset Page seeks the match rows by the sort-key boundary, a second paging mechanism the " +
+                "includes-only page does not use, so it is reported rather than silently applying a match-side " +
+                "seek that would change which resources are included.");
+        }
+
+        if (plan.IncludesOnly && plan.Includes is { Count: > 0 } includeStages
+            && includeStages.Any(s => s.Limit != includeStages[0].Limit))
+        {
+            // The global page applies one TOP over the union of every stage (EmitGlobalIncludesPage takes
+            // the budget from includes[0].Limit), because the page budget is a property of the whole
+            // ordered stream, not of any single stage. Differing per-stage limits therefore have no single
+            // coherent meaning here: the emitter would silently page on whichever limit happened to be
+            // first and return a wrong-sized page with no error -- exactly the silent wrong answer the other
+            // guards exist to prevent. Refuse it rather than pick a budget arbitrarily.
+            throw new NotSupportedException(
+                "IncludesOnly was requested with include stages that do not all share one Limit. The page " +
+                "budget applies once across the union of every stage, so a per-stage limit has no coherent " +
+                "meaning here; the stages must agree on a single Limit. The mismatch is reported rather than " +
+                "silently paged on whichever limit is first.");
+        }
+
+        // Lower.Run rejects this at the lowering stage, but QueryPlan is a public construction surface, so
+        // the builder must guard independently. The resume predicate only pages a stream of include rows,
+        // which exists only when IncludesOnly drops the match arm; on an ordinary search the emitter would
+        // never apply it and the boundary's caller would silently get a full first page instead of a resumed
+        // one. Grammatically valid either way, so the grammar tests cannot catch it.
+        if (plan.IncludeBoundary is not null && !plan.IncludesOnly)
+        {
+            throw new NotSupportedException(
+                "IncludeBoundary was supplied without IncludesOnly. The resume boundary pages the union of " +
+                "include stages as one ordered stream, which exists only on an includes-only page; on an " +
+                "ordinary search there is no such stream for it to resume.");
         }
 
         // Lower.Run rejects these two at the lowering stage, but QueryPlan is a public construction surface
@@ -95,7 +129,70 @@ public static class SqlBuilder
                 "rejected by SQL Server, and a keyset seek alongside OFFSET/FETCH applies two independent " +
                 "paging mechanisms to one query.");
         }
+
+        // A typeless seek breaks its final tie on Sid1 alone and never mentions the type column, so it is
+        // sound only against a type-free ORDER BY -- (sort keys…, Sid1). EmitOrderBy produces that shape only
+        // for a custom (search-parameter) sort; every other sort keeps m.T1 as a tiebreak (a plain search
+        // orders by (T1, Sid1); a _type sort orders by the type itself), so a typeless seek would disagree
+        // with the ORDER BY and keyset paging would silently drop rows across a page boundary within a tie.
+        // Refuse the mismatch here: it is grammatically valid SQL, so the grammar tests cannot catch it, and
+        // this is the construction surface a caller reaches when building a QueryPlan directly.
+        if (IsTypelessPage(plan) && !HasCustomSortKey(plan.Sort))
+        {
+            throw new NotSupportedException(
+                "A typeless keyset Page (BoundaryResourceTypeId is null) requires a custom (search-parameter) " +
+                "_sort such as name or birthdate. The plan's sort is " +
+                (plan.Sort is null ? "absent" : "a resource-column sort (_lastUpdated / _type / _id)") +
+                ", whose keyset order includes the resource type, so a type-free seek would disagree with the " +
+                "ORDER BY and paging would be unsound. Use a typed Page here, or a custom sort for a typeless Page.");
+        }
+
+        // The mirror of the guard above, and unsound for the mirrored reason. EmitOrderBy drops m.T1 for any
+        // custom sort regardless of the boundary's shape, but EmitSeekPredicate still emits a type-major seek
+        // whenever BoundaryResourceTypeId is non-null, so the two disagree in exactly the direction that loses
+        // rows. Also grammatically valid, so the grammar tests cannot catch it.
+        if (plan.Page is { BoundaryResourceTypeId: not null } && HasCustomSortKey(plan.Sort))
+        {
+            throw new NotSupportedException(
+                "A typed keyset Page (BoundaryResourceTypeId is non-null) cannot be combined with a custom " +
+                "(search-parameter) _sort. EmitOrderBy drops the m.T1 tiebreak for a custom sort, ordering by " +
+                "(sort keys…, Sid1), while a typed boundary makes EmitSeekPredicate emit a type-major seek. " +
+                "Within a run of tied sort values a row of a lower type id but higher surrogate id then sorts " +
+                "after the boundary yet is excluded by the seek, and is silently dropped at the page seam. " +
+                "Use a typeless Page (BoundaryResourceTypeId: null) for a custom sort; the type component is " +
+                "redundant because ResourceSurrogateId is globally unique.");
+        }
     }
+
+    /// <summary>
+    /// A keyset page whose boundary carries no resource-type component. Its seek compares only the sort
+    /// key(s) and the surrogate id; the emitter drops the m.T1 tiebreak from the matching ORDER BY so the
+    /// two stay in step. Sound because ResourceSurrogateId is globally unique, so Sid1 is a total order on
+    /// its own.
+    /// </summary>
+    private static bool IsTypelessPage(QueryPlan plan) => plan.Page is { BoundaryResourceTypeId: null };
+
+    /// <summary>
+    /// A search-parameter-backed sort key (a String/Date sort such as name or birthdate, or an Aggregated
+    /// Token/Number/Quantity/Reference/Uri sort) as opposed to the resource-column keys (_lastUpdated / _type
+    /// / _id). These are the keys whose legacy continuation token is [sortValue, resourceSurrogateId] with no
+    /// type slot, so their keyset order is (sortValue…, Sid1) -- type-free.
+    /// </summary>
+    private static bool IsCustomSortKey(SortKeyKind kind)
+        => kind is SortKeyKind.String or SortKeyKind.Date or SortKeyKind.Aggregated;
+
+    /// <summary>
+    /// True when the sort has any custom (search-parameter) key, so the ORDER BY drops the m.T1 tiebreak and
+    /// orders by (sort keys…, Sid1). Decided by the sort's own keys -- never by whether this request carries a
+    /// page boundary -- so page 1 (which has no Page) and every later page of one keyset walk share a single
+    /// ordering; keying it off the boundary would let page 1 keep m.T1 while a later typeless page dropped it,
+    /// reintroducing the very row-skipping this avoids. All keys are considered, not just the phase's active
+    /// ones, so the missing-value segment of a custom sort (whose active keys may be empty) stays type-free and
+    /// remains pageable in a multi-type search where no single type can substitute into the seek. Sound because
+    /// ResourceSurrogateId is globally unique, making (sort keys…, Sid1) a total order without the type column.
+    /// </summary>
+    private static bool HasCustomSortKey(SortSpec? sort)
+        => sort is not null && sort.Keys.Any(k => IsCustomSortKey(k.Kind));
 
     /// <summary>Renders every <see cref="CteDefinition"/> as a named "cteN AS (...)" block, in plan order.</summary>
     /// <remarks>
@@ -244,8 +341,12 @@ public static class SqlBuilder
     }
 
     /// <summary>
-    /// Emits the includes shape: the match-page CTE, a pair of CTEs per include stage, and the UNION ALL
-    /// that stitches them into one (T1, Sid1, IsMatch, IsPartial) result ordered matches-first.
+    /// Emits the includes shape: the match-page CTE, the include-stage CTEs, and the assembly that stitches
+    /// them into one (T1, Sid1, IsMatch, IsPartial) result. Two assemblies exist: the ordinary path unions
+    /// each stage's own limit companion and orders matches-first; the IncludesOnly path (a <c>$includes</c>
+    /// page) instead applies the row budget once, globally, over the union of the unlimited stage bodies and
+    /// orders by (T1, Sid1) so it can resume from a boundary. They are separated because the budget lives in a
+    /// different place — per stage versus once across the union — not merely because the ORDER BY differs.
     /// </summary>
     private static void EmitIncludesShape(
         QueryPlan plan,
@@ -259,12 +360,26 @@ public static class SqlBuilder
         writer.Append(",\n");
         WriteMatchPageCte(plan, writer, parameters);
 
+        // Bind the boundary here — after the match-page CTE and before the stage loop — even though
+        // the predicate it feeds is emitted later, by EmitGlobalIncludesPage. Include CTEs bind no
+        // parameters, so binding at this point keeps these the first stage-level @pN, after the CTE-graph
+        // and match-page ordinals, preserving the leading-ordinal invariant EmitCteBlocks documents.
+        (string Type, string Surrogate)? resumeParams = plan is { IncludesOnly: true, IncludeBoundary: { } boundary }
+            ? (EmitParam(new SqlParameterRef(boundary.TypeId), parameters), EmitParam(new SqlParameterRef(boundary.SurrogateId), parameters))
+            : null;
+
         for (var i = 0; i < includes.Count; i++)
         {
-            WriteIncludeStageCtes(writer, includes[i], i, visibility);
+            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly);
         }
 
         writer.Append("\n");
+
+        if (plan.IncludesOnly)
+        {
+            EmitGlobalIncludesPage(plan, includes, writer, visibility, resumeParams);
+            return;
+        }
 
         // The final UNION ALL stitches the match page to every include stage, so like the other
         // structural sections it belongs to no single plan row. Sectioned anyway: until it was, this
@@ -281,6 +396,133 @@ public static class SqlBuilder
         }
     }
 
+    /// <summary>The derived-table alias the global includes page wraps its stage union in.</summary>
+    private const string IncludeUnionAlias = "includeUnion";
+
+    /// <summary>
+    /// Emits the outer global-page SELECT for an IncludesOnly page: a single
+    /// <c>SELECT DISTINCT TOP (@limit + 1) T1, Sid1, IsMatch, &lt;IsPartial&gt;</c> over the UNION of every
+    /// include stage body, ordered by (T1, Sid1). This mirrors the FHIR Server legacy $includes page, whose
+    /// row budget is applied once across the union rather than once per stage, so it can resume from a
+    /// boundary and page the whole include set as one ordered stream.
+    /// </summary>
+    /// <remarks>
+    /// Every stage shares the query's single include limit, so the global budget is taken from
+    /// <c>includes[0].Limit</c>; the outer TOP is that budget plus one row, the sentinel that tells a full
+    /// page from a truncated one. IsPartial is derived from <c>COUNT_BIG(*) OVER()</c> against the whole
+    /// union and cast to <c>bit</c> for the same reason <see cref="EmitIncludeLimitStage"/> casts it: the
+    /// column is unioned with a bit-typed IsMatch, and leaving it <c>int</c> would silently change the
+    /// result column's type. The order is <c>T1 ASC, Sid1 ASC</c> (not matches-first): an includes-only
+    /// page has no match rows, and this order is what the resume predicate keys on.
+    /// <para>
+    /// The resume boundary's keyset predicate lives here, on the union derived table's own (T1, Sid1), rather
+    /// than inside each stage body: the boundary is a position in the global paged output stream, and a stage
+    /// body doubles as the seed set for downstream <c>:iterate</c> stages (see <see cref="EmitSeedExists"/>),
+    /// so filtering it would make later pages blind to iterate targets reachable only through resources
+    /// already returned. Placing it in this WHERE also keeps IsPartial honest: T-SQL evaluates WHERE before
+    /// <c>COUNT_BIG(*) OVER()</c>, so the window counts only the rows at or after the boundary and IsPartial
+    /// reflects this page's truncation rather than the whole stream's.
+    /// </para>
+    /// <para>
+    /// The stage arms inside the derived table are joined with plain <c>UNION</c>, not <c>UNION ALL</c> (see
+    /// <see cref="BuildGlobalIncludesPageArms"/>): T-SQL evaluates window functions such as
+    /// <c>COUNT_BIG(*) OVER()</c> in the SELECT phase, before the outer <c>DISTINCT</c> dedups its input. A
+    /// resource reachable via two different include stages produces the same (T1, Sid1) row from two arms;
+    /// under <c>UNION ALL</c> that duplicate survives into the SELECT phase and the window function counts
+    /// it twice, so a page of exactly <c>budget</c> distinct rows could be wrongly flagged
+    /// <c>IsPartial = 1</c>. <c>UNION</c> dedups the arms before the count is taken, so the window function
+    /// and the outer <c>DISTINCT</c> see the same already-deduplicated row set.
+    /// </para>
+    /// </remarks>
+    private static void EmitGlobalIncludesPage(
+        QueryPlan plan,
+        IReadOnlyList<IncludeStage> includes,
+        SqlTextWriter writer,
+        ResourceVisibility visibility,
+        (string Type, string Surrogate)? resumeParams)
+    {
+        var budget = includes[0].Limit;
+        var passThrough = ProjectionPassThroughColumns(plan.Projection);
+
+        using (writer.Section(IncludePage, SqlRangeKind.IncludePage))
+        {
+            writer.Append(
+                $"SELECT DISTINCT TOP ({budget + 1}) T1, Sid1, IsMatch,\n" +
+                $"       CAST(CASE WHEN COUNT_BIG(*) OVER() > {budget} THEN 1 ELSE 0 END AS bit) AS IsPartial{passThrough}\n" +
+                "FROM (\n");
+
+            using (writer.Section(Assembly, SqlRangeKind.Assembly))
+            {
+                writer.Append(string.Join("\nUNION\n", BuildGlobalIncludesPageArms(plan, includes, visibility)));
+            }
+
+            writer.Append($"\n) {IncludeUnionAlias}");
+
+            if (resumeParams is { } resume)
+            {
+                WriteWhereSection(
+                    writer,
+                    [$"(T1 > {resume.Type} OR (T1 = {resume.Type} AND Sid1 > {resume.Surrogate}))"],
+                    seekClauseIndex: 0,
+                    indent: string.Empty);
+            }
+
+            writer.Append("\nORDER BY ");
+            using (writer.Section(OrderBy, SqlRangeKind.OrderBy))
+            {
+                writer.Append("T1 ASC, Sid1 ASC");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the inner arms of the global includes page: one arm per include stage, each selecting its
+    /// unlimited body, tagging it <c>CAST(0 AS bit)</c> as a non-match, and excluding rows already on the
+    /// match page. The outer SELECT applies the single global TOP and IsPartial over their union.
+    /// </summary>
+    /// <remarks>
+    /// The caller (<see cref="EmitGlobalIncludesPage"/>) joins these arms with plain <c>UNION</c>, not
+    /// <c>UNION ALL</c>. A resource reachable through two different reference paths can appear as the same
+    /// (T1, Sid1) row in two arms; T-SQL evaluates <c>COUNT_BIG(*) OVER()</c> in the SELECT phase, before the
+    /// outer <c>DISTINCT</c> dedups, so a <c>UNION ALL</c> duplicate would be double-counted and could flag
+    /// an exactly-full page of distinct rows as partial. <c>UNION</c> removes the duplicate before the count
+    /// runs, keeping the window function and the outer <c>DISTINCT</c> looking at the same row set.
+    /// </remarks>
+    private static List<string> BuildGlobalIncludesPageArms(QueryPlan plan, IReadOnlyList<IncludeStage> includes, ResourceVisibility visibility)
+    {
+        var projectionCols = ProjectionColumns(plan.Projection);
+        var hasActiveProjection = projectionCols.Length > 0;
+        var projectionJoinFilter = hasActiveProjection ? ResourceRowFilter(visibility, "r.") : string.Empty;
+
+        var arms = new List<string>();
+        for (var i = 0; i < includes.Count; i++)
+        {
+            // Only the first arm names IsMatch: SQL Server takes a UNION's column names from its first
+            // SELECT and the outer query reads them by ordinal, so aliasing every arm is redundant and
+            // aliasing none loses the name. Keyed on arms.Count so a future arm inserted ahead of this loop
+            // cannot silently move the alias off the first position.
+            var isMatchAlias = arms.Count == 0 ? " AS IsMatch" : string.Empty;
+            arms.Add(hasActiveProjection
+                ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}{projectionCols} FROM {IncludeLabel(i)} i\n" +
+                  $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
+                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)"
+                : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias} FROM {IncludeLabel(i)} i\n" +
+                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+        }
+
+        return arms;
+    }
+
+    /// <summary>
+    /// The projected columns as the outer global-page SELECT reads them from the union derived table:
+    /// bracket-quoted and unqualified, because SQL Server derives a derived table's column names from the
+    /// inner <c>r.[Col]</c> references (dropping the qualifier). Empty for a null or empty projection.
+    /// </summary>
+    private static string ProjectionPassThroughColumns(ProjectionSpec? projection)
+        => projection is null || projection.Columns.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", projection.Columns.Select(c => $"[{c.Replace("]", "]]", StringComparison.Ordinal)}]"));
+
     /// <summary>
     /// Writes the cteMatchPage CTE: the same match row set the no-includes shape selects directly, named so
     /// the include stages and the UNION ALL can each reference it without re-deriving it.
@@ -289,7 +531,15 @@ public static class SqlBuilder
     {
         var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
         var sortJoins = EmitSortJoins(plan.Sort);
-        var sortColumns = EmitSortSelectColumns(plan.Sort);
+
+        // An includes-only page never orders by the sort key -- EmitGlobalIncludesPage pages the union of
+        // include stages by (T1, Sid1) -- so the match CTE projects no SortValueN columns: they exist only to
+        // feed an outer ORDER BY this shape does not have, and no include seed reads them. The sort JOINs stay:
+        // the Valued phase's primary-key INNER join is the filter that bounds the match set to rows that HAVE
+        // the sort value, and the include stages seed from exactly that bounded set (the MissingPrimary phase's
+        // NOT EXISTS filter rides in through BuildMatchWhereClauses). Suppressing the columns while keeping the
+        // join is what preserves the phase's filtering role without reintroducing its ordering role.
+        var sortColumns = plan.IncludesOnly ? string.Empty : EmitSortSelectColumns(plan.Sort);
 
         // Emit the resource join inside cteMatchPage when any plan feature referencing an r. column
         // requires it. Projection is handled in the UNION ALL assembly rather than here, so
@@ -328,13 +578,28 @@ public static class SqlBuilder
         }
     }
 
-    /// <summary>Writes one include stage's pair of CTEs: the unlimited body and its limit-applying companion.</summary>
-    private static void WriteIncludeStageCtes(SqlTextWriter writer, IncludeStage stage, int index, ResourceVisibility visibility)
+    /// <summary>
+    /// Writes an include stage's CTEs. The ordinary path writes two — the unlimited body and its
+    /// limit-applying companion. The IncludesOnly path writes only the body: its budget is applied once,
+    /// globally, by <see cref="EmitGlobalIncludesPage"/>, so a per-stage limit companion would apply the
+    /// budget twice.
+    /// </summary>
+    private static void WriteIncludeStageCtes(
+        SqlTextWriter writer,
+        IncludeStage stage,
+        int index,
+        ResourceVisibility visibility,
+        bool includesOnly)
     {
         writer.Append(",\n");
         using (writer.Section(IncludeLabel(index), SqlRangeKind.Include))
         {
-            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility)}\n)");
+            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly)}\n)");
+        }
+
+        if (includesOnly)
+        {
+            return;
         }
 
         writer.Append(",\n");
@@ -345,18 +610,38 @@ public static class SqlBuilder
     }
 
     /// <summary>
-    /// Renders an include stage's limit-applying companion: the first Limit rows, plus an IsPartial flag set
-    /// from the window count so the caller can tell a truncated stage from an exactly-full one.
+    /// Renders an include stage's limit-applying companion: <c>TOP (Limit + 1)</c> rows — the budget plus the
+    /// one-row truncation sentinel — each stamped with an IsPartial flag set from the window count so the caller
+    /// can tell a truncated stage from an exactly-full one.
     /// </summary>
     /// <remarks>
+    /// The TOP is <c>Limit + 1</c>, not <c>Limit</c>, so the sentinel row the body over-fetches (see
+    /// <see cref="EmitIncludeStage"/>, which selects <c>TOP (Limit + 1)</c>) survives into this companion — and
+    /// on into both the union arm the caller reads and any downstream iterate stage seeded from this label via
+    /// <see cref="EmitSeedExists"/>. Trimming here to <c>TOP (Limit)</c> would discard that row and, with it, the
+    /// only physical carrier of the truncation signal: a consumer that detects "more included resources exist"
+    /// by comparing the returned row count against its budget (FHIR Server's reader does exactly this, OR-ing in
+    /// the per-row IsPartial flag) would then see a full-but-not-over page and conclude nothing was truncated.
+    /// That is masked at <c>Limit &gt;= 1</c> — IsPartial still flags the trimmed rows — but fatal at
+    /// <c>Limit == 0</c>: <c>TOP (0)</c> returns no rows at all, so the IsPartial the CASE computed is evaluated
+    /// and then thrown away with the row that would have carried it, and a zero-budget probe
+    /// (IncludeContinuationTokenSearch: "return no include rows but tell me whether any exist") can never answer
+    /// yes and silently drops every overflowing include. Over-fetching by one keeps this companion consistent
+    /// with the stage body it reads from, with the IncludesOnly global page (<see cref="EmitGlobalIncludesPage"/>,
+    /// likewise <c>TOP (@limit + 1)</c>), and with the FHIR Server legacy generator, whose include limit CTE is
+    /// itself <c>TOP (includeCount + 1)</c> over <c>count_big(*) over() &gt; includeCount</c>. The window
+    /// threshold stays <c>&gt; Limit</c>: partiality means "the body held more rows than the budget", regardless
+    /// of how many rows this companion forwards.
+    /// <para>
     /// The flag is cast to <c>bit</c> rather than left as the <c>int</c> the CASE naturally yields, because this
     /// column is unioned with the match arm's <c>CAST(0 AS bit) AS IsPartial</c>. T-SQL type precedence promotes
     /// a bit/int union to <c>int</c>, so leaving it untyped silently changed the result column's type based on
     /// whether the plan happened to carry includes — and a caller reading the documented
     /// (T1, Sid1, IsMatch, IsPartial) contract as a bit threw InvalidCastException on include rows only.
+    /// </para>
     /// </remarks>
     private static string EmitIncludeLimitStage(IncludeStage stage, int index)
-        => $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
+        => $"    SELECT TOP ({stage.Limit + 1}) T1, Sid1,\n" +
            $"           CAST(CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
            $"    FROM {IncludeLabel(index)}\n" +
            $"    ORDER BY T1 ASC, Sid1 ASC";
@@ -565,25 +850,33 @@ public static class SqlBuilder
 
     /// <summary>
     /// The current-row filter for a dbo.Resource scan under a given visibility, already prefixed with
-    /// " AND " and the caller's column qualifier, or empty when both relaxations are on.
+    /// " AND " and the caller's column qualifier, or empty when neither axis is constrained.
     /// </summary>
     /// <remarks>
     /// The leading space is load-bearing for a caller that embeds the result inline after another SQL
     /// token — dropping it yields <c>= @p0AND IsHistory = 0</c>, which only fails at parse time. A caller
     /// that instead places the filter on its own line trims it and supplies its own indentation; those
     /// two modes are the reason this returns a pre-joined string rather than the raw clauses.
+    /// <para>
+    /// Each axis is tri-state, mirroring <see cref="ResourceVisibility"/>: a <c>null</c> value emits no
+    /// clause for that column, <c>false</c> emits <c>= 0</c> (current/live row), <c>true</c> emits
+    /// <c>= 1</c> (superseded/deleted row). The predecessor of this helper emitted <c>= 0</c> when a flag
+    /// was clear and nothing when it was set, which could not express a "history rows only" (<c>= 1</c>)
+    /// filter at all; encoding the column value directly from the tri-state is what lets the same helper
+    /// serve a history-only or soft-deleted-only scan without a second code path.
+    /// </para>
     /// </remarks>
     private static string ResourceRowFilter(ResourceVisibility visibility, string qualifier)
     {
         var clauses = new List<string>(2);
-        if (!visibility.IncludeHistory)
+        if (visibility.IsHistory is { } isHistory)
         {
-            clauses.Add($"{qualifier}IsHistory = 0");
+            clauses.Add($"{qualifier}IsHistory = {(isHistory ? 1 : 0)}");
         }
 
-        if (!visibility.IncludeDeleted)
+        if (visibility.IsDeleted is { } isDeleted)
         {
-            clauses.Add($"{qualifier}IsDeleted = 0");
+            clauses.Add($"{qualifier}IsDeleted = {(isDeleted ? 1 : 0)}");
         }
 
         return clauses.Count == 0 ? string.Empty : " AND " + string.Join(" AND ", clauses);
@@ -601,9 +894,28 @@ public static class SqlBuilder
     /// This is the search-param-table counterpart of <see cref="ResourceRowFilter"/>, which belongs to
     /// dbo.Resource scans and additionally emits IsDeleted — a column no search-param table has.
     /// Returned unprefixed so each caller supplies its own separator.
+    /// <para>
+    /// Deliberately NOT a mechanical tri-state translation like <see cref="ResourceRowFilter"/>. The
+    /// clause is emitted only when the history axis is pinned to current rows (<c>IsHistory == false</c>);
+    /// for both <c>null</c> (history unconstrained) and <c>true</c> (history rows only) it renders empty.
+    /// This mirrors the legacy generator, whose AppendHistoryClause returns early for every table whose
+    /// name ends in "SearchParam" (bar the compartment-search special case) and so never constrains
+    /// IsHistory on a search-param index table at all. The reason the two engines agree here is that the
+    /// version a search RETURNS is selected once, at the dbo.Resource scan, by <see cref="ResourceRowFilter"/>;
+    /// the search-param table's job is only to say WHICH resources match the predicate. For a latest-only
+    /// search we additionally pin the index table to <c>IsHistory = 0</c> because TokenText's retained
+    /// superseded rows would otherwise let a value that was true of an old version spuriously match a
+    /// current resource. Once history is in scope that narrowing is not merely unnecessary but wrong: the
+    /// alternative — emitting <c>IsHistory = 1</c> for a history-only search — would restrict the match set
+    /// to resources whose predicate happened to be satisfied by a superseded index row, dropping any
+    /// resource whose matching value lives only on its current TokenText row (the common case), so a
+    /// history search for "status = final" would silently miss resources that are currently final. Emitting
+    /// nothing lets the resource-level filter do the version selection and leaves the predicate free to
+    /// match on any version's index row, which is exactly what legacy does.
+    /// </para>
     /// </remarks>
     private static string SearchParamTableHistoryClause(TableDescriptor table, ResourceVisibility visibility)
-        => !visibility.IncludeHistory && table.Columns.Any(c => c.Name == "IsHistory")
+        => visibility.IsHistory == false && table.Columns.Any(c => c.Name == "IsHistory")
             ? "IsHistory = 0"
             : string.Empty;
 
@@ -706,9 +1018,9 @@ public static class SqlBuilder
             }
 
             var key = sort.Keys[i];
-            if (key.Kind == SortKeyKind.LastUpdated)
+            if (key.Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceType)
             {
-                continue; // resource-column key, no join needed.
+                continue; // resource-column key already projected by the match set, no join needed.
             }
 
             if (key.Kind == SortKeyKind.ResourceId)
@@ -760,11 +1072,11 @@ public static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
         {
             throw new InvalidOperationException(
-                "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceId, or otherwise SearchParamId-less " +
-                "primary key reached Emit -- none of these are ever \"missing\" (all are non-nullable resource " +
-                "columns), so none has a MissingPrimary segment. Lower.BuildSortSpec already rejects this " +
-                "combination for LastUpdated and ResourceId; QueryPlan is a public construction surface, so this " +
-                "guard exists defensively rather than trusting every caller routes through Lower.");
+                "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceType, ResourceId, or otherwise " +
+                "SearchParamId-less primary key reached Emit -- none of these is ever \"missing\" (all are " +
+                "non-nullable resource columns), so none has a MissingPrimary segment. Lower.BuildSortSpec " +
+                "already rejects this combination for all three; QueryPlan is a public construction surface, " +
+                "so this guard exists defensively rather than trusting every caller routes through Lower.");
         }
 
         if (key.Kind == SortKeyKind.Aggregated)
@@ -795,6 +1107,11 @@ public static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated)
         {
             return "m.Sid1";
+        }
+
+        if (key.Kind == SortKeyKind.ResourceType)
+        {
+            return "m.T1";
         }
 
         if (key.Kind == SortKeyKind.ResourceId)
@@ -849,20 +1166,41 @@ public static class SqlBuilder
             "after confirming the real DDL column type, matching the varchar/decimal families already handled."),
     };
 
-    /// <summary>Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then the (T1, Sid1) tiebreak.</summary>
+    /// <summary>
+    /// Renders the ORDER BY for the plain (no-includes) path: each active key's value and direction, then
+    /// the (T1, Sid1) tiebreak. For a custom (search-parameter) sort the m.T1 tiebreak is dropped so every
+    /// page orders by (sort keys…, Sid1) -- see <see cref="HasCustomSortKey"/> for why this is keyed off the
+    /// sort shape rather than the presence of a page boundary, and why Sid1 alone is a total order.
+    /// </summary>
     private static string EmitOrderBy(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select(i =>
             $"{SortValueExpr(sort!, i)} {(sort!.Keys[i].Direction == SortOrder.Ascending ? "ASC" : "DESC")}").ToList();
 
-        // SortValueExpr(LastUpdated) is literally "m.Sid1" -- if an active key is LastUpdated, appending
-        // "m.Sid1 ASC" again as the trailing tiebreak would reference the same column twice in one ORDER
-        // BY list, which SQL Server rejects (Msg 145, "A column has been specified more than once in the
-        // order by list"). m.T1 is never duplicated this way (no key's value expression is T1), so it is
-        // always safe to append.
+        // SortValueExpr renders LastUpdated as "m.Sid1" and ResourceType as "m.T1" -- if either is an active
+        // key, appending the same column again as the trailing tiebreak would reference it twice in one
+        // ORDER BY list, which SQL Server rejects (Msg 145, "A column has been specified more than once in
+        // the order by list"). Dropping the duplicate is safe rather than merely legal: a key that already
+        // orders by that column has fully determined it, and the tiebreak exists only to break ties the keys
+        // leave, so it has nothing left to contribute. Note the tiebreak is unconditionally ASC while a key
+        // may be DESC, so this also preserves a descending _type or _lastUpdated ordering that an appended
+        // ASC term could not have expressed.
         var hasLastUpdatedKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.LastUpdated);
-        terms.Add("m.T1 ASC");
+        var hasResourceTypeKey = activeIndices.Any(i => sort!.Keys[i].Kind == SortKeyKind.ResourceType);
+
+        // Drop the m.T1 tiebreak for a custom sort: its keyset order is (sort keys…, Sid1), type-free, and a
+        // typeless page's Sid1-only seek must be able to reproduce it exactly. Legacy is the cautionary tale
+        // here -- it orders (sortValue, T1, Sid1) yet seeks (sortValue, Sid1), so within a run of tied sort
+        // values a type X row with a higher surrogate id can sort before a type Y row with a lower one, and
+        // the Sid1-only seek for the next page starts past the Y row and drops it. Keeping m.T1 out of the
+        // ORDER BY closes that gap; Sid1's global uniqueness makes what remains a total order. This decision
+        // never consults the page boundary, so page 1 and every later page of the walk order identically.
+        if (!hasResourceTypeKey && !HasCustomSortKey(sort))
+        {
+            terms.Add("m.T1 ASC");
+        }
+
         if (!hasLastUpdatedKey)
         {
             terms.Add("m.Sid1 ASC");
@@ -871,13 +1209,24 @@ public static class SqlBuilder
         return string.Join(", ", terms);
     }
 
-    /// <summary>Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the projected SortValueN columns, then the (T1, Sid1) tiebreak.</summary>
+    /// <summary>
+    /// Renders the final ORDER BY for the includes path: matches before includes (IsMatch DESC), then the
+    /// projected SortValueN columns, then the (T1, Sid1) tiebreak. A custom sort drops the T1 tiebreak here
+    /// for the same reason as <see cref="EmitOrderBy"/>, ordering matches by (SortValueN…, Sid1) so page 1
+    /// and every later (possibly typeless) page of the walk share one ordering.
+    /// </summary>
     private static string EmitOuterOrderByForIncludes(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select((idx, ordinal) =>
-            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
-        return string.Join(", ", terms.Prepend("IsMatch DESC").Append("T1 ASC").Append("Sid1 ASC"));
+            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}")
+            .Prepend("IsMatch DESC");
+        if (!HasCustomSortKey(sort))
+        {
+            terms = terms.Append("T1 ASC");
+        }
+
+        return string.Join(", ", terms.Append("Sid1 ASC"));
     }
 
     /// <summary>Renders the ", SortValueN AS ..." select-list columns that project each active key's value for the outer ORDER BY to read.</summary>
@@ -891,8 +1240,11 @@ public static class SqlBuilder
 
     /// <summary>
     /// Renders the keyset-seek WHERE predicate that skips everything up to the page boundary: an OR of
-    /// lexicographic branches over the active sort keys, then the (T1, Sid1) tiebreak, so it stays in step
-    /// with the ORDER BY. Throws if the boundary value count does not match the current phase's active keys.
+    /// lexicographic branches over the active sort keys, then the surrogate-id tiebreak, so it stays in step
+    /// with the ORDER BY. A typed <see cref="PageSpec"/> (BoundaryResourceTypeId non-null) breaks the final
+    /// tie on (T1, Sid1); a typeless one breaks it on Sid1 alone and never references the type column, which
+    /// is sound because ResourceSurrogateId is globally unique so Sid1 is already a total order. Throws if
+    /// the boundary value count does not match the current phase's active keys.
     /// </summary>
     private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {
@@ -906,8 +1258,6 @@ public static class SqlBuilder
         }
 
         var boundaryParams = page.Boundary.Select(b => EmitParam(b, parameters)).ToList();
-        var typeParam = EmitParam(page.BoundaryResourceTypeId, parameters);
-        var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
 
         var branches = new List<string>();
         for (var level = 0; level < activeIndices.Count; level++)
@@ -926,8 +1276,22 @@ public static class SqlBuilder
 
         var allEqual = activeIndices.Select((idx, j) => $"{SortValueExpr(sort!, idx)} = {boundaryParams[j]}").ToList();
         var allEqualPrefix = allEqual.Count > 0 ? string.Join(" AND ", allEqual) + " AND " : string.Empty;
-        branches.Add($"({allEqualPrefix}m.T1 = {typeParam} AND m.Sid1 > {sidParam})");
-        branches.Add($"({allEqualPrefix}m.T1 > {typeParam})");
+
+        // Bind the type parameter (when present) before the surrogate id, so a typed page keeps its
+        // historical @pN ordinals exactly; a typeless page binds no type parameter at all and its seek
+        // omits the type column entirely.
+        if (page.BoundaryResourceTypeId is { } boundaryType)
+        {
+            var typeParam = EmitParam(boundaryType, parameters);
+            var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
+            branches.Add($"({allEqualPrefix}m.T1 = {typeParam} AND m.Sid1 > {sidParam})");
+            branches.Add($"({allEqualPrefix}m.T1 > {typeParam})");
+        }
+        else
+        {
+            var sidParam = EmitParam(page.BoundarySurrogateId, parameters);
+            branches.Add($"({allEqualPrefix}m.Sid1 > {sidParam})");
+        }
 
         return branches.Count == 1
             ? branches[0]
@@ -1070,14 +1434,14 @@ public static class SqlBuilder
             clauses.Add($"ResourceTypeId IN ({string.Join(", ", mts.ResourceTypeIds)})");
         }
 
-        if (!visibility.IncludeHistory)
+        if (visibility.IsHistory is { } isHistory)
         {
-            clauses.Add("IsHistory = 0");
+            clauses.Add($"IsHistory = {(isHistory ? 1 : 0)}");
         }
 
-        if (!visibility.IncludeDeleted)
+        if (visibility.IsDeleted is { } isDeleted)
         {
-            clauses.Add("IsDeleted = 0");
+            clauses.Add($"IsDeleted = {(isDeleted ? 1 : 0)}");
         }
 
         if (mts.Predicate is not null)
@@ -1092,8 +1456,35 @@ public static class SqlBuilder
                whereClause;
     }
 
-    /// <summary>Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by reference param and type ids, seeded from the match page and/or earlier stages via EXISTS. Selects TOP(Limit+1) to detect truncation.</summary>
-    private static string EmitIncludeStage(IncludeStage stage, ResourceVisibility visibility)
+    /// <summary>
+    /// Renders one include stage: the ReferenceSearchParam/Resource join for its direction, filtered by
+    /// reference param and type ids, seeded from the match page and/or earlier stages via EXISTS.
+    /// </summary>
+    /// <remarks>
+    /// The ordinary path selects <c>TOP (Limit + 1)</c> ordered by (T1, Sid1) so the stage's own limit
+    /// companion can detect truncation. The IncludesOnly path drops both: the budget is applied once,
+    /// globally, over the union of stages by <see cref="EmitGlobalIncludesPage"/>, so a per-stage TOP would
+    /// apply it twice. It would in fact be <em>safe</em> to keep — a row in the global top <c>Limit + 1</c>
+    /// has within-stage rank no worse than its rank across the union (rows the union places ahead of it can
+    /// only come from this same stage or from others, never fewer than zero), so truncating a stage at
+    /// <c>Limit + 1</c> can never hide a row the global page needed, even when one stage's rows all sort
+    /// before another's. It is dropped because it is redundant, not because it is unsafe. And once the TOP
+    /// is gone the ORDER BY must go too: a CTE's own ORDER BY is illegal T-SQL without TOP or OFFSET/FETCH
+    /// (SQL Server Msg 1033), so keeping the per-stage ORDER BY while dropping the per-stage TOP would not
+    /// even compile.
+    /// <para>
+    /// The stage body is never filtered by the <c>$includes</c> resume boundary, whatever page is being served.
+    /// It doubles as the seed set for downstream <c>:iterate</c> stages (see <see cref="EmitSeedExists"/>),
+    /// and the boundary is a position in the global paged output stream, not a property of any one stage's row
+    /// set. Filtering the body by it would make page 2 and beyond blind to iterate targets reachable only
+    /// through resources page 1 already returned to the caller, silently dropping them. The boundary predicate
+    /// is applied once instead, by <see cref="EmitGlobalIncludesPage"/>, over the union of every stage body.
+    /// </para>
+    /// </remarks>
+    private static string EmitIncludeStage(
+        IncludeStage stage,
+        ResourceVisibility visibility,
+        bool includesOnly)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, outputSurrogateColumn, seedCorrelationAlias) = stage.Direction switch
         {
@@ -1119,7 +1510,7 @@ public static class SqlBuilder
         }
 
         whereClauses.Add("rsp.BaseUri IS NULL");
-        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias));
+        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, includesOnly));
 
         if (stage.Constraints is { Count: > 0 } constraints)
         {
@@ -1135,14 +1526,20 @@ public static class SqlBuilder
         // An inline caller must not trim it; see ResourceRowFilter's remarks.
         var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
 
-        return $"    SELECT DISTINCT TOP ({stage.Limit + 1}) {selectColumns}\n" +
+        // Drop the per-stage TOP and its ORDER BY for the IncludesOnly page: the budget is applied once,
+        // globally, over the union of stages, and a CTE ORDER BY without TOP is illegal T-SQL anyway. See
+        // this method's remarks for why keeping the TOP would be safe but redundant.
+        var topClause = includesOnly ? string.Empty : $"TOP ({stage.Limit + 1}) ";
+        var orderByClause = includesOnly ? string.Empty : "\n    ORDER BY T1 ASC, Sid1 ASC";
+
+        return $"    SELECT DISTINCT {topClause}{selectColumns}\n" +
                $"    FROM dbo.ReferenceSearchParam rsp\n" +
                $"    INNER JOIN dbo.Resource r\n" +
                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
                rowFilterLine +
-               $"    WHERE {string.Join("\n      AND ", whereClauses)}\n" +
-               $"    ORDER BY T1 ASC, Sid1 ASC";
+               $"    WHERE {string.Join("\n      AND ", whereClauses)}" +
+               orderByClause;
     }
 
     /// <summary>Renders a "column = a OR column = b ..." type-id filter, parenthesized when there is more than one id.</summary>
@@ -1152,8 +1549,21 @@ public static class SqlBuilder
         return typeIds.Count > 1 ? $"({filter})" : filter;
     }
 
-    /// <summary>Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier stages — unioned together.</summary>
-    private static string EmitSeedExists(IncludeStage stage, string correlationAlias)
+    /// <summary>
+    /// Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier
+    /// stages — unioned together.
+    /// </summary>
+    /// <param name="includesOnly">
+    /// Which label an earlier stage is read through. The ordinary path seeds from that stage's limit
+    /// companion (<see cref="IncludeLimitLabel"/>), the CTE downstream SQL reads there. An IncludesOnly page
+    /// emits no limit companion at all — <see cref="WriteIncludeStageCtes"/> skips it because the budget is
+    /// applied once, globally, by <see cref="EmitGlobalIncludesPage"/> — so seeding from that label would
+    /// reference an undefined CTE (SQL Server Msg 207). The stage body (<see cref="IncludeLabel"/>) is the
+    /// correct seed set there for a second reason as well: it is complete and unfiltered by the resume
+    /// boundary, so an <c>:iterate</c> stage on page 2 still sees targets reachable only through resources
+    /// page 1 returned.
+    /// </param>
+    private static string EmitSeedExists(IncludeStage stage, string correlationAlias, bool includesOnly)
     {
         var branches = new List<string>();
         if (stage.SeedFromMatch)
@@ -1163,7 +1573,8 @@ public static class SqlBuilder
 
         foreach (var seedStageIndex in stage.SeedStages)
         {
-            branches.Add($"SELECT 1 FROM {IncludeLimitLabel(seedStageIndex)} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            var seedLabel = includesOnly ? IncludeLabel(seedStageIndex) : IncludeLimitLabel(seedStageIndex);
+            branches.Add($"SELECT 1 FROM {seedLabel} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         return $"EXISTS (\n        {string.Join("\n        UNION ALL\n        ", branches)}\n    )";

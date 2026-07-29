@@ -47,6 +47,20 @@ public sealed record LowerOptions
     public IReadOnlyList<AccessConstraint>? AccessConstraints { get; init; }
 
     /// <summary>
+    /// The global allow-list of resource types the caller is permitted to see, enforced structurally on
+    /// every row-producing stage (the match set and every include/:iterate stage). Null or empty means
+    /// unrestricted. This is an authorization input, deliberately distinct from <see cref="ResourceTypes"/>:
+    /// <see cref="ResourceTypes"/> is caller <em>intent</em> (the <c>_type</c> the caller asked to search),
+    /// this is caller <em>permission</em> (the types a SMART clinical scope grants). Both can be set; the
+    /// effective base set is their intersection. Unlike <see cref="AccessConstraints"/>, which narrows only
+    /// the types it lists and leaves unlisted types untouched, an allow-list denies every type it does not
+    /// name — the semantics a per-type narrowing cannot express, and the one whose absence would let an
+    /// <c>_include</c> reach an unpermitted type unguarded (a fail-open bypass). Keeping it name-only, like
+    /// <see cref="AccessConstraints"/>, is the point of this record.
+    /// </summary>
+    public IReadOnlyList<string>? AllowedResourceTypes { get; init; }
+
+    /// <summary>
     /// When true, the emitted statement returns include-stage rows only, omitting the match page from the
     /// result while still using it to seed the stages. This is the $includes operation's second page: the
     /// caller already has the match rows and asks only for more included resources.
@@ -70,4 +84,12 @@ public sealed record LowerOptions
     /// whole match set. The compiler-side half of two-phase sort execution.
     /// </summary>
     public bool CountPhaseScoped { get; init; }
+
+    /// <summary>
+    /// The keyset-pagination continuation token (boundary) for the second and subsequent pages of an
+    /// <see cref="IncludesOnly"/> page: the last include row the previous page returned. Only meaningful
+    /// together with <see cref="IncludesOnly"/>; <see cref="Lower.Run"/> rejects it otherwise, because the
+    /// resume predicate only pages a stream of include rows and on an ordinary search would silently drop them.
+    /// </summary>
+    public IncludeBoundary? IncludeBoundary { get; init; }
 }

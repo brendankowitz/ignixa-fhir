@@ -311,7 +311,7 @@ public class PatientEverythingLoweringTests
         var relaxed = Lowered(
             expression,
             symbols,
-            new LowerOptions { Visibility = new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true) });
+            new LowerOptions { Visibility = new ResourceVisibility(IsHistory: null, IsDeleted: null) });
         var current = Lowered(expression, symbols);
 
         var relaxedSql = SqlBuilder.Run(relaxed).Sql;

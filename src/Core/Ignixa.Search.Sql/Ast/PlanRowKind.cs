@@ -42,6 +42,8 @@ public static class PlanRowKind
 
     public const string IncludeStage = "includeStage";
 
+    public const string IncludeBoundary = "includeBoundary";
+
     public const string SortSpec = "sortSpec";
 
     public const string PageSpec = "pageSpec";

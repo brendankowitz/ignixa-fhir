@@ -272,6 +272,24 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
+    /// <summary>
+    /// Folds a resource-column predicate (<c>_id</c>/<c>_type</c>/<c>_lastUpdated</c>) into a system-wide
+    /// dbo.Resource scan. This is the cross-type counterpart of <see cref="LowerResourceSourceWithPredicate"/>:
+    /// a union leg reached under a null (system-level) scope has no single ResourceTypeId to attach an outer
+    /// WHERE to, so its resource-column predicate rides inside a <see cref="CteDefinition.MultiTypeResourceSource"/>
+    /// instead. It is always <see cref="CteDefinition.MultiTypeResourceSource.AllTypes"/>, never
+    /// <c>ForTypes</c>: the leg names no type list of its own — any type constraint it carries is already
+    /// <em>inside</em> <paramref name="predicate"/> as a <c>ResourceTypeId</c> equality — and passing an empty
+    /// list to <c>ForTypes</c> is forbidden precisely because it would silently widen to a full scan. The
+    /// requested <c>_type</c> list, when there is one, is applied to the finished union by
+    /// <see cref="Lower.NarrowToRequestedTypes"/>, so this base deliberately does not reproduce that narrowing.
+    /// </summary>
+    public CteRef LowerMultiTypeResourceSourceWithPredicate(Predicate? predicate)
+    {
+        _ctes.Add(CteDefinition.MultiTypeResourceSource.AllTypes(predicate));
+        return new CteRef(_ctes.Count - 1);
+    }
+
     public CteRef LowerNot(CteRef innerMatch, string? resourceType)
         => Except(LowerNegationAnchor(resourceType), innerMatch);
 
