@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
@@ -305,7 +306,10 @@ public static class Lower
     /// they say different things about their operands - an OR combines alternative <em>values</em> of one
     /// parameter, a union combines independent row-producing <em>legs</em> (the shape a SMART compartment expands
     /// to, where one leg is a compartment traversal, another a type filter, another an orphan scan) - but once
-    /// each operand has become a CTE that distinction has no expression left in the plan.
+    /// each operand has become a CTE that distinction has no expression left in the plan. A union is lowered
+    /// leg-by-leg through <see cref="LowerScopedExpression"/>, which handles a null (system-level) scope as well
+    /// as a concrete one - the scope a SMART compartment search needs, where the whole union sits under no single
+    /// target type.
     /// </para>
     /// <para>
     /// <see cref="UnionExpression.Operator"/> is deliberately not consulted. A CTE here yields a set of
@@ -326,12 +330,6 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
-        UnionExpression when resourceType is null => throw new NotSupportedException(
-            "A union of row-producing legs is not supported in system-level search in this phase -- a leg that " +
-            "is purely resource-column predicates (the SMART compartment's 'the compartment resource itself' " +
-            "and 'universal resource types' legs both are) folds into a typed ResourceSource, which needs a " +
-            "concrete type to scope against. Guarding at the dispatch choke point rather than letting such a " +
-            "leg reach the leaf dispatcher, which would reject it with a message about the wrong problem."),
         UnionExpression union => context.Union(
             union.Expressions.Select(leg => LowerScopedExpression(leg, context, resourceType)).ToList()),
         ChainedExpression when resourceType is null => throw new NotSupportedException(
@@ -573,10 +571,23 @@ public static class Lower
     /// Lowers a chain's target expression or a union leg within its own scope, folding any resource-column
     /// predicates into the scope's ResourceSource (such a scope has no outer WHERE to attach them to) and
     /// intersecting with the ordinary match when both are present.
+    /// <para>
+    /// <paramref name="resourceType"/> is null only for a union leg under a system-level (cross-type) search --
+    /// the SMART compartment shape, where the whole union sits under no single target type. Chain targets and
+    /// access-constraint predicates always arrive with a concrete type, so they never reach the null path.
+    /// A null scope is handled by <see cref="LowerSystemLevelUnionLeg"/> rather than here so the typed path,
+    /// which every other caller uses, stays byte-for-byte what it was.
+    /// </para>
     /// </summary>
-    private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string resourceType)
+    private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string? resourceType)
     {
         var (remaining, nestedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
+
+        if (resourceType is null)
+        {
+            return LowerSystemLevelUnionLeg(expression, remaining, nestedPredicate, context);
+        }
+
         if (remaining is null)
         {
             return context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate);
@@ -586,6 +597,122 @@ public static class Lower
         return nestedPredicate is null
             ? ordinaryMatch
             : context.Intersect(context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate), ordinaryMatch);
+    }
+
+    /// <summary>
+    /// Lowers one union leg reached under a system-level (null) scope -- the SMART compartment expansion, whose
+    /// whole union has no single target type. There are three leg shapes and each has its own reason for the
+    /// path it takes; the shared invariant is that a leg is only ever <em>refused</em> or lowered
+    /// <em>faithfully</em>, never lowered to a wider or narrower row set than it asks for.
+    /// <list type="number">
+    /// <item>
+    /// A leg that is <em>purely</em> resource-column predicates (<paramref name="remaining"/> is null -- the
+    /// "the compartment resource itself" leg's <c>_id</c>+<c>_type</c>, and each "universal resource type" leg's
+    /// bare <c>_type</c>) folds into an AllTypes <see cref="CteDefinition.MultiTypeResourceSource"/> carrying the
+    /// predicate. AllTypes rather than a typed ResourceSource because a cross-type leg has no single type to
+    /// scope against; the type constraint the leg does carry already lives inside the predicate as a
+    /// <c>ResourceTypeId</c> equality. This is the analog of the typed path's
+    /// <see cref="StructuralContext.LowerResourceSourceWithPredicate"/> fold.
+    /// </item>
+    /// <item>
+    /// A leg with a residue that still needs CTE lowering (a reference predicate, or a <c>:missing=true</c>
+    /// negation) can only lower if it has a concrete type -- a negation's Except anchor needs one, and would
+    /// otherwise trip <see cref="StructuralContext.LowerNegationAnchor"/>'s null guard. We recover that type from
+    /// the leg's <em>own</em> single <c>_type Eq X</c> equality (see <see cref="TryDeriveSingleTypeScope"/>). The
+    /// orphan-device and this-patient's-device legs pair their residue with exactly one <c>_type Eq Device</c>
+    /// for precisely this reason: on a typed search the ambient type confines the leg, and the paired <c>_type</c>
+    /// reproduces that confinement here. Once a type is recovered the leg lowers <em>identically</em> to a
+    /// natively typed leg -- so this is not action-at-a-distance but the leg using the type constraint it carries
+    /// on itself. Deriving is deliberately confined to a <em>single</em> equality: a <c>_type=A,B</c> binds as an
+    /// Or, and narrowing a leg to one arm of an Or would silently drop rows.
+    /// </item>
+    /// <item>
+    /// A leg with a residue but <em>no</em> derivable type (the compartment-traversal leg, a bare
+    /// <see cref="CompartmentSearchExpression"/>) lowers its residue under a null scope and lets the per-node
+    /// guards decide. <see cref="StructuralContext.LowerCompartment"/> takes no resource type and lowers cleanly;
+    /// anything that genuinely needs one (a negation, a chain) trips its own guard and reports the real problem
+    /// rather than this dispatch's. This is why the removed union guard was wrong to sit at the dispatch choke
+    /// point: it blamed "the leg needs a type" for legs that never did.
+    /// </item>
+    /// </list>
+    /// </summary>
+    private static CteRef LowerSystemLevelUnionLeg(
+        Expression leg,
+        Expression? remaining,
+        Predicate? nestedPredicate,
+        StructuralContext context)
+    {
+        if (remaining is null)
+        {
+            return context.LowerMultiTypeResourceSourceWithPredicate(nestedPredicate);
+        }
+
+        if (TryDeriveSingleTypeScope(leg) is { } derivedType)
+        {
+            // With a concrete type recovered, the leg is indistinguishable from a natively typed one: scope the
+            // residue to that type and intersect with the resource-column predicate. LowerResourceSourceWithPredicate
+            // (the typed fold), not an AllTypes scan, so a derived-type leg emits the same single-type ResourceSource
+            // a typed leg would -- cheaper and easier to reason about, with an identical row set. The predicate still
+            // repeats ResourceTypeId = derivedType; that redundancy is harmless (an intersect of a set with a superset
+            // of itself) and left in deliberately rather than stripped.
+            var scopedMatch = LowerNode(remaining, context, derivedType);
+            return nestedPredicate is null
+                ? scopedMatch
+                : context.Intersect(context.LowerResourceSourceWithPredicate(derivedType, nestedPredicate), scopedMatch);
+        }
+
+        var match = LowerNode(remaining, context, resourceType: null);
+        return nestedPredicate is null
+            ? match
+            : context.Intersect(context.LowerMultiTypeResourceSourceWithPredicate(nestedPredicate), match);
+    }
+
+    /// <summary>
+    /// Returns the resource type name a union leg scopes itself to via a <em>single</em> <c>_type Eq X</c> among
+    /// its top-level ANDed children, or null when there is not exactly one such positive equality. A leg reached
+    /// under a system-level scope carries no ambient type; when its residue needs one, the leg's own
+    /// <c>_type</c> predicate is the only principled source -- the very <c>_type Eq Device</c> the caller pairs
+    /// with an orphan-device or this-patient's-device leg to confine it. The narrowing is deliberate:
+    /// <list type="bullet">
+    /// <item>a <c>_type=A,B</c> list binds as an Or under one <see cref="SearchParameterExpression"/>, not a bare
+    /// equality, so it yields no scope -- deriving one would silently drop an arm of the union leg;</item>
+    /// <item>two distinct <c>_type Eq</c> children are ambiguous and yield no scope rather than a guess;</item>
+    /// <item>a <c>:not</c>/modified or system-qualified <c>_type</c> is not a plain type equality and yields no
+    /// scope.</item>
+    /// </list>
+    /// In every "no scope" case the caller lowers the residue under a null type, where the residue's own per-node
+    /// guard decides whether it can proceed -- a refusal, never a wrong-type match.
+    /// </summary>
+    private static string? TryDeriveSingleTypeScope(Expression leg)
+    {
+        var children = leg is MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and
+            ? and.Expressions
+            : [leg];
+
+        string? found = null;
+        foreach (var child in children)
+        {
+            if (child is not SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate }
+                || predicate.Parameter.Code != "_type"
+                || predicate.Modifier is not null
+                || predicate.Comparator != SearchComparator.Eq
+                || predicate.Value is not TokenSearchValue { System: null, Code: { Length: > 0 } code })
+            {
+                continue;
+            }
+
+            if (found is not null)
+            {
+                // A second single-valued _type equality makes the intended scope ambiguous. Refuse to guess:
+                // returning null lowers the residue under a null type, which refuses rather than silently
+                // scoping to whichever equality happened to come first.
+                return null;
+            }
+
+            found = code;
+        }
+
+        return found;
     }
 
     /// <summary>An include with its direction and its resolved seed (Requires) and output (Produces) type ids; null means wildcard.</summary>

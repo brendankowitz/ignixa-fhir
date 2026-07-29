@@ -1274,6 +1274,21 @@ public class LowerTests
                 typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: t, text: null)))]));
     }
 
+    /// <summary>The shape a bound single-valued <c>_type=X</c> takes: one bare _type equality under its wrapper.
+    /// This is the shape a system-level union leg derives its own scope from (see TryDeriveSingleTypeScope).</summary>
+    private static SearchParameterExpression SingleType(string resourceType)
+    {
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        return new SearchParameterExpression(
+            typeParam,
+            new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: resourceType, text: null)));
+    }
+
+    /// <summary>A patient reference parameter, reused as both a compartment-membership parameter and the target of a
+    /// <c>patient:missing=true</c> negation in the system-level union-leg tests.</summary>
+    private static readonly SearchParameterInfo PatientRefParam =
+        new("patient", "patient", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-patient"));
+
     // ─── IncludesOnly Lower.Run guard tests ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -1513,30 +1528,135 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenAUnionInSystemLevelSearch_WhenLowered_ThenItIsRejectedRatherThanLoweredWithoutAScope()
+    public void GivenASystemLevelUnionOfPureResourceColumnLegs_WhenLowered_ThenEachLegFoldsIntoAnAllTypesScanCarryingItsPredicate()
     {
-        // Arrange -- a resource-column leg needs a concrete type to fold into. Without one it would reach the
-        // leaf dispatcher and be rejected with a message about the wrong problem, so the guard sits at dispatch.
+        // Arrange -- the SMART compartment shape under a system-level search (GET /?_id=...&_count=100, no
+        // _type). The "compartment resource itself" leg is _id+_type; each "universal resource type" leg is a
+        // bare _type. Neither has a residue to lower, so each folds into an AllTypes dbo.Resource scan whose
+        // WHERE carries the resource-column predicate -- the cross-type analog of the typed ResourceSource fold.
+        // This shape used to be refused outright; the refusal was the wrong call, because a purely
+        // resource-column leg carries all the scope it needs inside its own predicate.
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var tree = Expression.Union(
             UnionOperator.All,
-            [
-                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "p1", text: null))),
-                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "p2", text: null))),
-            ]);
-        var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
+            SingleType("Location"),
+            Expression.And(
+                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "c1", text: null))),
+                SingleType("Patient")));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Location"] = 110 });
 
-        // Act + Assert
+        // Act -- must NOT throw.
+        var plan = Lower.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- nothing lifted to the outer WHERE (that would apply one leg's columns to every leg), and
+        // each leg is an AllTypes scan (empty ResourceTypeIds) carrying its own predicate.
+        plan.OuterPredicate.ShouldBeNull();
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        foreach (var part in union.Parts)
+        {
+            var scan = plan.Ctes[part.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+            scan.ResourceTypeIds.ShouldBeEmpty();
+            scan.Predicate.ShouldNotBeNull();
+        }
+
+        // And the emitted SQL is a full dbo.Resource scan bounded by a WHERE, never an unbounded one.
+        var sql = SqlBuilder.Run(plan).Sql;
+        sql.ShouldContain("FROM dbo.Resource");
+        sql.ShouldContain("ResourceId =");
+        sql.ShouldContain("ResourceTypeId =");
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionLegPairingATypeWithAMissingNegation_WhenLowered_ThenItDerivesTheTypeAndLowersRatherThanThrowing()
+    {
+        // Arrange -- the SMART "orphan devices" leg: And(_type=Device, patient:missing=true). Under a
+        // system-level search the leg has no ambient type, and a :missing negation cannot anchor its Except on
+        // "every resource in the database". The leg's own single _type=Device supplies the anchor -- the very
+        // pairing that confines the leg on a typed search -- so the leg must lower, not throw.
+        var deviceLeg = Expression.And(
+            SingleType("Device"),
+            new MissingSearchParameterExpression(PatientRefParam, isMissing: true));
+        var tree = Expression.Union(UnionOperator.All, SingleType("Location"), deviceLeg);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [PatientRefParam.Url!.ToString()] = 55 },
+            new Dictionary<string, short> { ["Device"] = 120, ["Location"] = 110 });
+
+        // Act -- must NOT throw.
+        var plan = Lower.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- the device leg lowered to (a Device ResourceSource carrying its _type predicate) INTERSECT
+        // (the negation, itself an Except anchored on Device). Because a concrete type was recovered, the leg
+        // is indistinguishable from a natively typed one and the negation anchors on Device rather than
+        // tripping the null-scope guard.
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        var intersect = plan.Ctes[union.Parts[1].Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var scoped = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        scoped.ResourceTypeId.ShouldBe((short)120);
+        scoped.Predicate.ShouldNotBeNull();
+        var negation = plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.Except>();
+        plan.Ctes[negation.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe((short)120);
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionLegWithAMultiValuedTypeAndANegation_WhenLowered_ThenNoScopeIsDerivedAndTheNegationIsRefused()
+    {
+        // Arrange -- a leg pairing a MULTI-valued _type=Device,Location (an Or, not a single equality) with a
+        // :missing negation. Deriving a single-type scope from one arm of that Or would silently narrow the
+        // leg to Device or Location; instead no scope is derived, the negation lowers under a null type, and
+        // its Except anchor -- which has no single type to subtract from -- is refused. Refusal is the correct
+        // answer here: the alternative is returning a wrong, silently narrowed row set.
+        var leg = Expression.And(
+            TypeList("Device", "Location"),
+            new MissingSearchParameterExpression(PatientRefParam, isMissing: true));
+        var tree = Expression.Union(UnionOperator.All, SingleType("Patient"), leg);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [PatientRefParam.Url!.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Device"] = 120, ["Location"] = 110 });
+
+        // Act & Assert -- the negation-anchor guard fires, naming the real problem (a system-level negation),
+        // not a fabricated "the union leg needs a type".
         Should.Throw<NotSupportedException>(() => Lower.Run(
-            tree,
-            symbols,
-            targetResourceType: null,
-            includes: [],
-            revIncludes: [],
-            includeLimit: 0,
-            sort: [],
-            sortPhase: SortPhase.Valued,
-            page: null,
-            new LowerOptions { SystemLevelSearch = true }));
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }))
+            .Message.ShouldContain("system-level");
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionWithACompartmentLeg_WhenLowered_ThenTheCompartmentLegLowersUnderANullScope()
+    {
+        // Arrange -- the SMART "compartment traversal" leg: a bare CompartmentSearchExpression with no _type to
+        // derive from. It must lower under a null scope (LowerCompartment needs no resource type) while a
+        // sibling universal-type leg folds into an AllTypes scan, proving the null-scope path and the
+        // pure-column path coexist inside one union.
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var tree = Expression.Union(UnionOperator.All, compartment, SingleType("Location"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [PatientRefParam.Url!.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Location"] = 110, ["Observation"] = 104 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(PatientRefParam, ["Observation"])],
+            });
+
+        // Act -- must NOT throw.
+        var plan = Lower.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- a CompartmentSource is present (the traversal leg lowered), and the Location leg is an
+        // AllTypes scan.
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        plan.Ctes.ShouldContain(cte => cte is CteDefinition.CompartmentSource);
+        plan.Ctes[union.Parts[1].Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>()
+            .ResourceTypeIds.ShouldBeEmpty();
     }
 }
