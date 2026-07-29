@@ -37,12 +37,6 @@ public static class FmlKnownEvaluatorGaps
     public static bool IsKnownGap(string caseName) => Gaps.ContainsKey(LastSegment(caseName));
 
     /// <summary>
-    /// Gets the written rationale for a known gap, or <c>null</c> if the case is not a gap.
-    /// </summary>
-    public static string? RationaleFor(string caseName) =>
-        Gaps.TryGetValue(LastSegment(caseName), out var rationale) ? rationale : null;
-
-    /// <summary>
     /// Gets every known gap case name paired with its rationale.
     /// </summary>
     public static IReadOnlyDictionary<string, string> All => Gaps;

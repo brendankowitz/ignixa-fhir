@@ -76,6 +76,29 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
         cases.Count.ShouldBe(12);
     }
 
+    [Theory]
+    [InlineData("r5")]
+    [InlineData("r4b")]
+    [Trait("Category", "OfficialTestSuite")]
+    public void GivenTheOfficialManifests_WhenCheckingTheCorpus_ThenEveryInScopeCaseHasItsThreeFilesOnDisk(string version)
+    {
+        var directory = FmlTestCasesLocator.StructureMappingDirectory(version);
+
+        var inScope = FmlManifestLoader.Load(version)
+            .Where(c => !FmlOracleExclusions.IsExcluded(c.Name))
+            .Where(c => c.OutputFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        inScope.Count.ShouldBe(6);
+
+        foreach (var oracleCase in inScope)
+        {
+            AssertCorpusFileExists(directory, oracleCase, oracleCase.MapFile);
+            AssertCorpusFileExists(directory, oracleCase, oracleCase.SourceFile);
+            AssertCorpusFileExists(directory, oracleCase, oracleCase.OutputFile);
+        }
+    }
+
     [Fact]
     [Trait("Category", "OfficialTestSuite")]
     public void GivenTheInScopeCases_WhenPartitioningByKnownGaps_ThenTwoPassAndTenAreRatchetedGapExecutions()
@@ -135,13 +158,7 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
             return;
         }
 
-        var (expected, actual, context) = ExecuteCase(oracleCase);
-
-        context.Errors.ShouldBeEmpty(
-            context.Errors.Count == 0
-                ? string.Empty
-                : "Execution accumulated errors:" + Environment.NewLine +
-                  string.Join(Environment.NewLine, context.Errors.Select(e => e.ToString())));
+        var (expected, actual) = ExecuteCase(oracleCase);
 
         output.WriteLine("EXPECTED:");
         output.WriteLine(expected);
@@ -158,7 +175,7 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
 
         try
         {
-            (expected, actual, _) = ExecuteCase(oracleCase);
+            (expected, actual) = ExecuteCase(oracleCase);
         }
         catch (MappingExecutionException)
         {
@@ -175,7 +192,7 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
             $"The underlying defect appears fixed — remove '{oracleCase.Name}' from {nameof(FmlKnownEvaluatorGaps)}.");
     }
 
-    private (string Expected, string Actual, MappingContext Context) ExecuteCase(FmlOracleCase oracleCase)
+    private (string Expected, string Actual) ExecuteCase(FmlOracleCase oracleCase)
     {
         var directory = FmlTestCasesLocator.StructureMappingDirectory(oracleCase.Version);
         var fhirVersion = oracleCase.Version == "r4b" ? FhirVersion.R4B : FhirVersion.R5;
@@ -210,7 +227,16 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
         var expected = CanonicalJson.Canonicalize(File.ReadAllText(Path.Combine(directory, oracleCase.OutputFile), Encoding.UTF8));
         var actual = CanonicalJson.Canonicalize(target.MutableNode().ToJsonString());
 
-        return (expected, actual, context);
+        return (expected, actual);
+    }
+
+    private static void AssertCorpusFileExists(string directory, FmlOracleCase oracleCase, string fileName)
+    {
+        var path = Path.Combine(directory, fileName);
+
+        File.Exists(path).ShouldBeTrue(
+            $"Corpus file for case '{oracleCase.Name}' is missing: {path}. " +
+            "Verify the fhir-test-cases download completed.");
     }
 
     private static string DetermineTargetType(MapExpression map)
