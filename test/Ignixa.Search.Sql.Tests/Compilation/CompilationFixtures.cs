@@ -5,19 +5,20 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tests.TestSupport;
-using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
 using SortOrder = Ignixa.Search.Expressions.SortOrder;
 
-namespace Ignixa.Search.Sql.Tests.Tracing;
+namespace Ignixa.Search.Sql.Tests.Compilation;
 
-/// <summary>Builds SearchTraceTests's scenarios entirely through <see cref="SearchCompiler.CompileAsync"/>,
+/// <summary>Builds SearchPlanDiagnosticsTests's scenarios entirely through <see cref="SearchSqlCompiler.TryCreatePlanAsync"/>,
 /// using a fake <see cref="ISearchOptionsBuilder"/> that hands back a hand-built IR (the same pattern
-/// EndToEndCompilationTests uses for Resolve/Lower/Emit) rather than the real parser -- SearchCompiler's own
+/// EndToEndCompilationTests uses for Resolve/Lower/Emit) rather than the real parser -- SearchSqlCompiler's own
 /// orchestration is what these tests exercise, not parsing.</summary>
-internal static class SearchTraceFixtures
+internal static class CompilationFixtures
 {
-    public static Task<SearchTrace> TracePatientNameSmithAsync()
+    private static readonly SearchPlanOptions FullDiagnostics = new() { DiagnosticsLevel = SearchDiagnosticsLevel.Full };
+
+    public static Task<SearchPlanResult> TracePatientNameSmithAsync()
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
@@ -34,16 +35,16 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], FullDiagnostics);
     }
 
     /// <summary>Observation?status=final compiled with an AccessConstraint("Observation", status eq amended)
     /// set on the options. The constraint reuses the status parameter the query already resolves, so it lowers
-    /// through SearchCompiler's own Resolve stage; wiring it into Lower.Run intersects the match set with the
+    /// through SearchSqlCompiler's own Resolve stage; wiring it into Lower.Run intersects the match set with the
     /// constraint, which is what proves <see cref="SearchOptions.AccessConstraints"/> is forwarded rather than
     /// silently ignored. Without the forward the match is a bare ParamSource and no Intersect appears.</summary>
-    public static Task<SearchTrace> TraceObservationStatusWithAccessConstraintAsync()
+    public static Task<SearchPlanResult> TraceObservationStatusWithAccessConstraintAsync()
     {
         var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
         var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))
@@ -67,11 +68,11 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[statusParam.Url!.ToString()] = 220;
         resolver.ResourceTypeIds["Observation"] = 104;
 
-        return SearchCompiler.CompileAsync(
-            "Observation", [new QueryParameter("status", "final")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Observation", [new QueryParameter("status", "final")], FullDiagnostics);
     }
 
-    public static Task<SearchTrace> TracePatientNameSmithWithTimeProviderAsync(TimeProvider? timeProvider)
+    public static Task<SearchPlanResult> TracePatientNameSmithWithTimeProviderAsync(TimeProvider? timeProvider)
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
@@ -88,21 +89,20 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileWithTimeProviderAsync(
-            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
-            null, null, timeProvider);
+        return new SearchSqlCompiler(resolver, builder, timeProvider: timeProvider).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], FullDiagnostics);
     }
 
     /// <summary>Observation?date=ap2020-01-01T00:00:00Z -- a date :ap search, whose lowering actually
     /// depends on the captured reference instant reaching the leaf context's approximation reference time
     /// (unlike <see cref="TracePatientNameSmithWithTimeProviderAsync"/> above, whose plain string value never
-    /// reads it at all) -- proving the SearchCompiler boundary's single captured <c>GetUtcNow()</c> value is
+    /// reads it at all) -- proving the SearchSqlCompiler boundary's single captured <c>GetUtcNow()</c> value is
     /// what a :ap comparator actually consumes, not just that the call count is right for a query that
     /// wouldn't notice either way. widened = [2019-12-31T21:36:00Z, 2020-01-01T02:24:00Z] for a reference
     /// instant one day after the value (the same scenario already pinned against
     /// EndToEndCompilationTests.GivenADateApComparatorQueryWithAMovingClock... and
     /// DateTimeLoweringRuleTests' "past instant" :ap case).</summary>
-    public static Task<SearchTrace> TraceObservationDateApWithTimeProviderAsync(TimeProvider? timeProvider)
+    public static Task<SearchPlanResult> TraceObservationDateApWithTimeProviderAsync(TimeProvider? timeProvider)
     {
         var dateParam = new SearchParameterInfo("date", "date", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Observation-date"));
         var value = new DateTimeSearchValue(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
@@ -120,12 +120,11 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[dateParam.Url!.ToString()] = 203;
         resolver.ResourceTypeIds["Observation"] = 104;
 
-        return SearchCompiler.CompileWithTimeProviderAsync(
-            "Observation", [new QueryParameter("date", "ap2020-01-01T00:00:00Z")], builder, resolver,
-            null, null, timeProvider);
+        return new SearchSqlCompiler(resolver, builder, timeProvider: timeProvider).TryCreatePlanAsync(
+            "Observation", [new QueryParameter("date", "ap2020-01-01T00:00:00Z")], FullDiagnostics);
     }
 
-    public static Task<SearchTrace> TracePatientNameSmithWithCancellationTokenAsync(CancellationToken cancellationToken)
+    public static Task<SearchPlanResult> TracePatientNameSmithWithCancellationTokenAsync(CancellationToken cancellationToken)
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
@@ -142,12 +141,11 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
-            null, null, cancellationToken: cancellationToken);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], FullDiagnostics, cancellationToken);
     }
 
-    public static Task<SearchTrace> TracePatientNameSmithWithCancellationCheckAsync(CancellationToken cancellationToken)
+    public static Task<SearchPlanResult> TracePatientNameSmithWithCancellationCheckAsync(CancellationToken cancellationToken)
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Exact), new StringSearchValue("Smith"))
@@ -164,12 +162,11 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:exact", "Smith")], builder, resolver,
-            null, null, cancellationToken: cancellationToken);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:exact", "Smith")], FullDiagnostics, cancellationToken);
     }
 
-    public static Task<SearchTrace> TraceUnregisteredParameterAsync()
+    public static Task<SearchPlanResult> TraceUnregisteredParameterAsync()
     {
         var unknownParam = new SearchParameterInfo("unknown", "unknown", SearchParamType.String, new Uri("http://example.org/fhir/SearchParameter/Patient-unknown"));
         var predicate = new SearchParameterPredicateExpression(unknownParam, SearchComparator.Eq, modifier: null, new StringSearchValue("value"))
@@ -185,12 +182,12 @@ internal static class SearchTraceFixtures
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("unknown", "value")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("unknown", "value")], FullDiagnostics);
     }
 
     /// <summary>Patient?active=true -- a bare leaf predicate, unwrapped in a SearchParameterExpression as the real binder shapes it.</summary>
-    public static Task<SearchTrace> TracePatientActiveTrueAsync()
+    public static Task<SearchPlanResult> TracePatientActiveTrueAsync()
     {
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var predicate = new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
@@ -207,12 +204,12 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("active", "true")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("active", "true")], FullDiagnostics);
     }
 
     /// <summary>Observation?code-value-concept=8480-6$high -- a token-token composite.</summary>
-    public static Task<SearchTrace> TraceObservationTokenTokenCompositeAsync()
+    public static Task<SearchPlanResult> TraceObservationTokenTokenCompositeAsync()
     {
         var compositeParam = new SearchParameterInfo(
             "code-value-concept", "code-value-concept", SearchParamType.Composite,
@@ -247,12 +244,12 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[valueParam.Url!.ToString()] = 89;
         resolver.ResourceTypeIds["Observation"] = 104;
 
-        return SearchCompiler.CompileAsync(
-            "Observation", [new QueryParameter("code-value-concept", "8480-6$high")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Observation", [new QueryParameter("code-value-concept", "8480-6$high")], FullDiagnostics);
     }
 
     /// <summary>Patient?organization.name=Acme -- a forward chain.</summary>
-    public static Task<SearchTrace> TracePatientOrganizationNameChainAsync()
+    public static Task<SearchPlanResult> TracePatientOrganizationNameChainAsync()
     {
         var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
@@ -272,12 +269,12 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
         resolver.ResourceTypeIds["Organization"] = 105;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("organization.name", "Acme")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("organization.name", "Acme")], FullDiagnostics);
     }
 
     /// <summary>Patient?active=true&amp;_include=Patient:organization -- a leaf match plus an include stage (which contributes no ParamSource CTE of its own).</summary>
-    public static Task<SearchTrace> TracePatientActiveWithIncludeAsync()
+    public static Task<SearchPlanResult> TracePatientActiveWithIncludeAsync()
     {
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var predicate = new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
@@ -299,17 +296,15 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
         resolver.ResourceTypeIds["Organization"] = 105;
 
-        return SearchCompiler.CompileAsync(
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
             "Patient",
-            [new QueryParameter("active", "true"), new QueryParameter("_include", "Patient:organization")],
-            builder,
-            resolver);
+            [new QueryParameter("active", "true"), new QueryParameter("_include", "Patient:organization")], FullDiagnostics);
     }
 
     /// <summary>Patient?name=Smith&amp;_include=Patient:organization where the include's reference parameter is
     /// unregistered -- the builder raises a ParameterTrace for the search parameter only, so nothing owns the
     /// unresolved include and per-parameter attribution cannot report it.</summary>
-    public static Task<SearchTrace> TraceUnresolvedIncludeAsync()
+    public static Task<SearchPlanResult> TraceUnresolvedIncludeAsync()
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"))
@@ -330,15 +325,13 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
         resolver.ResourceTypeIds["Organization"] = 105;
 
-        return SearchCompiler.CompileAsync(
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
             "Patient",
-            [new QueryParameter("name", "Smith"), new QueryParameter("_include", "Patient:organization")],
-            builder,
-            resolver);
+            [new QueryParameter("name", "Smith"), new QueryParameter("_include", "Patient:organization")], FullDiagnostics);
     }
 
     /// <summary>Patient?active=true&amp;_sort=name -- a leaf match plus a sort key (which contributes no ParamSource CTE of its own).</summary>
-    public static Task<SearchTrace> TracePatientActiveWithSortAsync()
+    public static Task<SearchPlanResult> TracePatientActiveWithSortAsync()
     {
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var predicate = new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
@@ -359,12 +352,12 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "name")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "name")], FullDiagnostics);
     }
 
     /// <summary>Patient?name:not=Smith -- a single-value :not (modifier on the predicate itself, not a NotExpression wrapper).</summary>
-    public static Task<SearchTrace> TracePatientNameNotAsync()
+    public static Task<SearchPlanResult> TracePatientNameNotAsync()
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Not), new StringSearchValue("Smith"))
@@ -381,12 +374,12 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:not", "Smith")], FullDiagnostics);
     }
 
     /// <summary>Patient?name:missing=true -- :missing lowers to a presence ParamSource that is deliberately exempt from CTE provenance.</summary>
-    public static Task<SearchTrace> TracePatientNameMissingAsync()
+    public static Task<SearchPlanResult> TracePatientNameMissingAsync()
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var missing = new MissingSearchParameterExpression(nameParam, isMissing: true);
@@ -399,13 +392,13 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:missing", "true")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:missing", "true")], FullDiagnostics);
     }
 
     /// <summary>A resolvable leaf whose value type has no leaf lowering rule, so Lower throws after Resolve succeeds
-    /// -- the only shape that reaches SearchCompiler's Lower/Emit failure attribution.</summary>
-    public static Task<SearchTrace> TraceUnsupportedLeafValueAsync()
+    /// -- the only shape that reaches SearchSqlCompiler's Lower/Emit failure attribution.</summary>
+    public static Task<SearchPlanResult> TraceUnsupportedLeafValueAsync()
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var unsupportedValue = new CompositeIndexSearchValue([[new StringSearchValue("Smith")]]);
@@ -423,13 +416,13 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name", "Smith")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name", "Smith")], FullDiagnostics);
     }
 
     /// <summary>The same unsupported leaf value behind a :not modifier -- Lower rebuilds the predicate as a positive
     /// match before dispatching, so this covers the rebuilt clone carrying the original's span through to attribution.</summary>
-    public static Task<SearchTrace> TraceUnsupportedNotLeafValueAsync()
+    public static Task<SearchPlanResult> TraceUnsupportedNotLeafValueAsync()
     {
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var unsupportedValue = new CompositeIndexSearchValue([[new StringSearchValue("Smith")]]);
@@ -447,13 +440,13 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("name:not", "Smith")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name:not", "Smith")], FullDiagnostics);
     }
 
     /// <summary>A composite whose component value types have no composite lowering rule, so the composite dispatcher
     /// throws and attributes the failure to its first component's span.</summary>
-    public static Task<SearchTrace> TraceUnsupportedCompositeAsync()
+    public static Task<SearchPlanResult> TraceUnsupportedCompositeAsync()
     {
         var compositeParam = new SearchParameterInfo(
             "code-value-string", "code-value-string", SearchParamType.Composite,
@@ -488,13 +481,13 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[secondParam.Url!.ToString()] = 91;
         resolver.ResourceTypeIds["Observation"] = 104;
 
-        return SearchCompiler.CompileAsync(
-            "Observation", [new QueryParameter("code-value-string", "a$b")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Observation", [new QueryParameter("code-value-string", "a$b")], FullDiagnostics);
     }
 
     /// <summary>Two parameters whose values are the same length, so the real parser gives them identical spans, and
     /// only the second can lower. Attribution must follow the parameter, not the span they share.</summary>
-    public static Task<SearchTrace> TraceCollidingSpansWithOneFailureAsync()
+    public static Task<SearchPlanResult> TraceCollidingSpansWithOneFailureAsync()
     {
         var genderParam = new SearchParameterInfo("gender", "gender", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-gender"));
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
@@ -528,13 +521,13 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("gender", "male"), new QueryParameter("name", "abcd")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("gender", "male"), new QueryParameter("name", "abcd")], FullDiagnostics);
     }
 
     /// <summary>Patient?_id=123 against a resolver holding no _id row -- a resource-column parameter needs no
     /// SearchParamId, so it must not be reported unresolved and must not gate Lower off.</summary>
-    public static Task<SearchTrace> TraceResourceColumnIdAsync()
+    public static Task<SearchPlanResult> TraceResourceColumnIdAsync()
     {
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var predicate = new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "123", text: null))
@@ -550,13 +543,13 @@ internal static class SearchTraceFixtures
         var resolver = new FakeSymbolResolver();
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("_id", "123")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("_id", "123")], FullDiagnostics);
     }
 
     /// <summary>Patient?organization.name=Acme where the chain's own reference parameter is unregistered -- the
     /// unresolved parameter lives on the ChainedExpression, not on any leaf predicate.</summary>
-    public static Task<SearchTrace> TraceUnresolvedChainReferenceParameterAsync()
+    public static Task<SearchPlanResult> TraceUnresolvedChainReferenceParameterAsync()
     {
         var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
@@ -575,13 +568,13 @@ internal static class SearchTraceFixtures
         resolver.ResourceTypeIds["Patient"] = 103;
         resolver.ResourceTypeIds["Organization"] = 105;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("organization.name", "Acme")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("organization.name", "Acme")], FullDiagnostics);
     }
 
     /// <summary>Patient?active=true&amp;_sort=a,b,c,d -- the sort-key cap throws from outside both lowering
     /// dispatchers, so the failure names no parameter and exists only on the trace's own Failure.</summary>
-    public static Task<SearchTrace> TraceSortKeyCapExceededAsync()
+    public static Task<SearchPlanResult> TraceSortKeyCapExceededAsync()
     {
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var predicate = new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
@@ -606,13 +599,13 @@ internal static class SearchTraceFixtures
             new SearchOptions { ResourceType = "Patient", Expression = expression, Sort = sorts },
             [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "a,b,c,d")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("active", "true"), new QueryParameter("_sort", "a,b,c,d")], FullDiagnostics);
     }
 
     /// <summary>Patient?identifier=http://unknown.org/mrn|12345 -- the system resolves to nothing, so the
     /// token lowers to Predicate.False and the parameter is a known miss rather than a compile failure.</summary>
-    public static Task<SearchTrace> TraceUnresolvableTokenSystemAsync()
+    public static Task<SearchPlanResult> TraceUnresolvableTokenSystemAsync()
     {
         var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
         var predicate = new SearchParameterPredicateExpression(
@@ -631,13 +624,13 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[identifierParam.Url!.ToString()] = 55;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
-            "Patient", [new QueryParameter("identifier", "http://unknown.org/mrn|12345")], builder, resolver);
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("identifier", "http://unknown.org/mrn|12345")], FullDiagnostics);
     }
 
     /// <summary>Patient?active=true&amp;identifier=http://unknown.org/mrn|12345 -- one satisfiable parameter
     /// alongside a known miss, so the miss must be attributed to its own parameter and not to both.</summary>
-    public static Task<SearchTrace> TraceSatisfiableAndUnresolvableTokenSystemAsync()
+    public static Task<SearchPlanResult> TraceSatisfiableAndUnresolvableTokenSystemAsync()
     {
         var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
         var identifierParam = new SearchParameterInfo("identifier", "identifier", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
@@ -670,11 +663,9 @@ internal static class SearchTraceFixtures
         resolver.SearchParamIds[identifierParam.Url!.ToString()] = 55;
         resolver.ResourceTypeIds["Patient"] = 103;
 
-        return SearchCompiler.CompileAsync(
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
             "Patient",
-            [new QueryParameter("active", "true"), new QueryParameter("identifier", "http://unknown.org/mrn|12345")],
-            builder,
-            resolver);
+            [new QueryParameter("active", "true"), new QueryParameter("identifier", "http://unknown.org/mrn|12345")], FullDiagnostics);
     }
 
     private sealed class CancellationCheckingResolver : ISymbolResolver

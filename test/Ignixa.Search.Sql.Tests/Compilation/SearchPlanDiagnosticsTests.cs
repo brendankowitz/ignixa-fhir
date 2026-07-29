@@ -2,33 +2,32 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
-using Ignixa.Search.Sql.Tracing;
 
-namespace Ignixa.Search.Sql.Tests.Tracing;
+namespace Ignixa.Search.Sql.Tests.Compilation;
 
-public class SearchTraceTests
+public class SearchPlanDiagnosticsTests
 {
-    public static TheoryData<string, Func<Task<SearchTrace>>, int[]> ChainCompletenessCases()
+    public static TheoryData<string, Func<Task<SearchPlanResult>>, int[]> ChainCompletenessCases()
     {
-        var data = new TheoryData<string, Func<Task<SearchTrace>>, int[]>();
-        data.Add("leaf", SearchTraceFixtures.TracePatientActiveTrueAsync, [0]);
-        data.Add("composite", SearchTraceFixtures.TraceObservationTokenTokenCompositeAsync, [0]);
-        data.Add("chain", SearchTraceFixtures.TracePatientOrganizationNameChainAsync, [0]);
-        data.Add("include", SearchTraceFixtures.TracePatientActiveWithIncludeAsync, [0]);
-        data.Add("sort", SearchTraceFixtures.TracePatientActiveWithSortAsync, [0]);
-        data.Add(":not", SearchTraceFixtures.TracePatientNameNotAsync, [0]);
-        data.Add(":missing", SearchTraceFixtures.TracePatientNameMissingAsync, []);
+        var data = new TheoryData<string, Func<Task<SearchPlanResult>>, int[]>();
+        data.Add("leaf", CompilationFixtures.TracePatientActiveTrueAsync, [0]);
+        data.Add("composite", CompilationFixtures.TraceObservationTokenTokenCompositeAsync, [0]);
+        data.Add("chain", CompilationFixtures.TracePatientOrganizationNameChainAsync, [0]);
+        data.Add("include", CompilationFixtures.TracePatientActiveWithIncludeAsync, [0]);
+        data.Add("sort", CompilationFixtures.TracePatientActiveWithSortAsync, [0]);
+        data.Add(":not", CompilationFixtures.TracePatientNameNotAsync, [0]);
+        data.Add(":missing", CompilationFixtures.TracePatientNameMissingAsync, []);
         return data;
     }
 
     [Theory]
     [MemberData(nameof(ChainCompletenessCases))]
     public async Task GivenEachSupportedShape_WhenTraced_ThenSpansCtesAndSqlRangesLineUp(
-        string scenario, Func<Task<SearchTrace>> build, int[] expectedOrdinalIndices)
+        string scenario, Func<Task<SearchPlanResult>> build, int[] expectedOrdinalIndices)
     {
-        var trace = await build();
+        var result = await build();
 
-        foreach (var parameter in trace.Parameters)
+        foreach (var parameter in result.Plan!.Diagnostics!.Parameters)
         {
             if (parameter.Ir is null)
             {
@@ -49,8 +48,9 @@ public class SearchTraceTests
             }
         }
 
-        trace.Plan.ShouldNotBeNull($"{scenario}: expected a plan");
-        var ctes = trace.Plan!.Ctes;
+        result.Plan!.Diagnostics!.PlanTrace.ShouldNotBeNull($"{scenario}: expected a plan");
+        var compiled = result.Plan!.Compile();
+        var ctes = result.Plan!.Diagnostics!.PlanTrace!.Ctes;
 
         for (var i = 0; i < ctes.Count; i++)
         {
@@ -63,7 +63,7 @@ public class SearchTraceTests
                 ctes[i].ParameterOrdinal.ShouldBeNull($"{scenario}: cte{i} should be exempt from provenance");
             }
 
-            trace.Sql!.Ranges.ShouldContain(r => r.Label == SqlLabels.CteLabel(i), $"{scenario}: {SqlLabels.CteLabel(i)} has no SQL text range");
+            compiled.Diagnostics!.SqlTextRanges.ShouldContain(r => r.Label == SqlLabels.CteLabel(i), $"{scenario}: {SqlLabels.CteLabel(i)} has no SQL text range");
         }
     }
 
@@ -94,25 +94,26 @@ public class SearchTraceTests
     [Fact]
     public async Task GivenALeafSearch_WhenTraced_ThenTheChainReachesFromSpanToSqlRange()
     {
-        var trace = await SearchTraceFixtures.TracePatientNameSmithAsync();
+        var result = await CompilationFixtures.TracePatientNameSmithAsync();
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = result.Plan!.Diagnostics!.Parameters.ShouldHaveSingleItem();
         parameter.Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
         parameter.Ir.ShouldNotBeNull();
 
-        trace.Plan.ShouldNotBeNull();
-        trace.Plan!.Ctes.ShouldContain(c => c.ParameterOrdinal == parameter.Ordinal);
+        result.Plan!.Diagnostics!.PlanTrace.ShouldNotBeNull();
+        result.Plan!.Diagnostics!.PlanTrace!.Ctes.ShouldContain(c => c.ParameterOrdinal == parameter.Ordinal);
 
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Ranges.ShouldNotBeEmpty();
+        var compiled = result.Plan!.Compile();
+        compiled.Diagnostics!.SqlTextRanges.ShouldNotBeEmpty();
     }
 
     [Fact]
     public async Task GivenAnUnregisteredParameter_WhenTraced_ThenItIsReportedAtTheResolveStage()
     {
-        var trace = await SearchTraceFixtures.TraceUnregisteredParameterAsync();
+        var result = await CompilationFixtures.TraceUnregisteredParameterAsync();
 
-        var failed = trace.Parameters
+        result.Succeeded.ShouldBeFalse();
+        var failed = result.Failure!.Diagnostics!.Parameters
             .Select(p => p.Outcome)
             .OfType<ParameterOutcome.Failed>()
             .ShouldHaveSingleItem();
@@ -120,40 +121,41 @@ public class SearchTraceTests
         failed.Stage.ShouldBe(TraceStage.Resolve);
     }
 
-    public static TheoryData<string, Func<Task<SearchTrace>>> LowerFailureCases() => new()
+    public static TheoryData<string, Func<Task<SearchPlanResult>>> LowerFailureCases() => new()
     {
-        { "leaf", SearchTraceFixtures.TraceUnsupportedLeafValueAsync },
-        { ":not leaf", SearchTraceFixtures.TraceUnsupportedNotLeafValueAsync },
-        { "composite", SearchTraceFixtures.TraceUnsupportedCompositeAsync },
+        { "leaf", CompilationFixtures.TraceUnsupportedLeafValueAsync },
+        { ":not leaf", CompilationFixtures.TraceUnsupportedNotLeafValueAsync },
+        { "composite", CompilationFixtures.TraceUnsupportedCompositeAsync },
     };
 
     [Theory]
     [MemberData(nameof(LowerFailureCases))]
     public async Task GivenAShapeLowerCannotHandle_WhenTraced_ThenItIsAttributedToTheOwningParameterAtTheLowerStage(
-        string scenario, Func<Task<SearchTrace>> build)
+        string scenario, Func<Task<SearchPlanResult>> build)
     {
-        var trace = await build();
+        var result = await build();
 
-        trace.Plan.ShouldBeNull($"{scenario}: Lower should not have produced a plan");
-        trace.Sql.ShouldBeNull($"{scenario}: Emit should never have run");
+        result.Succeeded.ShouldBeFalse($"{scenario}: Lower should not have produced a plan");
+        result.Plan.ShouldBeNull($"{scenario}: Emit should never have run");
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = result.Failure!.Diagnostics!.Parameters.ShouldHaveSingleItem();
         var failed = parameter.Outcome.ShouldBeOfType<ParameterOutcome.Failed>($"{scenario}: the failure was not attributed to its parameter");
         failed.Stage.ShouldBe(TraceStage.Lower);
         failed.Span.ShouldNotBeNull($"{scenario}: the attributed failure carries no source span");
         failed.Message.ShouldNotBeNullOrWhiteSpace();
 
-        trace.Failure.ShouldNotBeNull($"{scenario}: the trace records no failure");
-        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
+        result.Failure.ShouldNotBeNull($"{scenario}: the result records no failure");
+        result.Failure!.Stage.ShouldBe(CompilationStage.Lower);
     }
 
     [Fact]
     public async Task GivenTwoParametersSharingASpan_WhenOneFailsToLower_ThenOnlyThatParameterIsMarkedFailed()
     {
-        var trace = await SearchTraceFixtures.TraceCollidingSpansWithOneFailureAsync();
+        var result = await CompilationFixtures.TraceCollidingSpansWithOneFailureAsync();
 
-        var gender = trace.Parameters.Single(p => p.Key == "gender");
-        var name = trace.Parameters.Single(p => p.Key == "name");
+        result.Succeeded.ShouldBeFalse();
+        var gender = result.Failure!.Diagnostics!.Parameters.Single(p => p.Key == "gender");
+        var name = result.Failure!.Diagnostics!.Parameters.Single(p => p.Key == "name");
 
         gender.Outcome.ShouldBeOfType<ParameterOutcome.Compiled>("the innocent same-length neighbour was smeared with the failure");
         name.Outcome.ShouldBeOfType<ParameterOutcome.Failed>();
@@ -162,20 +164,21 @@ public class SearchTraceTests
     [Fact]
     public async Task GivenAResourceColumnParameter_WhenTraced_ThenItIsNotReportedUnresolvedAndTheQueryStillCompiles()
     {
-        var trace = await SearchTraceFixtures.TraceResourceColumnIdAsync();
+        var result = await CompilationFixtures.TraceResourceColumnIdAsync();
 
-        trace.Parameters.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
-        trace.Failure.ShouldBeNull();
-        trace.Plan.ShouldNotBeNull("_id needs no SearchParamId, so Lower should have run");
-        trace.Sql.ShouldNotBeNull();
+        result.Plan!.Diagnostics!.Parameters.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        result.Failure.ShouldBeNull();
+        result.Plan!.Diagnostics!.PlanTrace.ShouldNotBeNull("_id needs no SearchParamId, so Lower should have run");
+        result.Plan!.Compile().Sql.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
     public async Task GivenAnUnresolvedChainReferenceParameter_WhenTraced_ThenItIsAttributedToTheChainsParameter()
     {
-        var trace = await SearchTraceFixtures.TraceUnresolvedChainReferenceParameterAsync();
+        var result = await CompilationFixtures.TraceUnresolvedChainReferenceParameterAsync();
 
-        var failed = trace.Parameters.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Failed>();
+        result.Succeeded.ShouldBeFalse();
+        var failed = result.Failure!.Diagnostics!.Parameters.ShouldHaveSingleItem().Outcome.ShouldBeOfType<ParameterOutcome.Failed>();
         failed.Stage.ShouldBe(TraceStage.Resolve);
         failed.Message.ShouldContain("organization");
     }
@@ -183,37 +186,37 @@ public class SearchTraceTests
     [Fact]
     public async Task GivenAnUnresolvedIncludeOwnedByNoParameterTrace_WhenTraced_ThenTheTraceStillStatesWhyThePlanIsMissing()
     {
-        var trace = await SearchTraceFixtures.TraceUnresolvedIncludeAsync();
+        var result = await CompilationFixtures.TraceUnresolvedIncludeAsync();
 
-        trace.Plan.ShouldBeNull();
-        trace.Parameters.ShouldAllBe(p => p.Outcome is ParameterOutcome.Compiled);
+        result.Plan.ShouldBeNull();
+        result.Failure!.Diagnostics!.Parameters.ShouldAllBe(p => p.Outcome is ParameterOutcome.Compiled);
 
-        trace.Failure.ShouldNotBeNull("an absent plan with every parameter Compiled is an unexplained trace");
-        trace.Failure!.Stage.ShouldBe(TraceStage.Resolve);
-        trace.Failure.Message.ShouldContain("organization");
+        result.Failure.ShouldNotBeNull("an absent plan with every parameter Compiled is an unexplained result");
+        result.Failure!.Stage.ShouldBe(CompilationStage.Resolve);
+        result.Failure.Message.ShouldContain("organization");
     }
 
     [Fact]
     public async Task GivenAFailureNamingNoParameter_WhenTraced_ThenItsMessageSurvivesOnTheTrace()
     {
-        var trace = await SearchTraceFixtures.TraceSortKeyCapExceededAsync();
+        var result = await CompilationFixtures.TraceSortKeyCapExceededAsync();
 
-        trace.Plan.ShouldBeNull();
-        trace.Parameters.ShouldAllBe(p => p.Outcome is ParameterOutcome.Compiled);
+        result.Plan.ShouldBeNull();
+        result.Failure!.Diagnostics!.Parameters.ShouldAllBe(p => p.Outcome is ParameterOutcome.Compiled);
 
-        trace.Failure.ShouldNotBeNull("the sort-key cap message would otherwise be lost entirely");
-        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
-        trace.Failure.Message.ShouldContain("_sort supports at most 3 keys");
-        trace.Failure.Span.ShouldBeNull();
+        result.Failure.ShouldNotBeNull("the sort-key cap message would otherwise be lost entirely");
+        result.Failure!.Stage.ShouldBe(CompilationStage.Lower);
+        result.Failure.Message.ShouldContain("_sort supports at most 3 keys");
+        result.Failure.Span.ShouldBeNull();
     }
 
     [Fact]
     public async Task GivenALeafCte_WhenTraced_ThenItContributesOnlyItsOwnParameter()
     {
-        var trace = await SearchTraceFixtures.TracePatientActiveTrueAsync();
+        var result = await CompilationFixtures.TracePatientActiveTrueAsync();
 
-        trace.Plan.ShouldNotBeNull();
-        var leaf = trace.Plan!.Ctes.First(c => c.ParameterOrdinal == 0);
+        result.Plan!.Diagnostics!.PlanTrace.ShouldNotBeNull();
+        var leaf = result.Plan!.Diagnostics!.PlanTrace!.Ctes.First(c => c.ParameterOrdinal == 0);
 
         leaf.ContributingOrdinals.ShouldBe([0]);
     }
@@ -226,11 +229,11 @@ public class SearchTraceTests
         var provider = new CountingFixedTimeProvider(fixedTime);
 
         // Act
-        var trace = await SearchTraceFixtures.TracePatientNameSmithWithTimeProviderAsync(provider);
+        var result = await CompilationFixtures.TracePatientNameSmithWithTimeProviderAsync(provider);
 
         // Assert
-        trace.Failure.ShouldBeNull();
-        trace.Plan.ShouldNotBeNull();
+        result.Failure.ShouldBeNull();
+        result.Plan.ShouldNotBeNull();
         provider.CallCount.ShouldBe(1);
     }
 
@@ -239,7 +242,7 @@ public class SearchTraceTests
     {
         // Arrange -- unlike GivenAFixedTimeProvider_WhenCompiled_ThenGetUtcNowIsCalledExactlyOnce above
         // (a plain name=Smith query whose value never reads the reference time at all), this query's
-        // :ap comparator only compiles successfully if SearchCompiler's single GetUtcNow() call supplied
+        // :ap comparator only compiles successfully if SearchSqlCompiler's single GetUtcNow() call supplied
         // a non-null reference instant all the way to Lower's approximationReferenceTime -- Approximate
         // DateRange.Widen throws InvalidOperationException otherwise, so an absent Failure here is itself
         // proof the captured value reached the widening logic, not merely that it was read once.
@@ -247,19 +250,19 @@ public class SearchTraceTests
         var provider = new CountingFixedTimeProvider(fixedTime);
 
         // Act
-        var trace = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+        var result = await CompilationFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
 
         // Assert -- the captured reference instant reached Lower and widened the :ap range successfully
         provider.CallCount.ShouldBe(1);
-        trace.Failure.ShouldBeNull();
-        trace.Plan.ShouldNotBeNull();
+        result.Failure.ShouldBeNull();
+        result.Plan.ShouldNotBeNull();
 
         // Assert -- complete SQL golden: the same shape already pinned in EndToEndCompilationTests'
-        // Lower.Run-based date :ap case, proving the SearchCompiler orchestration boundary (Build ->
+        // Lower.Run-based date :ap case, proving the SearchSqlCompiler orchestration boundary (Build ->
         // Resolve -> Lower -> Emit, with the reference time captured once up front) reaches the
         // identical emitted SQL as calling Lower.Run directly with that same widened reference.
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldBe(
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.DateTimeSearchParam\n" +
@@ -270,9 +273,9 @@ public class SearchTraceTests
     }
 
     [Fact]
-    public async Task GivenTheSameDateApComparatorQueryCompiledTwiceWithTheSameFixedTimeProvider_WhenCompiled_ThenTheTracedSqlIsByteIdentical()
+    public async Task GivenTheSameDateApComparatorQueryCompiledTwiceWithTheSameFixedTimeProvider_WhenCompiled_ThenTheEmittedSqlIsByteIdentical()
     {
-        // Arrange -- two independent CompileWithTimeProviderAsync calls, each capturing its own
+        // Arrange -- two independent TryCreatePlanAsync calls, each capturing its own
         // GetUtcNow() from the same FixedTimeProvider instance (proven by CallCount reaching 2, one per
         // compile, never more), must reach byte-identical widened SQL -- proving the compiler boundary's
         // determinism holds across separate compiles sharing one fixed clock, not just within a single one.
@@ -280,41 +283,41 @@ public class SearchTraceTests
         var provider = new CountingFixedTimeProvider(fixedTime);
 
         // Act
-        var trace1 = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
-        var trace2 = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+        var result1 = await CompilationFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+        var result2 = await CompilationFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
 
         // Assert
         provider.CallCount.ShouldBe(2);
-        trace1.Failure.ShouldBeNull();
-        trace2.Failure.ShouldBeNull();
-        trace1.Sql.ShouldNotBeNull();
-        trace2.Sql.ShouldNotBeNull();
-        trace2.Sql!.Sql.ShouldBe(trace1.Sql!.Sql);
+        result1.Failure.ShouldBeNull();
+        result2.Failure.ShouldBeNull();
+        var compiled1 = result1.Plan!.Compile();
+        var compiled2 = result2.Plan!.Compile();
+        compiled2.Sql.ShouldBe(compiled1.Sql);
     }
 
     [Fact]
-    public async Task GivenTheOriginalOverloadWithPositionalDefault_WhenCompiled_ThenItCompilesAndDelegatesSuccessfully()
+    public async Task GivenAPositionalDefaultCancellationToken_WhenCompiled_ThenItCompilesAndDelegatesSuccessfully()
     {
-        // Arrange — exercises the original 7-parameter CompileAsync with a positional `default`
-        // as the final argument, proving the pre-existing signature compiles unambiguously.
-        var trace = await SearchTraceFixtures.TracePatientNameSmithWithCancellationTokenAsync(default);
+        // Arrange — exercises SearchSqlCompiler.TryCreatePlanAsync with a positional `default`
+        // CancellationToken as the final argument, proving the facade signature binds unambiguously.
+        var result = await CompilationFixtures.TracePatientNameSmithWithCancellationTokenAsync(default);
 
         // Assert
-        trace.Failure.ShouldBeNull();
-        trace.Plan.ShouldNotBeNull();
+        result.Failure.ShouldBeNull();
+        result.Plan.ShouldNotBeNull();
     }
 
     [Fact]
     public async Task GivenAPreCancelledToken_WhenCompiled_ThenTheCancellationReachesTheResolver()
     {
-        // Arrange — a pre-cancelled token must propagate through CompileAsync into Resolve and
+        // Arrange — a pre-cancelled token must propagate through TryCreatePlanAsync into Resolve and
         // reach the resolver, proving the delegation does not substitute CancellationToken.None.
         using var cts = new CancellationTokenSource();
         await cts.CancelAsync();
 
         // Act & Assert
         await Should.ThrowAsync<OperationCanceledException>(
-            SearchTraceFixtures.TracePatientNameSmithWithCancellationCheckAsync(cts.Token));
+            CompilationFixtures.TracePatientNameSmithWithCancellationCheckAsync(cts.Token));
     }
 
     [Fact]
@@ -322,28 +325,29 @@ public class SearchTraceTests
     {
         // Arrange & Act — a token system no resource uses compiles cleanly but can never match, which is
         // a property of the data, not a failure of the query; reporting it as Compiled would hide it.
-        var trace = await SearchTraceFixtures.TraceUnresolvableTokenSystemAsync();
+        var result = await CompilationFixtures.TraceUnresolvableTokenSystemAsync();
 
         // Assert
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = result.Plan!.Diagnostics!.Parameters.ShouldHaveSingleItem();
         var knownMiss = parameter.Outcome.ShouldBeOfType<ParameterOutcome.KnownMiss>();
         knownMiss.Reason.ShouldBe("No resource uses the token system 'http://unknown.org/mrn'.");
         knownMiss.Span.ShouldBe(new SourceSpan(SourceOrigin.Value, 0, 31));
-        trace.Failure.ShouldBeNull();
-        trace.Plan.ShouldNotBeNull();
-        trace.Sql.ShouldNotBeNull();
+        result.Failure.ShouldBeNull();
+        result.Plan.ShouldNotBeNull();
+        result.Plan!.Compile().Sql.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
     public async Task GivenOneSatisfiableAndOneUnsatisfiableParameter_WhenTraced_ThenOnlyTheUnsatisfiableOneIsAKnownMiss()
     {
         // Arrange & Act
-        var trace = await SearchTraceFixtures.TraceSatisfiableAndUnresolvableTokenSystemAsync();
+        var result = await CompilationFixtures.TraceSatisfiableAndUnresolvableTokenSystemAsync();
 
         // Assert — the miss is attributed to its own parameter, and the other stays Compiled
-        trace.Parameters.Count.ShouldBe(2);
-        trace.Parameters[0].Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
-        var knownMiss = trace.Parameters[1].Outcome.ShouldBeOfType<ParameterOutcome.KnownMiss>();
+        var parameters = result.Plan!.Diagnostics!.Parameters;
+        parameters.Count.ShouldBe(2);
+        parameters[0].Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        var knownMiss = parameters[1].Outcome.ShouldBeOfType<ParameterOutcome.KnownMiss>();
         knownMiss.Reason.ShouldBe("No resource uses the token system 'http://unknown.org/mrn'.");
         knownMiss.Span.ShouldBe(new SourceSpan(SourceOrigin.Value, 10, 28));
     }
@@ -352,29 +356,29 @@ public class SearchTraceTests
     public async Task GivenAllParametersSatisfiable_WhenTraced_ThenNoneAreReportedAsAKnownMiss()
     {
         // Arrange & Act
-        var trace = await SearchTraceFixtures.TracePatientActiveTrueAsync();
+        var result = await CompilationFixtures.TracePatientActiveTrueAsync();
 
         // Assert
-        trace.Parameters.ShouldAllBe(p => !(p.Outcome is ParameterOutcome.KnownMiss));
+        result.Plan!.Diagnostics!.Parameters.ShouldAllBe(p => !(p.Outcome is ParameterOutcome.KnownMiss));
     }
 
     [Fact]
-    public async Task GivenOptionsCarryingAnAccessConstraint_WhenCompiledThroughSearchCompiler_ThenTheConstraintReachesLowerAndNarrowsTheMatch()
+    public async Task GivenOptionsCarryingAnAccessConstraint_WhenCompiledThroughTheFacade_ThenTheConstraintReachesLowerAndNarrowsTheMatch()
     {
         // Arrange & Act -- Observation?status=final with an AccessConstraint("Observation", status eq
         // amended) set on the options. This exercises the wiring seam: SearchOptions.AccessConstraints must
-        // be forwarded from SearchCompiler into Lower.Run. The constraint is applied structurally by
+        // be forwarded from SearchSqlCompiler into Lower.Run. The constraint is applied structurally by
         // intersecting the match set, so the emitted plan gains an Intersect node it never has for a bare
-        // single-leaf search. Dropping the forwarding argument in SearchCompiler leaves the match a plain
+        // single-leaf search. Dropping the forwarding argument in SearchSqlCompiler leaves the match a plain
         // ParamSource and this assertion fails -- proving the test covers the wiring, not just Lower.
-        var trace = await SearchTraceFixtures.TraceObservationStatusWithAccessConstraintAsync();
+        var result = await CompilationFixtures.TraceObservationStatusWithAccessConstraintAsync();
 
         // Assert
-        trace.Failure.ShouldBeNull("the constrained search should compile end to end");
-        trace.Plan.ShouldNotBeNull();
-        trace.Plan!.Explain.ShouldContain("Intersect");
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain("SearchParamId = 220");
+        result.Failure.ShouldBeNull("the constrained search should compile end to end");
+        result.Plan.ShouldNotBeNull();
+        result.Plan!.Diagnostics!.PlanTrace!.Explain.ShouldContain("Intersect");
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldContain("SearchParamId = 220");
     }
 
     [Fact]
@@ -387,13 +391,13 @@ public class SearchTraceTests
         var provider = new IncrementingTimeProvider(new DateTimeOffset(2020, 1, 2, 0, 0, 0, TimeSpan.Zero), TimeSpan.FromDays(1));
 
         // Act
-        var trace = await SearchTraceFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
+        var result = await CompilationFixtures.TraceObservationDateApWithTimeProviderAsync(provider);
 
         // Assert
         provider.CallCount.ShouldBe(1);
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldBe(
+        result.Failure.ShouldBeNull();
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldBe(
             ";WITH cte0 AS (\n" +
             "    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
             "    FROM dbo.DateTimeSearchParam\n" +

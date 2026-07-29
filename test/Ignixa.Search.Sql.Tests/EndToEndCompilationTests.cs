@@ -2382,7 +2382,7 @@ public class EndToEndCompilationTests
         var secondWidenedEnd = new DateTimeOffset(2020, 1, 1, 4, 48, 0, TimeSpan.Zero);
 
         // Act -- compile the identical search twice, each compile reading the clock exactly once, the way
-        // SearchCompiler.CompileWithTimeProviderAsync captures one instant per compile
+        // SearchSqlCompiler captures one instant per compile from its constructor-supplied TimeProvider
         var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
         var plan1 = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted1 = SqlBuilder.Run(plan1);

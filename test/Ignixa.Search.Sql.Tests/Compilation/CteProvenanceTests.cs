@@ -1,7 +1,6 @@
-using Ignixa.Search.Sql.Tracing;
 using Shouldly;
 
-namespace Ignixa.Search.Sql.Tests.Tracing;
+namespace Ignixa.Search.Sql.Tests.Compilation;
 
 public class CteProvenanceTests
 {
