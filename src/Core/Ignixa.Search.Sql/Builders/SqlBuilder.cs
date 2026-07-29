@@ -557,18 +557,38 @@ public static class SqlBuilder
     }
 
     /// <summary>
-    /// Renders an include stage's limit-applying companion: the first Limit rows, plus an IsPartial flag set
-    /// from the window count so the caller can tell a truncated stage from an exactly-full one.
+    /// Renders an include stage's limit-applying companion: <c>TOP (Limit + 1)</c> rows — the budget plus the
+    /// one-row truncation sentinel — each stamped with an IsPartial flag set from the window count so the caller
+    /// can tell a truncated stage from an exactly-full one.
     /// </summary>
     /// <remarks>
+    /// The TOP is <c>Limit + 1</c>, not <c>Limit</c>, so the sentinel row the body over-fetches (see
+    /// <see cref="EmitIncludeStage"/>, which selects <c>TOP (Limit + 1)</c>) survives into this companion — and
+    /// on into both the union arm the caller reads and any downstream iterate stage seeded from this label via
+    /// <see cref="EmitSeedExists"/>. Trimming here to <c>TOP (Limit)</c> would discard that row and, with it, the
+    /// only physical carrier of the truncation signal: a consumer that detects "more included resources exist"
+    /// by comparing the returned row count against its budget (FHIR Server's reader does exactly this, OR-ing in
+    /// the per-row IsPartial flag) would then see a full-but-not-over page and conclude nothing was truncated.
+    /// That is masked at <c>Limit &gt;= 1</c> — IsPartial still flags the trimmed rows — but fatal at
+    /// <c>Limit == 0</c>: <c>TOP (0)</c> returns no rows at all, so the IsPartial the CASE computed is evaluated
+    /// and then thrown away with the row that would have carried it, and a zero-budget probe
+    /// (IncludeContinuationTokenSearch: "return no include rows but tell me whether any exist") can never answer
+    /// yes and silently drops every overflowing include. Over-fetching by one keeps this companion consistent
+    /// with the stage body it reads from, with the IncludesOnly global page (<see cref="EmitGlobalIncludesPage"/>,
+    /// likewise <c>TOP (@limit + 1)</c>), and with the FHIR Server legacy generator, whose include limit CTE is
+    /// itself <c>TOP (includeCount + 1)</c> over <c>count_big(*) over() &gt; includeCount</c>. The window
+    /// threshold stays <c>&gt; Limit</c>: partiality means "the body held more rows than the budget", regardless
+    /// of how many rows this companion forwards.
+    /// <para>
     /// The flag is cast to <c>bit</c> rather than left as the <c>int</c> the CASE naturally yields, because this
     /// column is unioned with the match arm's <c>CAST(0 AS bit) AS IsPartial</c>. T-SQL type precedence promotes
     /// a bit/int union to <c>int</c>, so leaving it untyped silently changed the result column's type based on
     /// whether the plan happened to carry includes — and a caller reading the documented
     /// (T1, Sid1, IsMatch, IsPartial) contract as a bit threw InvalidCastException on include rows only.
+    /// </para>
     /// </remarks>
     private static string EmitIncludeLimitStage(IncludeStage stage, int index)
-        => $"    SELECT TOP ({stage.Limit}) T1, Sid1,\n" +
+        => $"    SELECT TOP ({stage.Limit + 1}) T1, Sid1,\n" +
            $"           CAST(CASE WHEN COUNT_BIG(*) OVER() > {stage.Limit} THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
            $"    FROM {IncludeLabel(index)}\n" +
            $"    ORDER BY T1 ASC, Sid1 ASC";

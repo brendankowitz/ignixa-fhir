@@ -336,7 +336,7 @@ public class EmitTests
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "    SELECT TOP (1001) T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
@@ -347,6 +347,52 @@ public class EmitTests
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
             "ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAZeroLimitIncludeStage_WhenEmitted_ThenTheLimitCompanionOverFetchesOneSentinelRowSoTruncationStaysDetectable()
+    {
+        // Arrange -- a zero-budget include probe. FHIR Server's SqlServerSearchService runs phase 2 of a sorted
+        // search with IncludeCount = 0 (IncludeContinuationTokenSearch) meaning "return no included resources,
+        // but tell me whether any exist so I can mint a nested-includes continuation token". The companion must
+        // still forward the one-row truncation sentinel the body over-fetches: TOP (0) would return nothing,
+        // discard the IsPartial the CASE computed, and make the probe silently answer "no", dropping every
+        // overflowing include. This mirrors the legacy generator, whose include limit CTE is TOP (includeCount + 1)
+        // even when includeCount is 0.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 0);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage]);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the body over-fetches one row (TOP (1)); the companion forwards that sentinel (TOP (1), never
+        // TOP (0)) and flags partiality when the body held more than the zero budget (COUNT_BIG(*) OVER() > 0), so
+        // a caller can still detect that included resources exist.
+        emitted.Sql.ShouldContain(
+            "inc0 AS (\n" +
+            "    SELECT DISTINCT TOP (1) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n");
+        emitted.Sql.ShouldContain(
+            "inc0lim AS (\n" +
+            "    SELECT TOP (1) T1, Sid1,\n" +
+            "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 0 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
+            "    FROM inc0\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            ")");
+        emitted.Sql.ShouldNotContain("TOP (0)");
     }
 
     [Fact]
@@ -400,7 +446,7 @@ public class EmitTests
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "    SELECT TOP (1001) T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
@@ -2334,7 +2380,7 @@ public class EmitTests
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "    SELECT TOP (1001) T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
