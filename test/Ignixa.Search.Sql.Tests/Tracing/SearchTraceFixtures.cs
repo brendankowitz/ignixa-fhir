@@ -5,6 +5,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
 using SortOrder = Ignixa.Search.Expressions.SortOrder;
@@ -691,29 +692,6 @@ internal static class SearchTraceFixtures
             [new QueryParameter("active", "true"), new QueryParameter("identifier", "http://unknown.org/mrn|12345")],
             builder,
             resolver);
-    }
-
-    private sealed class FakeSymbolResolver : ISymbolResolver
-    {
-        public Dictionary<string, short> SearchParamIds { get; } = [];
-
-        public Dictionary<string, short> ResourceTypeIds { get; } = [];
-
-        public Dictionary<string, int> SystemIds { get; } = [];
-
-        public Dictionary<string, int> QuantityCodeIds { get; } = [];
-
-        public Task<short?> GetSearchParamIdAsync(SearchParameterInfo parameter, CancellationToken cancellationToken)
-            => Task.FromResult(parameter.Url?.ToString() is { } url && SearchParamIds.TryGetValue(url, out var id) ? (short?)id : null);
-
-        public Task<short?> GetResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
-            => Task.FromResult(ResourceTypeIds.TryGetValue(resourceType, out var id) ? (short?)id : null);
-
-        public Task<int?> GetSystemIdAsync(string system, CancellationToken cancellationToken)
-            => Task.FromResult(SystemIds.TryGetValue(system, out var id) ? (int?)id : null);
-
-        public Task<int?> GetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
-            => Task.FromResult(QuantityCodeIds.TryGetValue(code, out var id) ? (int?)id : null);
     }
 
     private sealed class CancellationCheckingResolver : ISymbolResolver
