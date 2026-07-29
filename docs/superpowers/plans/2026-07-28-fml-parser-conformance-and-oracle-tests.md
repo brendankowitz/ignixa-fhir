@@ -939,9 +939,10 @@ Append to `FmlSyntaxCoverageTests`:
 
 ```csharp
     [Theory]
-    [InlineData("<<types>>")]
-    [InlineData("<<type+>>")]
-    public void GivenAGroupTypeModeAnnotation_WhenRoundTripping_ThenTheAnnotationSurvives(string annotation)
+    [InlineData("<<types>>", GroupTypeMode.Types)]
+    [InlineData("<<type+>>", GroupTypeMode.TypeAndTypes)]
+    public void GivenAGroupTypeModeAnnotation_WhenRoundTripping_ThenTheAnnotationSurvives(
+        string annotation, GroupTypeMode expected)
     {
         var fml = $$"""
             map 'http://example.org/T' = 'T'
@@ -953,11 +954,37 @@ Append to `FmlSyntaxCoverageTests`:
 
         var reparsed = new MappingParser().Parse(new FmlSerializer().Serialize(new MappingParser().Parse(fml)));
 
-        reparsed.Groups[0].TypeMode.ShouldBe(new MappingParser().Parse(fml).Groups[0].TypeMode);
+        reparsed.Groups[0].TypeMode.ShouldBe(expected);
     }
 ```
 
-Add `using Ignixa.FhirMappingLanguage.Serialization;` to the file. If `FmlSerializer` exposes a static `Serialize` rather than an instance method, adjust the call — check the file before writing.
+**Assert against the `[InlineData]` literal, never against a second parse of the same input.** An earlier draft of this step wrote `.ShouldBe(new MappingParser().Parse(fml).Groups[0].TypeMode)`. Both sides then derive from the parser, so any parser mutation moves them together and the test passes vacuously — verified empirically: it stayed green under two parser mutations that a literal-asserting sibling caught. The same trap applies to every round-trip test later in this plan.
+
+**Also required: a serializer test for the un-annotated case.** The `if (TypeMode != None)` guard has no coverage from round-trip tests, because a spuriously-emitted `<<types>>` reparses to `Types` and an annotated fixture cannot see it. Assert on the serialized *text*:
+
+```csharp
+    [Fact]
+    public void GivenNoTypeModeAnnotation_WhenSerializing_ThenNoAnnotationIsEmitted()
+    {
+        // ... parse an un-annotated group, serialize it ...
+        fml.ShouldNotContain("<<");
+    }
+```
+
+Without it, mutating the guard to always-true leaves the whole suite green.
+
+- [ ] **Step 7b: Propagate the mode through `StructureMapBuilder`**
+
+`StructureMapBuilder.BuildGroup` hardcodes `groupNode.MutableNode["typeMode"] = "none"`. That was true by construction before this task, because no FML input could express anything else; once the annotation parses it is actively false for exactly the groups this task exists to support.
+
+The version guard must stay — R4/R4B's `map-group-type-mode` value set includes `none`, while **R5 dropped `none` entirely** (only `types` | `type-and-types`) and made the element optional. So:
+
+- R4/R4B: always write, mapping `None`→`"none"`, `Types`→`"types"`, `TypeAndTypes`→`"type-and-types"`.
+- R5: omit the element when `None`; otherwise write the same kebab-case literals.
+
+Wire literals are FHIR kebab-case (`type-and-types`), not the C# enum names. Cover both versions × both `None` and annotated in `test/Ignixa.FhirMappingLanguage.Tests/Serialization/StructureMapBuilderVersionTests.cs`.
+
+The reverse direction (`StructureMapParser`) is **out of scope** — see the deferred-work note in Task 13.
 
 - [ ] **Step 8: Run the whole FML suite**
 
