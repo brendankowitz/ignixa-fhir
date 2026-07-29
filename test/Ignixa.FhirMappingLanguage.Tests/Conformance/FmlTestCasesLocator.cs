@@ -33,6 +33,12 @@ public static class FmlTestCasesLocator
         return Path.Combine(Root, version, "structure-mapping");
     }
 
+    /// <summary>
+    /// Gets the version-independent <c>validator</c> directory that holds the official
+    /// FML validator fixtures.
+    /// </summary>
+    public static string ValidatorDirectory() => Path.Combine(Root, "validator");
+
     private static string FindRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
