@@ -404,6 +404,7 @@ internal sealed class StructuralContext
         // Known gap: STU3/R4/R4B/R5/R6 all list Device in the Patient compartment with an empty parameter list,
         // so no compartment traversal can return one and $everything silently omits it. Closing it needs a
         // version-conditional Device.patient symbol (absent in R5+) requested at the resolve stage, not here.
+        // Tracked as #379.
         var patientItselfRef = LowerPatientItself(expression.PatientIds);
         var compartmentRef = LowerEverythingCompartment(expression.PatientIds, expression.FilteredResourceTypes);
 
