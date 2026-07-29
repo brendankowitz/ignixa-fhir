@@ -541,4 +541,98 @@ public class FmlSyntaxCoverageTests
     }
 
     #endregion
+
+    [Fact]
+    public void GivenSimpleParenthesizedTransform_WhenParsing_ThenPathExpressionIsExtracted()
+    {
+        // Arrange — corpus line: tgt.gender = (item.answer.valueString)
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              src.item as item -> tgt.gender = (item.answer.valueString);
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        var target = map.Groups[0].Rules[0].Targets[0];
+        var expr = target.Transform.ShouldBeOfType<FhirPathExpression>();
+        expr.PathExpression.ShouldBe("item.answer.valueString");
+    }
+
+    [Fact]
+    public void GivenParenthesizedTransformWithOperator_WhenParsing_ThenFullExpressionTextIsExtracted()
+    {
+        // Arrange — corpus line: ext.system = ('urn:uuid:' + r.lower()) "rootuuid"
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              src -> tgt.identifer as ext, ext.system = ('urn:uuid:' + r.lower()) "rootuuid";
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        var rule = map.Groups[0].Rules[0];
+        var target = rule.Targets[1];
+        var expr = target.Transform.ShouldBeOfType<FhirPathExpression>();
+        expr.PathExpression.ShouldBe("'urn:uuid:' + r.lower()");
+        rule.Name.ShouldBe("rootuuid");
+    }
+
+    [Fact]
+    public void GivenParenthesizedTransformWithExternalConstantAndQuantity_WhenParsing_ThenFullExpressionTextIsExtracted()
+    {
+        // Arrange — corpus line: tgt.birthDate = (%value + 5 days) "plus"
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              ext.value as value -> tgt.birthDate = (%value + 5 days) "plus";
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        var rule = map.Groups[0].Rules[0];
+        var target = rule.Targets[0];
+        var expr = target.Transform.ShouldBeOfType<FhirPathExpression>();
+        expr.PathExpression.ShouldBe("%value + 5 days");
+        rule.Name.ShouldBe("plus");
+    }
+
+    [Fact]
+    public void GivenNonParenthesizedTargetWithAsAndRuleName_WhenParsing_ThenVariableAndNameAreNotSwallowedByFhirPath()
+    {
+        // Arrange — regression guard: verifies ParenthesizedFhirPathExpression was used, not the
+        // greedy FhirPathExpression, which would consume 'as v "name"' as part of the expression.
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.x = foo as v "name";
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert — the greedy FhirPathExpression would swallow 'as v "name"' into the expression;
+        // ParenthesizedFhirPathExpression cannot start with an Identifier so it falls through,
+        // leaving QualifiedIdentifier to bind 'foo' and the rule machinery to bind 'v' and 'name'.
+        var rule = map.Groups[0].Rules[0];
+        var target = rule.Targets[0];
+        target.Variable.ShouldBe("v");
+        rule.Name.ShouldBe("name");
+        target.Transform.ShouldBeOfType<IdentifierExpression>()
+            .Name.ShouldBe("foo");
+    }
 }

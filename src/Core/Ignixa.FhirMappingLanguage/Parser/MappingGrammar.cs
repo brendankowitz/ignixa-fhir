@@ -94,6 +94,75 @@ internal static class MappingGrammar
         return source.Substring(start, end - start);
     }
 
+    // Paren-branch logic shared by FhirPathExpression and ParenthesizedFhirPathExpression.
+    // Matches '(' tokens... ')' with balanced depth tracking; returns a FhirPathExpression
+    // built from the inner source text. Returns Empty when input does not start with '('.
+    private static readonly string[] UnmatchedParenErrorMessages = ["unmatched parentheses in FHIRPath expression"];
+
+    private static TokenListParserResult<MappingTokenKind, FhirPathExpression> ParseParenthesizedFhirPath(
+        TokenList<MappingTokenKind> input)
+    {
+        var lparen = Token.EqualTo(MappingTokenKind.LeftParen)(input);
+        if (!lparen.HasValue)
+            return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(input);
+
+        List<Token<MappingTokenKind>> tokens = [];
+        var current = lparen.Remainder;
+        var depth = 0;
+        Token<MappingTokenKind> lastToken = lparen.Value;
+
+        while (!current.IsAtEnd)
+        {
+            var leftParenResult = Token.EqualTo(MappingTokenKind.LeftParen)(current);
+            if (leftParenResult.HasValue)
+            {
+                depth++;
+                tokens.Add(leftParenResult.Value);
+                lastToken = leftParenResult.Value;
+                current = leftParenResult.Remainder;
+                continue;
+            }
+
+            var rightParenResult = Token.EqualTo(MappingTokenKind.RightParen)(current);
+            if (rightParenResult.HasValue)
+            {
+                if (depth == 0)
+                {
+                    lastToken = rightParenResult.Value;
+                    current = rightParenResult.Remainder;
+                    var expr = new FhirPathExpression(
+                        SourceTextOf(tokens),
+                        CreatePosition(lparen.Value, lastToken));
+                    return TokenListParserResult.Value(expr, input, current);
+                }
+                else
+                {
+                    depth--;
+                    tokens.Add(rightParenResult.Value);
+                    lastToken = rightParenResult.Value;
+                    current = rightParenResult.Remainder;
+                    continue;
+                }
+            }
+
+            var anyToken = Token.Matching<MappingTokenKind>(_ => true, "any token")(current);
+            if (anyToken.HasValue)
+            {
+                tokens.Add(anyToken.Value);
+                lastToken = anyToken.Value;
+                current = anyToken.Remainder;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(
+            input,
+            UnmatchedParenErrorMessages);
+    }
+
     // Literal parsers
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> StringLiteral =
         Token.EqualTo(MappingTokenKind.StringLiteral)
@@ -140,67 +209,7 @@ internal static class MappingGrammar
 
             if (lparen.HasValue)
             {
-                // Parenthesized expression - collect until matching close paren
-                List<Token<MappingTokenKind>> tokens = [];
-                var current = lparen.Remainder;
-                var depth = 0;
-                Token<MappingTokenKind> lastToken = lparen.Value;
-
-                // Capture tokens until we find the matching closing paren
-                while (!current.IsAtEnd)
-                {
-                    // Try to match a left paren
-                    var leftParenResult = Token.EqualTo(MappingTokenKind.LeftParen)(current);
-                    if (leftParenResult.HasValue)
-                    {
-                        depth++;
-                        tokens.Add(leftParenResult.Value);
-                        lastToken = leftParenResult.Value;
-                        current = leftParenResult.Remainder;
-                        continue;
-                    }
-
-                    // Try to match a right paren
-                    var rightParenResult = Token.EqualTo(MappingTokenKind.RightParen)(current);
-                    if (rightParenResult.HasValue)
-                    {
-                        if (depth == 0)
-                        {
-                            // Found matching closing paren - consume it and return
-                            lastToken = rightParenResult.Value;
-                            current = rightParenResult.Remainder;
-                            var expr = new FhirPathExpression(
-                                SourceTextOf(tokens),
-                                CreatePosition(lparen.Value, lastToken));
-                            return TokenListParserResult.Value(expr, input, current);
-                        }
-                        else
-                        {
-                            depth--;
-                            tokens.Add(rightParenResult.Value);
-                            lastToken = rightParenResult.Value;
-                            current = rightParenResult.Remainder;
-                            continue;
-                        }
-                    }
-
-                    // Match any other token
-                    var anyToken = Token.Matching<MappingTokenKind>(_ => true, "any token")(current);
-                    if (anyToken.HasValue)
-                    {
-                        tokens.Add(anyToken.Value);
-                        lastToken = anyToken.Value;
-                        current = anyToken.Remainder;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(
-                    input,
-                    new[] { "unmatched parentheses in FHIRPath expression" });
+                return ParseParenthesizedFhirPath(input);
             }
             else
             {
@@ -395,6 +404,12 @@ internal static class MappingGrammar
             defaultValue,
             cardinality);
 
+    // Parenthesized FHIRPath expression: '(' fpExpression ')'
+    // Implements the grammar rule: transform = '(' fpExpression ')'.
+    // Uses the shared paren-branch logic; does not fall back to an unparenthesized form.
+    private static readonly TokenListParser<MappingTokenKind, FhirPathExpression> ParenthesizedFhirPathExpression =
+        ParseParenthesizedFhirPath;
+
     // Target: [context] [= expression] [as variable] [list mode]
     // Note: The order is context -> expression -> as variable -> list mode
     // This matches FHIR spec: "tgt.name = create('Type') as variable listmode"
@@ -409,6 +424,7 @@ internal static class MappingGrammar
                 .Or(DecimalLiteral.Select(l => (Expression)l))
                 .Or(BooleanLiteral.Select(l => (Expression)l))
                 .Or(Transform.Select(t => (Expression)t).Try())
+                .Or(ParenthesizedFhirPathExpression.Select(e => (Expression)e))
                 .Or(QualifiedIdentifier)
             select expr
         ).OptionalOrDefault()

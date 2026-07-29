@@ -34,51 +34,35 @@ public class FmlCorpusParseTests(ITestOutputHelper output)
     ///   (b) explicitly deferred — known out-of-scope construct
     ///   (c) other — new/unknown failure mode
     ///
-    /// All current failures are classification (a): the parser does not handle parenthesized
-    /// expressions `(expr)` when they appear as target-value assignments (e.g. `tgt.x = (expr)`)
-    /// or as arguments to transform function calls (e.g. `evaluate(src, iif(...))`).
-    /// This is a single grammar gap not addressed by any of the five Part A fixes.
-    /// Root cause: "unexpected leftparen `(`, expected …" in target-value or transform position.
+    /// qr2cda-eval.map is classification (b): it uses nested function calls of the form
+    /// evaluate(src, iif(src.is(X),"a","b")) as a transform. The inner iif() is a
+    /// TransformArgumentExpression which the greedy FhirPathExpression fallback cannot safely
+    /// expand without a parenthesised-only guard — and the RightParen that closes iif() is
+    /// not in the fallback terminator set. This construct is explicitly deferred: the file
+    /// produces XML-format CDA output and is excluded from the end-to-end oracle.
     /// </summary>
     public static TheoryData<string, int, string[]> CorpusTheoryData() => new()
     {
         // r5: 15 .map files measured in vendored release 1.7.46.
-        // parsed: 9/15
-        // Failures — all (a) parenthesized-expression gap:
-        //   qr2cda-eval.map        line 7  col 50  title.data= evaluate(src, iif(src.is(QuestionnaireResponse),"Hello CDA","badbadbad")) "eval"
-        //   qr2pat-gender.map      line 11 col 74  tgt.gender = (item.answer.valueString)
-        //   qr2pat-humannameshared.map line 14 col 71  tgt.gender = (item.answer.valueString)
-        //   qr2pat-humannametwice.map  line 14 col 71  tgt.gender = (item.answer.valueString)
-        //   qr2patfordates.map     line 9  col 42  tgt.birthDate = (%value + 5 days) "plus"
-        //   syntax.map             line 17 col 45  ext.system = ('urn:uuid:' + r.lower()) "rootuuid"
+        // parsed: 14/15
+        // Remaining failure — classification (b) explicitly deferred:
+        //   qr2cda-eval.map: evaluate(src, iif(src.is(QuestionnaireResponse),"Hello CDA","badbadbad"))
+        //   nested iif() inside evaluate() — greedy-swallow hazard; CDA output excluded from oracle.
         {
             "r5", 15,
             [
                 "qr2cda-eval.map",
-                "qr2pat-gender.map",
-                "qr2pat-humannameshared.map",
-                "qr2pat-humannametwice.map",
-                "qr2patfordates.map",
-                "syntax.map",
             ]
         },
 
         // r4b: 12 .map files measured in vendored release 1.7.46.
-        // parsed: 7/12
-        // Failures — all (a) parenthesized-expression gap:
-        //   qr2cda-eval.map        line 7  col 50  title.data= evaluate(src, iif(src.is(QuestionnaireResponse),"Hello CDA","badbadbad")) "eval"
-        //   qr2pat-gender.map      line 11 col 74  tgt.gender = (item.answer.valueString)
-        //   qr2pat-humannameshared.map line 14 col 71  tgt.gender = (item.answer.valueString)
-        //   qr2pat-humannametwice.map  line 14 col 71  tgt.gender = (item.answer.valueString)
-        //   syntax.map             line 18 col 45  ext.system = ('urn:uuid:' + r.lower()) "rootuuid"
+        // parsed: 11/12
+        // Remaining failure — classification (b) explicitly deferred:
+        //   qr2cda-eval.map: same nested evaluate/iif as r5 variant.
         {
             "r4b", 12,
             [
                 "qr2cda-eval.map",
-                "qr2pat-gender.map",
-                "qr2pat-humannameshared.map",
-                "qr2pat-humannametwice.map",
-                "syntax.map",
             ]
         },
     };
