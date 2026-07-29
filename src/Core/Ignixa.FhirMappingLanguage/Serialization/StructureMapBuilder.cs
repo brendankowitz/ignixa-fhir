@@ -116,7 +116,18 @@ public class StructureMapBuilder
         // element optional, so omit it there rather than writing a value R5 doesn't accept.
         if (_targetVersion < FhirVersion.R5)
         {
-            groupNode.MutableNode["typeMode"] = "none";
+            groupNode.MutableNode["typeMode"] = group.TypeMode switch
+            {
+                GroupTypeMode.Types => "types",
+                GroupTypeMode.TypeAndTypes => "type-and-types",
+                _ => "none"
+            };
+        }
+        else if (group.TypeMode != GroupTypeMode.None)
+        {
+            groupNode.MutableNode["typeMode"] = group.TypeMode == GroupTypeMode.TypeAndTypes
+                ? "type-and-types"
+                : "types";
         }
 
         // Add input parameters

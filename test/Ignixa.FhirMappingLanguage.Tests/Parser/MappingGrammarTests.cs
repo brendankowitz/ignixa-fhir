@@ -38,19 +38,18 @@ group Main(source src : Patient, target tgt : Bundle) {
     }
 
     [Fact]
-    public void GivenMapWithNoGroups_WhenParsing_ThenReturnsMapWithEmptyGroups()
+    public void GivenMapWithNoGroups_WhenParsing_ThenThrowsParseException()
     {
         // Arrange
+        // Classification (a): the official FML grammar has groupDeclaration+, so zero groups is invalid.
+        // The old test asserted empty-groups parse success, which was always wrong per spec.
         var mappingText = @"
 map 'http://example.org/fhir/StructureMap/Empty' = 'EmptyMap'
 ";
         var compiler = new MappingParser();
 
-        // Act
-        var result = compiler.Parse(mappingText);
-
-        // Assert
-        result.Groups.ShouldBeEmpty();
+        // Act & Assert
+        Should.Throw<ParseException>(() => compiler.Parse(mappingText));
     }
 
     #endregion
@@ -725,15 +724,37 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
     #region Error Cases Tests
 
     [Fact]
-    public void GivenMissingMapKeyword_WhenParsing_ThenThrowsParseException()
+    public void GivenUnconsumedTrailingTokens_WhenParsing_ThenThrowsParseException()
     {
         // Arrange
+        // The 'map' keyword is optional since R6; no grammar rule consumes a bare string literal,
+        // so .AtEnd() rejects the input regardless of what follows it.
         var mappingText = "'http://example.org' = 'Test'";
         var compiler = new MappingParser();
 
         // Act & Assert
-        var act = () => compiler.Parse(mappingText);
-        Should.Throw<ParseException>(act);
+        var ex = Should.Throw<ParseException>(() => compiler.Parse(mappingText));
+        ex.Message.ShouldStartWith("Failed to parse mapping expression at line 1, column 1:");
+    }
+
+    [Fact]
+    public void GivenCompleteValidMapWithTrailingJunk_WhenParsing_ThenThrowsParseException()
+    {
+        // Arrange — a fully valid map (header + group) followed by tokens no rule consumes
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+
+            extra
+            """;
+        var compiler = new MappingParser();
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => compiler.Parse(Fml));
+        ex.Message.ShouldStartWith("Failed to parse mapping expression at line");
     }
 
     [Fact]

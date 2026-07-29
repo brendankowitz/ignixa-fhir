@@ -10,6 +10,7 @@ using Ignixa.FhirMappingLanguage.Lexer;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
+using System.Text.RegularExpressions;
 
 namespace Ignixa.FhirMappingLanguage.Parser;
 
@@ -42,28 +43,129 @@ internal static class MappingGrammar
     // Helper: Unescape string
     private static string UnescapeString(string str)
     {
-        if (str.StartsWith('\'') && str.EndsWith('\''))
+        if (str.StartsWith('\'') && str.EndsWith('\'') && str.Length >= 2)
         {
             str = str.Substring(1, str.Length - 2);
             str = str.Replace("''", "'", StringComparison.Ordinal);
+            return str;
         }
+
+        if (str.StartsWith('"') && str.EndsWith('"') && str.Length >= 2)
+        {
+            str = str.Substring(1, str.Length - 2);
+            str = str.Replace("\\\"", "\"", StringComparison.Ordinal)
+                     .Replace("\\\\", "\\", StringComparison.Ordinal);
+            return str;
+        }
+
         return str;
     }
 
     // Helper: Unescape identifier
     private static string UnescapeIdentifier(string id)
     {
-        if ((id.StartsWith('`') && id.EndsWith('`')) ||
-            (id.StartsWith('"') && id.EndsWith('"')))
+        if (id.StartsWith('`') && id.EndsWith('`'))
         {
             return id.Substring(1, id.Length - 2);
         }
         return id;
     }
 
+    // Helper: reconstruct the original source text spanned by a token run.
+    // Re-serializing tokens loses whitespace, which corrupts embedded FHIRPath
+    // (e.g. "linkId.value in (...)" would collapse to "linkId.valuein(...)").
+    private static string SourceTextOf(IReadOnlyList<Token<MappingTokenKind>> tokens)
+    {
+        if (tokens.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var source = tokens[0].Span.Source;
+        if (source is null)
+        {
+            throw new InvalidOperationException(
+                "SourceTextOf requires tokens produced from the parsed input; token span has no source.");
+        }
+
+        var start = (int)tokens[0].Position.Absolute;
+        var last = tokens[^1];
+        var end = (int)last.Position.Absolute + last.Span.Length;
+        return source.Substring(start, end - start);
+    }
+
+    private static readonly string[] UnmatchedParenErrorMessages = ["unmatched parentheses in FHIRPath expression"];
+
+    // Shared by FhirPathExpression and ParenthesizedFhirPathExpression. Returns Empty rather than
+    // failing hard when input does not start with '(', so callers can fall through to other alternatives.
+    private static TokenListParserResult<MappingTokenKind, FhirPathExpression> ParseParenthesizedFhirPath(
+        TokenList<MappingTokenKind> input)
+    {
+        var lparen = Token.EqualTo(MappingTokenKind.LeftParen)(input);
+        if (!lparen.HasValue)
+            return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(input);
+
+        List<Token<MappingTokenKind>> tokens = [];
+        var current = lparen.Remainder;
+        var depth = 0;
+        Token<MappingTokenKind> lastToken = lparen.Value;
+
+        while (!current.IsAtEnd)
+        {
+            var leftParenResult = Token.EqualTo(MappingTokenKind.LeftParen)(current);
+            if (leftParenResult.HasValue)
+            {
+                depth++;
+                tokens.Add(leftParenResult.Value);
+                lastToken = leftParenResult.Value;
+                current = leftParenResult.Remainder;
+                continue;
+            }
+
+            var rightParenResult = Token.EqualTo(MappingTokenKind.RightParen)(current);
+            if (rightParenResult.HasValue)
+            {
+                if (depth == 0)
+                {
+                    lastToken = rightParenResult.Value;
+                    current = rightParenResult.Remainder;
+                    var expr = new FhirPathExpression(
+                        SourceTextOf(tokens),
+                        CreatePosition(lparen.Value, lastToken));
+                    return TokenListParserResult.Value(expr, input, current);
+                }
+                else
+                {
+                    depth--;
+                    tokens.Add(rightParenResult.Value);
+                    lastToken = rightParenResult.Value;
+                    current = rightParenResult.Remainder;
+                    continue;
+                }
+            }
+
+            var anyToken = Token.Matching<MappingTokenKind>(_ => true, "any token")(current);
+            if (anyToken.HasValue)
+            {
+                tokens.Add(anyToken.Value);
+                lastToken = anyToken.Value;
+                current = anyToken.Remainder;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(
+            input,
+            UnmatchedParenErrorMessages);
+    }
+
     // Literal parsers
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> StringLiteral =
         Token.EqualTo(MappingTokenKind.StringLiteral)
+            .Or(Token.EqualTo(MappingTokenKind.DoubleQuotedString))
             .Select(t => new LiteralExpression(UnescapeString(t.ToStringValue()), CreatePosition(t)));
 
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> IntegerLiteral =
@@ -106,67 +208,7 @@ internal static class MappingGrammar
 
             if (lparen.HasValue)
             {
-                // Parenthesized expression - collect until matching close paren
-                List<Token<MappingTokenKind>> tokens = [];
-                var current = lparen.Remainder;
-                var depth = 0;
-                Token<MappingTokenKind> lastToken = lparen.Value;
-
-                // Capture tokens until we find the matching closing paren
-                while (!current.IsAtEnd)
-                {
-                    // Try to match a left paren
-                    var leftParenResult = Token.EqualTo(MappingTokenKind.LeftParen)(current);
-                    if (leftParenResult.HasValue)
-                    {
-                        depth++;
-                        tokens.Add(leftParenResult.Value);
-                        lastToken = leftParenResult.Value;
-                        current = leftParenResult.Remainder;
-                        continue;
-                    }
-
-                    // Try to match a right paren
-                    var rightParenResult = Token.EqualTo(MappingTokenKind.RightParen)(current);
-                    if (rightParenResult.HasValue)
-                    {
-                        if (depth == 0)
-                        {
-                            // Found matching closing paren - consume it and return
-                            lastToken = rightParenResult.Value;
-                            current = rightParenResult.Remainder;
-                            var expr = new FhirPathExpression(
-                                string.Join("", tokens.Select(t => t.ToStringValue())),
-                                CreatePosition(lparen.Value, lastToken));
-                            return TokenListParserResult.Value(expr, input, current);
-                        }
-                        else
-                        {
-                            depth--;
-                            tokens.Add(rightParenResult.Value);
-                            lastToken = rightParenResult.Value;
-                            current = rightParenResult.Remainder;
-                            continue;
-                        }
-                    }
-
-                    // Match any other token
-                    var anyToken = Token.Matching<MappingTokenKind>(_ => true, "any token")(current);
-                    if (anyToken.HasValue)
-                    {
-                        tokens.Add(anyToken.Value);
-                        lastToken = anyToken.Value;
-                        current = anyToken.Remainder;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(
-                    input,
-                    new[] { "unmatched parentheses in FHIRPath expression" });
+                return ParseParenthesizedFhirPath(input);
             }
             else
             {
@@ -221,7 +263,7 @@ internal static class MappingGrammar
                     return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(input);
 
                 var expr = new FhirPathExpression(
-                    string.Join("", tokens.Select(t => t.ToStringValue())),
+                    SourceTextOf(tokens),
                     CreatePosition(tokens[0], lastToken!.Value));
                 return TokenListParserResult.Value(expr, input, current);
             }
@@ -361,6 +403,12 @@ internal static class MappingGrammar
             defaultValue,
             cardinality);
 
+    // Grammar rule: transform = '(' fpExpression ')'. Deliberately parenthesized-only — falling back
+    // to an unparenthesized form would let FhirPathExpression's greedy branch swallow a trailing
+    // 'as <var>' and rule name, since neither is in its terminator set.
+    private static readonly TokenListParser<MappingTokenKind, FhirPathExpression> ParenthesizedFhirPathExpression =
+        ParseParenthesizedFhirPath;
+
     // Target: [context] [= expression] [as variable] [list mode]
     // Note: The order is context -> expression -> as variable -> list mode
     // This matches FHIR spec: "tgt.name = create('Type') as variable listmode"
@@ -375,6 +423,7 @@ internal static class MappingGrammar
                 .Or(DecimalLiteral.Select(l => (Expression)l))
                 .Or(BooleanLiteral.Select(l => (Expression)l))
                 .Or(Transform.Select(t => (Expression)t).Try())
+                .Or(ParenthesizedFhirPathExpression.Select(e => (Expression)e))
                 .Or(QualifiedIdentifier)
             select expr
         ).OptionalOrDefault()
@@ -473,7 +522,7 @@ internal static class MappingGrammar
     // ConceptMap declaration: conceptmap "#id" { prefixes codeMaps }
     private static readonly TokenListParser<MappingTokenKind, ConceptMapDeclarationExpression> ConceptMapDeclaration =
         from cmToken in Token.EqualTo(MappingTokenKind.ConceptMap)
-        from id in Token.EqualTo(MappingTokenKind.StringLiteral).Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier))
+        from id in Token.EqualTo(MappingTokenKind.StringLiteral).Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier)).Or(Token.EqualTo(MappingTokenKind.DoubleQuotedString))
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
         from prefixes in ConceptMapPrefix.Many()
         from codeMaps in ConceptMapCodeMap.Many()
@@ -484,7 +533,21 @@ internal static class MappingGrammar
             codeMaps.Any() ? [new ConceptMapGroupExpression(null, null, codeMaps)] : [],
             CreatePosition(cmToken));
 
-    // Group: group Name(params) [extends OtherGroup] { rules }
+    // Group type mode annotation: <<types>> or <<type+>>
+    // Note: '<<' is two LeftAngle tokens - the lexer deliberately has no '<<' token.
+    // The grammar is closed: only <<types>> and <<type+>> are valid; <<type>> is rejected.
+    private static readonly TokenListParser<MappingTokenKind, GroupTypeMode> GroupTypeModeAnnotation =
+        from open1 in Token.EqualTo(MappingTokenKind.LeftAngle)
+        from open2 in Token.EqualTo(MappingTokenKind.LeftAngle)
+        from mode in Token.EqualTo(MappingTokenKind.Types).Value(GroupTypeMode.Types)
+            .Or(from typeToken in Token.EqualTo(MappingTokenKind.Type)
+                from plus in Token.EqualTo(MappingTokenKind.Plus)
+                select GroupTypeMode.TypeAndTypes)
+        from close1 in Token.EqualTo(MappingTokenKind.RightAngle)
+        from close2 in Token.EqualTo(MappingTokenKind.RightAngle)
+        select mode;
+
+    // Group: group Name(params) [extends OtherGroup] [<<typeMode>>] { rules }
     private static readonly TokenListParser<MappingTokenKind, GroupExpression> Group =
         from groupToken in Token.EqualTo(MappingTokenKind.Group)
         from name in Identifier
@@ -496,6 +559,7 @@ internal static class MappingGrammar
             from extendName in Identifier
             select extendName.Name
         ).OptionalOrDefault()
+        from typeMode in GroupTypeModeAnnotation.OptionalOrDefault(GroupTypeMode.None)
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
         from rules in Rule.Many()
         from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
@@ -504,26 +568,79 @@ internal static class MappingGrammar
             parameters,
             extends,
             rules,
+            typeMode,
             CreatePosition(groupToken));
 
     // Map: map "url" = "Identifier" [conceptMaps]* [uses]* [imports]* [constants]* [groups]*
-    public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
-        from mapToken in Token.EqualTo(MappingTokenKind.Map)
+    //   OR metadata-based R6 form: /// key = 'value' … [groups]*
+    private static readonly Regex MetadataLinePattern = new(
+        @"^///\s+(?<key>[A-Za-z_][A-Za-z0-9_.\-]*)\s*=\s*(?<value>.*?)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly TokenListParser<MappingTokenKind, KeyValuePair<string, string>> MetadataDeclaration =
+        Token.EqualTo(MappingTokenKind.MetadataLine)
+            .Select(t =>
+            {
+                var match = MetadataLinePattern.Match(t.ToStringValue());
+                if (!match.Success)
+                {
+                    throw new ParseException(
+                        $"Malformed metadata declaration at line {t.Position.Line}, column {t.Position.Column}: expected '/// key = value' format.",
+                        t.Position);
+                }
+
+                return new KeyValuePair<string, string>(
+                    match.Groups["key"].Value,
+                    UnescapeString(match.Groups["value"].Value));
+            });
+
+    private sealed record MapHeaderInfo(string Url, string Identifier, ISourcePositionInfo Position);
+
+    private static readonly TokenListParser<MappingTokenKind, MapHeaderInfo?> MapHeader =
+        (from mapToken in Token.EqualTo(MappingTokenKind.Map)
         from url in StringLiteral
         from equalsToken in Token.EqualTo(MappingTokenKind.Equals)
         from identifier in StringLiteral
-        from conceptMaps in ConceptMapDeclaration.Many()
-        from uses in Uses.Many()
-        from imports in Imports.Many()
-        from constants in Constant.Many()
-        from groups in Group.Many()
-        select new MapExpression(
-            url.Value.ToString()!,
-            identifier.Value.ToString()!,
+        select new MapHeaderInfo(url.Value.ToString()!, identifier.Value.ToString()!, CreatePosition(mapToken)))
+        .Select(h => (MapHeaderInfo?)h);
+
+    private static MapExpression BuildMap(
+        KeyValuePair<string, string>[] metadataLines,
+        MapHeaderInfo? header,
+        ConceptMapDeclarationExpression[] conceptMaps,
+        UsesExpression[] uses,
+        ImportsExpression[] imports,
+        ConstantDeclarationExpression[] constants,
+        GroupExpression[] groups)
+    {
+        var metaDict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var kvp in metadataLines)
+        {
+            metaDict[kvp.Key] = kvp.Value;
+        }
+
+        var url = header?.Url ?? (metaDict.GetValueOrDefault("url") ?? string.Empty);
+        var identifier = header?.Identifier ?? (metaDict.GetValueOrDefault("name") ?? string.Empty);
+
+        return new MapExpression(
+            url,
+            identifier,
             uses,
             imports,
             groups,
             conceptMaps,
             constants,
-            CreatePosition(mapToken));
+            metaDict,
+            header?.Position);
+    }
+
+    public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
+        from metadataLines in MetadataDeclaration.Many()
+        from header in MapHeader.OptionalOrDefault()
+        from conceptMaps in ConceptMapDeclaration.Many()
+        from uses in Uses.Many()
+        from imports in Imports.Many()
+        from constants in Constant.Many()
+        from groups in Group.Many()
+        select BuildMap(metadataLines, header, conceptMaps, uses, imports, constants, groups);
 }
