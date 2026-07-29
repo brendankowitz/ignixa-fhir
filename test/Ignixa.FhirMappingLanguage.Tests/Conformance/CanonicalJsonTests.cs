@@ -112,15 +112,9 @@ public class CanonicalJsonTests
         result.ShouldBe(expected);
     }
 
-    // Guards: ArgumentException.ThrowIfNullOrWhiteSpace sets ParamName to the argument expression.
-    // Asserting ParamName prevents a false pass from an unrelated call throwing the same exception type.
-    [Fact]
-    public void GivenNullInput_WhenCanonicalizing_ThenThrowsArgumentExceptionWithCorrectParamName()
-    {
-        var exception = Should.Throw<ArgumentException>(() => CanonicalJson.Canonicalize(null!));
-        exception.ParamName.ShouldBe("json");
-    }
-
+    // ParamName is asserted so these fail if some unrelated call throws ArgumentException instead.
+    // Null is deliberately not covered: JsonNode.Parse throws ArgumentNullException with the same
+    // ParamName, so such a test would pass whether or not the guard exists.
     [Fact]
     public void GivenEmptyInput_WhenCanonicalizing_ThenThrowsArgumentExceptionWithCorrectParamName()
     {
