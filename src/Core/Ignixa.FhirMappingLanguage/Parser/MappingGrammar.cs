@@ -559,17 +559,19 @@ internal static class MappingGrammar
     // Map: map "url" = "Identifier" [conceptMaps]* [uses]* [imports]* [constants]* [groups]*
     //   OR metadata-based R6 form: /// key = 'value' … [groups]*
     private static readonly Regex MetadataLinePattern = new(
-        @"^///\s*(?<key>[A-Za-z_][A-Za-z0-9_.\-]*)\s*=\s*(?<value>.*?)\s*$",
+        @"^///\s+(?<key>[A-Za-z_][A-Za-z0-9_.\-]*)\s*=\s*(?<value>.*?)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly TokenListParser<MappingTokenKind, KeyValuePair<string, string>?> MetadataDeclaration =
+    private static readonly TokenListParser<MappingTokenKind, KeyValuePair<string, string>> MetadataDeclaration =
         Token.EqualTo(MappingTokenKind.MetadataLine)
             .Select(t =>
             {
                 var match = MetadataLinePattern.Match(t.ToStringValue());
                 if (!match.Success)
                 {
-                    return (KeyValuePair<string, string>?)null;
+                    throw new ParseException(
+                        $"Malformed metadata declaration at line {t.Position.Line}, column {t.Position.Column}: expected '/// key = value' format.",
+                        t.Position);
                 }
 
                 return new KeyValuePair<string, string>(
@@ -588,7 +590,7 @@ internal static class MappingGrammar
         .Select(h => (MapHeaderInfo?)h);
 
     private static MapExpression BuildMap(
-        KeyValuePair<string, string>?[] metadataLines,
+        KeyValuePair<string, string>[] metadataLines,
         MapHeaderInfo? header,
         ConceptMapDeclarationExpression[] conceptMaps,
         UsesExpression[] uses,
@@ -597,7 +599,7 @@ internal static class MappingGrammar
         GroupExpression[] groups)
     {
         var metaDict = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var kvp in metadataLines.Where(kvp => kvp.HasValue).Select(kvp => kvp!.Value))
+        foreach (var kvp in metadataLines)
         {
             metaDict[kvp.Key] = kvp.Value;
         }

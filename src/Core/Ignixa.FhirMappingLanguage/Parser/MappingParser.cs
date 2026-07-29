@@ -66,12 +66,10 @@ public class MappingParser
                     result.ErrorPosition);
             }
 
-            if (result.Value.Groups.Count == 0 &&
-                string.IsNullOrEmpty(result.Value.Url) &&
-                string.IsNullOrEmpty(result.Value.Identifier))
+            if (result.Value.Groups.Count == 0)
             {
                 throw new ParseException(
-                    "The input has no groups and no url or name from a map header or metadata declarations.",
+                    "The input has no group declarations; at least one group is required.",
                     Position.Zero);
             }
 

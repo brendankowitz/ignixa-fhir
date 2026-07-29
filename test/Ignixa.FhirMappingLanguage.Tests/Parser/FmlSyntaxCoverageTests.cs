@@ -372,14 +372,172 @@ public class FmlSyntaxCoverageTests
     }
 
     [Fact]
-    public void GivenMetadataWithoutUrlOrGroups_WhenParsing_ThenExceptionMessageDescribesActualCondition()
+    public void GivenMetadataWithNoGroups_WhenParsing_ThenExceptionMessageDescribesActualCondition()
     {
-        // Arrange — title metadata is present but url/name are absent and there are no groups
+        // Arrange — title metadata is present but there are no groups; groups are mandatory per spec
+        // Classification (a): old guard checked url+identifier conjuncts, which was non-conformant;
+        // groupDeclaration+ in the official grammar means groups are the only required element.
         const string Fml = "/// title = 'Only a title'";
 
         // Act & Assert
         var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
-        ex.Message.ShouldBe("The input has no groups and no url or name from a map header or metadata declarations.");
+        ex.Message.ShouldBe("The input has no group declarations; at least one group is required.");
+    }
+
+    // ── FIX 1: malformed metadata declarations ──────────────────────────────────
+
+    [Fact]
+    public void GivenMetadataLineWithMissingEquals_WhenParsing_ThenThrowsWithLineInfo()
+    {
+        // Arrange — '/// url value' has no '='; must be rejected with position, not silently dropped
+        const string Fml = """
+            /// url 'http://example.org/ShouldNotBeSilentlyDropped'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+        ex.Message.ShouldContain("Malformed metadata declaration");
+        ex.Message.ShouldContain("at line 1");
+    }
+
+    [Fact]
+    public void GivenMetadataKeyStartingWithDigit_WhenParsing_ThenThrowsWithLineInfo()
+    {
+        // Arrange — '/// 1title = x' has a key starting with a digit, violating the key grammar
+        const string Fml = """
+            /// 1title = 'x'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+        ex.Message.ShouldContain("Malformed metadata declaration");
+        ex.Message.ShouldContain("at line 1");
+    }
+
+    [Fact]
+    public void GivenFourSlashPrefix_WhenParsing_ThenThrowsWithLineInfo()
+    {
+        // Arrange — '////' is not a valid metadata prefix (no whitespace after ///)
+        const string Fml = """
+            //// url = 'http://example.org'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+        ex.Message.ShouldContain("Malformed metadata declaration");
+        ex.Message.ShouldContain("at line 1");
+    }
+
+    [Fact]
+    public void GivenNoSpaceAfterTripleSlash_WhenParsing_ThenThrowsWithLineInfo()
+    {
+        // Arrange — '///url = x' omits required whitespace between /// and key
+        const string Fml = """
+            ///url = 'http://example.org'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+        ex.Message.ShouldContain("Malformed metadata declaration");
+        ex.Message.ShouldContain("at line 1");
+    }
+
+    [Fact]
+    public void GivenMetadataWithEmptyValue_WhenParsing_ThenValueIsEmptyString()
+    {
+        // Arrange — the grammar makes the value optional; '/// title =' is valid with value = ""
+        const string Fml = """
+            /// title =
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Metadata["title"].ShouldBe("");
+    }
+
+    // ── FIX 3: UnescapeString path pinning ──────────────────────────────────────
+
+    [Fact]
+    public void GivenUnquotedMetadataValue_WhenParsing_ThenValueIsReturnedLiterally()
+    {
+        // Arrange — bare unquoted value is returned as-is by UnescapeString
+        const string Fml = """
+            /// status = draft
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Metadata["status"].ShouldBe("draft");
+    }
+
+    [Fact]
+    public void GivenDoubleQuotedMetadataValue_WhenParsing_ThenQuotesAreStripped()
+    {
+        // Arrange — double-quoted value has its surrounding quotes removed by UnescapeString
+        const string Fml = """
+            /// title = "Hello World"
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Metadata["title"].ShouldBe("Hello World");
+    }
+
+    // ── FIX 4: Ordinal case-sensitivity pin ─────────────────────────────────────
+
+    [Fact]
+    public void GivenUpperCaseMetadataUrlKey_WhenParsing_ThenKeyPreservedAndMapUrlRemainsEmpty()
+    {
+        // Arrange — 'URL' (uppercase) is a different key from 'url' (lowercase) under Ordinal compare;
+        // GetValueOrDefault("url") must NOT find it, so MapExpression.Url stays empty.
+        const string Fml = """
+            /// URL = 'http://example.org/UpperCase'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Metadata["URL"].ShouldBe("http://example.org/UpperCase");
+        map.Url.ShouldBe("");
     }
 
     #endregion
