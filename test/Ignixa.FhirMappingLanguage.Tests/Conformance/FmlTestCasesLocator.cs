@@ -27,8 +27,11 @@ public static class FmlTestCasesLocator
     /// Gets the <c>structure-mapping</c> directory for a FHIR version folder such as
     /// <c>r5</c> or <c>r4b</c>.
     /// </summary>
-    public static string StructureMappingDirectory(string version) =>
-        Path.Combine(Root, version, "structure-mapping");
+    public static string StructureMappingDirectory(string version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        return Path.Combine(Root, version, "structure-mapping");
+    }
 
     private static string FindRoot()
     {

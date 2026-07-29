@@ -19,4 +19,13 @@ public class FmlTestCasesLocatorTests
 
         Directory.Exists(directory).ShouldBeTrue($"Expected the vendored corpus at {directory}. Run 'dotnet build' to download it.");
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void GivenABlankVersion_WhenLocatingStructureMappingDirectory_ThenThrowsArgumentException(string? version)
+    {
+        Should.Throw<ArgumentException>(() => FmlTestCasesLocator.StructureMappingDirectory(version!));
+    }
 }
