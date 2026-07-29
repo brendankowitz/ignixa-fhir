@@ -728,13 +728,14 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
     public void GivenUnconsumedTrailingTokens_WhenParsing_ThenThrowsParseException()
     {
         // Arrange
-        // The leading 'map' keyword is optional since R6; the failure comes from the unconsumed '= 'Test'' tokens.
+        // The 'map' keyword is optional since R6; no grammar rule consumes a bare string literal,
+        // so .AtEnd() rejects the input regardless of what follows it.
         var mappingText = "'http://example.org' = 'Test'";
         var compiler = new MappingParser();
 
         // Act & Assert
-        var act = () => compiler.Parse(mappingText);
-        Should.Throw<ParseException>(act);
+        var ex = Should.Throw<ParseException>(() => compiler.Parse(mappingText));
+        ex.Message.ShouldStartWith("Failed to parse mapping expression at line 1, column 1:");
     }
 
     [Fact]
