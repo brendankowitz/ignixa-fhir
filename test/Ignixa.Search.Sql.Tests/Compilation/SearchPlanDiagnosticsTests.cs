@@ -87,6 +87,59 @@ public class SearchPlanDiagnosticsTests
         negation.ContributingOrdinals.ShouldBe([parameter.Ordinal]);
     }
 
+    [Fact]
+    public async Task GivenAnAllowedResourceTypeList_WhenTraced_ThenTheAuthorizationIntersectStillClosesOverTheParameter()
+    {
+        // The allow-list rewrites the match into an Intersect the query never wrote. Its CTE has no parameter
+        // of its own, so ContributingOrdinals -- the property a consumer asks "which parameters is this row
+        // about" through -- is the only link back to the search. Losing it blanks the provenance pane for
+        // every scoped (SMART) search, which is exactly the case a provenance tool is most needed for.
+        var result = await CompilationFixtures.TracePatientNameWithAllowedResourceTypesAsync();
+
+        result.Succeeded.ShouldBeTrue();
+        var diagnostics = result.Plan.Diagnostics.ShouldNotBeNull();
+        var parameter = diagnostics.Parameters.ShouldHaveSingleItem();
+        var trace = diagnostics.PlanTrace.ShouldNotBeNull();
+
+        // Every CTE is addressable: the array is sized from the plan, so a filter that appended CTEs without
+        // provenance would show up as a length mismatch rather than as a silently missing row.
+        trace.Ctes.Count.ShouldBe(result.Plan.Query.Ctes.Count);
+
+        var root = trace.Ctes[result.Plan.Query.Match.Index];
+        root.ParameterOrdinal.ShouldBeNull();
+        root.ContributingOrdinals.ShouldBe([parameter.Ordinal]);
+
+        // The allow-list's own base set is authorization input, not something the caller searched for, so it
+        // is correctly attributable to no parameter at all.
+        var allowedBaseSet = trace.Rows
+            .Select((row, index) => (row, index))
+            .Single(x => x.row.Kind == PlanRowKind.MultiTypeResourceSource);
+        trace.Ctes[allowedBaseSet.index].ParameterOrdinal.ShouldBeNull();
+        trace.Ctes[allowedBaseSet.index].ContributingOrdinals.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAnIncludesOnlyPageWithABoundary_WhenTraced_ThenTheBoundaryIsAnAddressablePlanRow()
+    {
+        // The resume boundary decides which include rows a $includes continuation returns. It is a plan node,
+        // not a CTE, so it reaches a consumer only as an explain row -- and a row absent from Rows is a paging
+        // decision with no representation in the trace at all.
+        var result = await CompilationFixtures.TraceIncludesOnlyWithBoundaryAsync();
+
+        result.Succeeded.ShouldBeTrue();
+        var trace = result.Plan.Diagnostics.ShouldNotBeNull().PlanTrace.ShouldNotBeNull();
+
+        var boundary = trace.Rows.Where(r => r.Kind == PlanRowKind.IncludeBoundary).ShouldHaveSingleItem();
+        boundary.CanonicalLabel.ShouldBe("includeBoundary");
+        boundary.ReferencedCteIndexes.ShouldBeEmpty();
+        trace.Explain.ShouldContain("includeBoundary");
+
+        // Rows and Ctes are indexed independently: Ctes covers the CTE graph only, so a non-CTE row must not
+        // push the plan into claiming provenance for something that is not a CTE.
+        trace.Ctes.Count.ShouldBe(result.Plan.Query.Ctes.Count);
+        trace.Rows.Count.ShouldBeGreaterThan(trace.Ctes.Count);
+    }
+
     private static IEnumerable<Expression> Flatten(Expression node)
     {
         yield return node;

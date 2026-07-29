@@ -304,6 +304,66 @@ internal static class CompilationFixtures
             [new QueryParameter("active", "true"), new QueryParameter("_include", "Patient:organization")], FullDiagnostics);
     }
 
+    /// <summary>Patient?name=Smith compiled under AllowedResourceTypes = ["Patient"]. The allow-list wraps the
+    /// match in an Intersect against the allowed types' base set, so the plan's root is a structural CTE the
+    /// query never wrote -- the shape that proves an authorization filter does not sever provenance.</summary>
+    public static Task<SearchPlanResult> TracePatientNameWithAllowedResourceTypesAsync()
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var predicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+        var expression = new SearchParameterExpression(nameParam, predicate);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression, AllowedResourceTypes = ["Patient"] },
+            [new ParameterTrace(0, "name", null, "Smith", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[nameParam.Url!.ToString()] = 202;
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient", [new QueryParameter("name", "Smith")], FullDiagnostics);
+    }
+
+    /// <summary>The include fixture compiled as the second page of an $includes request: IncludesOnly with an
+    /// IncludeBoundary, the only shape that emits an includeBoundary plan row.</summary>
+    public static Task<SearchPlanResult> TraceIncludesOnlyWithBoundaryAsync()
+    {
+        var activeParam = new SearchParameterInfo("active", "active", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Patient-active"));
+        var predicate = new SearchParameterPredicateExpression(activeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "true", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 4),
+        };
+        var expression = new SearchParameterExpression(activeParam, predicate);
+
+        var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", ["Organization"], wildCard: false, reversed: false, iterate: false);
+
+        var builder = new FakeSearchOptionsBuilder(
+            new SearchOptions { ResourceType = "Patient", Expression = expression, Include = [include] },
+            [new ParameterTrace(0, "active", null, "true", null, expression, new ParameterOutcome.Compiled(), null)]);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[activeParam.Url!.ToString()] = 44;
+        resolver.SearchParamIds[orgParam.Url!.ToString()] = 55;
+        resolver.ResourceTypeIds["Patient"] = 103;
+        resolver.ResourceTypeIds["Organization"] = 105;
+
+        var options = new SearchPlanOptions
+        {
+            DiagnosticsLevel = SearchDiagnosticsLevel.Full,
+            IncludesOnly = true,
+            IncludeBoundary = new Ignixa.Search.Sql.Ast.IncludeBoundary(105, 900),
+        };
+
+        return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(
+            "Patient",
+            [new QueryParameter("active", "true"), new QueryParameter("_include", "Patient:organization")], options);
+    }
+
     /// <summary>Patient?name=Smith&amp;_include=Patient:organization where the include's reference parameter is
     /// unregistered -- the builder raises a ParameterTrace for the search parameter only, so nothing owns the
     /// unresolved include and per-parameter attribution cannot report it.</summary>
