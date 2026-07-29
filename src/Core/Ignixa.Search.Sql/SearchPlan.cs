@@ -44,7 +44,7 @@ public sealed record SearchPlan
             var failure = new SearchCompilationFailure(
                 CompilationStage.Emit, ex.Message, ParameterCode: null, Span: null, ex)
             {
-                Diagnostics = Diagnostics,
+                Diagnostics = DiagnosticsLevel == SearchDiagnosticsLevel.None ? null : Diagnostics,
             };
 
             return new SearchCompilationResult(Compiled: null, failure);

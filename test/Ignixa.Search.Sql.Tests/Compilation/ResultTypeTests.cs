@@ -27,5 +27,6 @@ public class ResultTypeTests
         var result = new SearchPlanResult(Plan: null, failure);
 
         result.Succeeded.ShouldBeFalse();
+        result.Failure.ShouldBeSameAs(failure);
     }
 }
