@@ -125,10 +125,20 @@ internal static class SearchParameterDefinitionBuilder
 
         EnsureNoIssues();
 
+        // _type is currently missing from the search params definition bundle, so we inject it in here.
+        // It is looked up first so that a later build — a SearchParameter registered at runtime — reuses
+        // the instance already published rather than adding a second one under the same code, which would
+        // collide when the per-resource dictionary is rebuilt.
+        var resourceTypeUri = new Uri(SearchParameterNames.ResourceTypeUri.ToString(), UriKind.RelativeOrAbsolute);
+        if (!uriDictionary.TryGetValue(resourceTypeUri, out SearchParameterInfo resourceTypeParameter))
+        {
+            resourceTypeParameter = new SearchParameterInfo(SearchParameterNames.ResourceType, SearchParameterNames.ResourceType, SearchParamType.Token, SearchParameterNames.ResourceTypeUri, null, "Resource.type().name", null);
+            uriDictionary.Add(resourceTypeUri, resourceTypeParameter);
+        }
+
         var validatedSearchParameters = new List<(string ResourceType, SearchParameterInfo SearchParameter)>
         {
-            // _type is currently missing from the search params definition bundle, so we inject it in here.
-            (KnownResourceTypes.Resource, new SearchParameterInfo(SearchParameterNames.ResourceType, SearchParameterNames.ResourceType, SearchParamType.Token, SearchParameterNames.ResourceTypeUri, null, "Resource.type().name", null))
+            (KnownResourceTypes.Resource, resourceTypeParameter)
         };
 
         // Do the second pass to make sure the definition is valid.
