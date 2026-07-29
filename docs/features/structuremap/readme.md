@@ -17,7 +17,7 @@ This feature implements the FHIR $transform operation for StructureMap-based dat
 | [Implementation Summary](investigations/implementation-summary.md) | Approved | 2025-11-29 | Summary of StructureMap transform implementation approach |
 | [Operation Integration](investigations/operation-integration.md) | Approved | 2025-11-29 | Integration of $transform operation into the FHIR server |
 | [Mutation Strategy](investigations/mutation-strategy.md) | Approved | 2025-11-30 | Strategy for handling in-place vs copy-on-write transformations |
-| [FML Oracle Conformance Corpus](investigations/fml-oracle-conformance-corpus.md) | In Progress | 2026-07-28 | Grading the FML engine against HL7 `fhir-test-cases` structure-mapping and the R4/R5→R6 cross-version maps |
+| [FML Oracle Conformance Corpus](investigations/fml-oracle-conformance-corpus.md) | Approved | 2026-07-28 | Grading the FML engine against HL7 `fhir-test-cases` structure-mapping and the R4/R5→R6 cross-version maps |
 
 ## Key Components
 

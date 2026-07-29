@@ -1,7 +1,7 @@
 # Investigation: FML Oracle Conformance Corpus
 
 **Feature**: structuremap
-**Status**: In Progress
+**Status**: Approved
 **Created**: 2026-07-28
 
 ## Approach
@@ -76,17 +76,31 @@ behavioural oracles. They are large, real-world, adversarially-broad **grammar c
 A throwaway probe was run against the real `MappingParser` (net9.0, this branch), feeding every `.fml`/`.map`
 file through `parser.Parse()`:
 
-| Corpus | Files | Parsed | Failed |
+| Corpus | Files | Parsed (before) | Parsed (after) |
 |---|---:|---:|---:|
-| `FHIR/fhir-test-cases` `r5` + `r4b` `structure-mapping` (`.map`) | 27 | **0** | 27 |
-| `brianpos/fhir-r6-maps` (`.fml`) | 355 | **0** | 355 |
+| `FHIR/fhir-test-cases` `r5` `structure-mapping` (`.map`) | 15 | **0** | **14** |
+| `FHIR/fhir-test-cases` `r4b` `structure-mapping` (`.map`) | 12 | **0** | **11** |
+| `FHIR/fhir-test-cases` `validator` (`.fml`) | 2 | **0** | **2** |
+| `brianpos/fhir-r6-maps` (`.fml`) | 355 | **0** | *not re-measured* |
 
-This is not a "the harness is hard to build" result — it is a **language-coverage result**. The current
-parser handles the hand-written dialect used in `test/Ignixa.FhirMappingLanguage.Tests` and
+The "after" figures are the ratchets asserted by `FmlCorpusParseTests` and `FmlValidatorCorpusParseTests`
+against vendored release **1.7.46**, not estimates. The `brianpos` corpus was deliberately **not** vendored:
+it is a non-HL7-governed staging area with no expected outputs, so re-measuring it was left to the Phase 1
+Tier C work rather than inflating this branch's scope. Its baseline is retained above only as the original
+evidence that motivated the parser work.
+
+This was not a "the harness is hard to build" result — it was a **language-coverage result**. The parser as
+found handled the hand-written dialect used in `test/Ignixa.FhirMappingLanguage.Tests` and
 `src/Core/Ignixa.FhirMappingLanguage/README.md` (single-quoted strings, `map 'url' = 'name'` header) and
 nothing that the wild actually ships.
 
-### Root causes — four concrete parser defects, all reproduced
+The single remaining parse failure is `qr2cda-eval.map` (present in both versions), which uses a nested
+function call as a transform: `evaluate(src, iif(src.is(QuestionnaireResponse),"Hello CDA","badbadbad"))`.
+The greedy `FhirPathExpression` fallback cannot expand the inner `iif()` safely because the `RightParen`
+that closes it is not in the fallback terminator set. This is explicitly deferred: the file produces CDA
+XML output and is excluded from the behavioural oracle regardless.
+
+### Root causes — four concrete parser defects, all reproduced (all now fixed)
 
 **1. Double-quoted string literals are not string literals** (21 of 27 official cases)
 
@@ -145,6 +159,93 @@ Patient_4to6.fml /// url = 'http://hl7.org/fhir/uv/xver/StructureMap/Patient4to6
   map; `ImportResolver` needs glob semantics.
 - Date arithmetic with units: `%value + 5 days`.
 
+### Defect closure
+
+Two further defects were found while implementing the fixes above, bringing the total to six. All six are
+closed; each has regression tests plus a corpus ratchet as its acceptance test.
+
+| # | Defect | Found | Status |
+|---|---|---|---|
+| 1 | Double-quoted string literals lexed as `DelimitedIdentifier` | investigation | **Fixed** |
+| 2 | Group type-mode `<<types>>` / `<<type+>>` unsupported | investigation | **Fixed** |
+| 3 | `%constant` / operator tokens (`+ - % / \| & <= >=`) absent from the tokenizer | investigation | **Fixed** |
+| 4 | `///` metadata declarations swallowed as comments; `map` header mandatory | investigation | **Fixed** |
+| 5 | Embedded FHIRPath re-serialised from tokens, gluing them together and corrupting the expression | planning | **Fixed** — grammar now reconstructs from source text spans |
+| 6 | Parenthesized FHIRPath transforms `-> tgt.x = ('a' + b.lower())` rejected | Task 8 gate | **Fixed** |
+
+Defects 5 and 6 were both surfaced *by the corpus gate itself* rather than by inspection, which is the
+main argument for keeping the gate.
+
+Still open, deliberately: nested function calls as a transform argument (`evaluate(src, iif(...))`) — the
+one remaining parse failure; wildcard imports (`imports "…/*3to4"` *parses*, but `ImportResolver` has no
+glob semantics, so the group closure is never resolved); and unit-bearing date arithmetic (`%value + 5 days`
+parses but does not evaluate).
+
+### Measured outcome: the behavioural oracle
+
+`FmlTransformOracleTests` loads both `<fml-tests>` manifests, executes each in-scope case end-to-end
+(`MappingParser` → `MappingEvaluator` → JSON) and compares against the reference-produced output using
+canonical JSON comparison.
+
+| Metric | Value |
+|---|---:|
+| Manifest cases (r5 + r4b) | 20 |
+| Excluded — CDA/XML output, outside supported scope | 8 |
+| **In scope, executed and compared** | **12** |
+| Producing matching output | **2** |
+| Executed but ratcheted as known evaluator gaps | **10** |
+
+The two passing cases are `qr2patassignment` in each version. The remaining ten reduce to **five distinct
+evaluator defects**, each appearing once per version:
+
+| Case | Defect | Issue |
+|---|---|---|
+| `qr2patgender` | Target alias binds to the source element, not the target resource — output is the QuestionnaireResponse tree under a `patient` key | [#372](https://github.com/brendankowitz/ignixa-fhir/issues/372) |
+| `qr2pathumannametwice` | Nested/recursive `then` groups are not evaluated | [#373](https://github.com/brendankowitz/ignixa-fhir/issues/373) |
+| `qr2pathumannameshared` | `share` combined with nested `then` groups is not evaluated | [#373](https://github.com/brendankowitz/ignixa-fhir/issues/373) |
+| `reference` | `create()` / `reference()` throw `TARGET_RESOURCE_NOT_FOUND` for the `'ext'` target | [#374](https://github.com/brendankowitz/ignixa-fhir/issues/374) |
+| `qr2pat-gender-conformstoqr` | FHIRPath `conformsTo()` is a declared capability gap (needs profile-validation infrastructure) | [#375](https://github.com/brendankowitz/ignixa-fhir/issues/375) |
+
+These are **ratcheted, not skipped**. `FmlKnownEvaluatorGaps` asserts each is *still broken*: the moment one
+starts producing matching output, its test fails and demands the entry be deleted. That is deliberately the
+opposite polarity from `FmlOracleExclusions`, which covers cases that cannot be compared at all. Keeping the
+two lists separate prevents the usual failure mode where a hard-but-comparable case quietly migrates onto
+the exclusion list to make the number go up.
+
+Supporting counts, measured on both `net9.0` and `net10.0`: `Ignixa.FhirMappingLanguage.Tests` went from
+546 to **656 passing, 0 failing, 1 skipped**.
+
+### Tier B is not reachable as a diagnostic oracle
+
+The plan assumed the two official FML validator cases were "near-free" — add them to
+`ValidatorConformanceRunner`'s filter and let the existing machinery grade them. That premise was measured
+false on four independent counts:
+
+1. **Scope.** `ConformanceCaseAnalysis.IsR4CleanBase` requires `version == "4.0"` *and* a `.json` input.
+   Both FML entries omit `version` (absent means current R5, matching their `R5.*` outcome filenames) and
+   carry `.fml` inputs. They are excluded twice over, by design.
+2. **Engine.** `ValidatorConformanceRunner.TryValidate` calls `JsonNode.Parse` on the input. FML text throws
+   `JsonException`, which the runner deliberately scores as `Invalid` — so the cases would appear to pass
+   *because JSON parsing failed*. A textbook pass-for-the-wrong-reason.
+3. **Grading model.** The runner reduces each case to binary valid/invalid on error count. These outcomes
+   are line/column-anchored diagnostics (test1: 2 errors + 2 warnings; test2: 3 errors + 2 information).
+4. **Capability.** Reproducing those diagnostics needs StructureMap *semantic* validation Ignixa does not
+   have: cross-map group resolution through `imports` (including the wildcard `*4to3` form), cross-version
+   **R3** StructureDefinition resolution, element-path validation, default-rule inference, and source/target
+   mode cross-checking.
+
+That is multi-week work spanning FML → Specification → Validation, and it grades **2 cases**; the five
+evaluator defects above unblock **10**. Tier B was therefore reduced on this branch to what it can honestly
+support today — a **parse ratchet** (`FmlValidatorCorpusParseTests`) asserting both files parse and that
+their distinguishing constructs survive: `extends Element <<type+>>`, wildcard `imports`, the `map` header,
+the `+` operator, and `('urn:uuid:' + r.lower())`. That construct set overlaps the `structure-mapping`
+corpus (`ActivityDefinition.map` uses wildcard `imports` and `extends … <<type+>>`; `syntax.map` uses the
+parenthesized-FHIRPath transform), so the ratchet is redundant coverage rather than unique coverage — but
+it is the only assertion that keeps these two official files from silently rotting, and it costs 4 tests.
+
+The full semantic-validation work is tracked as
+[#376](https://github.com/brendankowitz/ignixa-fhir/issues/376), explicitly gated behind #372–#375.
+
 ### Scope notes for Tier 1
 
 Of the 10 R5 manifest cases, 4 produce CDA XML (`qr2cda`, `qr2cdaxsi`, `qr2cd-eval-json`, `qr2cd-eval-fml`)
@@ -185,16 +286,21 @@ Caveat on `ahdis/*`: not an HL7-governed repo (it is Matchbox's authors), but th
 correspond 1:1 to the published spec tutorial and all expected outputs were produced by the reference
 engine. Treat as authoritative-by-derivation, not authoritative-by-governance.
 
-### Tier B — FML validation oracle (already wired in this repo)
+### Tier B — FML validation oracle (not reachable as a diagnostic oracle)
 
 | Corpus | Content | Manifest |
 |---|---|---|
 | **`FHIR/fhir-test-cases` `validator/map-general-test{,2}.fml`** | 2 FML files | `validator/manifest.json` → `validator/outcomes/java/R5.map-general-test{,2}-base.json` |
 
 These grade **FML validation diagnostics** (does Ignixa emit the same `OperationOutcome` as the Java
-validator for a malformed/edge-case map), not transform output. Critically, `ValidatorConformanceRunner`
-in `test/Ignixa.Validation.Tests/Conformance/` **already consumes this exact manifest** — these 2 cases
-are near-free once the parser can read the files.
+validator for a malformed/edge-case map), not transform output. `ValidatorConformanceRunner` in
+`test/Ignixa.Validation.Tests/Conformance/` consumes this same manifest, which made these 2 cases look
+near-free.
+
+**They are not** — see *Tier B is not reachable as a diagnostic oracle* above. Both cases are excluded from
+that runner by design, and its JSON-only, binary-graded model would score them green for the wrong reason.
+They are covered here as a parse ratchet instead; the diagnostic oracle is tracked as
+[#376](https://github.com/brendankowitz/ignixa-fhir/issues/376).
 
 ### Tier C — official FML grammar corpora (no expected outputs)
 
@@ -233,7 +339,7 @@ same test), plus `r{4,4b,5}/examples/structuremap-example.json` and `r5/narrativ
 
 | Grading capability | Cases available |
 |---|---:|
-| Transform behaviour (true oracle) | **~130** (16 manifest + 36 tutorial + 75 careconnect + misc) |
+| Transform behaviour (true oracle) | **~130** (20 manifest + 36 tutorial + 75 careconnect + misc) |
 | FML validation diagnostics | 2 |
 | Serialization round-trip vs reference artefacts | ~25 map triples |
 | Grammar / parse / structural resolution | **~1,560 `.fml`** (1,201 HL7 + 355 brianpos) |
@@ -243,40 +349,70 @@ R5 cases", and it changes the Phase 2 value case substantially.
 
 ## Verdict
 
-*Pending evaluation.* Preliminary read:
+**Partially viable — proven, and the sequencing was inverted from the question asked.**
 
-**Yes, and it's more valuable than expected — but the sequencing is inverted from the question asked.**
+The question was "can we use these maps to build oracle tests?" The measurement said the maps could not be
+*read*, so the first deliverable was not a test harness but six parser fixes. Both halves are now built and
+measured.
 
-The question was "can we use these maps to build oracle tests?" The measurement says the maps cannot be
-*read* yet, so the first deliverable is not a test harness, it is four parser fixes. Recommended phasing:
+**What was delivered**
 
-1. **Phase 0 — parser conformance (blocking).** Fix double-quoted strings, `<<typeMode>>`, `%constant`,
-   `///` metadata headers. Each is small and independently testable. Target: `fhir-test-cases` parse rate
-   0/27 → 27/27; `fhir-r6-maps` 0/355 → ≥90%.
-2. **Phase 1 — Tier C parse + Tier D round-trip gate.** Cheap, no execution needed. Point it at
-   `HL7/fhir-cross-version` (1,201 files, HL7-governed) rather than the brianpos staging repo, and add the
-   `.map`/`.json`/`.xml` triple comparison from the tutorial corpus. Land alongside Phase 0 as its
-   acceptance test.
-3. **Phase 2 — Tier A behavioural oracle.** Two runners: `manifest.xml`-driven for `fhir-test-cases`
-   (r5 + r4b), convention-driven for the tutorial + careconnect corpora. ~130 graded cases. CDA-output
-   cases on a frozen exclusion list per ADR-2607.
-4. **Phase 2b — Tier B, near-free.** Add `map-general-test{,2}.fml` to the existing
-   `ValidatorConformanceRunner` case set; the manifest and outcome files are already the ones it reads.
-5. **Phase 3 (optional) — cross-version execution.** Wire `R6CoreSchemaProvider` and run the cross-version
-   maps over `fhir-test-cases` R4/R5 examples. No oracle exists for the output, so grade on *invariants*
-   (no exceptions, result validates against the target version, no data silently dropped) rather than
-   equality. The bundled `ConceptMap`s in `HL7/fhir-cross-version` make this the only realistic way to
-   exercise `TranslateTransform` at scale.
+- **Parser conformance.** All six defects closed. Official corpus parse rate **0/27 → 25/27**
+  (r5 14/15, r4b 11/12), plus **2/2** on the validator FML files. The single failure, `qr2cda-eval.map`,
+  is deferred with a written reason and produces CDA XML that the oracle excludes anyway.
+- **Tier A behavioural oracle.** Manifest-driven runner over r5 + r4b. **12 in-scope cases**, of which
+  **2 produce output matching the reference implementation** and **10 are ratcheted known evaluator gaps**
+  reducing to five distinct defects ([#372](https://github.com/brendankowitz/ignixa-fhir/issues/372)–[#375](https://github.com/brendankowitz/ignixa-fhir/issues/375)).
+- **Tier B.** Reduced to a parse ratchet; the diagnostic oracle is infeasible against the existing runner
+  and is tracked as [#376](https://github.com/brendankowitz/ignixa-fhir/issues/376).
 
-Open question for Phase 3: generating expected outputs with the Java validator or Firely SDK would turn
-Tier 2 into a true oracle, but introduces a build dependency on a reference implementation and risks
+**Why "partially" and not "viable"**
+
+A 2/12 behavioural pass rate is not a success metric — it is a *baseline*. The honest reading is that the
+harness works and the corpus is a good oracle; what it exposed is that `MappingEvaluator` is substantially
+less complete than `MappingParser` now is. The value delivered is that those five defects are now
+reproducible, named, ratcheted, and individually tracked, instead of unknown. Any of the five can be fixed
+independently and the harness will tell you immediately.
+
+**Exclusions, in full**
+
+| Case (both versions) | Rationale |
+|---|---|
+| `qr2cda` | Targets the CDA logical model and produces XML; Ignixa's transform pipeline emits FHIR JSON only. |
+| `qr2cdaxsi` | CDA logical model with `xsi:type` discrimination; XML output out of scope. |
+| `qr2cd-eval-json` | CDA logical model target; XML output out of scope. (Also the only case whose `map` is a JSON StructureMap rather than FML.) |
+| `qr2cd-eval-fml` | CDA logical model target; XML output out of scope. |
+
+Four cases × two versions = 8 excluded of 20. No case with JSON output is excluded, and a guard test
+asserts exactly that — an excluded case must have an XML output file — so the list cannot be used to make
+a hard-but-comparable case disappear.
+
+**Remaining phasing**
+
+1. **Evaluator conformance (next).** Fix #372–#375. Each removal from `FmlKnownEvaluatorGaps` is a
+   measurable step; the ceiling is 12/12.
+2. **Tier C parse gate.** Point at `HL7/fhir-cross-version` (1,201 files, HL7-governed) rather than the
+   brianpos staging repo. Cheap: no execution, and the parser is now in a state where it is worth running.
+3. **Tier D round-trip.** `.map` / `.json` / `.xml` triple comparison from the tutorial corpus, grading
+   `StructureMapParser`, `StructureMapBuilder`, and `FmlSerializer`.
+4. **Tier A expansion.** Tutorial + careconnect corpora (~130 graded cases), convention-driven discovery.
+   Do this only after #372–#375, or it just multiplies the same five failures.
+5. **StructureMap semantic validation** (#376) — gated behind the above.
+6. **Cross-version execution (optional).** Wire `R6CoreSchemaProvider` and run the cross-version maps over
+   R4/R5 examples. No oracle exists for the output, so grade on *invariants* (no exceptions, result
+   validates against the target version, no data silently dropped) rather than equality.
+
+Open question for step 6: generating expected outputs with the Java validator or Firely SDK would turn
+Tier C into a true oracle, but introduces a build dependency on a reference implementation and risks
 encoding another engine's bugs as our spec. Recommend against it initially — invariant-grading is honest
 about what it proves.
 
 ## Related investigation candidates
 
-- **`fml-r6-grammar-support`** — the Phase 0 work as its own investigation: R6 metadata declarations,
-  type-mode annotations, `%` constants, wildcard imports, arithmetic in embedded FHIRPath.
+- **`fml-evaluator-conformance`** — closing the five ratcheted evaluator gaps (#372–#375). The highest-value
+  follow-up: it is the only work that moves the 2/12 oracle number.
+- **`fml-grammar-remainder`** — what Phase 0 did *not* close: nested function calls as transform arguments,
+  wildcard imports (`imports "…/*4to6"`), and unit-bearing date arithmetic (`%value + 5 days`).
 - **`cross-version-transform-pipeline`** — using the R4↔R6 maps as the actual conversion engine for the
   `fhir-compatibility` feature, not just as test data.
 - **`fml-differential-testing`** — property-based/differential testing against a second FML engine
