@@ -7,8 +7,8 @@ namespace Ignixa.Search.Sql.Ast;
 /// with " = ". The flat string stays the golden-test format; this is the same content, unjoined.
 /// </summary>
 /// <remarks>
-/// <see cref="Label"/> is the display name (<c>root</c>, <c>cte{i}</c>, <c>inc{i}</c>, <c>sort</c>,
-/// <c>page</c>, <c>countOnly</c>). <see cref="CanonicalLabel"/> is the identifier that same row carries in
+/// <see cref="Label"/> is the display name (<c>root</c>, <c>cte{i}</c>, <c>includeBoundary</c>,
+/// <c>inc{i}</c>, <c>sort</c>, <c>page</c>, <c>countOnly</c>). <see cref="CanonicalLabel"/> is the identifier that same row carries in
 /// the emitted SQL and in <see cref="Tracing.CteProvenance"/>. The two differ for exactly one row: the
 /// match CTE prints as <c>root</c> for readability but is emitted as
 /// <see cref="Builders.SqlLabels.CteLabel"/> of <c>plan.Match.Index</c>. Join on

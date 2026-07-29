@@ -1,5 +1,7 @@
+using System.Text.RegularExpressions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Catalog;
 using Shouldly;
 using Xunit;
@@ -191,6 +193,47 @@ public class PlanExplainerTests
         explained.ShouldBe(
             "root = StringSearchParam[103,202]  Text = @p0\n" +
             "inc0 = IncludeStage(ref=*, seedTypes=*, outputTypes=*, seeds=[match], limit=500 iterate, Reverse)");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAResumeBoundary_WhenExplained_ThenTheBoundaryRowNamesTheOrdinalsTheEmitterActuallyBinds()
+    {
+        // Arrange -- two parameterized CTEs ahead of the boundary, so its ordinals are neither 0 nor
+        // trivially aligned with anything: this is the drift the row exists to expose. Emit and Describe run
+        // on the same plan and are cross-checked against each other rather than against a pinned string.
+        var stringTable = SqlCatalog.Default.Table("StringSearchParam");
+        var tokenTable = SqlCatalog.Default.Table("TokenSearchParam");
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(stringTable, 103, 202, new Predicate.Equal(new SqlColumnRef(stringTable.TableName, "Text"), new SqlParameterRef("Smith"))),
+                new CteDefinition.ParamSource(tokenTable, 103, 44, new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"))),
+                new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
+            ],
+            new CteRef(2),
+            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
+            IncludesOnly: true,
+            IncludeBoundary: new IncludeBoundary(111, 5000));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- the ordinals the emitted resume predicate really seeks on, read back out of the SQL
+        var seek = Regex.Match(emitted.Sql, @"\(T1 > (@p\d+) OR \(T1 = @p\d+ AND Sid1 > (@p\d+)\)\)");
+        seek.Success.ShouldBeTrue(emitted.Sql);
+        var typeParam = seek.Groups[1].Value;
+        var sidParam = seek.Groups[2].Value;
+        emitted.Parameters.ShouldContain(p => p.Name == typeParam && Equals(p.Value, (short)111));
+        emitted.Parameters.ShouldContain(p => p.Name == sidParam && Equals(p.Value, 5000L));
+
+        var boundaryRow = rows.Where(r => r.CanonicalLabel == "includeBoundary").ShouldHaveSingleItem();
+        boundaryRow.Kind.ShouldBe(PlanRowKind.IncludeBoundary);
+        boundaryRow.Label.ShouldBe("includeBoundary");
+        boundaryRow.Body.ShouldBe($"IncludeBoundary(type={typeParam}, sid={sidParam})");
+
+        // The row sits where the emitter binds it: after the CTE graph, before the stage rows.
+        rows.Select(r => r.CanonicalLabel).ToList().IndexOf("includeBoundary")
+            .ShouldBeLessThan(rows.Select(r => r.CanonicalLabel).ToList().IndexOf("inc0"));
     }
 
     [Fact]
