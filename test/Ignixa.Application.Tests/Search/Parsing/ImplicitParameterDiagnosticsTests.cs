@@ -117,8 +117,14 @@ public class ImplicitParameterDiagnosticsTests
             parameters.Select(p => new QueryParameter(p.Key, p.Value)).ToList(),
             FullDiagnostics);
 
+    // Asserts the surface it reads from: every test here expects a successful compilation, and a failure
+    // still carries populated diagnostics at Full -- so falling back to result.Failure would keep the
+    // assertions running against the wrong surface instead of reporting that compilation broke.
     private static SearchCompilationDiagnostics DiagnosticsOf(SearchPlanResult result)
-        => (result.Plan?.Diagnostics ?? result.Failure?.Diagnostics)!;
+    {
+        result.Succeeded.ShouldBeTrue();
+        return result.Plan!.Diagnostics.ShouldNotBeNull();
+    }
 
     private sealed class FakeSymbolResolver : ISymbolResolver
     {

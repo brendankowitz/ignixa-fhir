@@ -36,8 +36,14 @@ public class RealParserSpanDiagnosticsTests
             parameters.Select(p => new QueryParameter(p.Key, p.Value)).ToList(),
             FullDiagnostics);
 
+    // Asserts the surface it reads from: every test here expects a successful compilation, and a failure
+    // still carries populated diagnostics at Full -- so falling back to result.Failure would keep the
+    // assertions running against the wrong surface instead of reporting that compilation broke.
     private static SearchCompilationDiagnostics DiagnosticsOf(SearchPlanResult result)
-        => (result.Plan?.Diagnostics ?? result.Failure?.Diagnostics)!;
+    {
+        result.Succeeded.ShouldBeTrue();
+        return result.Plan!.Diagnostics.ShouldNotBeNull();
+    }
 
     [Fact]
     public async Task GivenARealParse_WhenTraced_ThenEachSpanSlicesTheValueItClaims()
@@ -130,14 +136,16 @@ public class RealParserSpanDiagnosticsTests
         // since nothing in the response body tells the user their parameter was silently discarded.
         var result = await CompileAsync(harness, resolver, ("name", "Smith"), ("birthdate:exact", "2000-01-01"));
 
-        var ignored = DiagnosticsOf(result).Parameters
+        var diagnostics = DiagnosticsOf(result);
+
+        var ignored = diagnostics.Parameters
             .Select(p => p.Outcome)
             .OfType<ParameterOutcome.Ignored>()
             .ShouldHaveSingleItem();
         ignored.Reason.ShouldNotBeNullOrWhiteSpace();
 
-        DiagnosticsOf(result).Parameters.Single(p => p.Key == "name").Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
-        DiagnosticsOf(result).PlanTrace.ShouldNotBeNull("dropping one parameter must not stop the rest compiling");
+        diagnostics.Parameters.Single(p => p.Key == "name").Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        diagnostics.PlanTrace.ShouldNotBeNull("dropping one parameter must not stop the rest compiling");
     }
 
     [Fact]
@@ -158,7 +166,7 @@ public class RealParserSpanDiagnosticsTests
         cte.ShouldNotBeNull("no CTE was attributed to the parameter");
 
         var compiled = result.Plan!.Compile();
-        compiled.Diagnostics!.SqlTextRanges.ShouldContain(r => r.Label == SqlLabels.CteLabel(cte.CteIndex));
+        compiled.Diagnostics.ShouldNotBeNull().SqlTextRanges.ShouldContain(r => r.Label == SqlLabels.CteLabel(cte.CteIndex));
     }
 
     [Fact]
@@ -193,7 +201,7 @@ public class RealParserSpanDiagnosticsTests
         root.CanonicalLabel.ShouldNotBe("root");
 
         var compiled = result.Plan!.Compile();
-        compiled.Diagnostics!.SqlTextRanges.ShouldContain(r => r.Label == root.CanonicalLabel);
+        compiled.Diagnostics.ShouldNotBeNull().SqlTextRanges.ShouldContain(r => r.Label == root.CanonicalLabel);
     }
 
     [Fact]
