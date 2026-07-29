@@ -1473,6 +1473,37 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenLowerRunWithATypelessPageAndANonCustomSort_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // The mirror of the guard above, and unsound for the mirrored reason. A typeless boundary breaks its
+        // final tie on Sid1 alone, which agrees with the ORDER BY only when the sort is custom. A sortless
+        // search orders by (T1, Sid1), so a typeless boundary here would disagree with that type-major
+        // ORDER BY and page unsoundly. Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var typelessPage = new PageSpec(
+            [],
+            BoundaryResourceTypeId: null,
+            BoundarySurrogateId: new SqlParameterRef(7000L));
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            Lower.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: typelessPage));
+
+        ex.Message.ShouldContain("typeless");
+        ex.Message.ShouldContain("custom");
+    }
+
+    [Fact]
     public void GivenLowerRunWithATypelessPageAndACustomSort_WhenCalled_ThenTheSortAndPageBothSurviveLowering()
     {
         // The permitted half of the same pairing: a typeless boundary matches the type-free ORDER BY a

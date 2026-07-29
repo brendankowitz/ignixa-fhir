@@ -56,10 +56,11 @@ public sealed record QueryPlan(
     bool CountPhaseScoped = false,
     /// <summary>
     /// The keyset-pagination continuation token (boundary) for the second and subsequent pages of an
-    /// <see cref="IncludesOnly"/> page: the last include row the previous page returned. When set, each
-    /// include stage carries a predicate that skips everything up to and including it under the global
-    /// <c>ORDER BY T1 ASC, Sid1 ASC</c>, so the union of stages pages as one ordered stream. Only meaningful
-    /// with <see cref="IncludesOnly"/>; the emitter rejects it otherwise, because on an ordinary search the
+    /// <see cref="IncludesOnly"/> page: the last include row the previous page returned. The global includes
+    /// page carries a single predicate over the union of every stage's complete body that skips everything
+    /// up to and including it, under the global <c>ORDER BY T1 ASC, Sid1 ASC</c> — each stage's own CTE stays
+    /// unfiltered so it remains a valid seed set for downstream <c>:iterate</c> stages. Only meaningful with
+    /// <see cref="IncludesOnly"/>; the emitter rejects it otherwise, because on an ordinary search the
     /// resume predicate would silently drop included rows rather than page them.
     /// </summary>
     IncludeBoundary? IncludeBoundary = null)

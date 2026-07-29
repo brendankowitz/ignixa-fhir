@@ -78,12 +78,12 @@ public static class SqlBuilder
             // the sort never reaches an ORDER BY on the sort key. A keyset Page is different: EmitSeekPredicate
             // would seek the MATCH rows by the sort-key boundary, letting the sort key decide which match rows
             // -- and therefore which include rows -- exist, via a paging mechanism the includes-only page does
-            // not use (its match window is the surrogate range; its include rows page from a cursor). The two
-            // are mutually exclusive here, so a match-side keyset seek is refused. Grammatically valid, so the
-            // grammar tests cannot catch it.
+            // not use (its match window is the surrogate range; its include rows page from a resume boundary).
+            // The two are mutually exclusive here, so a match-side keyset seek is refused. Grammatically
+            // valid, so the grammar tests cannot catch it.
             throw new NotSupportedException(
                 "IncludesOnly was requested together with a keyset Page, but an includes-only page bounds its " +
-                "match set by a surrogate-id range and pages its include rows by a cursor over (T1, Sid1). A " +
+                "match set by a surrogate-id range and pages its include rows by a resume boundary over (T1, Sid1). A " +
                 "keyset Page seeks the match rows by the sort-key boundary, a second paging mechanism the " +
                 "includes-only page does not use, so it is reported rather than silently applying a match-side " +
                 "seek that would change which resources are included.");
@@ -345,7 +345,7 @@ public static class SqlBuilder
     /// them into one (T1, Sid1, IsMatch, IsPartial) result. Two assemblies exist: the ordinary path unions
     /// each stage's own limit companion and orders matches-first; the IncludesOnly path (a <c>$includes</c>
     /// page) instead applies the row budget once, globally, over the union of the unlimited stage bodies and
-    /// orders by (T1, Sid1) so it can resume from a cursor. They are separated because the budget lives in a
+    /// orders by (T1, Sid1) so it can resume from a boundary. They are separated because the budget lives in a
     /// different place — per stage versus once across the union — not merely because the ORDER BY differs.
     /// </summary>
     private static void EmitIncludesShape(
@@ -404,7 +404,7 @@ public static class SqlBuilder
     /// <c>SELECT DISTINCT TOP (@limit + 1) T1, Sid1, IsMatch, &lt;IsPartial&gt;</c> over the UNION of every
     /// include stage body, ordered by (T1, Sid1). This mirrors the FHIR Server legacy $includes page, whose
     /// row budget is applied once across the union rather than once per stage, so it can resume from a
-    /// cursor and page the whole include set as one ordered stream.
+    /// boundary and page the whole include set as one ordered stream.
     /// </summary>
     /// <remarks>
     /// Every stage shares the query's single include limit, so the global budget is taken from
@@ -415,12 +415,12 @@ public static class SqlBuilder
     /// result column's type. The order is <c>T1 ASC, Sid1 ASC</c> (not matches-first): an includes-only
     /// page has no match rows, and this order is what the resume predicate keys on.
     /// <para>
-    /// The resume cursor's keyset predicate lives here, on the union derived table's own (T1, Sid1), rather
-    /// than inside each stage body: the cursor is a position in the global paged output stream, and a stage
+    /// The resume boundary's keyset predicate lives here, on the union derived table's own (T1, Sid1), rather
+    /// than inside each stage body: the boundary is a position in the global paged output stream, and a stage
     /// body doubles as the seed set for downstream <c>:iterate</c> stages (see <see cref="EmitSeedExists"/>),
     /// so filtering it would make later pages blind to iterate targets reachable only through resources
     /// already returned. Placing it in this WHERE also keeps IsPartial honest: T-SQL evaluates WHERE before
-    /// <c>COUNT_BIG(*) OVER()</c>, so the window counts only the rows at or after the cursor and IsPartial
+    /// <c>COUNT_BIG(*) OVER()</c>, so the window counts only the rows at or after the boundary and IsPartial
     /// reflects this page's truncation rather than the whole stream's.
     /// </para>
     /// <para>
@@ -1473,12 +1473,12 @@ public static class SqlBuilder
     /// (SQL Server Msg 1033), so keeping the per-stage ORDER BY while dropping the per-stage TOP would not
     /// even compile.
     /// <para>
-    /// The stage body is never filtered by the <c>$includes</c> resume cursor, whatever page is being served.
+    /// The stage body is never filtered by the <c>$includes</c> resume boundary, whatever page is being served.
     /// It doubles as the seed set for downstream <c>:iterate</c> stages (see <see cref="EmitSeedExists"/>),
-    /// and the cursor is a position in the global paged output stream, not a property of any one stage's row
+    /// and the boundary is a position in the global paged output stream, not a property of any one stage's row
     /// set. Filtering the body by it would make page 2 and beyond blind to iterate targets reachable only
-    /// through resources page 1 already returned to the caller, silently dropping them. The cursor is applied
-    /// once instead, by <see cref="EmitGlobalIncludesPage"/>, over the union of every stage body.
+    /// through resources page 1 already returned to the caller, silently dropping them. The boundary predicate
+    /// is applied once instead, by <see cref="EmitGlobalIncludesPage"/>, over the union of every stage body.
     /// </para>
     /// </remarks>
     private static string EmitIncludeStage(
@@ -1559,8 +1559,9 @@ public static class SqlBuilder
     /// emits no limit companion at all — <see cref="WriteIncludeStageCtes"/> skips it because the budget is
     /// applied once, globally, by <see cref="EmitGlobalIncludesPage"/> — so seeding from that label would
     /// reference an undefined CTE (SQL Server Msg 207). The stage body (<see cref="IncludeLabel"/>) is the
-    /// correct seed set there for a second reason as well: it is complete and uncursored, so an
-    /// <c>:iterate</c> stage on page 2 still sees targets reachable only through resources page 1 returned.
+    /// correct seed set there for a second reason as well: it is complete and unfiltered by the resume
+    /// boundary, so an <c>:iterate</c> stage on page 2 still sees targets reachable only through resources
+    /// page 1 returned.
     /// </param>
     private static string EmitSeedExists(IncludeStage stage, string correlationAlias, bool includesOnly)
     {

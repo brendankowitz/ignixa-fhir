@@ -225,12 +225,12 @@ public static class Lower
         //
         // A keyset Page is the genuinely unsound combination and is still refused below: it seeks the match
         // rows by the sort-key boundary, which is a second paging mechanism the includes-only page does not
-        // use -- its window is the surrogate range and its include cursor pages the stages.
+        // use -- its window is the surrogate range and its include resume boundary pages the stages.
         if (options.IncludesOnly && page is not null)
         {
             throw new NotSupportedException(
                 "IncludesOnly was requested together with a keyset Page. An includes-only page bounds its " +
-                "match set by a surrogate-id range and pages its include rows by a cursor over (T1, Sid1); a " +
+                "match set by a surrogate-id range and pages its include rows by a resume boundary over (T1, Sid1); a " +
                 "keyset Page instead seeks the match rows by the sort-key boundary, a second paging mechanism " +
                 "the includes-only page does not use. The combination is reported rather than silently applying " +
                 "a match-side seek that would change which resources are included.");
@@ -251,6 +251,23 @@ public static class Lower
         }
 
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
+
+        // The mirror of the guard below, unsound the other way. A typeless boundary breaks its final tie on
+        // Sid1 alone and never mentions the type column, which agrees with the ORDER BY only when the sort
+        // is custom: every other sort keeps m.T1 as a tiebreak (a plain search orders by (T1, Sid1); a _type
+        // sort orders by the type itself), so a typeless boundary paired with anything but a custom sort
+        // would disagree with the ORDER BY and drop rows at the page seam. Refused here so a caller lowering
+        // a real search gets the error at its own call site; mirrored by
+        // SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
+        if (page is { BoundaryResourceTypeId: null } && !HasCustomSortKey(sortSpec))
+        {
+            throw new NotSupportedException(
+                "A typeless keyset Page (BoundaryResourceTypeId is null) requires a custom (search-parameter) " +
+                "_sort such as name or birthdate. The sort here is " +
+                (sortSpec is null ? "absent" : "a resource-column sort (_lastUpdated / _type / _id)") +
+                ", whose keyset order includes the resource type, so a type-free seek would disagree with the " +
+                "ORDER BY and paging would be unsound. Use a typed Page here, or a custom sort for a typeless Page.");
+        }
 
         // A custom (search-parameter) sort orders by (sort keys…, Sid1) with no type component, so its
         // boundary must be typeless to seek the same order. A type on the boundary makes the emitted seek

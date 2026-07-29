@@ -866,8 +866,8 @@ public class EmitSqlGrammarTests
     {
         // The $includes second page: two stages of mixed direction, paged globally and resumed from a
         // keyset-pagination continuation token (boundary). Exercises the outer TOP + COUNT_BIG(*) OVER()
-        // derived table and the per-stage resume predicate through the ScriptDom grammar so a malformed
-        // shape fails here rather than at execution.
+        // derived table and the single outer/global resume predicate through the ScriptDom grammar so a
+        // malformed shape fails here rather than at execution.
         var stage0 = new IncludeStage(
             IncludeDirection.Forward, ReferenceSearchParamId: 55, SeedTypeIds: [103], OutputTypeIds: [105],
             SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
