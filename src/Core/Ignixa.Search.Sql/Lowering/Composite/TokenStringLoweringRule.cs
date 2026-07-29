@@ -14,7 +14,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// <see cref="Leaf.StringLoweringRule"/>). The collation is this composite table's own
 /// (Latin1_General_CI_AI), which differs from StringSearchParam.Text's — a real, DDL-confirmed divergence.
 /// </summary>
-public static class TokenStringLoweringRule
+internal static class TokenStringLoweringRule
 {
     private const string CaseInsensitiveCollation = "Latin1_General_CI_AI";
 

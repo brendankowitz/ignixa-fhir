@@ -18,7 +18,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// expansion this compiler does not perform, so each throws rather than silently degrading to plain
 /// equality and returning wrong rows.
 /// </remarks>
-public static class TokenLoweringRule
+internal static class TokenLoweringRule
 {
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, TokenSearchValue value, LeafContext context, short? resourceTypeId)
     {

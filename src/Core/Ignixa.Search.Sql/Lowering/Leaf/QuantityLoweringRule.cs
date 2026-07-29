@@ -11,7 +11,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// code resolves to QuantityCodeId. A known-miss for either produces <see cref="Predicate.False"/>.
 /// An absent (empty or null) system or code means no constraint — no IS NULL guard is emitted.
 /// </summary>
-public static class QuantityLoweringRule
+internal static class QuantityLoweringRule
 {
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, QuantitySearchValue value, LeafContext context, short? resourceTypeId)
     {

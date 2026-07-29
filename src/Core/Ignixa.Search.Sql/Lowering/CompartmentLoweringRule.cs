@@ -10,7 +10,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// reference-equality predicate against a fixed (compartment type, compartment id) pair — the same shape
 /// as an Observation?subject=Patient/123 search — except it covers many resource types in one CTE.
 /// </summary>
-public static class CompartmentLoweringRule
+internal static class CompartmentLoweringRule
 {
     public static CteDefinition.CompartmentSource Lower(
         SearchParameterInfo parameter,

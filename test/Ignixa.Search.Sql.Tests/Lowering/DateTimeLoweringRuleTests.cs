@@ -266,7 +266,7 @@ public class DateTimeLoweringRuleTests
     }
 
     [Fact]
-    public void GivenApComparator_WhenLoweredWithNoReferenceTime_ThenThrowsInvalidOperationExceptionNamingLowerRun()
+    public void GivenApComparator_WhenLoweredWithNoReferenceTime_ThenThrowsInvalidOperationExceptionNamingSearchSqlCompiler()
     {
         // Arrange
         var parameter = Parameter();
@@ -276,7 +276,7 @@ public class DateTimeLoweringRuleTests
         // Act & Assert
         var exception = Should.Throw<InvalidOperationException>(() =>
             DateTimeLoweringRule.Lower(predicate, (DateTimeSearchValue)predicate.Value, ContextResolving(parameter, 203), 103));
-        exception.Message.ShouldContain("Lower.Run");
+        exception.Message.ShouldContain("SearchSqlCompiler");
     }
 
     [Fact]

@@ -31,7 +31,7 @@ namespace Ignixa.Search.Sql.Symbols;
 /// required only when a compartment search is actually present.
 /// </para>
 /// </remarks>
-public static class Resolve
+internal static class Resolve
 {
     internal static async Task<ResolvedSymbols> RunAsync(
         CompilationContext context,

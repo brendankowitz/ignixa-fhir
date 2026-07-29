@@ -12,7 +12,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// EndDateTime2), reusing DateTimeRangeComparison unchanged -- identical range semantics to
 /// DateTimeLoweringRule, just against composite-table column names.
 /// </summary>
-public static class TokenDateTimeLoweringRule
+internal static class TokenDateTimeLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

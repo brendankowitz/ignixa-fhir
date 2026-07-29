@@ -206,7 +206,7 @@ public class ResourceColumnLoweringRuleTests
     }
 
     [Fact]
-    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingLowerRun()
+    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingSearchSqlCompiler()
     {
         // Arrange -- ApproximateDateRange.Widen (the shared helper Task 3 already covers directly)
         // requires an explicit reference instant; this proves this rule's :ap call site surfaces that
@@ -216,7 +216,7 @@ public class ResourceColumnLoweringRuleTests
 
         var exception = Should.Throw<InvalidOperationException>(
             () => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
-        exception.Message.ShouldContain("Lower.Run");
+        exception.Message.ShouldContain("SearchSqlCompiler");
     }
 
     [Fact]

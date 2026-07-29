@@ -27,7 +27,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// to a binary collation over URI characters. Forcing BIN2 on the column side made equality incompatible
 /// with the index key ordering and turned the hot terminology lookup (?url=...) from a seek into a scan.
 /// </remarks>
-public static class UriLoweringRule
+internal static class UriLoweringRule
 {
     private const char SegmentSeparator = '/';
 

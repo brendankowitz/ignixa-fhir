@@ -25,7 +25,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// in Text.
 /// </para>
 /// </summary>
-public static class StringLoweringRule
+internal static class StringLoweringRule
 {
     private const string CaseInsensitiveCollation = "Latin1_General_100_CI_AI";
     private const string CaseSensitiveCollation = "Latin1_General_100_CS_AS";

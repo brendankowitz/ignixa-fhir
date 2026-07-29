@@ -13,7 +13,7 @@ public sealed record EmittedSqlParameter(string Name, object Value);
 /// expected shape from <c>plan.Includes?.Count</c> and <c>plan.Projection?.Columns</c>, not by
 /// inspecting the SQL text directly.
 /// </summary>
-public sealed record EmittedSql(
+internal sealed record EmittedSql(
     string Sql,
     IReadOnlyList<EmittedSqlParameter> Parameters,
     IReadOnlyList<SqlTextRange>? TextRanges = null);

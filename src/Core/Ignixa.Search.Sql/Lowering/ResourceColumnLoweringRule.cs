@@ -12,7 +12,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// parameter code, which the caller (Lower's extraction pass) reads as "not a resource-column predicate,
 /// dispatch it normally."
 /// </summary>
-public static class ResourceColumnLoweringRule
+internal static class ResourceColumnLoweringRule
 {
     /// <summary>
     /// True for the parameter codes this rule handles. These target dbo.Resource's own columns, so they

@@ -13,7 +13,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// HighValue2, LowValue3/HighValue3), reusing NumericRangeComparison unchanged -- same range
 /// semantics as NumberLoweringRule, just against composite-table column names.
 /// </summary>
-public static class TokenNumberNumberLoweringRule
+internal static class TokenNumberNumberLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

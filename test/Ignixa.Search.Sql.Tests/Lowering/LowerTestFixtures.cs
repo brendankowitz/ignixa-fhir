@@ -8,7 +8,7 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Tests.Lowering;
 
 /// <summary>Shared arrangement builders for lowering tests, mirroring the fixtures inlined in <see cref="LowerTests"/>.</summary>
-public static class LowerTestFixtures
+internal static class LowerTestFixtures
 {
     /// <summary>A single string-typed leaf predicate ("name eq Smith") with its symbol table.</summary>
     public static (SearchParameterPredicateExpression Expression, SymbolTable Symbols) SingleStringPredicate()

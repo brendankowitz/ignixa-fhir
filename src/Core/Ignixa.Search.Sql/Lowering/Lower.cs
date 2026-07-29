@@ -15,7 +15,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// I/O already happened in Resolve. CountOnly is the only "count instead of rows" concept the compiler
 /// exposes — there is no _total vocabulary here.
 /// </summary>
-public static class Lower
+internal static class Lower
 {
     /// <summary>
     /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,

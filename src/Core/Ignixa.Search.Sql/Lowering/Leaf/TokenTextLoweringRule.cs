@@ -15,7 +15,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// collation would make the predicate non-sargable against that table's index.
 /// </para>
 /// </summary>
-public static class TokenTextLoweringRule
+internal static class TokenTextLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo parameter,

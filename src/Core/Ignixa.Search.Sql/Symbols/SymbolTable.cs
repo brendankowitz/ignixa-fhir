@@ -14,7 +14,7 @@ namespace Ignixa.Search.Sql.Symbols;
 /// "individual-*" parameter); that fan-out is a property of the parameter, tracked separately, not a
 /// reason to widen the key.
 /// </remarks>
-public sealed class SymbolTable
+internal sealed class SymbolTable
 {
     private readonly IReadOnlyDictionary<string, short> _searchParamIds;
     private readonly IReadOnlyDictionary<string, short> _resourceTypeIds;

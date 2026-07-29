@@ -9,7 +9,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// Dispatches a leaf predicate to its lowering rule by the runtime type of its ISearchValue. A composite
 /// value has no leaf rule and throws — composites are lowered by <see cref="Composite.CompositeLoweringDispatcher"/>.
 /// </summary>
-public static class LeafLoweringDispatcher
+internal static class LeafLoweringDispatcher
 {
     /// <summary>The <see cref="Exception.Data"/> key a caught lowering failure carries its triggering predicate's <see cref="SourceSpan"/> under.</summary>
     internal const string SpanDataKey = "Ignixa.SourceSpan";

@@ -13,7 +13,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// quantity slot are delegated to <see cref="QuantityColumnPredicate"/>; a known-miss for either
 /// produces <see cref="Predicate.False"/> for the quantity slot.
 /// </summary>
-public static class TokenQuantityLoweringRule
+internal static class TokenQuantityLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

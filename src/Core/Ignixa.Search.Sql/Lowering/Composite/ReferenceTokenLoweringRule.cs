@@ -12,7 +12,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// definitions swap the component order. Routes the reference slot through <see cref="ReferenceColumnEquality"/>
 /// and the token slot through <see cref="TokenColumnEquality"/>.
 /// </summary>
-public static class ReferenceTokenLoweringRule
+internal static class ReferenceTokenLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

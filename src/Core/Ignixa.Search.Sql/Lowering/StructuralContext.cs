@@ -14,7 +14,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// combining their results with Intersect/Union/Except. Owns the plan's Ctes list, which the leaf-tier
 /// <see cref="LeafContext"/> never sees.
 /// </summary>
-public sealed class StructuralContext
+internal sealed class StructuralContext
 {
     private readonly List<CteDefinition> _ctes = [];
     private readonly List<CteOrigin> _origins = [];

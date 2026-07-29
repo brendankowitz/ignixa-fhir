@@ -9,7 +9,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// Lowers a Number search value to a ParamSource over NumberSearchParam. Every comparator except :ap is
 /// supported, via <see cref="NumericRangeComparison"/>.
 /// </summary>
-public static class NumberLoweringRule
+internal static class NumberLoweringRule
 {
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, NumberSearchValue value, LeafContext context, short? resourceTypeId)
     {

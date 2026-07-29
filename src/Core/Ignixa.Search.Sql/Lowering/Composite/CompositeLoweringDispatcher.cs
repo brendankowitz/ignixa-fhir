@@ -13,7 +13,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// (either component order) are wired; any other combination throws — a loud, explicit gap over a silent
 /// wrong answer.
 /// </summary>
-public static class CompositeLoweringDispatcher
+internal static class CompositeLoweringDispatcher
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

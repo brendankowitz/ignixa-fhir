@@ -9,7 +9,7 @@ namespace Ignixa.Search.Sql.Lowering;
 /// Intersect/Union, no sibling access. By construction a leaf rule cannot see or affect the rest of the
 /// plan, making the tier boundary a type rather than a convention.
 /// </summary>
-public sealed class LeafContext
+internal sealed class LeafContext
 {
     private readonly SymbolTable _symbols;
 

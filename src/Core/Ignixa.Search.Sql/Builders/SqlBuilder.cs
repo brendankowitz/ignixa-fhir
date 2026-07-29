@@ -13,7 +13,7 @@ namespace Ignixa.Search.Sql.Builders;
 /// Match can reference any nesting depth without special-casing the outer SELECT. No user value is ever
 /// inlined: every <see cref="SqlParameterRef"/> becomes a named @pN parameter.
 /// </summary>
-public static class SqlBuilder
+internal static class SqlBuilder
 {
     /// <summary>
     /// Renders a plan to SQL and its bound parameters by selecting one of three terminal shapes and
