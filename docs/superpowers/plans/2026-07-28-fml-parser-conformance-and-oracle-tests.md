@@ -847,13 +847,20 @@ public enum GroupTypeMode
     /// <summary>No annotation present. The group is only invoked by explicit reference.</summary>
     None = 0,
 
-    /// <summary>Declared &lt;&lt;types&gt;&gt;: the group is a candidate for type-based dispatch.</summary>
+    /// <summary>
+    /// Declared &lt;&lt;types&gt;&gt;: the default mapping group for the specified types
+    /// and for the primary source type.
+    /// </summary>
     Types,
 
-    /// <summary>Declared &lt;&lt;type+&gt;&gt;: the group is the default for type-based dispatch.</summary>
+    /// <summary>
+    /// Declared &lt;&lt;type+&gt;&gt;: the default mapping group for the specified types.
+    /// </summary>
     TypeAndTypes
 }
 ```
+
+Wording follows the official code system `http://hl7.org/fhir/map-group-type-mode`. Note `types` is the **broader** of the two despite the shorter name — do not paraphrase these into "candidate" vs "default", which inverts the meaning.
 
 `None = 0` is deliberate — it makes `.OptionalOrDefault()` yield the right value for groups with no annotation.
 
@@ -886,8 +893,8 @@ In `MappingGrammar.cs`, define this parser immediately **above** the `Group` par
         from open2 in Token.EqualTo(MappingTokenKind.LeftAngle)
         from mode in Token.EqualTo(MappingTokenKind.Types).Value(GroupTypeMode.Types)
             .Or(from typeToken in Token.EqualTo(MappingTokenKind.Type)
-                from plus in Token.EqualTo(MappingTokenKind.Plus).Optional()
-                select plus.HasValue ? GroupTypeMode.TypeAndTypes : GroupTypeMode.Types)
+                from plus in Token.EqualTo(MappingTokenKind.Plus)
+                select GroupTypeMode.TypeAndTypes)
         from close1 in Token.EqualTo(MappingTokenKind.RightAngle)
         from close2 in Token.EqualTo(MappingTokenKind.RightAngle)
         select mode;
@@ -902,6 +909,16 @@ Then, in the `Group` parser (lines 488-507), insert between the optional `extend
 and pass `typeMode` as the new trailing argument to the `GroupExpression` constructor in that parser's `select`.
 
 **Lexer note:** `Span.Regex(@"\btype\b")` still matches inside `type+` because `+` is a non-word character, and `\btypes\b` is registered before `\btype\b`, so `types` is never split. Task 1 supplied the `Plus` token this rule needs.
+
+**The `Plus` is mandatory, not optional.** The official production is closed:
+
+```
+groupTypeMode : 'types' | 'type+' ;
+```
+
+There is no bare `<<type>>` in FML, and the HL7 reference parser agrees — `StructureMapUtilities.java:1216-1219` calls `lexer.token("type")` then `lexer.token("+")` unconditionally, throwing when the `+` is absent. Do **not** make `Plus` optional "to be lenient": that silently accepts input the reference implementation rejects, and is the same mistake this plan originally made in Task 3 by widening `Identifier` to accept double-quoted strings. Add a negative test asserting `<<type>>` throws `ParseException`.
+
+**Also required: a test covering `extends` and the annotation on the same group.** With no `extends` in the test fixture, "emit the annotation before `extends`" and "emit it after `extends`" are indistinguishable positions, so a serializer ordering regression is invisible. Cross-version maps — the entire reason this task exists — use both together. Round-trip a group with `extends Base` plus the annotation and assert on `Extends` **and** `TypeMode` after the reparse.
 
 - [ ] **Step 6: Round-trip in `FmlSerializer`**
 
