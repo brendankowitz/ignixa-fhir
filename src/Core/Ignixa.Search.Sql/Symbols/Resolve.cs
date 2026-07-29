@@ -255,8 +255,8 @@ internal static class Resolve
 
                         // Same null-Url reasoning as the leaf loop below: SymbolTable is keyed by Url, so a
                         // compartment member carrying none could never be looked up even once resolved. Skip
-                        // it -- CompileAsync awaits this outside its try/catch, so a dereference here would
-                        // escape as an NRE and destroy the whole trace.
+                        // it -- SearchSqlCompiler.RunAsync awaits this outside its try/catch, so a
+                        // dereference here would escape as an NRE and destroy the whole compilation.
                         if (searchParam.Url is not { } url)
                         {
                             continue;
