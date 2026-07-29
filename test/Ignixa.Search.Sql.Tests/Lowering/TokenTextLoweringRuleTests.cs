@@ -108,16 +108,19 @@ public class TokenTextLoweringRuleTests
     public void GivenATextModifiedToken_WhenEmittedWithHistoryIncluded_ThenTheHistoryFilterIsSuppressed()
     {
         // dbo.TokenText is the only leaf table that keeps superseded rows (it has its own IsHistory column),
-        // so EmitParamSource adds "AND IsHistory = 0" when the plan's visibility excludes history. When the
-        // caller explicitly opts in to history (IncludeHistory: true), that clause must be absent — otherwise
-        // a history-enabled search would still silently filter it out.
+        // so EmitParamSource adds "AND IsHistory = 0" when the plan's visibility pins history to current rows.
+        // When the caller brings history into scope (IsHistory: null — the Latest|History union a _history
+        // search produces), that clause must be absent — otherwise a history-enabled search would still
+        // silently filter it out. (A history-only search, IsHistory: true, likewise emits no clause here; the
+        // version selection is done at the dbo.Resource scan, not on the index table — see
+        // SearchParamTableHistoryClause.)
         var parameter = CodeParameter();
         var tree = new SearchParameterExpression(
             parameter,
             new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
         var plan = LowerHarness.Run(
             tree, Symbols(parameter), targetResourceType: "Observation",
-            includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Visibility = new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false) }).Plan;
+            includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Visibility = new ResourceVisibility(IsHistory: null, IsDeleted: false) }).Plan;
 
         // Act
         var emitted = SqlBuilder.Run(plan);

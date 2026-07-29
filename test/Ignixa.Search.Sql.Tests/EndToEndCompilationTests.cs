@@ -1328,7 +1328,7 @@ public class EndToEndCompilationTests
         plan.Explain().ShouldContain("sort = SortSpec([String:202 ASC], Valued)");
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1367,7 +1367,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
         emitted.Sql.ShouldContain("SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -1406,7 +1406,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain("LEFT JOIN dbo.DateTimeSearchParam sk1");
         emitted.Sql.ShouldContain("sk1.IsMax = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1444,7 +1444,7 @@ public class EndToEndCompilationTests
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1461,23 +1461,24 @@ public class EndToEndCompilationTests
         var symbols = (await ResolveHarness.RunAsync(
             expression: null, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(7000L));
+        var page = new PageSpec([], BoundaryResourceTypeId: null, new SqlParameterRef(7000L));
         var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.MissingPrimary, page: page, new LowerOptions { Top = 10 }).Plan;
 
         // Assert -- ResourceSource's own ResourceTypeId is itself a bound parameter (@p0, same accounting
-        // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's own two
-        // boundary parameters are @p1/@p2, not @p0/@p1. The NOT EXISTS filter and the 2-branch seek
-        // predicate must be ANDed together with the OR chain parenthesized as a single unit -- otherwise
-        // NOT EXISTS binds only to the first branch (T-SQL's AND-over-OR precedence) and the second
-        // branch silently bypasses the missing-name filter on page 2+.
+        // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's single boundary
+        // parameter is @p1, not @p0. A custom sort's missing-value segment orders by m.Sid1 alone, so the
+        // seek is Sid-only too -- a type-major seek here would exclude a lower-type/higher-surrogate row
+        // that the type-free ORDER BY places after the boundary, dropping it at the page seam. The NOT
+        // EXISTS filter and the seek must still be ANDed together with the seek parenthesized as a single
+        // unit -- otherwise NOT EXISTS could bind to only part of it under T-SQL's AND-over-OR precedence
+        // and the rest would silently bypass the missing-name filter on page 2+.
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain(
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
-            "AND ((m.T1 = @p1 AND m.Sid1 > @p2)\n" +
-            "       OR (m.T1 > @p1))");
+            "AND (m.Sid1 > @p1)");
     }
 
     [Fact]
@@ -1673,7 +1674,7 @@ public class EndToEndCompilationTests
             "sort = SortSpec([String:77 ASC], Valued)");
         emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]

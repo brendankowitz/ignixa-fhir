@@ -52,6 +52,11 @@ internal static class Resolve
         var additionalResourceTypes = context.ResourceTypes;
         var accessConstraints = context.AccessConstraints;
 
+        // Kept in step with the allow-list Lower enforces from the same context: Lower needs each permitted
+        // type's id, so its names must resolve here (an unknown one keeps the unmatchable sentinel rather
+        // than being silently dropped, which would widen the allow-list into a fail-open bypass).
+        var allowedResourceTypes = context.AllowedResourceTypes;
+
         var collector = new SymbolCollectingVisitor();
         if (expression is not null)
         {
@@ -118,6 +123,22 @@ internal static class Resolve
         if (additionalResourceTypes is not null)
         {
             resourceTypes.UnionWith(additionalResourceTypes);
+        }
+
+        // The allow-list type names must resolve so their ids are available to Lower's allow-list
+        // enforcement, exactly as the access-constraint types above are resolved for AccessConstraintApplier.
+        // This unions into the RESOLUTION set only -- it does NOT widen the searched base set. "What types
+        // are searched" is derived downstream in Lower from targetResourceType / LowerOptions.ResourceTypes
+        // (a MultiTypeResourceSource over the requested types, or AllTypes for a bare system-level search),
+        // never from this symbol table's full type map, so resolving an allowed name here cannot make a
+        // multi-type search return a type the user did not ask for. Keeping "permitted" separate from
+        // "searched" is the whole point of the allow-list. An unresolvable allowed type keeps the unmatchable
+        // sentinel assigned by the loop below rather than being dropped -- same treatment as an unknown
+        // constraint type or _type; dropping it would let an all-unknown allow-list collapse and, once
+        // intersected in Lower, fail open to every type.
+        if (allowedResourceTypes is not null)
+        {
+            resourceTypes.UnionWith(allowedResourceTypes);
         }
 
         // A resource type the resolver cannot find is recorded as unmatchable rather than dropped: dropping

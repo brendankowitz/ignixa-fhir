@@ -37,6 +37,7 @@ internal static class LowerHarness
             sort: sort,
             accessConstraints: options.AccessConstraints,
             resourceTypes: options.ResourceTypes,
+            allowedResourceTypes: options.AllowedResourceTypes,
             approximationReferenceTime: options.ApproximationReferenceTime,
             visibility: options.Visibility,
             surrogateRange: options.SurrogateRange,
@@ -51,6 +52,7 @@ internal static class LowerHarness
                 Page = page,
                 OffsetPage = options.OffsetPage,
                 SearchParameterHash = options.SearchParameterHash?.Value as string,
+                IncludeBoundary = options.IncludeBoundary,
             });
 
         return Lower.Run(

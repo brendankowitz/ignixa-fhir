@@ -63,6 +63,20 @@ public static class PlanExplainer
                 label, CteLabel(i), KindOf(plan.Ctes[i]), body, ReferencedCteIndexesOf(plan.Ctes[i])));
         }
 
+        // Emitted between the CTE graph and the include stages, matching where SqlBuilder binds it:
+        // EmitIncludesShape binds the two boundary values after the match-page CTE and before the stage
+        // loop, and include-stage CTEs bind nothing, so these are the first stage-level ordinals. Rendering
+        // this row after the inc rows would read the same but claim the wrong @pN.
+        if (plan.IncludeBoundary is not null)
+        {
+            rows.Add(new PlanExplainRow(
+                "includeBoundary",
+                "includeBoundary",
+                PlanRowKind.IncludeBoundary,
+                PrintIncludeBoundary(ref parameterOrdinal),
+                []));
+        }
+
         if (plan.Includes is { Count: > 0 } includes)
         {
             for (var i = 0; i < includes.Count; i++)
@@ -151,9 +165,25 @@ public static class PlanExplainer
             boundary.Add($"@p{parameterOrdinal++}");
         }
 
-        var typeParam = $"@p{parameterOrdinal++}";
+        // A typeless page (BoundaryResourceTypeId is null) binds no type parameter -- its seek compares only
+        // the sort key(s) and the surrogate id -- so consume no ordinal for it, keeping the printed @pN
+        // sequence aligned with the parameters Emit actually binds.
+        var typeParam = page.BoundaryResourceTypeId is null ? "none" : $"@p{parameterOrdinal++}";
         var sidParam = $"@p{parameterOrdinal++}";
         return $"PageSpec(boundary=[{string.Join(",", boundary)}], type={typeParam}, sid={sidParam})";
+    }
+
+    /// <summary>
+    /// Renders the <c>$includes</c> resume boundary the way <see cref="PrintPageSpec"/> renders a keyset
+    /// page: the parameters it binds, not the values. Both components are always bound — the boundary
+    /// carries no optional type component the way a <see cref="PageSpec"/> does — so two ordinals are
+    /// consumed unconditionally.
+    /// </summary>
+    private static string PrintIncludeBoundary(ref int parameterOrdinal)
+    {
+        var typeParam = $"@p{parameterOrdinal++}";
+        var sidParam = $"@p{parameterOrdinal++}";
+        return $"IncludeBoundary(type={typeParam}, sid={sidParam})";
     }
 
     private static string PrintIncludeStage(IncludeStage stage)

@@ -9,9 +9,10 @@ namespace Ignixa.Search.Sql.Compilation;
 /// stated reason.
 /// </summary>
 /// <remarks>
-/// Four properties have, one at a time, been added to <c>SearchOptions</c>, accepted by the compiler, and
-/// never forwarded — each a control that looked live and silently did nothing. A test over these two
-/// collections fails the build when a fifth is added and classified as neither.
+/// Properties have, one at a time, been added to <c>SearchOptions</c>, accepted by the compiler, and never
+/// forwarded — each a control that looked live and silently did nothing, and in the case of an
+/// authorization input like <c>AllowedResourceTypes</c> a fail-open one. A test over these two collections
+/// fails the build when the next is added and classified as neither.
 /// </remarks>
 internal static class CompilationContextMapping
 {
@@ -27,6 +28,7 @@ internal static class CompilationContextMapping
         nameof(SearchOptions.EndSurrogateId),
         nameof(SearchOptions.ResourceVersionTypes),
         nameof(SearchOptions.AccessConstraints),
+        nameof(SearchOptions.AllowedResourceTypes),
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The properties that deliberately do not become compilation inputs, and why.</summary>

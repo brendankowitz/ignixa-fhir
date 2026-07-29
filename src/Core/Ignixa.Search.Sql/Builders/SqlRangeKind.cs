@@ -56,4 +56,11 @@ public static class SqlRangeKind
 
     /// <summary>The final UNION ALL stitching the match page to every include stage. No row is named for it.</summary>
     public const string Assembly = "assembly";
+
+    /// <summary>
+    /// The outer global-page SELECT of an includes-only page: one <c>TOP (@limit + 1)</c> over the union
+    /// of every include stage, applying the row budget once across all stages. No row is named for it; it
+    /// is the includes-only counterpart of the per-stage <see cref="IncludeLimit"/>.
+    /// </summary>
+    public const string IncludePage = "includePage";
 }

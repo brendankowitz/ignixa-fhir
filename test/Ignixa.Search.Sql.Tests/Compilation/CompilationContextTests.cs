@@ -41,8 +41,10 @@ public class CompilationContextTests
     }
 
     [Fact]
-    public void GivenResourceVersionTypesHistory_WhenCreatingTheContext_ThenVisibilityIncludesHistory()
+    public void GivenResourceVersionTypesLatestAndHistory_WhenCreatingTheContext_ThenTheHistoryColumnIsUnfiltered()
     {
+        // Naming both partitions is a request for their union, which is the absence of an IsHistory filter --
+        // not IsHistory = 1. The deleted axis is untouched by the history flags and stays pinned to current.
         var searchOptions = new SearchOptions
         {
             ResourceVersionTypes = ResourceVersionTypes.Latest | ResourceVersionTypes.History,
@@ -51,8 +53,25 @@ public class CompilationContextTests
         var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
 
         context.Visibility.ShouldNotBeNull();
-        context.Visibility!.IncludeHistory.ShouldBeTrue();
-        context.Visibility.IncludeDeleted.ShouldBeFalse();
+        context.Visibility!.IsHistory.ShouldBeNull();
+        context.Visibility.IsDeleted.ShouldBe(false);
+    }
+
+    [Fact]
+    public void GivenResourceVersionTypesHistoryAlone_WhenCreatingTheContext_ThenTheHistoryColumnIsPinnedToSuperseded()
+    {
+        // History without Latest is the exclusive shape -- superseded rows only. An earlier relaxation-only
+        // mapping could not express it, which is why history-only searches had to be refused upstream.
+        var searchOptions = new SearchOptions
+        {
+            ResourceVersionTypes = ResourceVersionTypes.History,
+        };
+
+        var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
+
+        context.Visibility.ShouldNotBeNull();
+        context.Visibility!.IsHistory.ShouldBe(true);
+        context.Visibility.IsDeleted.ShouldBeNull();
     }
 
     [Fact]
@@ -65,6 +84,7 @@ public class CompilationContextTests
             Sort = null,
             AccessConstraints = null,
             ResourceTypes = null,
+            AllowedResourceTypes = null,
         };
 
         var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
@@ -74,10 +94,26 @@ public class CompilationContextTests
         context.Sort.ShouldBeEmpty();
         context.AccessConstraints.ShouldBeEmpty();
         context.ResourceTypes.ShouldBeEmpty();
+        context.AllowedResourceTypes.ShouldBeEmpty();
     }
 
     [Fact]
-    public void GivenResourceVersionTypesSoftDeleted_WhenCreatingTheContext_ThenVisibilityIncludesDeleted()
+    public void GivenAllowedResourceTypes_WhenCreatingTheContext_ThenTheyReachTheCompilationInputs()
+    {
+        // The allow-list is an authorization input; if it stopped here it would be accepted by the API and
+        // never enforced, which fails open rather than closed.
+        var searchOptions = new SearchOptions
+        {
+            AllowedResourceTypes = ["Patient", "Observation"],
+        };
+
+        var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
+
+        context.AllowedResourceTypes.ShouldBe(["Patient", "Observation"]);
+    }
+
+    [Fact]
+    public void GivenResourceVersionTypesLatestAndSoftDeleted_WhenCreatingTheContext_ThenTheDeletedColumnIsUnfiltered()
     {
         var searchOptions = new SearchOptions
         {
@@ -87,8 +123,8 @@ public class CompilationContextTests
         var context = CompilationContext.Create(searchOptions, "Patient", new SearchPlanOptions(), ReferenceTime);
 
         context.Visibility.ShouldNotBeNull();
-        context.Visibility!.IncludeDeleted.ShouldBeTrue();
-        context.Visibility.IncludeHistory.ShouldBeFalse();
+        context.Visibility!.IsDeleted.ShouldBeNull();
+        context.Visibility.IsHistory.ShouldBe(false);
     }
 
     [Fact]

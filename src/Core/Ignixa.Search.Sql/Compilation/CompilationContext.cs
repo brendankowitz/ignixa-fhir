@@ -25,6 +25,12 @@ internal sealed record CompilationContext
 
     public required IReadOnlyList<string> ResourceTypes { get; init; }
 
+    /// <summary>
+    /// The global allow-list of resource types the caller is permitted to see; empty means unrestricted.
+    /// Read by both stages: Resolve needs each name's id, and Lower enforces the list structurally.
+    /// </summary>
+    public required IReadOnlyList<string> AllowedResourceTypes { get; init; }
+
     public required DateTimeOffset ApproximationReferenceTime { get; init; }
 
     public required ResourceVisibility? Visibility { get; init; }
@@ -79,6 +85,7 @@ internal sealed record CompilationContext
             Sort = searchOptions.Sort ?? [],
             AccessConstraints = searchOptions.AccessConstraints ?? [],
             ResourceTypes = searchOptions.ResourceTypes ?? [],
+            AllowedResourceTypes = searchOptions.AllowedResourceTypes ?? [],
             ApproximationReferenceTime = approximationReferenceTime,
             Visibility = ToVisibility(searchOptions.ResourceVersionTypes),
             SurrogateRange = ToSurrogateRange(options.SurrogateRange, searchOptions),
@@ -87,9 +94,18 @@ internal sealed record CompilationContext
     }
 
     /// <summary>
-    /// Maps <see cref="SearchOptions.ResourceVersionTypes"/> onto <see cref="ResourceVisibility"/>.
-    /// <see cref="ResourceVersionTypes.Latest"/> alone returns null, which
-    /// <see cref="QueryPlan.EffectiveVisibility"/> already treats as <see cref="ResourceVisibility.Current"/>.
+    /// Maps <see cref="SearchOptions.ResourceVersionTypes"/> onto <see cref="ResourceVisibility"/>. Each of
+    /// the two columns is resolved independently and tri-state, reproducing the legacy generator's
+    /// per-column truth table — which is what lets a history-only or soft-deleted-only search, the shapes an
+    /// earlier relaxation-only visibility could not express, reach the emitter at all.
+    /// <para>
+    /// <see cref="ResourceVersionTypes.Latest"/> alone returns null rather than an explicit
+    /// <see cref="ResourceVisibility.Current"/>. Both leave <see cref="QueryPlan.EffectiveVisibility"/>
+    /// (which falls back to <see cref="ResourceVisibility.Current"/> on null) at the same value, and
+    /// <see cref="ResourceVisibility.Current"/> is itself <c>new(IsHistory: false, IsDeleted: false)</c> —
+    /// exactly what the general arm would compute for Latest alone — so the shortcut is a byte-for-byte
+    /// no-op.
+    /// </para>
     /// </summary>
     private static ResourceVisibility? ToVisibility(ResourceVersionTypes types) => types switch
     {
@@ -97,9 +113,32 @@ internal sealed record CompilationContext
             "SearchOptions.ResourceVersionTypes.None is not a valid search input; a search must select at least Latest."),
         ResourceVersionTypes.Latest => null,
         _ => new ResourceVisibility(
-            IncludeHistory: types.HasFlag(ResourceVersionTypes.History),
-            IncludeDeleted: types.HasFlag(ResourceVersionTypes.SoftDeleted)),
+            IsHistory: ColumnFilter(types.HasFlag(ResourceVersionTypes.Latest), types.HasFlag(ResourceVersionTypes.History)),
+            IsDeleted: ColumnFilter(types.HasFlag(ResourceVersionTypes.Latest), types.HasFlag(ResourceVersionTypes.SoftDeleted))),
     };
+
+    /// <summary>
+    /// Resolves one version column's tri-state from whether the caller asked for its current partition
+    /// (<paramref name="wantsCurrent"/>, i.e. Latest) and its non-current partition
+    /// (<paramref name="wantsNonCurrent"/>, i.e. History for IsHistory or SoftDeleted for IsDeleted).
+    /// Current only → pin to <c>0</c> (<c>false</c>); non-current only → pin to <c>1</c> (<c>true</c>);
+    /// both or neither → no filter (<c>null</c>), the union. Expressed once so the IsHistory and IsDeleted
+    /// axes cannot drift apart.
+    /// </summary>
+    private static bool? ColumnFilter(bool wantsCurrent, bool wantsNonCurrent)
+    {
+        if (wantsCurrent && !wantsNonCurrent)
+        {
+            return false;
+        }
+
+        if (wantsNonCurrent && !wantsCurrent)
+        {
+            return true;
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// The surrogate-id bound this compile applies: the explicit <see cref="SearchPlanOptions.SurrogateRange"/>

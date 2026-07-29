@@ -43,6 +43,14 @@ public sealed record SearchPlanOptions
     public OffsetSpec? OffsetPage { get; init; }
 
     /// <summary>
+    /// The keyset continuation boundary for the second and subsequent pages of an <see cref="IncludesOnly"/>
+    /// page: the last include row the previous page returned. Only meaningful together with
+    /// <see cref="IncludesOnly"/> — the resume predicate pages a stream of include rows, and on an ordinary
+    /// search it would silently drop them, so the compiler rejects that combination rather than honouring it.
+    /// </summary>
+    public IncludeBoundary? IncludeBoundary { get; init; }
+
+    /// <summary>
     /// An inclusive surrogate-id bound. When set it wins over <c>SearchOptions.StartSurrogateId</c>/
     /// <c>EndSurrogateId</c>. Named to match <c>QueryPlan.SurrogateRange</c>, but typed as raw longs so a
     /// caller never has to construct the AST's <c>SurrogateIdRange</c> node.

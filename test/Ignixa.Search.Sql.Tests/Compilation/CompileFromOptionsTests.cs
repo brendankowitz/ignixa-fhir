@@ -3,6 +3,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.Ast;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -163,14 +164,15 @@ public class CompileFromOptionsTests
     }
 
     [Fact]
-    public async Task GivenSearchOptionsCarryingHistoryResourceVersionTypes_WhenCompilingFromOptions_ThenTheEmittedSqlOmitsTheIsHistoryFilter()
+    public async Task GivenSearchOptionsCarryingHistoryResourceVersionTypes_WhenCompilingFromOptions_ThenTheEmittedSqlFiltersToSupersededRows()
     {
-        // Arrange -- GET /?_type=Observation&status=final, ResourceVersionTypes=History. Under the
-        // additive-filter model the visibility filters only ever remove rows (IsHistory = 0, IsDeleted = 0);
-        // History alone still returns Latest UNION History, not superseded versions exclusively. System-level
-        // (resourceType: null) so the base set lowers to a
-        // MultiTypeResourceSource, which renders its own visibility check directly against dbo.Resource --
-        // unlike a typed ParamSource against a search-param table, which only carries an IsHistory clause
+        // Arrange -- GET /?_type=Observation&status=final, ResourceVersionTypes=History. Under the tri-state
+        // visibility model History alone (Latest absent) pins IsHistory to the non-current partition, so the
+        // emitted scan filters to "IsHistory = 1" -- superseded versions exclusively -- rather than the
+        // Latest UNION History the earlier relaxation-only model produced. IsDeleted is left unconstrained
+        // (neither Latest nor SoftDeleted pins it). System-level (resourceType: null) so the base set lowers
+        // to a MultiTypeResourceSource, which renders its own visibility check directly against dbo.Resource
+        // -- unlike a typed ParamSource against a search-param table, which only carries an IsHistory clause
         // when that specific table has the column (dbo.TokenSearchParam does not), so asserting against a
         // ParamSource-only plan would pass whether or not Visibility is forwarded. Same class of defect as
         // AccessConstraints/ResourceTypes above: without forwarding, ResourceVersionTypes is accepted by
@@ -196,12 +198,13 @@ public class CompileFromOptionsTests
             resourceType: null,
             FullDiagnostics);
 
-        // Assert -- the MultiTypeResourceSource scan must not filter out superseded rows. Deleting the
-        // Visibility forwarding in TryCreatePlanFromOptionsAsync restores "IsHistory = 0" to the emitted SQL
-        // (EmitMultiTypeResourceSource) and fails this.
+        // Assert -- the MultiTypeResourceSource scan must select superseded rows (IsHistory = 1) and must not
+        // filter them out (IsHistory = 0). Deleting the Visibility forwarding in CompilationContext.Create
+        // restores "IsHistory = 0" to the emitted SQL (EmitMultiTypeResourceSource) and fails this.
         result.Succeeded.ShouldBeTrue();
-        var compiled = result.Plan!.Compile();
+        var compiled = result.Plan.Compile();
         compiled.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId})");
+        compiled.Sql.ShouldContain("IsHistory = 1");
         compiled.Sql.ShouldNotContain("IsHistory = 0");
     }
 
@@ -309,6 +312,141 @@ public class CompileFromOptionsTests
         result.Succeeded.ShouldBeFalse();
         result.Failure!.Stage.ShouldBe(CompilationStage.Lower);
         result.Plan.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task GivenSearchOptionsCarryingAllowedResourceTypes_WhenCompilingFromOptions_ThenTheEmittedSqlEnforcesThem()
+    {
+        // Arrange -- Patient?_revinclude=Observation:subject, with an allow-list of only Patient. The
+        // revinclude produces Observation, which the scope does not grant, so its output-type filter must
+        // collapse to the unmatchable sentinel. Deleting the AllowedResourceTypes forwarding in
+        // CompileFromOptionsAsync leaves the stage producing Observation (rsp.ResourceTypeId = 104) and the
+        // match ungated -- the exact fail-open bypass this forwarding exists to close: an _include returning
+        // a resource type the SMART scope never permitted.
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 230;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            RevInclude = [new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false)],
+            AllowedResourceTypes = ["Patient"],
+        };
+
+        // Act
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(options, "Patient");
+
+        // Assert -- the match is gated to the allowed base set (ResourceTypeId IN (103)), and the disallowed
+        // revinclude produces no rows: its output filter is the unmatchable "rsp.ResourceTypeId = -1", never
+        // the Observation type id. Both can only appear if AllowedResourceTypes reached Lower.
+        result.Succeeded.ShouldBeTrue();
+        var sql = result.Plan.Compile().Sql;
+        sql.ShouldContain($"ResourceTypeId IN ({PatientTypeId})");
+        sql.ShouldContain("rsp.ResourceTypeId = -1");
+        sql.ShouldNotContain($"rsp.ResourceTypeId = {ObservationTypeId}");
+    }
+
+    // One case per row of the ResourceVersionTypes -> visibility truth table (mirrors the legacy generator's
+    // AppendHistoryClause/AppendDeletedClause). Driven end-to-end through the public API so both ToVisibility
+    // (the mapping) and EmitMultiTypeResourceSource (the rendering) are exercised. A system-level search
+    // (resourceType null, ResourceTypes set) lowers to a MultiTypeResourceSource, which renders BOTH version
+    // columns directly against dbo.Resource -- the only base-set shape that lets a single assertion see the
+    // IsDeleted axis at all. Each row asserts both presence of the predicate it expects AND absence of the
+    // opposite value: asserting only presence would pass against an emitter that wrote both "= 0" and "= 1".
+    [Theory]
+    [InlineData(ResourceVersionTypes.Latest, "IsHistory = 0", "IsDeleted = 0")]
+    [InlineData(ResourceVersionTypes.History, "IsHistory = 1", null)]
+    [InlineData(ResourceVersionTypes.SoftDeleted, null, "IsDeleted = 1")]
+    [InlineData(ResourceVersionTypes.Latest | ResourceVersionTypes.History, null, "IsDeleted = 0")]
+    [InlineData(ResourceVersionTypes.Latest | ResourceVersionTypes.SoftDeleted, "IsHistory = 0", null)]
+    [InlineData(ResourceVersionTypes.History | ResourceVersionTypes.SoftDeleted, "IsHistory = 1", "IsDeleted = 1")]
+    [InlineData(ResourceVersionTypes.Latest | ResourceVersionTypes.History | ResourceVersionTypes.SoftDeleted, null, null)]
+    public async Task GivenSearchOptionsCarryingEachResourceVersionType_WhenCompilingFromOptions_ThenTheEmittedSqlMatchesTheLegacyTruthTable(
+        ResourceVersionTypes versionTypes, string? expectedHistoryClause, string? expectedDeletedClause)
+    {
+        // Arrange -- a system-level (resourceType: null) search whose base set lowers to MultiTypeResourceSource.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+
+        var options = new SearchOptions
+        {
+            Expression = expression,
+            ResourceTypes = ["Observation"],
+            ResourceVersionTypes = versionTypes,
+        };
+
+        // Act
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(options, resourceType: null);
+
+        // Assert
+        result.Succeeded.ShouldBeTrue();
+        var sql = result.Plan.Compile().Sql;
+
+        AssertAxis(sql, "IsHistory", expectedHistoryClause);
+        AssertAxis(sql, "IsDeleted", expectedDeletedClause);
+
+        static void AssertAxis(string sql, string column, string? expectedClause)
+        {
+            if (expectedClause is null)
+            {
+                // Axis unconstrained: neither the current-row nor the non-current-row predicate may appear.
+                sql.ShouldNotContain($"{column} = 0");
+                sql.ShouldNotContain($"{column} = 1");
+            }
+            else
+            {
+                // Exactly the expected value; the opposite value must be absent so a both-clauses emitter fails.
+                var opposite = expectedClause.EndsWith("0", StringComparison.Ordinal) ? $"{column} = 1" : $"{column} = 0";
+                sql.ShouldContain(expectedClause);
+                sql.ShouldNotContain(opposite);
+            }
+        }
+    }
+
+    // A history-only and a soft-deleted-only search -- the two shapes the earlier relaxation-only visibility
+    // could not express at all -- must still produce syntactically valid T-SQL once a search-parameter
+    // predicate and an _include are folded in (the include stage and the terminal join both scan dbo.Resource,
+    // so a malformed visibility filter would surface as a parse error only in the assembled statement).
+    [Theory]
+    [InlineData(ResourceVersionTypes.History)]
+    [InlineData(ResourceVersionTypes.SoftDeleted)]
+    public async Task GivenAHistoryOnlyOrDeletedOnlySearchWithAPredicateAndAnInclude_WhenCompilingFromOptions_ThenTheEmittedSqlIsValidTSql(
+        ResourceVersionTypes versionTypes)
+    {
+        // Arrange -- Observation?status=final&_include=Observation:subject, at type level so the base set is a
+        // typed ParamSource (search-param predicate) and the include stage scans dbo.Resource under visibility.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 230;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Observation",
+            Expression = expression,
+            Include = [new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: false, iterate: false)],
+            ResourceVersionTypes = versionTypes,
+        };
+
+        // Act
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(options, "Observation");
+
+        // Assert -- it compiled, and the assembled statement parses as valid T-SQL.
+        result.Succeeded.ShouldBeTrue();
+        SqlGrammar.AssertValid(result.Plan.Compile().Sql);
     }
 
     /// <summary>A wrapped token predicate ("&lt;param&gt; eq &lt;code&gt;"), the shape a real bound leaf takes -- mirrors AccessConstraintTests' TokenPredicate.</summary>

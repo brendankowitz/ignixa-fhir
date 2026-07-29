@@ -19,7 +19,13 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 /// </summary>
 public class CompositeTokenCodeOverflowTests
 {
-    private const int SplitWidth = 128;
+    /// <summary>
+    /// The point the row generators split an overflowing code at, which is the Code column's declared
+    /// width. Every composite table's token slot declares the same width as TokenSearchParam.Code, so one
+    /// catalog lookup covers all the slots exercised here.
+    /// </summary>
+    private static readonly int SplitWidth =
+        Sql.Catalog.SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;
 
     private static readonly string OverflowedCode = new string('A', SplitWidth) + new string('B', 30);
 
@@ -123,7 +129,7 @@ public class CompositeTokenCodeOverflowTests
         var comparisons = Flatten(predicate).OfType<Predicate.Equal>().ToList();
         comparisons.ShouldContain(
             e => e.Column.Column == codeColumn && Equals(e.Value.Value, expectedPrefix),
-            $"{scenario}: no equality on {codeColumn} against the 128-char prefix");
+            $"{scenario}: no equality on {codeColumn} against the inline-width prefix");
         comparisons.ShouldContain(
             e => e.Column.Column == overflowColumn && Equals(e.Value.Value, expectedRemainder),
             $"{scenario}: no equality on {overflowColumn} against the remainder");
@@ -138,10 +144,10 @@ public class CompositeTokenCodeOverflowTests
 
     private static readonly string ExactlyInlineWidthCode = new('A', SplitWidth);
 
-    // Exactly 128 characters is the boundary the >128 cases above never reach. It needs the
-    // "CodeOverflow IS NULL" guard: a stored code of 200 characters writes its first 128 into the Code
-    // column, so without the guard a search for those 128 characters false-positive matches it. Testing
-    // only >128 leaves the one case where equality alone is wrong uncovered.
+    // Exactly the inline width is the boundary the longer cases above never reach. It needs the
+    // "CodeOverflow IS NULL" guard: a longer stored code writes its leading inline-width characters into
+    // the Code column, so without the guard a search for exactly those characters false-positive matches
+    // it. Testing only the longer codes leaves the one case where equality alone is wrong uncovered.
     public static TheoryData<string, Func<Predicate>, string, string> ExactlyInlineWidthSlots() => new()
     {
         {
@@ -194,7 +200,7 @@ public class CompositeTokenCodeOverflowTests
         var terms = Flatten(predicate).ToList();
         terms.OfType<Predicate.Equal>().ShouldContain(
             e => e.Column.Column == codeColumn && Equals(e.Value.Value, ExactlyInlineWidthCode),
-            $"{scenario}: no equality on {codeColumn} against the full 128-char code");
+            $"{scenario}: no equality on {codeColumn} against the full inline-width code");
         terms.OfType<Predicate.IsNull>().ShouldContain(
             n => n.Column.Column == overflowColumn,
             $"{scenario}: no '{overflowColumn} IS NULL' guard, so a truncated longer code would match");
