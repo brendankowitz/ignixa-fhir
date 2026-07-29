@@ -1327,7 +1327,7 @@ Get-ChildItem test/Ignixa.FhirMappingLanguage.Tests/TestData/fhir-test-cases/r5/
 Get-ChildItem test/Ignixa.FhirMappingLanguage.Tests/TestData/fhir-test-cases/r4b/structure-mapping -Filter *.map | Measure-Object
 ```
 
-Expected: 16 and 12 respectively. If the counts differ, the pinned version changed upstream — record the actual counts and use them in Task 8.
+Expected: **15** and **12** respectively (measured against pinned release `1.7.46`; the corpus checkout carries git tag `1.7.46`, so this is verifiable). If the counts differ, the pinned version changed upstream — record the actual counts and use them in Task 8.
 
 - [ ] **Step 4: Confirm `TestData/` is not committed**
 
@@ -1788,7 +1788,13 @@ dotnet test test/Ignixa.FhirMappingLanguage.Tests/Ignixa.FhirMappingLanguage.Tes
 
 Expected: PASS, 2 tests.
 
-If `manifest.xml` for `r4b` is a copy of `r5`'s and its `source`/`map`/`output` files do not exist under `r4b/structure-mapping`, note it — Task 11 filters on file existence, so this is handled, but the expected case count changes.
+**Measured facts about the manifests (release `1.7.46`) — verified after Task 6, use these rather than re-deriving:**
+
+- Manifests live at `{version}/structure-mapping/manifest.xml`. There is **no** `{version}/fml/` directory in this release.
+- `r4b/structure-mapping/manifest.xml` is **byte-identical** to `r5`'s, including test `name` attributes that all read `.../org.hl7.fhir.r5.tests/...` even in the r4b copy.
+- Every referenced `source`/`map`/`output` file **does exist** in both `r5` and `r4b`. So the existence filter removes nothing and the expected case count does **not** shrink for r4b: **10 cases per version**, of which **4** have `.xml` outputs (`qr2cda`, `qr2cdaxsi`, `qr2cd-eval-json`, `qr2cd-eval-fml`) and are excluded, leaving **6 in-scope JSON cases per version = 12 total**.
+- **Hazard:** because the `name` attributes are identical across versions, `name` alone is **not** a unique test identifier. Any xUnit `MemberData` display name or dictionary key must incorporate the version, or the r4b and r5 cases will collide and be indistinguishable in test output.
+- **Hazard:** `qr2cd-eval-json` has `map="qr2cda-eval.json"` — a JSON StructureMap, not FML. It is excluded by the XML-output rule anyway, but the loader must not assume every `map` attribute ends in `.map`.
 
 - [ ] **Step 7: Commit**
 
