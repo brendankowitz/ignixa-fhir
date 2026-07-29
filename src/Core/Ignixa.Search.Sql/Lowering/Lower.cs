@@ -318,7 +318,7 @@ public static class Lower
     /// <summary>Lowers a :missing search to the parameter's presence set, negated when :missing=true.</summary>
     private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string? resourceType)
     {
-        var presence = context.LowerParameterPresence(missing.Parameter, resourceType);
+        var presence = context.LowerParameterPresence(missing.Parameter, resourceType, provenanceNode: missing);
         return missing.IsMissing ? context.LowerNot(presence, resourceType) : presence;
     }
 
