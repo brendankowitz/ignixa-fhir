@@ -300,14 +300,20 @@ internal static class SearchKeySyntaxParser
                 $"expected {expectation}");
         }
 
+        /// <summary>
+        /// FHIR types <c>SearchParameter.code</c> as <c>code</c>, whose regex is <c>[^\s]+</c>, so a
+        /// custom search parameter is free to begin with a digit. The key grammar has no numeric
+        /// literals, so admitting a leading digit introduces no ambiguity — a resource-type position
+        /// that receives one still fails at binding with a name error rather than a syntax error.
+        /// </summary>
         private static bool IsIdentifierStart(char value)
         {
-            return IsAsciiLetter(value) || value == '_';
+            return IsAsciiLetter(value) || IsAsciiDigit(value) || value == '_';
         }
 
         private static bool IsIdentifierPart(char value)
         {
-            return IsIdentifierStart(value) || IsAsciiDigit(value) || value == '-';
+            return IsIdentifierStart(value) || value == '-';
         }
 
         private static bool IsAsciiLetter(char value)

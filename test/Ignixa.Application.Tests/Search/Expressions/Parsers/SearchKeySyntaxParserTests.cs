@@ -31,6 +31,35 @@ public class SearchKeySyntaxParserTests
     }
 
     [Theory]
+    [InlineData("07d5d21479ee52Code", "07d5d21479ee52Code", null)]
+    [InlineData("2ndline:exact", "2ndline", "exact")]
+    [InlineData("0", "0", null)]
+    public void GivenAParameterCodeStartingWithADigit_WhenParsing_ThenItIsAcceptedAsAnIdentifier(
+        string key,
+        string expectedName,
+        string? expectedModifier)
+    {
+        // FHIR types SearchParameter.code as `code`, whose regex is [^\s]+, so a custom search
+        // parameter is free to start with a digit. Rejecting it as a syntax error turns a valid
+        // registered parameter into an unparseable key.
+        var syntax = SearchKeySyntaxParser.ParseParameter(key);
+
+        var parameter = syntax.ShouldBeOfType<ParameterKeySyntax>();
+        parameter.Name.ShouldBe(expectedName);
+        parameter.Modifier.ShouldBe(expectedModifier);
+    }
+
+    [Fact]
+    public void GivenADigitLeadingParameterInAChain_WhenParsing_ThenBothSegmentsAreAccepted()
+    {
+        var syntax = SearchKeySyntaxParser.ParseParameter("subject.07code");
+
+        var chain = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
+        chain.ReferenceName.ShouldBe("subject");
+        chain.Next.ShouldBeOfType<ParameterKeySyntax>().Name.ShouldBe("07code");
+    }
+
+    [Theory]
     [InlineData("subject.name", "subject", null, "name")]
     [InlineData("subject:Patient.name", "subject", "Patient", "name")]
     public void GivenForwardKey_WhenParsing_ThenReturnsForwardChainKeySyntax(
