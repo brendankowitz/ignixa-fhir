@@ -128,14 +128,38 @@ API** and opens a fresh connection per call, so nothing can span calls. EF's `Sa
 per call, meaning the importer's nine boundaries are already nine separate transactions and partial imports
 are already possible — which is why `TerminologyImportStatus` exists as a column. The port must therefore:
 
-- [ ] Map every `SaveChangesAsync` call site to exactly one atomic unit, and implement each as a single
+- [x] Map every `SaveChangesAsync` call site to exactly one atomic unit, and implement each as a single
       batch with explicit `BEGIN TRANSACTION`/`COMMIT TRANSACTION` in the command text. A 200k-concept
       insert that fails halfway must not leave a half-populated CodeSystem with no record that it is partial.
-- [ ] Keep the 1,000-concept threshold and both insert paths, so behaviour does not change at the boundary.
+      *Done as three stored procedures — `dbo.ImportTermCodeSystem`, `dbo.ImportTermValueSet`,
+      `dbo.ImportTermConceptMap` — each taking its rows as a table-valued parameter. A procedure is the only
+      place the sequence can be atomic given no client-side transaction API, and a TVP is a parameter rather
+      than session state, which a `#temp` table is not: pooled reuse issues `sp_reset_connection` and drops
+      temp objects even on the same SPID.*
+- [x] ~~Keep the 1,000-concept threshold and both insert paths, so behaviour does not change at the
+      boundary.~~ **Deliberately not done.** The threshold *was* the defect: only the bulk path ran parent
+      resolution, so every CodeSystem at or below 1,000 concepts imported flat and `$subsumes` answered
+      "not-subsumed" for every pair in it. One path now serves both sizes and the boundary has no behavioural
+      meaning left. `GivenACodeSystemAtTheOldThreshold_WhenImported_ThenSizeNoLongerDecidesAnything` pins it.
 - [ ] **Add a volume test.** Real CodeSystems (SNOMED, LOINC) are orders of magnitude past the threshold;
-      the bulk path's performance and memory profile are part of its contract, not an implementation detail.
-      Record timing so a regression is visible.
-- [ ] Repoint Task 5b's oracle tests. Assertions must not change.
+      the insert path's performance and memory profile are part of its contract, not an implementation
+      detail. Record timing so a regression is visible. *Still open — carried to the follow-ups register.*
+- [x] Repoint Task 5b's oracle tests. Assertions must not change.
+
+**Defects found and fixed while porting**, each pinned by a test. The first is the one with user-visible
+reach; the rest were all failure modes that produced wrong data or an opaque error rather than a diagnosis.
+
+| # | Defect | Effect |
+|---|--------|--------|
+| 1 | Parent resolution ran on only one of two insert paths | Every CodeSystem ≤ 1,000 concepts imported flat: `$subsumes` wrong for every pair, and every compose `is-a` filter over one resolved to nothing |
+| 2 | Exclude filters used a weaker evaluator whose default arm left the query unrestricted | `exclude` with any filter it did not understand — e.g. SNOMED's `property: concept, op: is-a` — selected **every code in the system** and removed them all |
+| 3 | Unsupported filter operators matched everything | A narrow include quietly became "the whole CodeSystem" |
+| 4 | `descendent-of` resolved through the same helper as `is-a` | Every `descendent-of` filter was wider by exactly the named code |
+| 5 | Missing system URI resolved to `SystemId` 0, which no `dbo.System` row has | An expansion entry without a system, or a ConceptMap group without a target, failed the **entire** import on a foreign key violation reported as an opaque SQL error |
+| 6 | `expansion.contains` read one level deep | A grouped expansion imported as its group headers alone, or as nothing |
+| 7 | Unresolvable `exclude`d ValueSets were passed over silently | The expansion kept codes that were meant to be removed while reporting itself complete |
+| 8 | Only R4's `equivalence` was read, not R5's `relationship` | Every R5 mapping stored as "equivalent", including ones saying the opposite |
+| 9 | `ImportErrorMessage` was written message-plus-stack-trace into `NVARCHAR(1000)` | The truncation exception was swallowed by a nested catch, losing the error entirely |
 
 ---
 
@@ -160,7 +184,12 @@ one consumer that takes a `FhirDbContext` directly), and the storage-type rename
 live, unflagged read cutover with 31 documented search gaps still open. Before Task 10 touches anything:
 
 - [ ] `dotnet build All.sln` — 0/0.
-- [ ] Every unit and integration suite at the Task R baselines.
+- [ ] Every unit and integration suite at the Task R baselines. **The integration baseline is 260/260, not
+      the 187/187 quoted earlier in this phase.** 187 was an artifact: the fixture's unserialised
+      `CREATE DATABASE` timed out under sixteen-way xUnit parallelism, so each run silently lost a random
+      subset, and `dotnet test` prints `Passed!` and can exit 0 even when the host aborts mid-run. Fixed in
+      `bbf2bc0e`. **Assert the reported total equals the discovered total** — a partial run is otherwise
+      indistinguishable from a clean one, and this gate is the last check before an irreversible deletion.
 - [ ] **E2E at exactly the Task R baseline, matching on failing test names**, not just counts.
 - [ ] **A real application start** against a real tenant database, exercising terminology import and package
       load — the two areas whose ports have the least prior coverage. Phase B's ~10 missing tables were
@@ -198,6 +227,8 @@ evaporate when the plan closes.
 | `CreateOrUpdateAsync` never commits its transaction row | `SqlServerFhirRepository` | `VisibleDate` stays NULL, so `_since` matches nothing on that path |
 | Device and Location inert in the Patient compartment | `R4CompartmentDefinitions` | Zero linking parameters; silently absent from `$everything` |
 | 31 E2E search gaps, 5 groups | gap-closure design | Their oracle disappears at Task 10 |
+| No volume test for CodeSystem import | `dbo.ImportTermCodeSystem` | Largest case exercised is 1,001 concepts; real CodeSystems are orders of magnitude past it and the TVP's memory profile at that size is unmeasured |
+| Compose filter ops `not-in`, `generalizes`, `exists` unevaluated | `SqlServerValueSetComposer` | Now reported through `IsPartialExpansion` rather than silently guessed, so the gap is visible; implementing them is a feature, not a port |
 
 ---
 
