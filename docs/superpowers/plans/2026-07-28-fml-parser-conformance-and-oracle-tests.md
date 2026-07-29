@@ -2195,43 +2195,62 @@ git commit -m "Add FML transform oracle tests driven by the official test manife
 
 ---
 
-## Task 12: Wire the FML validation cases into the existing validator oracle
+## Task 12: Parse-ratchet the official validator FML files
 
-`validator/manifest.json` in the same corpus already drives `ValidatorConformanceRunner`, and it includes `map-general-test.fml` and `map-general-test2.fml` with recorded Java outcomes at `validator/outcomes/java/R5.map-general-test-base.json` and `validator/outcomes/java/R5.map-general-test2-base.json`. These grade FML *diagnostics* — the errors and warnings a conforming implementation should raise — which the transform oracle cannot.
+> **Amended after measurement.** The original task assumed the two official FML cases could be added to `ValidatorConformanceRunner`'s case filter. That premise was verified false. Recorded here rather than deleted, because the finding matters for Task 13.
+>
+> **What was measured:**
+> - `ConformanceCaseAnalysis.IsR4CleanBase` requires `version == "4.0"` and a `.json` input file. Both FML manifest entries omit `version` (meaning R5 — consistent with their `R5.*` outcome filenames) and carry `.fml` files. They are excluded twice over, deliberately.
+> - `ValidatorConformanceRunner.TryValidate` does `JsonNode.Parse(File.ReadAllText(inputPath))`. FML text throws `JsonException`, which the runner scores as "invalid" — so such a case would appear to pass *because JSON parsing failed*. A pass for the wrong reason, not coverage.
+> - The runner grades binary valid/invalid on error count; these outcomes are line/column-anchored diagnostics (test1: 2 errors + 2 warnings; test2: 3 errors + 2 information).
+> - The diagnostics require StructureMap **semantic** validation Ignixa does not have: cross-map group resolution through `imports` (incl. the wildcard `*4to3` form already deferred), cross-version R3 StructureDefinition resolution, element-path validation, default-rule inference, and source/target mode cross-checking.
+>
+> Diagnostic grading is therefore tracked as its own issue, gated behind the evaluator fixes. What *is* in scope and valuable now: both files parse cleanly today, and they are the richest parser coverage available — `extends Element <<type+>>` (Task 4), wildcard `imports`, the `map` header (Task 5), the `+` operator (Task 1), and the parenthesized FHIRPath transform `('urn:uuid:' + r.lower())` (Task 5b) — several of which appear nowhere in the `structure-mapping` corpus. Lock that in against regression.
+
+Both files are present in this project's **own** corpus copy (`TestData/fhir-test-cases/validator/`), so no cross-project dependency is needed.
 
 **Files:**
-- Modify: the case-selection logic in `ValidatorConformanceRunner` (locate it with `grep -rn "ValidatorConformanceRunner" test/`)
+- Modify: `test/Ignixa.FhirMappingLanguage.Tests/Conformance/FmlTestCasesLocator.cs`
+- Create: `test/Ignixa.FhirMappingLanguage.Tests/Conformance/FmlValidatorCorpusParseTests.cs`
 
-- [ ] **Step 1: Locate the runner and its case filter**
+- [ ] **Step 1: Add a `validator` directory accessor to the locator**
+
+Mirror the existing `StructureMappingDirectory(string version)` with a parameterless `ValidatorDirectory()` returning `Path.Combine(Root, "validator")`. Do not restructure the locator.
+
+- [ ] **Step 2: Add the parse ratchet**
+
+A new test class covering exactly `map-general-test.fml` and `map-general-test2.fml`.
+
+Requirements, in priority order:
+
+1. **Assert the files exist**, with the resolved path in the failure message, *before* attempting to parse. A partial corpus download must produce "file X not found", never a vacuous green.
+2. **Assert parsing succeeds** — let the exception escape rather than catching and asserting on a bool, so the failure message carries the parser's own diagnostic.
+3. **Assert structural facts, not merely "did not throw."** Measured values:
+
+   | file | `Url` | `Groups` | `Uses` | `Imports` |
+   |---|---|---|---|---|
+   | `map-general-test.fml` | `http://hl7.org/fhir/StructureMap/Address4to3` | 1 | 2 | 1 |
+   | `map-general-test2.fml` | `http://github.com/FHIR/fhir-test-cases/r5/fml/syntax` | 2 | 2 | 0 |
+
+4. **Assert the constructs that make these files worth having.** This is the actual point of the task — without it the test is just "two more files parse."
+   - `map-general-test.fml`: the group's `extends` target (`Element`) and its type-mode annotation (`type+`) survived parsing.
+   - `map-general-test2.fml`: the parenthesized FHIRPath transform in the `"rootuuid"` rule survived parsing.
+
+   **Verify the property names against `src/Core/Ignixa.FhirMappingLanguage/Expressions/` before writing these assertions — do not assume them.** If a construct genuinely is not surfaced on the expression model, say so in your handoff instead of asserting something weaker and calling it done.
+
+- [ ] **Step 3: Verify**
 
 ```bash
-grep -rn "class ValidatorConformanceRunner" test/
-grep -rn "manifest.json" test/
+dotnet test test/Ignixa.FhirMappingLanguage.Tests/Ignixa.FhirMappingLanguage.Tests.csproj -f net9.0 --nologo
 ```
 
-Read the file. Determine how it decides which of the 972 `test-cases` entries to execute — most likely an allow-list or an extension filter.
+Then mutation-check at least the existence guard and one structural assertion: replace content (never delete lines — every mutation must compile under warnings-as-errors) and confirm the test fails. Restore and re-verify green.
 
-- [ ] **Step 2: Check whether the two FML cases already run**
-
-```bash
-dotnet test <the validator test project> -f net9.0 --filter "FullyQualifiedName~ValidatorConformance" --logger "console;verbosity=detailed" 2>&1 | Select-String "map-general"
-```
-
-If both appear and pass, this task is already satisfied — record that and skip to Step 5.
-
-- [ ] **Step 3: Add them to the executed set**
-
-Extend the runner's filter to include `map-general-test.fml` and `map-general-test2.fml`, following whatever mechanism the file already uses. Do not restructure the runner.
-
-- [ ] **Step 4: Run and triage**
-
-Compare Ignixa's diagnostics against the recorded Java outcomes. Per ADR-2607, the bar is: no over-strict diagnostics (never report an error the reference does not), and a recorded pass rate for the rest. Add exclusions only with written rationale.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add test/
-git commit -m "Include FML validation cases in the validator conformance oracle"
+git add test/Ignixa.FhirMappingLanguage.Tests
+git commit -F <message-file>
 ```
 
 ---
