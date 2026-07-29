@@ -725,9 +725,10 @@ group PatientToBundle(source src : Patient, target bundle : Bundle) {
     #region Error Cases Tests
 
     [Fact]
-    public void GivenMissingMapKeyword_WhenParsing_ThenThrowsParseException()
+    public void GivenUnconsumedTrailingTokens_WhenParsing_ThenThrowsParseException()
     {
         // Arrange
+        // The leading 'map' keyword is optional since R6; the failure comes from the unconsumed '= 'Test'' tokens.
         var mappingText = "'http://example.org' = 'Test'";
         var compiler = new MappingParser();
 

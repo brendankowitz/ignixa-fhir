@@ -596,12 +596,11 @@ internal static class MappingGrammar
         ConstantDeclarationExpression[] constants,
         GroupExpression[] groups)
     {
-        var metaDict = metadataLines
-            .Where(kvp => kvp.HasValue)
-            .ToDictionary(
-                kvp => kvp!.Value.Key,
-                kvp => kvp!.Value.Value,
-                StringComparer.Ordinal);
+        var metaDict = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var kvp in metadataLines.Where(kvp => kvp.HasValue).Select(kvp => kvp!.Value))
+        {
+            metaDict[kvp.Key] = kvp.Value;
+        }
 
         var url = header?.Url ?? (metaDict.GetValueOrDefault("url") ?? string.Empty);
         var identifier = header?.Identifier ?? (metaDict.GetValueOrDefault("name") ?? string.Empty);

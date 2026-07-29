@@ -331,5 +331,56 @@ public class FmlSyntaxCoverageTests
         map.Metadata["title"].ShouldBe("A Title From Metadata");
     }
 
+    [Fact]
+    public void GivenDuplicateNonSpecialMetadataKey_WhenParsing_ThenLastValueWins()
+    {
+        // Arrange — two /// title declarations; last-wins must apply and no exception may be thrown
+        const string Fml = """
+            /// title = 'First title'
+            /// title = 'Second title'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Metadata["title"].ShouldBe("Second title");
+    }
+
+    [Fact]
+    public void GivenDuplicateUrlMetadataKey_WhenParsing_ThenLastValueWinsAndUrlIsPopulated()
+    {
+        // Arrange — two /// url declarations; the later one must win for MapExpression.Url
+        const string Fml = """
+            /// url = 'http://example.org/First'
+            /// url = 'http://example.org/Second'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Url.ShouldBe("http://example.org/Second");
+    }
+
+    [Fact]
+    public void GivenMetadataWithoutUrlOrGroups_WhenParsing_ThenExceptionMessageDescribesActualCondition()
+    {
+        // Arrange — title metadata is present but url/name are absent and there are no groups
+        const string Fml = "/// title = 'Only a title'";
+
+        // Act & Assert
+        var ex = Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
+        ex.Message.ShouldBe("The input has no groups and no url or name from a map header or metadata declarations.");
+    }
+
     #endregion
 }

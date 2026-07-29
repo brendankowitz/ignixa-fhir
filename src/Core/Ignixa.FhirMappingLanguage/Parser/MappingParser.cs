@@ -71,7 +71,7 @@ public class MappingParser
                 string.IsNullOrEmpty(result.Value.Identifier))
             {
                 throw new ParseException(
-                    "The input contains no map header, metadata declarations, or groups.",
+                    "The input has no groups and no url or name from a map header or metadata declarations.",
                     Position.Zero);
             }
 
