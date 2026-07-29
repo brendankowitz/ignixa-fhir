@@ -92,6 +92,15 @@ From `AGENTS.md` / `CLAUDE.md` in this repo:
 
 **Critical gotcha:** `test/Ignixa.FhirMappingLanguage.Tests/` has **no global usings**. Every new test file needs explicit `using Xunit;` and `using Shouldly;`.
 
+**Verified API facts** (corrected during Task 2 — earlier drafts of this plan got these wrong):
+
+- `MappingParser.Parse` is an **instance** method, not static. Call it as `new MappingParser().Parse(fml)`.
+- A source condition is `SourceExpression.Condition`, typed `Expression?`. To read the FHIRPath text, cast and use `PathExpression`: `((FhirPathExpression)source.Condition!).PathExpression`. There is no `.Expression` property.
+- `MapExpression.Groups`, `GroupExpression.Rules`, and `RuleExpression.Sources` are all `IReadOnlyList<T>` and named as this plan assumes.
+- `ImplicitUsings` is enabled in the test project, which covers `System.*` — but **not** `Xunit` or `Shouldly`, which still need explicit usings (see gotcha above).
+
+Any other member name quoted in this plan is an assumption, not a verified fact. Open the source and confirm before relying on it; report the correction rather than working around it silently.
+
 **Critical gotcha:** `MappingTokenizer.cs` contains **two near-identical tokenizer builders** — `CreateWithTrivia()` (lines 24-111) and `Create()` (lines 117-204). Every tokenizer change must be applied to **both**. Because the operator blocks are byte-identical between them, a naive `edit` anchor will fail with "not unique" — the replacements below include enough trailing context (`.Build();` vs `// Whitespace (ignore for standard parsing)`) to disambiguate.
 
 ---
@@ -558,7 +567,7 @@ Append to `FmlSyntaxCoverageTests`:
             }
             """;
 
-        var map = MappingParser.Parse(Fml);
+        var map = new MappingParser().Parse(Fml);
 
         map.Url.ShouldBe("http://hl7.org/fhir/StructureMap/tutorial");
         map.Identifier.ShouldBe("tutorial");
@@ -575,7 +584,7 @@ Append to `FmlSyntaxCoverageTests`:
             }
             """;
 
-        var map = MappingParser.Parse(Fml);
+        var map = new MappingParser().Parse(Fml);
 
         map.Identifier.ShouldBe("a \" b");
     }
@@ -787,7 +796,7 @@ Append to `FmlSyntaxCoverageTests`:
             }
             """;
 
-        var map = MappingParser.Parse(fml);
+        var map = new MappingParser().Parse(fml);
 
         map.Groups[0].TypeMode.ShouldBe(expected);
     }
@@ -803,7 +812,7 @@ Append to `FmlSyntaxCoverageTests`:
             }
             """;
 
-        var map = MappingParser.Parse(Fml);
+        var map = new MappingParser().Parse(Fml);
 
         map.Groups[0].TypeMode.ShouldBe(GroupTypeMode.None);
     }
@@ -926,9 +935,9 @@ Append to `FmlSyntaxCoverageTests`:
             }
             """;
 
-        var reparsed = MappingParser.Parse(new FmlSerializer().Serialize(MappingParser.Parse(fml)));
+        var reparsed = new MappingParser().Parse(new FmlSerializer().Serialize(new MappingParser().Parse(fml)));
 
-        reparsed.Groups[0].TypeMode.ShouldBe(MappingParser.Parse(fml).Groups[0].TypeMode);
+        reparsed.Groups[0].TypeMode.ShouldBe(new MappingParser().Parse(fml).Groups[0].TypeMode);
     }
 ```
 
@@ -989,7 +998,7 @@ Append to `FmlSyntaxCoverageTests`:
             }
             """;
 
-        var map = MappingParser.Parse(Fml);
+        var map = new MappingParser().Parse(Fml);
 
         map.Url.ShouldBe("http://hl7.org/fhir/uv/xver/StructureMap/Element4to6");
         map.Identifier.ShouldBe("Element4to6");
@@ -1003,7 +1012,7 @@ Append to `FmlSyntaxCoverageTests`:
             // nothing to see here
             """;
 
-        Should.Throw<ParseException>(() => MappingParser.Parse(Fml));
+        Should.Throw<ParseException>(() => new MappingParser().Parse(Fml));
     }
 ```
 
@@ -1454,7 +1463,7 @@ public class FmlCorpusParseTests(ITestOutputHelper output)
         {
             try
             {
-                MappingParser.Parse(File.ReadAllText(file, Encoding.UTF8));
+                new MappingParser().Parse(File.ReadAllText(file, Encoding.UTF8));
                 parsed++;
             }
             catch (Exception ex)
@@ -1989,7 +1998,7 @@ public class FmlTransformOracleTests(ITestOutputHelper output)
         var fhirVersion = oracleCase.Version == "r4b" ? FhirVersion.R4B : FhirVersion.R5;
         var schema = fhirVersion.GetSchemaProvider();
 
-        var map = MappingParser.Parse(File.ReadAllText(Path.Combine(directory, oracleCase.MapFile), Encoding.UTF8));
+        var map = new MappingParser().Parse(File.ReadAllText(Path.Combine(directory, oracleCase.MapFile), Encoding.UTF8));
 
         var source = ResourceJsonNode.Parse(File.ReadAllText(Path.Combine(directory, oracleCase.SourceFile), Encoding.UTF8));
         var targetType = DetermineTargetType(map);
