@@ -26,6 +26,8 @@ public class FmlTestCasesLocatorTests
     [InlineData(null)]
     public void GivenABlankVersion_WhenLocatingStructureMappingDirectory_ThenThrowsArgumentException(string? version)
     {
-        Should.Throw<ArgumentException>(() => FmlTestCasesLocator.StructureMappingDirectory(version!));
+        var exception = Should.Throw<ArgumentException>(() => FmlTestCasesLocator.StructureMappingDirectory(version!));
+
+        exception.ParamName.ShouldBe("version");
     }
 }
