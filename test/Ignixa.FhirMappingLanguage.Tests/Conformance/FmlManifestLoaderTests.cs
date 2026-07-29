@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Shouldly;
 using Xunit;
@@ -12,6 +13,11 @@ namespace Ignixa.FhirMappingLanguage.Tests.Conformance;
 
 public class FmlManifestLoaderTests
 {
+    // Re-derives the URL last segment in test code; intentionally does not
+    // delegate to production code to avoid circular trust in the stale-key test.
+    private static string LastSegment(string name) =>
+        name.Split('/', StringSplitOptions.RemoveEmptyEntries).Last();
+
     [Theory]
     [InlineData("r5")]
     [InlineData("r4b")]
@@ -19,7 +25,7 @@ public class FmlManifestLoaderTests
     {
         var cases = FmlManifestLoader.Load(version);
 
-        cases.Count.ShouldBe(10);
+        cases.Count.ShouldBe(10, $"{version}: manifest yielded {cases.Count} cases");
         cases.ShouldContain(c =>
             c.MapFile == "qr2pat-gender.map" &&
             c.SourceFile == "qr.json" &&
@@ -47,7 +53,7 @@ public class FmlManifestLoaderTests
         };
 
         var actualSegments = supported
-            .Select(c => c.Name.Split('/', StringSplitOptions.RemoveEmptyEntries).Last())
+            .Select(c => LastSegment(c.Name))
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
 
@@ -65,8 +71,12 @@ public class FmlManifestLoaderTests
     {
         var cases = FmlManifestLoader.Load(version);
         var caseSegments = cases
-            .Select(c => c.Name.Split('/', StringSplitOptions.RemoveEmptyEntries).Last())
+            .Select(c => LastSegment(c.Name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // Guard against the vacuous pass: if the exclusion list were emptied
+        // entirely the loop below runs zero times and passes, defeating its purpose.
+        FmlOracleExclusions.All.ShouldNotBeEmpty();
 
         foreach (var key in FmlOracleExclusions.All.Keys)
         {
@@ -80,6 +90,9 @@ public class FmlManifestLoaderTests
     public void GivenManifest_WhenCheckingOutputExtensions_ThenXmlMeansExcludedAndJsonMeansInScope(string version)
     {
         var cases = FmlManifestLoader.Load(version);
+
+        cases.Count(c => FmlOracleExclusions.IsExcluded(c.Name)).ShouldBe(4);
+        cases.Count(c => !FmlOracleExclusions.IsExcluded(c.Name)).ShouldBe(6);
 
         foreach (var c in cases.Where(c => FmlOracleExclusions.IsExcluded(c.Name)))
         {
@@ -98,6 +111,9 @@ public class FmlManifestLoaderTests
     public void GivenManifest_WhenCheckingRationales_ThenExcludedCasesHaveRationaleAndInScopeDoNot(string version)
     {
         var cases = FmlManifestLoader.Load(version);
+
+        cases.Count(c => FmlOracleExclusions.IsExcluded(c.Name)).ShouldBe(4);
+        cases.Count(c => !FmlOracleExclusions.IsExcluded(c.Name)).ShouldBe(6);
 
         foreach (var c in cases.Where(c => FmlOracleExclusions.IsExcluded(c.Name)))
         {
@@ -124,5 +140,11 @@ public class FmlManifestLoaderTests
             c.Version.ShouldBe(version);
             c.ToString().ShouldStartWith($"{version}/");
         }
+    }
+
+    [Fact]
+    public void GivenMissingManifest_WhenLoading_ThenThrowsFileNotFoundException()
+    {
+        Should.Throw<FileNotFoundException>(() => FmlManifestLoader.Load("nonexistent-version"));
     }
 }
