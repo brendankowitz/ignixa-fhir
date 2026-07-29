@@ -4,6 +4,7 @@
 
 using Ignixa.FhirMappingLanguage.Expressions;
 using Ignixa.FhirMappingLanguage.Parser;
+using Ignixa.FhirMappingLanguage.Serialization;
 using Shouldly;
 using Xunit;
 
@@ -145,5 +146,66 @@ public class FmlSyntaxCoverageTests
         // Assert
         map.ConceptMaps.Count.ShouldBe(1);
         map.ConceptMaps[0].Identifier.ShouldBe("#cm");
+    }
+
+    [Theory]
+    [InlineData("<<types>>", GroupTypeMode.Types)]
+    [InlineData("<<type+>>", GroupTypeMode.TypeAndTypes)]
+    public void GivenAGroupTypeModeAnnotation_WhenParsing_ThenTheModeIsCaptured(string annotation, GroupTypeMode expected)
+    {
+        // Arrange
+        var fml = $$"""
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {{annotation}} {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(fml);
+
+        // Assert
+        map.Groups[0].TypeMode.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void GivenNoTypeModeAnnotation_WhenParsing_ThenTheModeIsNone()
+    {
+        // Arrange
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Groups[0].TypeMode.ShouldBe(GroupTypeMode.None);
+    }
+
+    [Theory]
+    [InlineData("<<types>>")]
+    [InlineData("<<type+>>")]
+    public void GivenAGroupTypeModeAnnotation_WhenRoundTripping_ThenTheAnnotationSurvives(string annotation)
+    {
+        // Arrange
+        var fml = $$"""
+            map 'http://example.org/T' = 'T'
+
+            group Main(source src, target tgt) {{annotation}} {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var reparsed = new MappingParser().Parse(new FmlSerializer().Serialize(new MappingParser().Parse(fml)));
+
+        // Assert
+        reparsed.Groups[0].TypeMode.ShouldBe(new MappingParser().Parse(fml).Groups[0].TypeMode);
     }
 }

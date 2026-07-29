@@ -17,18 +17,25 @@ public class GroupExpression : Expression
         IEnumerable<ParameterExpression> parameters,
         string? extends,
         IEnumerable<RuleExpression> rules,
-        ISourcePositionInfo? location = null) : base(location)
+        ISourcePositionInfo? location = null,
+        GroupTypeMode typeMode = GroupTypeMode.None) : base(location)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         Parameters = parameters?.ToList() ?? [];
         Extends = extends;
         Rules = rules?.ToList() ?? [];
+        TypeMode = typeMode;
     }
 
     public string Name { get; }
     public IReadOnlyList<ParameterExpression> Parameters { get; }
     public string? Extends { get; }
     public IReadOnlyList<RuleExpression> Rules { get; }
+
+    /// <summary>
+    /// Gets the type-mode annotation declared for this group.
+    /// </summary>
+    public GroupTypeMode TypeMode { get; }
 
     public override string ToString()
     {

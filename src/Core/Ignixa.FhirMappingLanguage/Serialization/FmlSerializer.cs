@@ -211,6 +211,12 @@ public class FmlSerializer
             context.Append($" extends {group.Extends}");
         }
 
+        // Type-mode annotation
+        if (group.TypeMode != GroupTypeMode.None)
+        {
+            context.Append(group.TypeMode == GroupTypeMode.TypeAndTypes ? " <<type+>>" : " <<types>>");
+        }
+
         // Rules
         if (group.Rules.Count == 0)
         {

@@ -517,7 +517,20 @@ internal static class MappingGrammar
             codeMaps.Any() ? [new ConceptMapGroupExpression(null, null, codeMaps)] : [],
             CreatePosition(cmToken));
 
-    // Group: group Name(params) [extends OtherGroup] { rules }
+    // Group type mode annotation: <<types>> or <<type+>>
+    // Note: '<<' is two LeftAngle tokens - the lexer deliberately has no '<<' token.
+    private static readonly TokenListParser<MappingTokenKind, GroupTypeMode> GroupTypeModeAnnotation =
+        from open1 in Token.EqualTo(MappingTokenKind.LeftAngle)
+        from open2 in Token.EqualTo(MappingTokenKind.LeftAngle)
+        from mode in Token.EqualTo(MappingTokenKind.Types).Value(GroupTypeMode.Types)
+            .Or(from typeToken in Token.EqualTo(MappingTokenKind.Type)
+                from plus in Token.EqualTo(MappingTokenKind.Plus).Optional()
+                select plus.HasValue ? GroupTypeMode.TypeAndTypes : GroupTypeMode.Types)
+        from close1 in Token.EqualTo(MappingTokenKind.RightAngle)
+        from close2 in Token.EqualTo(MappingTokenKind.RightAngle)
+        select mode;
+
+    // Group: group Name(params) [extends OtherGroup] [<<typeMode>>] { rules }
     private static readonly TokenListParser<MappingTokenKind, GroupExpression> Group =
         from groupToken in Token.EqualTo(MappingTokenKind.Group)
         from name in Identifier
@@ -529,6 +542,7 @@ internal static class MappingGrammar
             from extendName in Identifier
             select extendName.Name
         ).OptionalOrDefault()
+        from typeMode in GroupTypeModeAnnotation.OptionalOrDefault(GroupTypeMode.None)
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
         from rules in Rule.Many()
         from rbrace in Token.EqualTo(MappingTokenKind.RightBrace)
@@ -537,7 +551,8 @@ internal static class MappingGrammar
             parameters,
             extends,
             rules,
-            CreatePosition(groupToken));
+            CreatePosition(groupToken),
+            typeMode);
 
     // Map: map "url" = "Identifier" [conceptMaps]* [uses]* [imports]* [constants]* [groups]*
     public static readonly TokenListParser<MappingTokenKind, MapExpression> Map =
