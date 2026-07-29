@@ -542,7 +542,7 @@ git commit -m "Preserve original source text when capturing embedded FHIRPath ex
 
 FML permits both `'...'` and `"..."` for string literals. The tokenizer currently maps `"..."` to `DelimitedIdentifier`, and `MappingGrammar.Map` (line 512) demands a `StringLiteral`, so every official case that opens with `map "http://..." = "cast"` dies at line 1 column 5. This accounts for 21 of the 27 official-case failures.
 
-The fix introduces a distinct `DoubleQuotedString` kind rather than reusing `StringLiteral`, so the parser can keep accepting `"..."` in identifier positions (where the old behaviour allowed it) without losing the ability to treat it as a string in literal positions.
+The fix introduces a distinct `DoubleQuotedString` kind rather than reusing `StringLiteral`. This matches the official ANTLR grammar (`HL7/fhir` `images/mapping.g4`), which declares `DOUBLE_QUOTED_STRING` as a token distinct from `STRING`, and uses it in `url`, `ruleName` and `literal` — but **not** in `identifier`, where the delimited form is backtick-only.
 
 **Files:**
 - Modify: `src/Core/Ignixa.FhirMappingLanguage/Lexer/MappingTokenKind.cs`
@@ -698,34 +698,33 @@ with:
             .Select(t => new LiteralExpression(UnescapeString(t.ToStringValue()), CreatePosition(t)));
 ```
 
-- [ ] **Step 7: Keep `"..."` usable in identifier positions**
+- [ ] **Step 7: Do NOT accept `"..."` in identifier positions**
 
-Replace `MappingGrammar.cs:91-97`:
+> **Corrected 2026-07-28 after the Task 3 code-quality review.** An earlier draft of this step widened the `Identifier` rule with `.Or(Token.EqualTo(MappingTokenKind.DoubleQuotedString))`, on the theory that it preserved backward compatibility. That was wrong on three counts:
+>
+> 1. **It is non-conformant.** The official ANTLR grammar (`HL7/fhir` `images/mapping.g4`) lists `DOUBLE_QUOTED_STRING` in `url`, `ruleName` and `literal`, and **not** in `identifier`. The delimited-identifier form is backtick-only (`DELIMITEDIDENTIFIER : '`' (ESC | .)*? '`' ;`).
+> 2. **The compatibility was with our own bug, not with FML.** Before Task 3 the tokenizer mis-classified `"..."` as `DelimitedIdentifier`; the widening carried that misfeature forward. Mutation testing showed **zero** of 562 tests depended on it.
+> 3. **It creates a two-valued unescaping.** `UnescapeString` resolves `\"`, `UnescapeIdentifier` does not — so the same token would mean `a " b` in literal position and `a \" b` in identifier position.
+>
+> It also increases ambiguity in the top-level alternation that Task 5 has to extend.
 
-```csharp
-    private static readonly TokenListParser<MappingTokenKind, IdentifierExpression> Identifier =
-        Token.EqualTo(MappingTokenKind.Identifier)
-            .Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier))
-            .Or(Token.EqualTo(MappingTokenKind.Type))  // 'type' can be used as property name
-            .Or(Token.EqualTo(MappingTokenKind.Default))  // 'default' can be used as property name
-            .Or(Token.EqualTo(MappingTokenKind.Prefix))  // 'prefix' can be used as property name
-            .Select(t => new IdentifierExpression(UnescapeIdentifier(t.ToStringValue()), CreatePosition(t)));
-```
+Leave the `Identifier` rule (current lines ~114-120) **unchanged**. `"..."` reaches the parser only through `StringLiteral` (Step 6).
 
-with:
+Then remove the now-dead double-quote branch from `UnescapeIdentifier` (current lines 63-72), which has exactly one caller — the `Identifier` rule:
 
 ```csharp
-    private static readonly TokenListParser<MappingTokenKind, IdentifierExpression> Identifier =
-        Token.EqualTo(MappingTokenKind.Identifier)
-            .Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier))
-            .Or(Token.EqualTo(MappingTokenKind.DoubleQuotedString))  // "..." is legal where an identifier is expected
-            .Or(Token.EqualTo(MappingTokenKind.Type))  // 'type' can be used as property name
-            .Or(Token.EqualTo(MappingTokenKind.Default))  // 'default' can be used as property name
-            .Or(Token.EqualTo(MappingTokenKind.Prefix))  // 'prefix' can be used as property name
-            .Select(t => new IdentifierExpression(UnescapeIdentifier(t.ToStringValue()), CreatePosition(t)));
+    // Helper: Unescape identifier
+    private static string UnescapeIdentifier(string id)
+    {
+        if (id.StartsWith('`') && id.EndsWith('`'))
+        {
+            return id.Substring(1, id.Length - 2);
+        }
+        return id;
+    }
 ```
 
-`UnescapeIdentifier` (lines 54-62) already strips both backticks and double quotes, so it needs no change.
+No `Length >= 2` guard is needed: the backtick regex requires at least two characters and the method is private with token-sourced input only.
 
 - [ ] **Step 8: Fix the ConceptMap declaration id**
 
@@ -971,6 +970,17 @@ R6-era FML replaces the `map "url" = "name"` header with a run of metadata lines
 ```
 
 The tokenizer currently swallows these as `LineComment` (because `Comment.CPlusPlusStyle` matches `//`), and `MappingGrammar.Map` (line 511) requires a leading `Map` token, so parsing fails with `unexpected uses 'uses', expected map`. This blocks every `brianpos/fhir-r6-maps` file and `syntax.map:1`.
+
+> **Known hazard, surfaced by the Task 3 code-quality review.** The spec grammar pairs `metadataDeclaration` with a `markdownLiteral`:
+>
+> ```antlr
+> metadataDeclaration : METADATA_PREFIX qualifiedIdentifier '=' (literal | markdownLiteral)? ;
+> TRIPLE_QUOTED_STRING_LITERAL : '"""' [\r\n] (.)*? [\r\n] '"""' ;
+> ```
+>
+> Our double-quote rule is `"([^"\\]|\\.)*"`, which lexes `"""` as an **empty `DoubleQuotedString` followed by a dangling `"`** — and since Task 3, that first token looks like a legitimate empty string literal rather than a lexer gap, so the failure will be confusing.
+>
+> This task only needs to parse metadata *values* that are ordinary literals; the corpora in scope do not use `"""` blocks. **Do not** add triple-quoted support here. But if you hit a corpus file that uses one, stop and report it rather than widening the regex — a `"""` rule must be registered *before* the `"..."` rule in both builders, and getting that ordering wrong silently breaks every ordinary double-quoted string.
 
 **Files:**
 - Modify: `src/Core/Ignixa.FhirMappingLanguage/Lexer/MappingTokenKind.cs`
