@@ -22,22 +22,21 @@ internal static class ApproximateDateRange
 {
     /// <summary>
     /// Computes the widened [Start, End] endpoints for a date :ap comparison. Throws
-    /// <see cref="InvalidOperationException"/> when <paramref name="referenceTime"/> is null -- a direct
-    /// caller compiling a date :ap search must supply <c>Lower.Run</c>'s approximationReferenceTime
-    /// parameter. Endpoints that would fall outside the representable <see cref="DateTimeOffset"/> range
-    /// saturate at <see cref="DateTimeOffset.MinValue"/>/<see cref="DateTimeOffset.MaxValue"/>, matching
-    /// how numeric :ap saturates at the decimal bounds. <c>date=ap0001-01-01</c> is legal user input and
-    /// must compile, not throw past the trace boundary.
+    /// <see cref="InvalidOperationException"/> when <paramref name="referenceTime"/> is null, which
+    /// <see cref="SearchSqlCompiler"/> never allows -- it always supplies the instant from its
+    /// <see cref="TimeProvider"/>. Endpoints that would fall outside the representable
+    /// <see cref="DateTimeOffset"/> range saturate at <see cref="DateTimeOffset.MinValue"/>/
+    /// <see cref="DateTimeOffset.MaxValue"/>, matching how numeric :ap saturates at the decimal bounds.
+    /// <c>date=ap0001-01-01</c> is legal user input and must compile, not throw.
     /// </summary>
     public static (DateTimeOffset Start, DateTimeOffset End) Widen(DateTimeSearchValue value, DateTimeOffset? referenceTime)
     {
         if (referenceTime is not { } reference)
         {
             throw new InvalidOperationException(
-                "The date ':ap' (approximately) comparator requires an explicit reference instant. " +
-                "SearchSqlCompiler.TryCreatePlanAsync supplies this automatically from its TimeProvider. " +
-                "If you are constructing LowerOptions manually, set ApproximationReferenceTime to a non-null " +
-                "DateTimeOffset before calling Lower.Run.");
+                "The date ':ap' (approximately) comparator requires an explicit reference instant, but the " +
+                "lowering context was constructed without one. SearchSqlCompiler supplies that instant from " +
+                "its TimeProvider on every path, so reaching this state means the compiler was bypassed.");
         }
 
         var precisionTicks = value.End.UtcTicks - value.Start.UtcTicks;
