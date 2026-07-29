@@ -134,7 +134,7 @@ internal sealed class StructuralContext
         return new CteRef(index);
     }
 
-    public CteRef LowerParameterPresence(SearchParameterInfo parameter, string? resourceType)
+    public CteRef LowerParameterPresence(SearchParameterInfo parameter, string? resourceType, Expression provenanceNode)
     {
         RejectResourceColumnCode(parameter.Code);
 
@@ -144,7 +144,9 @@ internal sealed class StructuralContext
 
         var cte = new CteDefinition.ParamSource(table, resourceTypeId, searchParamId);
         _ctes.Add(cte);
-        return new CteRef(_ctes.Count - 1);
+        var index = _ctes.Count - 1;
+        _origins.Add(new CteOrigin(index, provenanceNode));
+        return new CteRef(index);
     }
 
     /// <summary>

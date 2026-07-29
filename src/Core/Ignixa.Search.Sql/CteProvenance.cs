@@ -3,7 +3,7 @@ using Ignixa.Search.Expressions;
 namespace Ignixa.Search.Sql;
 
 /// <summary>One CTE's link back to the parameter that produced it. Null ordinal where exempt —
-/// :missing, compartment, and structural CTEs have no source text.</summary>
+/// compartment and structural CTEs have no single owning parameter.</summary>
 /// <remarks>
 /// <see cref="ParameterOrdinal"/> is set only when the CTE was lowered from a node inside exactly one
 /// parameter's IR. A structural CTE (Intersect, Union, Except, ChainJoin) combines other CTEs by
