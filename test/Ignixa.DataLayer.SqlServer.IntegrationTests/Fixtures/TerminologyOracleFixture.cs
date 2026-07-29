@@ -2,10 +2,12 @@ using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlServer;
+using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
+using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -96,8 +98,44 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
     /// <c>system|version|code</c> and returns before touching the database on a hit, so a test that shares a
     /// cache across cases can assert against the cache rather than the query it meant to exercise. Each call
     /// here gets a fresh one.
+    /// <para>
+    /// <b>The seam Task 6 flips.</b> Every assertion in the oracle was written and run green against the EF
+    /// implementation first; none were edited when this changed. Swap the two lines below to compare.
+    /// </para>
     /// </summary>
-    public SqlTerminologyService CreateTerminologyService()
+    public ITerminologyService CreateTerminologyService()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        _caches.Add(cache);
+
+        return new SqlServerTerminologyService(
+            SqlExecutionService,
+            SystemConstants.SystemPartitionId,
+            cache,
+            NullLogger<SqlServerTerminologyService>.Instance);
+    }
+
+    /// <summary>
+    /// GetImportStatusAsync is public on both implementations but is not part of ITerminologyService, so it
+    /// is routed through the fixture rather than making the seam return a concrete type.
+    /// </summary>
+    public async Task<Ignixa.Domain.Terminology.TerminologyImportStatus?> GetImportStatusAsync(
+        string canonical, CancellationToken cancellationToken = default)
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        _caches.Add(cache);
+
+        var service = new SqlServerTerminologyService(
+            SqlExecutionService,
+            SystemConstants.SystemPartitionId,
+            cache,
+            NullLogger<SqlServerTerminologyService>.Instance);
+
+        return await service.GetImportStatusAsync(canonical, cancellationToken);
+    }
+
+    /// <summary>The EF implementation, kept so a disagreement can be attributed to the port rather than the test.</summary>
+    public ITerminologyService CreateEfTerminologyService()
     {
         var cache = new MemoryCache(new MemoryCacheOptions());
         _caches.Add(cache);

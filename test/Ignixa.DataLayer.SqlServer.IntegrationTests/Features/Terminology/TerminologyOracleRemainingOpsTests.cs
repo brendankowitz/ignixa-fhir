@@ -88,9 +88,8 @@ public class TerminologyOracleRemainingOpsTests : IAsyncLifetime
     public async Task GivenAnImportedCodeSystem_WhenTheImportStatusIsRequested_ThenItReportsCompleted()
     {
         await ImportCodeSystemAsync(SystemUrl);
-        var service = _fixture.CreateTerminologyService();
 
-        var status = await service.GetImportStatusAsync(SystemUrl, CancellationToken.None);
+        var status = await _fixture.GetImportStatusAsync(SystemUrl, CancellationToken.None);
 
         status.ShouldNotBeNull();
     }
@@ -98,9 +97,7 @@ public class TerminologyOracleRemainingOpsTests : IAsyncLifetime
     [Fact]
     public async Task GivenNothingImported_WhenTheImportStatusIsRequested_ThenNullIsReturned()
     {
-        var service = _fixture.CreateTerminologyService();
-
-        var status = await service.GetImportStatusAsync(
+        var status = await _fixture.GetImportStatusAsync(
             "http://example.org/fhir/CodeSystem/never-imported", CancellationToken.None);
 
         status.ShouldBeNull();
