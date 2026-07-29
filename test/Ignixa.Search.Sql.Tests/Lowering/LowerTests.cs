@@ -1265,6 +1265,43 @@ public class LowerTests
         or.Right.ShouldBeOfType<Predicate.False>().Reason.ShouldNotBeNull();
     }
 
+    [Fact]
+    public void GivenAReverseChainUnderASystemLevelSearch_WhenLowered_ThenItLowersAgainstItsOwnReferencingType()
+    {
+        // Arrange -- GET /?_type=Patient,Device&_has:Device:subject:code=4548-4. The chain sits under no
+        // ambient resource type, but it does not need one: a reverse chain names its own referencing type
+        // (Device, which its inner expression scopes against) and its own target types (Patient, which the
+        // join emits), so the ambient scope it would otherwise inherit is unused. LowerChain reads neither.
+        // The identities a ChainJoin yields are (ResourceTypeId, SurrogateId) pairs over concrete target
+        // types, so the enclosing cross-type intersection stays well-typed.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        var chain = new ChainedExpression(
+            ["Device"],
+            subjectParam,
+            ["Patient"],
+            reversed: true,
+            new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(
+                codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, "4548-4", text: null))));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [codeParam.Url!.ToString()] = 202, [subjectParam.Url!.ToString()] = 203 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Device"] = 104 });
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }).Plan;
+
+        // Assert -- the join reads Device rows and emits Patient identities, both taken from the chain.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var join = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        join.Direction.ShouldBe(ChainDirection.Reverse);
+        join.InnerResourceTypeId.ShouldBe((short)104);
+        join.OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[join.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)104);
+    }
+
     /// <summary>The shape a bound <c>_type=a,b</c> takes: an Or of bare _type equalities under one wrapper.</summary>
     private static SearchParameterExpression TypeList(params string[] resourceTypes)
     {
