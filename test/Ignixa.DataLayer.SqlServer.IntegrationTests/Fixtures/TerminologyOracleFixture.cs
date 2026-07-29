@@ -247,6 +247,46 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
             "}";
     }
 
+    /// <summary>
+    /// A ValueSet carrying a pre-computed expansion. <c>name</c> is mandatory — the importer throws
+    /// <see cref="InvalidOperationException"/> without it — and the expansion's <c>contains</c> entries are
+    /// what become <c>dbo.TermValueSetExpansion</c> rows.
+    /// </summary>
+    public static string ExpandedValueSetJson(string url, string codeSystemUrl, params string[] codes)
+    {
+        var contains = string.Join(",", codes.Select(c =>
+            $"{{\"system\":\"{codeSystemUrl}\",\"code\":\"{c}\",\"display\":\"Display {c}\"}}"));
+
+        return "{" +
+            "\"resourceType\":\"ValueSet\"," +
+            $"\"url\":\"{url}\"," +
+            "\"name\":\"OracleValueSet\"," +
+            "\"version\":\"1.0.0\"," +
+            "\"status\":\"active\"," +
+            $"\"expansion\":{{\"contains\":[{contains}]}}" +
+            "}";
+    }
+
+    /// <summary>
+    /// A ConceptMap with a single group mapping one code to another. The group's <c>source</c> and
+    /// <c>target</c> system URLs are resolved through <c>ISystemRepository.GetOrCreateAsync</c> during
+    /// import, so importing this also creates those system rows.
+    /// </summary>
+    public static string ConceptMapJson(string url, string sourceSystem, string targetSystem) =>
+        "{" +
+        "\"resourceType\":\"ConceptMap\"," +
+        $"\"url\":\"{url}\"," +
+        "\"name\":\"OracleConceptMap\"," +
+        "\"version\":\"1.0.0\"," +
+        "\"status\":\"active\"," +
+        "\"group\":[{" +
+        $"\"source\":\"{sourceSystem}\"," +
+        $"\"target\":\"{targetSystem}\"," +
+        "\"element\":[{" +
+        "\"code\":\"car\",\"display\":\"Car\"," +
+        "\"target\":[{\"code\":\"auto\",\"display\":\"Auto\",\"equivalence\":\"equivalent\"}]" +
+        "}]}]}";
+
     public async ValueTask DisposeAsync()
     {
         foreach (var cache in _caches)
