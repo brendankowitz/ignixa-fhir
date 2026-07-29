@@ -10,10 +10,13 @@ using SortOrder = Ignixa.Search.Expressions.SortOrder;
 
 namespace Ignixa.Search.Sql.Tests.Compilation;
 
-/// <summary>Builds SearchPlanDiagnosticsTests's scenarios entirely through <see cref="SearchSqlCompiler.TryCreatePlanAsync"/>,
-/// using a fake <see cref="ISearchOptionsBuilder"/> that hands back a hand-built IR (the same pattern
-/// EndToEndCompilationTests uses for Resolve/Lower/Emit) rather than the real parser -- SearchSqlCompiler's own
-/// orchestration is what these tests exercise, not parsing.</summary>
+/// <summary>Builds the scenarios consumed by SearchPlanDiagnosticsTests and PlanExplainDescribeTests entirely
+/// through <see cref="SearchSqlCompiler.TryCreatePlanAsync"/>, using a fake <see cref="ISearchOptionsBuilder"/>
+/// that hands back a hand-built IR (the same pattern EndToEndCompilationTests uses for Resolve/Lower/Emit)
+/// rather than the real parser -- SearchSqlCompiler's own orchestration is what these tests exercise, not
+/// parsing. Every fixture requests <see cref="SearchDiagnosticsLevel.Full"/>, which is what the <c>Trace</c>
+/// prefix records; several deliberately fail, so they return a result whose Plan is null and whose diagnostics
+/// hang off the failure instead.</summary>
 internal static class CompilationFixtures
 {
     private static readonly SearchPlanOptions FullDiagnostics = new() { DiagnosticsLevel = SearchDiagnosticsLevel.Full };
