@@ -94,11 +94,10 @@ internal static class MappingGrammar
         return source.Substring(start, end - start);
     }
 
-    // Paren-branch logic shared by FhirPathExpression and ParenthesizedFhirPathExpression.
-    // Matches '(' tokens... ')' with balanced depth tracking; returns a FhirPathExpression
-    // built from the inner source text. Returns Empty when input does not start with '('.
     private static readonly string[] UnmatchedParenErrorMessages = ["unmatched parentheses in FHIRPath expression"];
 
+    // Shared by FhirPathExpression and ParenthesizedFhirPathExpression. Returns Empty rather than
+    // failing hard when input does not start with '(', so callers can fall through to other alternatives.
     private static TokenListParserResult<MappingTokenKind, FhirPathExpression> ParseParenthesizedFhirPath(
         TokenList<MappingTokenKind> input)
     {
@@ -404,9 +403,9 @@ internal static class MappingGrammar
             defaultValue,
             cardinality);
 
-    // Parenthesized FHIRPath expression: '(' fpExpression ')'
-    // Implements the grammar rule: transform = '(' fpExpression ')'.
-    // Uses the shared paren-branch logic; does not fall back to an unparenthesized form.
+    // Grammar rule: transform = '(' fpExpression ')'. Deliberately parenthesized-only — falling back
+    // to an unparenthesized form would let FhirPathExpression's greedy branch swallow a trailing
+    // 'as <var>' and rule name, since neither is in its terminator set.
     private static readonly TokenListParser<MappingTokenKind, FhirPathExpression> ParenthesizedFhirPathExpression =
         ParseParenthesizedFhirPath;
 
