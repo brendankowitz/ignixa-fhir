@@ -61,6 +61,29 @@ internal static class MappingGrammar
         return id;
     }
 
+    // Helper: reconstruct the original source text spanned by a token run.
+    // Re-serializing tokens loses whitespace, which corrupts embedded FHIRPath
+    // (e.g. "linkId.value in (...)" would collapse to "linkId.valuein(...)").
+    private static string SourceTextOf(IReadOnlyList<Token<MappingTokenKind>> tokens)
+    {
+        if (tokens.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var source = tokens[0].Span.Source;
+        if (source is null)
+        {
+            throw new InvalidOperationException(
+                "SourceTextOf requires tokens produced from the parsed input; token span has no source.");
+        }
+
+        var start = (int)tokens[0].Position.Absolute;
+        var last = tokens[^1];
+        var end = (int)last.Position.Absolute + last.Span.Length;
+        return source.Substring(start, end - start);
+    }
+
     // Literal parsers
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> StringLiteral =
         Token.EqualTo(MappingTokenKind.StringLiteral)
@@ -136,7 +159,7 @@ internal static class MappingGrammar
                             lastToken = rightParenResult.Value;
                             current = rightParenResult.Remainder;
                             var expr = new FhirPathExpression(
-                                string.Join("", tokens.Select(t => t.ToStringValue())),
+                                SourceTextOf(tokens),
                                 CreatePosition(lparen.Value, lastToken));
                             return TokenListParserResult.Value(expr, input, current);
                         }
@@ -221,7 +244,7 @@ internal static class MappingGrammar
                     return TokenListParserResult.Empty<MappingTokenKind, FhirPathExpression>(input);
 
                 var expr = new FhirPathExpression(
-                    string.Join("", tokens.Select(t => t.ToStringValue())),
+                    SourceTextOf(tokens),
                     CreatePosition(tokens[0], lastToken!.Value));
                 return TokenListParserResult.Value(expr, input, current);
             }
