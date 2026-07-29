@@ -42,19 +42,28 @@ internal static class MappingGrammar
     // Helper: Unescape string
     private static string UnescapeString(string str)
     {
-        if (str.StartsWith('\'') && str.EndsWith('\''))
+        if (str.StartsWith('\'') && str.EndsWith('\'') && str.Length >= 2)
         {
             str = str.Substring(1, str.Length - 2);
             str = str.Replace("''", "'", StringComparison.Ordinal);
+            return str;
         }
+
+        if (str.StartsWith('"') && str.EndsWith('"') && str.Length >= 2)
+        {
+            str = str.Substring(1, str.Length - 2);
+            str = str.Replace("\\\"", "\"", StringComparison.Ordinal)
+                     .Replace("\\\\", "\\", StringComparison.Ordinal);
+            return str;
+        }
+
         return str;
     }
 
     // Helper: Unescape identifier
     private static string UnescapeIdentifier(string id)
     {
-        if ((id.StartsWith('`') && id.EndsWith('`')) ||
-            (id.StartsWith('"') && id.EndsWith('"')))
+        if (id.StartsWith('`') && id.EndsWith('`'))
         {
             return id.Substring(1, id.Length - 2);
         }
@@ -87,6 +96,7 @@ internal static class MappingGrammar
     // Literal parsers
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> StringLiteral =
         Token.EqualTo(MappingTokenKind.StringLiteral)
+            .Or(Token.EqualTo(MappingTokenKind.DoubleQuotedString))
             .Select(t => new LiteralExpression(UnescapeString(t.ToStringValue()), CreatePosition(t)));
 
     private static readonly TokenListParser<MappingTokenKind, LiteralExpression> IntegerLiteral =
@@ -496,7 +506,7 @@ internal static class MappingGrammar
     // ConceptMap declaration: conceptmap "#id" { prefixes codeMaps }
     private static readonly TokenListParser<MappingTokenKind, ConceptMapDeclarationExpression> ConceptMapDeclaration =
         from cmToken in Token.EqualTo(MappingTokenKind.ConceptMap)
-        from id in Token.EqualTo(MappingTokenKind.StringLiteral).Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier))
+        from id in Token.EqualTo(MappingTokenKind.StringLiteral).Or(Token.EqualTo(MappingTokenKind.DelimitedIdentifier)).Or(Token.EqualTo(MappingTokenKind.DoubleQuotedString))
         from lbrace in Token.EqualTo(MappingTokenKind.LeftBrace)
         from prefixes in ConceptMapPrefix.Many()
         from codeMaps in ConceptMapCodeMap.Many()

@@ -52,6 +52,7 @@ public enum MappingTokenKind
     Identifier,
     DelimitedIdentifier,
     StringLiteral,
+    DoubleQuotedString,
     IntegerLiteral,
     DecimalLiteral,
     Url,

@@ -44,4 +44,106 @@ public class FmlSyntaxCoverageTests
         expr.ShouldBeOfType<FhirPathExpression>();
         ((FhirPathExpression)expr!).PathExpression.ShouldBe(expected);
     }
+
+    [Fact]
+    public void GivenADoubleQuotedMapHeader_WhenParsing_ThenTheUrlAndNameAreRead()
+    {
+        // Arrange
+        const string Fml = """
+            map "http://hl7.org/fhir/StructureMap/tutorial" = "tutorial"
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Url.ShouldBe("http://hl7.org/fhir/StructureMap/tutorial");
+        map.Identifier.ShouldBe("tutorial");
+    }
+
+    [Fact]
+    public void GivenADoubleQuotedStringWithAnEscapedQuote_WhenParsing_ThenTheEscapeIsResolved()
+    {
+        // Arrange
+        const string Fml = """
+            map "http://example.org/T" = "a \" b"
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Identifier.ShouldBe("a \" b");
+    }
+
+    [Fact]
+    public void GivenADoubleQuotedStringWithAnEscapedBackslash_WhenParsing_ThenTheEscapeIsResolved()
+    {
+        // Arrange
+        const string Fml = """
+            map "http://example.org/T" = "a \\ b"
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Identifier.ShouldBe(@"a \ b");
+    }
+
+    [Fact]
+    public void GivenADoubleQuotedStringWithBackslashThenEscapedQuote_WhenParsing_ThenBothEscapesAreResolved()
+    {
+        // Arrange
+        const string Fml = """
+            map "http://example.org/T" = "a \\\" b"
+
+            group Main(source src, target tgt) {
+              src.a as a -> tgt.a = a;
+            }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.Identifier.ShouldBe("a \\\" b");
+    }
+
+    [Fact]
+    public void GivenAConceptMapWithADoubleQuotedId_WhenParsing_ThenTheIdIsUnquoted()
+    {
+        // Arrange
+        const string Fml = """
+            map 'http://example.org/T' = 'T'
+
+            conceptmap "#cm" {
+              prefix s = 'http://a'
+              prefix t = 'http://b'
+
+              s:x == t:y
+            }
+
+            group Main(source src, target tgt) { src.a as a -> tgt.a = a; }
+            """;
+
+        // Act
+        var map = new MappingParser().Parse(Fml);
+
+        // Assert
+        map.ConceptMaps.Count.ShouldBe(1);
+        map.ConceptMaps[0].Identifier.ShouldBe("#cm");
+    }
 }

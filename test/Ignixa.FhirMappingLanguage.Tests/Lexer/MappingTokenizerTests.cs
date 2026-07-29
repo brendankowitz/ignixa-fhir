@@ -257,6 +257,34 @@ public class MappingTokenizerTests
         result.First().Kind.ShouldBe(expectedKind);
     }
 
+    [Fact]
+    public void GivenADoubleQuotedString_WhenTokenizing_ThenItIsADoubleQuotedString()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize("\"quoted identifier\"");
+
+        // Assert
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.DoubleQuotedString);
+    }
+
+    [Fact]
+    public void GivenADoubleQuotedString_WhenTokenizingWithTrivia_ThenItIsADoubleQuotedString()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var tokens = tokenizer.Tokenize("\"quoted identifier\"").ToList();
+
+        // Assert
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(MappingTokenKind.DoubleQuotedString);
+    }
+
     #endregion
 
     #region Identifier Tests
@@ -282,20 +310,18 @@ public class MappingTokenizerTests
         result.First().ToStringValue().ShouldBe(identifier);
     }
 
-    [Theory]
-    [InlineData("`escaped identifier`")]
-    [InlineData("\"quoted identifier\"")]
-    public void GivenDelimitedIdentifier_WhenTokenizing_ThenReturnsDelimitedIdentifierToken(string identifier)
+    [Fact]
+    public void GivenABacktickDelimitedIdentifier_WhenTokenizing_ThenItIsADelimitedIdentifier()
     {
         // Arrange
         var tokenizer = MappingTokenizer.Create();
 
         // Act
-        var result = tokenizer.Tokenize(identifier);
+        var tokens = tokenizer.Tokenize("`quoted identifier`").ToList();
 
         // Assert
-        result.Count().ShouldBe(1);
-        result.First().Kind.ShouldBe(MappingTokenKind.DelimitedIdentifier);
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(MappingTokenKind.DelimitedIdentifier);
     }
 
     #endregion

@@ -68,9 +68,9 @@ public static class MappingTokenizer
             // String literals (single-quoted, SQL-style escaping)
             .Match(QuotedString.SqlStyle, MappingTokenKind.StringLiteral)
 
-            // Delimited identifiers (backtick or double-quote style)
+            // Delimited identifiers (backtick) and double-quoted strings
             .Match(Span.Regex("`[^`]*`"), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
-            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
+            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DoubleQuotedString, requireDelimiters: false)
 
             // Numeric literals
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
@@ -168,9 +168,9 @@ public static class MappingTokenizer
             // String literals (single-quoted, SQL-style escaping)
             .Match(QuotedString.SqlStyle, MappingTokenKind.StringLiteral)
 
-            // Delimited identifiers (backtick or double-quote style)
+            // Delimited identifiers (backtick) and double-quoted strings
             .Match(Span.Regex("`[^`]*`"), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
-            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
+            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DoubleQuotedString, requireDelimiters: false)
 
             // Numeric literals
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
