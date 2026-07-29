@@ -57,7 +57,7 @@ public class ResolvedSymbolsTests
     {
         // SymbolTable is keyed by Url, so a parameter without one can never be looked up even when the
         // resolver hands back an id -- SymbolTable.SearchParamId says exactly that. Resolve used to
-        // dereference the null Url instead, and the NullReferenceException escaped SearchCompiler's
+        // dereference the null Url instead, and the NullReferenceException escaped SearchSqlCompiler's
         // catch (which only handles NotSupportedException/KeyNotFoundException), killing the whole trace.
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String);
         var predicate = new SearchParameterPredicateExpression(

@@ -15,8 +15,9 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 /// Both dispatchers attach the failing parameter (and its span) to an in-flight lowering failure, which is
 /// the only thing that lets a trace name the parameter responsible. The keys are internal to the compiler,
 /// so these assert the literal <see cref="System.Exception.Data"/> keys rather than reaching through
-/// <c>SearchCompiler</c>: a <see cref="KeyNotFoundException"/> means Resolve's tree-walk missed a symbol,
-/// and a walk gap cannot be synthesised through the public compile path, which builds its own symbol table.
+/// <c>SearchSqlCompiler</c>: a <see cref="KeyNotFoundException"/> means Resolve's tree-walk missed a
+/// symbol, and a walk gap cannot be synthesised through the public compile path, which builds its own
+/// symbol table.
 /// </summary>
 public class LoweringFailureAttributionTests
 {

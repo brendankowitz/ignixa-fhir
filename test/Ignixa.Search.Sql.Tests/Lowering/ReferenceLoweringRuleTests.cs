@@ -286,7 +286,7 @@ public class ReferenceLoweringRuleTests
     public void GivenAReferenceNamingATypeTheResolverCouldNotFind_WhenLowered_ThenLowersToADiagnosablePredicateFalse()
     {
         // Arrange — subject=Nonexistent/123 where the catalog has never seen that type. Equal(col, -1)
-        // matches nothing but is not reportable; Predicate.False is what SearchCompiler turns into a
+        // matches nothing but is not reportable; Predicate.False is what SearchSqlCompiler turns into a
         // KnownMiss, the same treatment an unknown token system already gets.
         var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
         var value = new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: "Nonexistent", resourceId: "123");

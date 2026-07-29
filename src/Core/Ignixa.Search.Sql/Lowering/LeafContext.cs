@@ -43,8 +43,8 @@ public sealed class LeafContext
     /// <remarks>
     /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> matches no row, so a plain
     /// <c>Equal(ResourceTypeId, -1)</c> is already unsatisfiable — but only
-    /// <see cref="Predicate.False"/> carries the reason, and SearchCompiler.MarkKnownMisses recognises
-    /// nothing else. Emitting it here makes an unknown resource type as diagnosable as the unknown token
+    /// <see cref="Predicate.False"/> carries the reason, and CompilationDiagnosticsBuilder.MarkKnownMisses
+    /// recognises nothing else. Emitting it here makes an unknown resource type as diagnosable as the unknown token
     /// system handled in <see cref="TokenColumnEquality"/>, instead of a miss the caller can only find by
     /// reading the emitted SQL for a magic -1.
     /// </remarks>

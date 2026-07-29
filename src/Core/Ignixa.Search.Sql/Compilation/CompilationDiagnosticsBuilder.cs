@@ -5,8 +5,6 @@ using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Leaf;
-using Ignixa.Search.Sql.Tracing;
-
 namespace Ignixa.Search.Sql.Compilation;
 
 /// <summary>

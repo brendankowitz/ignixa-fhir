@@ -34,10 +34,10 @@ internal static class ApproximateDateRange
         if (referenceTime is not { } reference)
         {
             throw new InvalidOperationException(
-                "The date ':ap' (approximately) comparator requires an explicit reference instant -- " +
-                "Lower.Run's approximationReferenceTime parameter must be supplied (non-null) to compile a " +
-                "date ':ap' search. SearchCompiler.CompileAsync supplies this automatically from its " +
-                "TimeProvider; a direct Lower.Run caller must pass it explicitly.");
+                "The date ':ap' (approximately) comparator requires an explicit reference instant. " +
+                "SearchSqlCompiler.TryCreatePlanAsync supplies this automatically from its TimeProvider. " +
+                "If you are constructing LowerOptions manually, set ApproximationReferenceTime to a non-null " +
+                "DateTimeOffset before calling Lower.Run.");
         }
 
         var precisionTicks = value.End.UtcTicks - value.Start.UtcTicks;

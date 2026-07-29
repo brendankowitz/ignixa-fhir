@@ -285,7 +285,7 @@ public class DateTimeLoweringRuleTests
         // Arrange: value sits 1000 ticks after DateTimeOffset.MinValue; the reference instant is far enough
         // away (20000 ticks) that the resulting tolerance would push the widened Start below
         // DateTimeOffset.MinValue. date=ap0001-01-01 is legal user input, so this must compile rather than
-        // throw past SearchCompiler's trace boundary (which only catches NotSupported/KeyNotFound).
+        // throw past SearchSqlCompiler's trace boundary (which only catches NotSupported/KeyNotFound).
         var parameter = Parameter();
         var nearMinInstant = new DateTimeOffset(1000, TimeSpan.Zero);
         var value = new DateTimeSearchValue(nearMinInstant);

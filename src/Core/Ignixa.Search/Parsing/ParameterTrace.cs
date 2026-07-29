@@ -89,7 +89,7 @@ public sealed record ParameterTrace
     public Expression? Ir { get; }
 
     /// <summary>
-    /// How this parameter fared. The only settable property: <see cref="Sql.Tracing.SearchCompiler"/>
+    /// How this parameter fared. The only settable property: <c>SearchSqlCompiler</c>
     /// restamps it with a <see cref="ParameterOutcome.Failed"/> when a later stage attributes a failure
     /// back to this parameter.
     /// </summary>

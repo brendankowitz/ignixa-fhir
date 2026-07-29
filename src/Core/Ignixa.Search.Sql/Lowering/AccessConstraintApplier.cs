@@ -51,10 +51,10 @@ internal sealed class AccessConstraintApplier
     /// <see cref="NotSupportedException"/> rather than <see cref="ArgumentException"/>, for the same reason
     /// <see cref="BindIncludeStage"/> uses it: these constraints arrive on
     /// <see cref="Search.Models.SearchOptions"/> from the claim-translation layer, so a duplicate is
-    /// unsupported *input*, not a programmer error inside the compiler. SearchCompiler's catch filter
-    /// deliberately excludes ArgumentException — its trace-record guards throw that and cannot trip on a
-    /// well-formed plan — so throwing it here would escape CompileFromOptionsAsync and surface as a 500
-    /// instead of the recorded TraceFailure its contract promises.
+    /// unsupported *input*, not a programmer error inside the compiler. <c>SearchSqlCompiler</c>'s catch
+    /// filter deliberately excludes ArgumentException — its trace-record guards throw that and cannot trip on
+    /// a well-formed plan — so throwing it here would escape TryCreatePlanFromOptionsAsync and surface as a
+    /// 500 instead of the recorded SearchCompilationFailure its contract promises.
     /// </remarks>
     public AccessConstraintApplier(IReadOnlyList<AccessConstraint>? constraints)
     {
@@ -167,16 +167,17 @@ internal sealed class AccessConstraintApplier
                     // from the symbol table entirely: we cannot emit a guard for a type id we do not have,
                     // and we cannot prove the wildcard will not produce that type. Refuse to compile.
                     //
-                    // Unreachable through SearchCompiler: Resolve now collects every constraint's
+                    // Unreachable through SearchSqlCompiler: Resolve now collects every constraint's
                     // ResourceType (SymbolCollectingVisitor.CollectConstraint) and records a resolver miss as
                     // the unmatchable sentinel rather than omitting the key, so TryGetResourceTypeId always
                     // succeeds on that path. A sentinel id is safe to bind -- it names a type with no catalog
                     // row and therefore no rows to leak. This guard remains for callers that reach Lower.Run
                     // without going through Resolve, which is every test and any future direct caller.
                     //
-                    // NotSupportedException, not InvalidOperationException: SearchCompiler's catch filter
-                    // records the former as a TraceFailure and lets the latter escape, which would break its
-                    // documented "failures are data, never thrown" contract and surface as a 500.
+                    // NotSupportedException, not InvalidOperationException: SearchSqlCompiler's catch filter
+                    // records the former as a SearchCompilationFailure and lets the latter escape, which
+                    // would break its documented "failures are data, never thrown" contract and surface as a
+                    // 500.
                     throw new NotSupportedException(
                         $"Cannot enforce the access constraint for resource type '{constraint.ResourceType}' on a " +
                         "wildcard include: the type was never resolved, so no guard can be emitted and closure " +

@@ -71,7 +71,7 @@ public class ResourceColumnLoweringRuleTests
     public void GivenATypeParameterNamingATypeTheResolverCouldNotFind_WhenTried_ThenLowersToADiagnosablePredicateFalse()
     {
         // Arrange — Resolve records an unfound type as UnmatchableResourceTypeId (-1). Equal(col, -1) is
-        // already unsatisfiable, but only Predicate.False carries the reason SearchCompiler reports as a
+        // already unsatisfiable, but only Predicate.False carries the reason SearchSqlCompiler reports as a
         // KnownMiss; anything else leaves the miss discoverable only by spotting a magic -1 in the SQL.
         var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Nonexistent", text: null));
         var context = ContextResolving("Nonexistent", SymbolTable.UnmatchableResourceTypeId);

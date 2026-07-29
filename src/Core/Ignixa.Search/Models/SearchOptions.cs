@@ -112,7 +112,7 @@ public class SearchOptions
     /// </summary>
     /// <remarks>
     /// Like <see cref="AccessConstraints"/>, this property is forwarded into the SQL compiler:
-    /// <c>Ignixa.Search.Sql.Tracing.SearchCompiler.CompileFromOptionsAsync</c> maps it onto
+    /// <c>SearchSqlCompiler.TryCreatePlanFromOptionsAsync</c> maps it onto
     /// <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c> by testing two bits --
     /// <c>IncludeHistory = types.HasFlag(History)</c> and <c>IncludeDeleted = types.HasFlag(SoftDeleted)</c>.
     /// <see cref="Latest"/> is deliberately not tested -- it is the implicit baseline every search already

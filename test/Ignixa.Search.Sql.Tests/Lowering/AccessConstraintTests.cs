@@ -266,9 +266,9 @@ public class AccessConstraintTests
         var duplicate = new AccessConstraint("Observation", TokenPredicate(f.CategoryParam, "vital-signs"));
 
         // Act + Assert -- NotSupportedException, not ArgumentException: these constraints are caller input
-        // arriving on SearchOptions, and SearchCompiler's catch filter deliberately excludes
+        // arriving on SearchOptions, and SearchSqlCompiler's catch filter deliberately excludes
         // ArgumentException (its trace-record guards throw that for genuine programmer errors). Throwing it
-        // here would escape CompileFromOptionsAsync as a 500 rather than a recorded TraceFailure.
+        // here would escape TryCreatePlanFromOptionsAsync as a 500 rather than a recorded SearchCompilationFailure.
         var ex = Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint, duplicate] }));
@@ -312,8 +312,8 @@ public class AccessConstraintTests
 
         // Act + Assert -- Device is unresolved and the wildcard output types are unknown: throw, do not
         // silently drop the constraint. NotSupportedException specifically, because that is what
-        // SearchCompiler's catch filter records as a TraceFailure; an InvalidOperationException would
-        // escape it and surface as an unhandled 500 instead of a reported compile failure.
+        // SearchSqlCompiler's catch filter records as a SearchCompilationFailure; an InvalidOperationException
+        // would escape it and surface as an unhandled 500 instead of a reported compile failure.
         var ex = Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [unresolvable] }));

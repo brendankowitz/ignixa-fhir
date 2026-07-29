@@ -121,7 +121,7 @@ public static class PlanExplainer
     /// The leaf sources are listed explicitly rather than caught by a default arm, and an unknown case
     /// throws like <see cref="KindOf"/> does. A silent <c>[]</c> here would let a new composing
     /// <see cref="CteDefinition"/> report no children, which
-    /// <see cref="Tracing.SearchCompiler"/> would turn into silently-wrong parameter provenance with
+    /// <see cref="SearchSqlCompiler"/> would turn into silently-wrong parameter provenance with
     /// nothing to fail.
     /// </remarks>
     internal static IReadOnlyList<int> ReferencedCteIndexesOf(CteDefinition cte) => cte switch
