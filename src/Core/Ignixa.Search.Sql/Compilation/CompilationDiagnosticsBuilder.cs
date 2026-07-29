@@ -32,17 +32,11 @@ internal static class CompilationDiagnosticsBuilder
     }
 
     /// <summary>
-    /// Reports the control values that took effect without the caller sending them, reading each one back
-    /// off the resolved <see cref="SearchOptions"/> rather than restating a default — a changed default
-    /// then shows up in the trace instead of drifting away from it.
+    /// Reports control values that took effect without the caller sending them, read back off the resolved
+    /// <see cref="SearchOptions"/> so a changed default shows in the trace. Supplied-ness uses
+    /// <see cref="QueryParameter.Category"/>; a <see cref="TotalType.None"/> value is skipped and <c>_summary</c>
+    /// is never reported (it is only ever set explicitly).
     /// </summary>
-    /// <remarks>
-    /// Supplied-ness is decided by <see cref="QueryParameter.Category"/>, the same classification the
-    /// builder switches on, so a name form the builder would not treat as <c>_count</c> is not treated as
-    /// one here either. A resolved value carrying no decision (<see cref="TotalType.None"/>) is skipped: a
-    /// chip reading "nothing happened" is noise. <c>_summary</c> is never reported, because the builder
-    /// only ever sets it from an explicit <c>_summary</c>, which by definition is not implicit.
-    /// </remarks>
     public static IReadOnlyList<ImplicitParameter> DetectImplicit(IReadOnlyList<QueryParameter> parameters, SearchOptions options)
     {
         const string ServerDefault = "server default";
@@ -60,15 +54,17 @@ internal static class CompilationDiagnosticsBuilder
 
         if (!supplied.Contains(ParameterCategory.Total) && options.Total != TotalType.None)
         {
-            // Relies on the _summary=count promotion being the only way an unsupplied _total becomes
-            // non-None. A future server-set Total default must revisit this single reason.
+            // Relies on _summary=count promotion being the only way an unsupplied _total becomes non-None.
+            // A future server-set Total default must revisit this.
             implicitParameters.Add(new ImplicitParameter("_total", options.Total.ToString(), "implied by _summary=count"));
         }
 
         return implicitParameters;
     }
 
-    /// <summary>Marks the owning trace Failed(Resolve, ...) for every parameter Resolve could not find, matching against every parameter-bearing node in that trace's IR -- not leaf predicates alone, since a chain's or a :missing's parameter appears nowhere else.</summary>
+    /// <summary>Marks the owning trace Failed(Resolve, ...) for every unresolved parameter, matching against
+    /// every parameter-bearing node in its IR — not leaf predicates alone, since a chain's or :missing's
+    /// parameter appears nowhere else.</summary>
     public static void MarkUnresolved(IList<ParameterTrace> outcomes, IReadOnlyList<SearchParameterInfo> unresolved)
     {
         if (unresolved.Count == 0)
@@ -104,13 +100,9 @@ internal static class CompilationDiagnosticsBuilder
 
     /// <summary>
     /// Marks a parameter <see cref="ParameterOutcome.KnownMiss"/> when its CTE lowered to an unsatisfiable
-    /// predicate, so "this query cannot return a row, and here is the value that made it so" is data on the
-    /// trace rather than a <c>1 = 0</c> a reader has to spot in the emitted SQL.
+    /// predicate, so "cannot return a row, and here's why" is trace data rather than a <c>1 = 0</c> in the SQL.
+    /// Only overwrites <see cref="ParameterOutcome.Compiled"/> — a Failed/Ignored parameter has a stronger story.
     /// </summary>
-    /// <remarks>
-    /// Only overwrites <see cref="ParameterOutcome.Compiled"/>. A parameter already Failed or Ignored has a
-    /// stronger story to tell, and restamping it would replace a cause with a consequence.
-    /// </remarks>
     public static void MarkKnownMisses(IList<ParameterTrace> outcomes, LoweredPlan lowered)
     {
         foreach (var origin in lowered.Provenance.Origins)
@@ -161,7 +153,10 @@ internal static class CompilationDiagnosticsBuilder
         _ => null,
     };
 
-    /// <summary>Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against every trace's IR subtree. Origins with no owner (compartment, structural CTEs) keep a null ordinal.</summary>
+    /// <summary>
+    /// Builds the plan trace, mapping each CTE origin to its owning parameter by reference identity against
+    /// every trace's IR. Origins with no owner (compartment, structural CTEs) keep a null ordinal.
+    /// </summary>
     public static QueryPlanTrace BuildPlanTrace(LoweredPlan lowered, IReadOnlyList<ParameterTrace> outcomes)
     {
         var rows = PlanExplainer.Describe(lowered.Plan);
@@ -185,23 +180,15 @@ internal static class CompilationDiagnosticsBuilder
                 i, directOrdinals[i], spans[i], ContributingOrdinals(i, lowered.Plan, directOrdinals));
         }
 
-        // Print off the rows already computed rather than calling Explain(), which would run Describe a
-        // second time -- same output, twice the work, and two chances to disagree.
+        // Print the rows already computed rather than calling Explain(), which would run Describe twice.
         return new QueryPlanTrace(PlanExplainer.Print(rows), ctes, rows);
     }
 
     /// <summary>
     /// Every parameter ordinal the CTE at <paramref name="index"/> draws from, closed over the CTEs it
-    /// composes. A structural CTE has no ordinal of its own, so without this a consumer wanting "which
-    /// parameters does this join belong to" has to walk the plan itself.
+    /// composes. Reads child references off <paramref name="plan"/> (not the display rows); the walk
+    /// terminates because CTE references only point at lower indices, and the visited set handles diamonds.
     /// </summary>
-    /// <remarks>
-    /// Reads the child references off <paramref name="plan"/> rather than off the explainer's rows: the
-    /// rows are a display projection, and provenance should not depend on how something renders. Plan CTE
-    /// references only ever point at lower indices — every structural factory appends itself after its
-    /// children — so the walk terminates. The visited set exists for a diamond, where two branches share a
-    /// child; ordinals land in a set, so revisiting would be harmless but wasteful.
-    /// </remarks>
     private static IReadOnlyList<int> ContributingOrdinals(int index, QueryPlan plan, int?[] directOrdinals)
     {
         var ordinals = new SortedSet<int>();
@@ -229,11 +216,9 @@ internal static class CompilationDiagnosticsBuilder
     }
 
     /// <summary>
-    /// Records a Lower/Emit-stage failure, and attributes it to the owning parameter when the failing
-    /// dispatcher named one. Attribution is by parameter, never by span alone: spans repeat across
-    /// parameters, so a span-only match would mark same-length neighbours failed too. Guards that throw
-    /// from outside the dispatchers name no parameter; their message still reaches the caller through the
-    /// returned <see cref="SearchCompilationFailure"/>.
+    /// Records a Lower/Emit-stage failure and attributes it to the owning parameter when the dispatcher named
+    /// one. Attribution is by parameter, never span alone — spans repeat, so a span match would mark
+    /// neighbours failed. Guards throwing from outside a dispatcher name no parameter but still reach the caller.
     /// </summary>
     public static SearchCompilationFailure RecordFailure(IList<ParameterTrace> outcomes, CompilationStage stage, Exception ex)
     {
@@ -270,10 +255,9 @@ internal static class CompilationDiagnosticsBuilder
     };
 
     /// <summary>
-    /// Yields every search parameter one IR node names, with the node's own span where it has one. Covers
-    /// the four node kinds that carry a parameter, not just leaf predicates: a chain names its reference
-    /// parameter, a wrapper names a composite's own identity, and :missing names its subject -- each of
-    /// which Resolve can report unresolved without any leaf predicate mentioning it.
+    /// Yields every search parameter one IR node names, with its span where it has one. Covers the four node
+    /// kinds beyond leaf predicates (chain, composite wrapper, :missing) that Resolve can report unresolved
+    /// without any leaf mentioning them.
     /// </summary>
     private static IEnumerable<(SearchParameterInfo Parameter, SourceSpan? Span)> ParametersOf(Expression node)
     {
@@ -305,7 +289,10 @@ internal static class CompilationDiagnosticsBuilder
         _ => null,
     };
 
-    /// <summary>Yields <paramref name="node"/> and every descendant reachable through this parser's container node kinds, so a caller can search a whole IR subtree for a specific node reference without a full visitor.</summary>
+    /// <summary>
+    /// Yields <paramref name="node"/> and every descendant reachable through this parser's container node
+    /// kinds, so a caller can search an IR subtree for a node reference without a full visitor.
+    /// </summary>
     private static IEnumerable<Expression> Flatten(Expression node)
     {
         yield return node;

@@ -7,10 +7,9 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Lowers a TokenDateTime composite to a single ParamSource over TokenDateTimeCompositeSearchParam --
-/// components[0] is the token slot (Code1), components[1] is the datetime slot (StartDateTime2/
-/// EndDateTime2), reusing DateTimeRangeComparison unchanged -- identical range semantics to
-/// DateTimeLoweringRule, just against composite-table column names.
+/// Lowers a TokenDateTime composite to a ParamSource over TokenDateTimeCompositeSearchParam — components[0]
+/// the token slot (Code1), components[1] the datetime slot (StartDateTime2/EndDateTime2), reusing
+/// <see cref="DateTimeRangeComparison"/> unchanged against composite-table column names.
 /// </summary>
 internal static class TokenDateTimeLoweringRule
 {

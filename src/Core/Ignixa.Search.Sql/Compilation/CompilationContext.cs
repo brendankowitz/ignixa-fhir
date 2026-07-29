@@ -42,14 +42,10 @@ internal sealed record CompilationContext
     private readonly bool? _systemLevelSearch;
 
     /// <summary>
-    /// True for a system-level (cross-type) search. Defaults to <c>TargetResourceType is null</c> — the value
-    /// every production caller derives — but is settable so the two distinct null-target cases can be told
-    /// apart: a system-level search (<c>true</c>, leaves lower cross-type) versus a wildcard compartment
-    /// search (<c>false</c>, an ordinary typed predicate or _sort alongside it has no single type to scope
-    /// against and is refused by the guards in <see cref="Lowering.Lower.Run"/>). No production caller sets it
-    /// today, so the derivation stands for every compile the facade drives; it is settable because wildcard
-    /// compartment search is a real mode this compiler lowers, and once the public API can express it the
-    /// derivation alone would silently admit the predicates those guards exist to refuse.
+    /// True for a system-level (cross-type) search. Defaults to <c>TargetResourceType is null</c> but is
+    /// settable to tell the two null-target cases apart: system-level (<c>true</c>, leaves lower cross-type)
+    /// versus wildcard compartment (<c>false</c>, whose stray typed predicates the guards in
+    /// <see cref="Lowering.Lower.Run"/> refuse). No production caller sets it yet.
     /// </summary>
     public bool SystemLevelSearch
     {
@@ -58,15 +54,10 @@ internal sealed record CompilationContext
     }
 
     /// <summary>
-    /// Maps a built <see cref="SearchOptions"/> and the caller's <see cref="SearchPlanOptions"/> onto the
-    /// one context both stages read. This is the only place that mapping happens;
-    /// <see cref="CompilationContextMapping"/> is its enforced contract.
+    /// Maps a built <see cref="SearchOptions"/> and the caller's <see cref="SearchPlanOptions"/> onto the one
+    /// context both stages read; <see cref="CompilationContextMapping"/> is its enforced contract. Collections
+    /// are coalesced to empty because <c>Ignixa.Search</c> compiles nullable-disabled and can hand us null.
     /// </summary>
-    /// <remarks>
-    /// The collection properties are coalesced because <c>Ignixa.Search</c> compiles with nullable disabled,
-    /// so a caller can assign null to them without warning. Coalescing here turns that into an empty list at
-    /// the boundary rather than a null-reference deep inside lowering.
-    /// </remarks>
     public static CompilationContext Create(
         SearchOptions searchOptions,
         string? targetResourceType,
@@ -94,18 +85,10 @@ internal sealed record CompilationContext
     }
 
     /// <summary>
-    /// Maps <see cref="SearchOptions.ResourceVersionTypes"/> onto <see cref="ResourceVisibility"/>. Each of
-    /// the two columns is resolved independently and tri-state, reproducing the legacy generator's
-    /// per-column truth table — which is what lets a history-only or soft-deleted-only search, the shapes an
-    /// earlier relaxation-only visibility could not express, reach the emitter at all.
-    /// <para>
-    /// <see cref="ResourceVersionTypes.Latest"/> alone returns null rather than an explicit
-    /// <see cref="ResourceVisibility.Current"/>. Both leave <see cref="QueryPlan.EffectiveVisibility"/>
-    /// (which falls back to <see cref="ResourceVisibility.Current"/> on null) at the same value, and
-    /// <see cref="ResourceVisibility.Current"/> is itself <c>new(IsHistory: false, IsDeleted: false)</c> —
-    /// exactly what the general arm would compute for Latest alone — so the shortcut is a byte-for-byte
-    /// no-op.
-    /// </para>
+    /// Maps <see cref="SearchOptions.ResourceVersionTypes"/> onto <see cref="ResourceVisibility"/>, resolving
+    /// each column independently and tri-state so history-only or soft-deleted-only searches reach the emitter.
+    /// <see cref="ResourceVersionTypes.Latest"/> alone returns null, a byte-for-byte no-op for
+    /// <see cref="ResourceVisibility.Current"/> (the general arm would compute the same).
     /// </summary>
     private static ResourceVisibility? ToVisibility(ResourceVersionTypes types) => types switch
     {
@@ -118,11 +101,8 @@ internal sealed record CompilationContext
     };
 
     /// <summary>
-    /// Resolves one version column's tri-state from whether the caller asked for its current partition
-    /// (<paramref name="wantsCurrent"/>, i.e. Latest) and its non-current partition
-    /// (<paramref name="wantsNonCurrent"/>, i.e. History for IsHistory or SoftDeleted for IsDeleted).
-    /// Current only → pin to <c>0</c> (<c>false</c>); non-current only → pin to <c>1</c> (<c>true</c>);
-    /// both or neither → no filter (<c>null</c>), the union. Expressed once so the IsHistory and IsDeleted
+    /// Resolves one version column's tri-state: current only → <c>false</c>; non-current only → <c>true</c>;
+    /// both or neither → <c>null</c> (no filter, the union). Expressed once so the IsHistory and IsDeleted
     /// axes cannot drift apart.
     /// </summary>
     private static bool? ColumnFilter(bool wantsCurrent, bool wantsNonCurrent)
@@ -141,9 +121,9 @@ internal sealed record CompilationContext
     }
 
     /// <summary>
-    /// The surrogate-id bound this compile applies: the explicit <see cref="SearchPlanOptions.SurrogateRange"/>
-    /// when supplied, otherwise the <see cref="SearchOptions"/> pair. A half-open pair is a caller error,
-    /// not a partial intent to honour.
+    /// The surrogate-id bound this compile applies: the explicit
+    /// <see cref="SearchPlanOptions.SurrogateRange"/> when supplied, otherwise the <see cref="SearchOptions"/>
+    /// pair. A half-open pair is a caller error, not a partial intent to honour.
     /// </summary>
     private static SurrogateIdRange? ToSurrogateRange((long Start, long End)? explicitRange, SearchOptions searchOptions)
     {

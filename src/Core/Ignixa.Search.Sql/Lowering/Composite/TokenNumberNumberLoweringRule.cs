@@ -7,11 +7,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Lowers a TokenNumberNumber composite to a single ParamSource over
-/// TokenNumberNumberCompositeSearchParam -- components[0] is the token slot (Code1, code-only,
-/// same throw rules as TokenLoweringRule), components[1]/[2] are the two number slots (LowValue2/
-/// HighValue2, LowValue3/HighValue3), reusing NumericRangeComparison unchanged -- same range
-/// semantics as NumberLoweringRule, just against composite-table column names.
+/// Lowers a TokenNumberNumber composite to a ParamSource over TokenNumberNumberCompositeSearchParam —
+/// components[0] the token slot (Code1, code-only), components[1]/[2] the two number slots
+/// (LowValue2/HighValue2, LowValue3/HighValue3), reusing <see cref="NumericRangeComparison"/> unchanged
+/// against composite-table column names.
 /// </summary>
 internal static class TokenNumberNumberLoweringRule
 {

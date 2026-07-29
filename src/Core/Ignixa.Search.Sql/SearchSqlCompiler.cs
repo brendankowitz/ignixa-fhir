@@ -9,10 +9,10 @@ using Ignixa.Serialization.Abstractions;
 namespace Ignixa.Search.Sql;
 
 /// <summary>
-/// The compiler's only orchestrator. <paramref name="optionsBuilder"/> is required only by the
-/// query-string entry points; the definition managers are required only by compartment searches,
-/// <c>$everything</c>, and <c>_not-referenced</c> path filters. Each throws
-/// <see cref="InvalidOperationException"/> naming itself when a query needs it and it was not supplied.
+/// The compiler's only orchestrator. <paramref name="optionsBuilder"/> is required only by the query-string
+/// entry points; the definition managers only by compartment searches, <c>$everything</c>, and
+/// <c>_not-referenced</c> filters. Each throws <see cref="InvalidOperationException"/> naming itself when a
+/// query needs it and it was not supplied.
 /// </summary>
 public sealed class SearchSqlCompiler(
     ISymbolResolver resolver,
@@ -127,11 +127,9 @@ public sealed class SearchSqlCompiler(
         {
             context = CompilationContext.Create(searchOptions, resourceType, options, _timeProvider.GetUtcNow());
         }
-        // Create eagerly maps ResourceVersionTypes and the surrogate bounds, and both mappings throw
-        // NotSupportedException on a malformed SearchOptions (a None visibility, a half-open surrogate pair).
-        // Those are options-mapping errors, and the lowerer is the sole consumer of what Create produces, so
-        // they are reported at the Lower stage — there is no separate mapping stage in the public vocabulary.
-        // Guarding here keeps the Try* contract: a caller-input error comes back as data, never as a throw.
+        // Create eagerly maps ResourceVersionTypes and the surrogate bounds; both throw NotSupportedException
+        // on a malformed SearchOptions. Reported at Lower (its sole consumer; no mapping stage exists in the
+        // public vocabulary) so the Try* contract holds: caller-input errors come back as data, not a throw.
         catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Lower, ex);

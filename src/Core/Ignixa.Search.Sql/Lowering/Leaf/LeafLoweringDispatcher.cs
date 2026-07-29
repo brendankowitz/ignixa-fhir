@@ -16,24 +16,17 @@ internal static class LeafLoweringDispatcher
 
     /// <summary>
     /// The <see cref="Exception.Data"/> key a caught lowering failure carries its triggering
-    /// <see cref="SearchParameterInfo"/> under. This, not the span, is what attributes a failure
-    /// to a parameter: spans repeat across parameters (two same-length values share one), so span alone
-    /// would smear one parameter's failure across its innocent neighbours.
+    /// <see cref="SearchParameterInfo"/> under. This, not the span, attributes a failure to a parameter:
+    /// spans repeat (two same-length values share one), so span alone would smear it across neighbours.
     /// </summary>
     internal const string ParameterDataKey = "Ignixa.SearchParameter";
 
     /// <summary>
-    /// Lowers a leaf predicate, attributing any lowering failure to the predicate's parameter on the way out.
+    /// Lowers a leaf predicate, attributing any lowering failure to the predicate's parameter on the way
+    /// out. Enriches both <see cref="NotSupportedException"/> (unimplemented shape) and
+    /// <see cref="KeyNotFoundException"/> (a <see cref="Symbols.SymbolTable"/> miss); leaving the latter
+    /// unattributed would let the trace say the search failed but not which parameter caused it.
     /// </summary>
-    /// <remarks>
-    /// Both exception types the compiler treats as a lowering failure are enriched. A
-    /// <see cref="NotSupportedException"/> is an unimplemented shape; a <see cref="KeyNotFoundException"/>
-    /// is a <see cref="Symbols.SymbolTable"/> miss, which means Resolve's tree-walk never collected a
-    /// symbol this predicate needs. The second is a compiler invariant violation rather than a property of
-    /// the query, but it is still raised by one identifiable parameter, and leaving it unattributed sends
-    /// it down the unattributed early-return in the trace's failure recorder — where a trace can say only
-    /// that the search failed, not which parameter did it, which is the one thing needed to find the gap.
-    /// </remarks>
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, LeafContext context, short? resourceTypeId)
     {
         try

@@ -3,15 +3,11 @@ using System.Diagnostics.CodeAnalysis;
 namespace Ignixa.Search.Sql;
 
 /// <summary>
-/// The outcome of a <c>TryCompile</c> call: exactly one of <see cref="Compiled"/> and
-/// <see cref="Failure"/> is non-null. Test <see cref="Succeeded"/> rather than either member.
+/// The outcome of a <c>TryCompile</c> call: exactly one of <see cref="Compiled"/> and <see cref="Failure"/>
+/// is non-null. Test <see cref="Succeeded"/> rather than either member. Constructed only through
+/// <see cref="Success"/>/<see cref="Failed"/>, which is what makes the <see cref="MemberNotNullWhenAttribute"/>
+/// pair sound.
 /// </summary>
-/// <remarks>
-/// Constructed only through <see cref="Success"/> and <see cref="Failed"/>. The positional-record form
-/// would publish a constructor that accepts both members, or neither, and a <c>with</c> expression would
-/// reach the same contradictory states through the compiler-generated copy constructor -- which is what
-/// makes the <see cref="MemberNotNullWhenAttribute"/> pair below sound rather than aspirational.
-/// </remarks>
 public sealed record SearchCompilationResult
 {
     private SearchCompilationResult(CompiledSearch? compiled, SearchCompilationFailure? failure)

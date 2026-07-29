@@ -5,20 +5,11 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the token equality predicate for a composite's or leaf's token slot, supporting the full
-/// FHIR token qualifier semantics: bare code, |code, system|, system|code, unknown system → false,
-/// and text-only → unsupported.
+/// Builds the token equality predicate for a leaf's or composite's token slot, supporting the full FHIR
+/// token qualifier semantics (bare code, |code, system|, system|code, unknown system → false, text-only →
+/// unsupported). A long code splits across Code + CodeOverflow (leading chars / remainder — opposite to
+/// StringSearchParam), so both halves compare; an exactly-width code adds a <c>CodeOverflow IS NULL</c> guard.
 /// </summary>
-/// <remarks>
-/// A code longer than the Code column's declared width is stored split across two columns: the Code
-/// column holds that many leading characters and the CodeOverflow column holds the REMAINDER. That is
-/// the opposite convention from StringSearchParam, whose TextOverflow holds the whole value, so a long
-/// code cannot be matched by comparing either column alone — both halves are compared.
-/// A code of exactly the column's width needs a <c>CodeOverflow IS NULL</c> guard: without it, the
-/// truncated prefix of a longer stored code would false-positive match. A shorter code needs no guard,
-/// because a truncated prefix is always exactly the column's width and so can never equal it — which
-/// keeps the common case a plain sargable equality against the indexed column.
-/// </remarks>
 internal static class TokenColumnEquality
 {
     public static Predicate Build(TableDescriptor table, string systemColumn, string codeColumn, string overflowColumn, TokenSearchValue value, LeafContext context)
@@ -52,10 +43,9 @@ internal static class TokenColumnEquality
         var column = new SqlColumnRef(table.TableName, codeColumn);
         var overflow = new SqlColumnRef(table.TableName, overflowColumn);
 
-        // The split point is the Code column's declared width, because that is what every row generator
-        // splits at. Reading it from the catalog rather than pinning a constant here is what keeps the
-        // compiler matching the data as written: a hard-coded width that disagrees with the DDL produces
-        // a predicate that silently matches nothing for every overflowing code.
+        // Split point is the Code column's declared width (what every row generator splits at). Reading it
+        // from the catalog, not a constant, keeps the compiler matching the DDL: a hard-coded width that
+        // disagreed would silently match nothing for every overflowing code.
         int inlineCodeWidth = table.Column(codeColumn).MaxLength
             ?? throw new NotSupportedException(
                 $"Column {table.TableName}.{codeColumn} declares no width, so the code overflow split point is unknown.");

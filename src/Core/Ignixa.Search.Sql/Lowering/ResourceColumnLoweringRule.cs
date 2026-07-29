@@ -8,9 +8,8 @@ namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
 /// Lowers _id/_type/_lastUpdated — resource-column search parameters that target dbo.Resource's own
-/// columns via QueryPlan.OuterPredicate rather than a ParamSource table. Returns null for any other
-/// parameter code, which the caller (Lower's extraction pass) reads as "not a resource-column predicate,
-/// dispatch it normally."
+/// columns via QueryPlan.OuterPredicate rather than a ParamSource table. Returns null for any other code,
+/// which Lower's extraction pass reads as "not a resource-column predicate, dispatch it normally."
 /// </summary>
 internal static class ResourceColumnLoweringRule
 {
@@ -71,10 +70,9 @@ internal static class ResourceColumnLoweringRule
     }
 
     /// <summary>
-    /// This rule only implements plain equality -- a modifier (most importantly ":not", which would
-    /// otherwise be silently dropped here and produce a positive match instead of a negation, exactly
-    /// the bug Lower's own :not handling exists to prevent) or a non-Eq comparator would need semantics
-    /// this rule doesn't have. Throwing rather than silently ignoring either.
+    /// Only plain equality is implemented; a modifier (notably ":not", which silently dropped would produce
+    /// a positive match instead of a negation) or a non-Eq comparator needs semantics this rule lacks, so
+    /// throw rather than ignore.
     /// </summary>
     private static void RequireNoModifierOrComparator(SearchParameterPredicateExpression predicate, string code)
     {
@@ -110,18 +108,10 @@ internal static class ResourceColumnLoweringRule
                 new Predicate.LessThanOrEqual(column, context.Parameter(ToSurrogateIdUpperBound(widenedEnd))));
         }
 
-        // The search value is a closed range [Start, End] that already encodes FHIR partial-date precision;
-        // an exact instant is the degenerate case where the two coincide. A stored row, by contrast, is a
-        // single point: its ResourceSurrogateId encodes one millisecond plus a write-time uniquifier. So the
-        // FHIR prefix table (search.html), which relates the parameter range to the resource range, collapses
-        // here to a point-vs-range comparison -- the same relations DateTimeRangeComparison builds for
-        // [StartDateTime, EndDateTime] columns, with both column roles played by ResourceSurrogateId.
-        //
-        // Each endpoint is widened to the whole millisecond bucket it names, because the database appends a
-        // uniquifier at write time: the lower bound floors to [ms] and the upper bound extends to
-        // [ms + MaxUniquifier]. Comparing against a bare floor would match only uniquifier 0. This mirrors the
-        // data layer's own _lastUpdated-to-surrogate-id conversion, which likewise rounds each bound outwards
-        // to a millisecond boundary rather than comparing sub-millisecond precision it cannot resolve.
+        // The search value is a closed range [Start, End] encoding FHIR partial-date precision; a stored row
+        // is a single point (ResourceSurrogateId = one ms plus a write-time uniquifier), so this is a
+        // point-vs-range comparison. Each endpoint widens to its whole millisecond bucket — floor to [ms],
+        // ceiling to [ms + MaxUniquifier] — because a bare floor would match only uniquifier 0.
         var lowerParam = context.Parameter(ToSurrogateId(value.Start));
         var upperParam = context.Parameter(ToSurrogateIdUpperBound(value.End));
 
@@ -142,9 +132,9 @@ internal static class ResourceColumnLoweringRule
     }
 
     /// <summary>
-    /// Largest uniquifier the database allocates within a single millisecond. dbo.ResourceSurrogateIdUniquifierSequence
-    /// is declared MAXVALUE 79999, so every resource written in millisecond <c>m</c> occupies the closed
-    /// range [ToSurrogateId(m), ToSurrogateId(m) + MaxUniquifier].
+    /// Largest uniquifier the database allocates within a single millisecond
+    /// (dbo.ResourceSurrogateIdUniquifierSequence MAXVALUE 79999), so a resource written in millisecond
+    /// <c>m</c> occupies the closed range [ToSurrogateId(m), ToSurrogateId(m) + MaxUniquifier].
     /// </summary>
     private const long MaxUniquifier = 79999;
 
@@ -158,27 +148,11 @@ internal static class ResourceColumnLoweringRule
             TimeSpan.Zero).AddTicks(-1);
 
     /// <summary>
-    /// Converts an instant to the <em>inclusive lower</em> surrogate id for the millisecond containing it:
-    /// millisecond-truncated UTC ticks, left-shifted 3 bits. Because ticks = milliseconds × 10000, that
-    /// shift is arithmetically <c>msSince0001 × 80000</c> — the uniquifier is <em>not</em> held in the low
-    /// three bits; it occupies the [0, 79999] value range above this floor. Transcribed from the data
-    /// layer's IdHelper.ToId (pure math, no dependencies), since this Core project cannot reference it.
+    /// Converts an instant to the <em>inclusive lower</em> surrogate id for its millisecond: ms-truncated UTC
+    /// ticks left-shifted 3 bits (= <c>msSince0001 × 80000</c>; uniquifier occupies [0, 79999] above). Instants
+    /// past <see cref="MaxEncodableInstant"/> saturate on input to stay monotonic, since an unchecked shift would
+    /// wrap negative and invert the comparison.
     /// </summary>
-    /// <remarks>
-    /// Instants past <see cref="MaxEncodableInstant"/> saturate rather than throw. A left shift never
-    /// participates in <c>checked</c>, so an unguarded conversion would wrap negative and silently invert
-    /// the comparison. Saturating is also the semantically correct answer: no stored resource can carry a
-    /// lastUpdated beyond that instant, so clamping preserves the result set, and ApproximateDateRange
-    /// deliberately saturates its widened endpoints for wide :ap ranges.
-    /// <para>
-    /// The clamp is applied to the <em>instant</em>, not to the encoded result, which is what keeps the
-    /// conversion monotonic. Saturating the result to <c>long.MaxValue - MaxUniquifier</c> instead would
-    /// return a value <em>below</em> the floor of the last encodable millisecond, so
-    /// <c>_lastUpdated=lt9999-12-31</c> would exclude a resource stored in it. Clamping the input cannot
-    /// invert an ordering, and the resulting floor still leaves room for
-    /// <see cref="ToSurrogateIdUpperBound"/>'s <c>+ MaxUniquifier</c> below <see cref="long.MaxValue"/>.
-    /// </para>
-    /// </remarks>
     private static long ToSurrogateId(DateTimeOffset dateTimeOffset)
     {
         var clamped = dateTimeOffset >= MaxEncodableInstant ? MaxEncodableInstant : dateTimeOffset;
@@ -187,10 +161,9 @@ internal static class ResourceColumnLoweringRule
     }
 
     /// <summary>
-    /// Converts an instant to the <em>inclusive upper</em> surrogate id for the millisecond containing it.
-    /// Comparing against the bare floor would match only the single resource that happened to draw
-    /// uniquifier 0, silently dropping up to 79,999 rows per boundary millisecond. The upstream
-    /// GetResourcesByTypeAndSurrogateIdRange procedure applies the same <c>+ 79999</c> widening.
+    /// Converts an instant to the <em>inclusive upper</em> surrogate id for its millisecond. Comparing
+    /// against the bare floor would match only uniquifier 0, dropping up to 79,999 rows per boundary ms; the
+    /// upstream GetResourcesByTypeAndSurrogateIdRange procedure applies the same <c>+ 79999</c> widening.
     /// </summary>
     private static long ToSurrogateIdUpperBound(DateTimeOffset dateTimeOffset)
         => ToSurrogateId(dateTimeOffset) + MaxUniquifier;

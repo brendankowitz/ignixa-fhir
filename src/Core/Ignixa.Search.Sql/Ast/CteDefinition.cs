@@ -3,47 +3,36 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// One node in the compiler's CTE graph:
-/// <list type="bullet">
-/// <item><b>ParamSource</b> — one search-param table filtered by SearchParamId and an optional Predicate.</item>
-/// <item><b>Intersect</b> — set intersection (AND).</item>
-/// <item><b>Union</b> — set union (OR).</item>
-/// <item><b>ResourceSource</b> — all current, non-deleted resources of a type (the base set for :not).</item>
-/// <item><b>Except</b> — set subtraction (the :not operation itself).</item>
-/// <item><b>ChainJoin</b> — a forward or reverse chain, joined through dbo.ReferenceSearchParam and dbo.Resource.</item>
-/// <item><b>CompartmentSource</b> — compartment membership: rows of dbo.ReferenceSearchParam for one
-/// membership SearchParamId, any of a set of ResourceTypeIds, and a fixed compartment reference.</item>
-/// <item><b>NotReferencedSource</b> — resources of a type that no reference row points at (the
-/// <c>_not-referenced</c> search): a dbo.Resource scan anti-joined to dbo.ReferenceSearchParam by
-/// reference-target identity.</item>
-/// <item><b>TableExistsPredicate</b> — a raw table row-existence check, scoped only by
-/// ResourceSurrogateId (via the outer join, not a WHERE clause of its own) plus an optional additional
-/// Predicate. Unlike ParamSource, carries no SearchParamId or ResourceTypeId.</item>
-/// <item><b>VisibleSinceFilter</b> — $everything's _since filter: resources visible in a transaction on
-/// or after a given Since date, joined through dbo.Resource and dbo.Transactions on VisibleDate.</item>
-/// <item><b>ReferencedTypeExpansion</b> — $everything's outbound referenced-resource expansion.</item>
-/// </list>
-/// ParamSource carries ResourceTypeId because a SearchParamId is assigned per parameter-definition URL,
-/// not per resource type, so a shared definition (e.g. one spanning Patient and Practitioner) would
-/// otherwise return rows of the wrong type. A null ResourceTypeId means system-level (cross-type) search:
-/// no ResourceTypeId filter is emitted at all, so rows of every type match, and the base set — a
-/// <see cref="MultiTypeResourceSource"/> — is what narrows the result to the requested types.
-/// ResourceSource's Predicate is used only in a nested scope
-/// (e.g. a chain's target), which has no outer WHERE to attach to; at the top level QueryPlan.OuterPredicate
-/// carries resource-column filters instead.
+/// One node in the compiler's CTE graph. Leaf sources scan a search-param or resource table; composing
+/// nodes (Intersect/Union/Except, ChainJoin, ReferencedTypeExpansion) combine child CTEs into the match
+/// set. Each concrete record documents the SQL it becomes.
 /// </summary>
 public abstract record CteDefinition
 {
+    /// <summary>
+    /// One search-param table filtered by SearchParamId and optional Predicate. ResourceTypeId is required
+    /// because a SearchParamId spans every type sharing its definition URL; null means system-level
+    /// (cross-type) search — no type filter emitted, narrowed instead by a <see cref="MultiTypeResourceSource"/>.
+    /// </summary>
     public sealed record ParamSource(TableDescriptor Table, short? ResourceTypeId, short SearchParamId, Predicate? Predicate = null) : CteDefinition;
 
+    /// <summary>Set intersection (AND) of two CTEs.</summary>
     public sealed record Intersect(CteRef Left, CteRef Right) : CteDefinition;
 
+    /// <summary>Set union (OR) of several CTEs.</summary>
     public sealed record Union(IReadOnlyList<CteRef> Parts) : CteDefinition;
 
+    /// <summary>
+    /// All current, non-deleted resources of a type — the base set for :not. Predicate applies only in a
+    /// nested scope (e.g. a chain target) with no outer WHERE; at top level QueryPlan.OuterPredicate carries
+    /// resource-column filters instead.
+    /// </summary>
     public sealed record ResourceSource(short ResourceTypeId, Predicate? Predicate = null) : CteDefinition;
 
+    /// <summary>Set subtraction — the :not operation itself.</summary>
     public sealed record Except(CteRef Left, CteRef Right) : CteDefinition;
 
+    /// <summary>A forward or reverse chain, joined through dbo.ReferenceSearchParam and dbo.Resource.</summary>
     public sealed record ChainJoin(
         CteRef InnerMatch,
         short ReferenceSearchParamId,
@@ -51,21 +40,17 @@ public abstract record CteDefinition
         IReadOnlyList<short> OutputResourceTypeIds,
         ChainDirection Direction) : CteDefinition;
 
+    /// <summary>
+    /// Compartment membership: dbo.ReferenceSearchParam rows for one membership SearchParamId, any of a set
+    /// of ResourceTypeIds, and a fixed compartment reference.
+    /// </summary>
     public sealed record CompartmentSource(IReadOnlyList<short> ResourceTypeIds, short SearchParamId, Predicate Predicate) : CteDefinition;
 
     /// <summary>
-    /// Resources of <paramref name="TargetResourceTypeId"/> that no dbo.ReferenceSearchParam row points at
-    /// — the <c>_not-referenced</c> search for orphans. <paramref name="SourceResourceTypeId"/> narrows the
-    /// anti-join to references originating from one resource type (<c>_not-referenced=Type:*</c>), and
-    /// <paramref name="ReferenceSearchParamId"/> further to one reference path (<c>Type:path</c>); both null
-    /// is the full wildcard (<c>*:*</c>), matching a resource referenced by nothing at all.
-    /// <para>
-    /// Invariant: <paramref name="ReferenceSearchParamId"/> implies <paramref name="SourceResourceTypeId"/>
-    /// — the three valid forms are <c>*:*</c>, <c>Type:*</c>, and <c>Type:path</c>; there is no
-    /// <c>*:path</c>. The sole producer (<c>StructuralContext.LowerNotReferenced</c>) upholds it structurally
-    /// by deriving the reference-path id only when the source type is present, matching the sibling records'
-    /// convention of trusting Lower rather than self-validating.
-    /// </para>
+    /// Resources of TargetResourceTypeId that no dbo.ReferenceSearchParam row points at — the
+    /// <c>_not-referenced</c> orphan search. SourceResourceTypeId narrows to references from one type,
+    /// ReferenceSearchParamId to one path; both null is the full wildcard. Invariant:
+    /// ReferenceSearchParamId implies SourceResourceTypeId (no <c>*:path</c> form exists).
     /// </summary>
     public sealed record NotReferencedSource(
         short TargetResourceTypeId,
@@ -73,48 +58,30 @@ public abstract record CteDefinition
         short? ReferenceSearchParamId) : CteDefinition;
 
     /// <summary>
-    /// A raw table row-existence check, scoped only by ResourceSurrogateId (via the outer join, not a WHERE
-    /// clause of its own) plus an optional additional Predicate. Unlike ParamSource, carries no SearchParamId
-    /// or ResourceTypeId -- for checks that are genuinely table-wide, e.g. $everything's "does this resource
-    /// have ANY date-typed search-index row" (Predicate: null) or "...matching this date range" (Predicate: set).
+    /// A raw table row-existence check, scoped only by ResourceSurrogateId (via the outer join) plus an
+    /// optional Predicate. Unlike ParamSource, carries no SearchParamId or ResourceTypeId — for table-wide
+    /// checks, e.g. $everything's "has ANY date-typed search-index row" or "...matching this date range".
     /// </summary>
     public sealed record TableExistsPredicate(TableDescriptor Table, Predicate? Predicate = null) : CteDefinition;
 
     /// <summary>
-    /// $everything's _since filter -- resources visible in a transaction on or after Since. Scoped to
-    /// whichever branch it's Intersect-composed with (design: the compartment branch only, never the
-    /// Patient-itself or referenced-type-expansion branches -- see the $everything orchestration in
-    /// <c>StructuralContext.LowerPatientEverything</c>).
-    /// VisibleDate (not CreateDate) is Transactions' incremental-visibility column, NULL until a
-    /// transaction becomes visible -- distinct from CreateDate, which SqlServerFhirRepository's existing
-    /// LastModified derivation uses for a different purpose.
+    /// $everything's _since filter — resources visible in a transaction on or after Since, joined through
+    /// dbo.Resource and dbo.Transactions on VisibleDate (Transactions' incremental-visibility column, NULL
+    /// until visible; distinct from CreateDate). Intersect-composed onto the compartment branch only.
     /// </summary>
     public sealed record VisibleSinceFilter(SqlParameterRef Since) : CteDefinition;
 
     /// <summary>
-    /// $everything's referenced-type expansion -- resources referenced <em>from</em> an upstream seed set
-    /// (the filtered patient-compartment set), restricted to a fixed set of referenced resource types
-    /// (Practitioner/Organization/Location/Medication). Follows every outbound internal reference the seed
-    /// rows carry (no <c>SearchParamId</c> filter -- all reference parameters), joined through
-    /// dbo.ReferenceSearchParam and dbo.Resource, and returns the referenced resource's own (type, surrogate
-    /// id). Structurally this is the reference-follow topology <see cref="ChainJoin"/> uses in reverse, but
-    /// with a wildcard reference parameter and a wildcard source type -- neither of which ChainJoin can
-    /// express -- which is why it is its own node kind rather than a ChainJoin. Seeds from <see cref="Seed"/>
-    /// specifically so the expansion follows the <em>filtered</em> compartment set (after date/_since
-    /// filtering), matching the legacy PatientEverythingQueryGenerator's own sequencing.
+    /// $everything's referenced-type expansion — resources referenced from the filtered patient-compartment
+    /// Seed, restricted to fixed types, following all outbound references. Its own node, not a ChainJoin,
+    /// because ChainJoin can't express the wildcard reference parameter and wildcard source type this needs.
     /// </summary>
     public sealed record ReferencedTypeExpansion(CteRef Seed, IReadOnlyList<short> OutputResourceTypeIds) : CteDefinition;
 
     /// <summary>
-    /// Current rows of dbo.Resource across several resource types, or across every type — the system-wide
-    /// search base set. Kept separate from <see cref="ResourceSource"/> rather than widening it to a list,
-    /// because ResourceSource's single short is what lets a chain's target scope stay a scalar; conflating
-    /// them would push an "exactly one" assertion into every consumer of that scope.
-    /// <para>
-    /// Construct via <see cref="AllTypes"/> or <see cref="ForTypes"/> rather than directly, so the
-    /// "scan the whole database" state is always an explicit choice rather than an accident that falls
-    /// through silently when a type list is filtered down to nothing.
-    /// </para>
+    /// Current rows of dbo.Resource across several resource types, or every type — the system-wide base set.
+    /// Separate from <see cref="ResourceSource"/> so a chain's target scope stays a scalar. Construct via
+    /// <see cref="AllTypes"/> or <see cref="ForTypes"/>: "scan everything" must be deliberate, not an empty list.
     /// </summary>
     public sealed record MultiTypeResourceSource : CteDefinition
     {
@@ -124,17 +91,14 @@ public abstract record CteDefinition
             Predicate = predicate;
         }
 
-        /// <summary>The resource type ids the scan is narrowed to. Empty means every type; construct that
-        /// state only through <see cref="AllTypes"/>, never by passing an empty list.</summary>
+        /// <summary>Type ids the scan is narrowed to; empty means every type (set only via <see cref="AllTypes"/>).</summary>
         public IReadOnlyList<short> ResourceTypeIds { get; }
 
         public Predicate? Predicate { get; }
 
         /// <summary>
-        /// Every resource type — the system-wide search base set. A separate factory rather than "pass an
-        /// empty list" because the two states differ by a full scan of dbo.Resource: a caller that narrowed
-        /// a type list down to nothing would otherwise silently widen its query to the whole database
-        /// instead of matching nothing, and the result is more rows rather than an error.
+        /// Every resource type — the system-wide base set. A separate factory rather than "pass an empty list"
+        /// so a caller that narrowed a type list to nothing gets nothing, not a silent full scan of dbo.Resource.
         /// </summary>
         public static MultiTypeResourceSource AllTypes(Predicate? predicate = null) => new([], predicate);
 

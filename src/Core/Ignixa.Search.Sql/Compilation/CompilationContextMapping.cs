@@ -4,16 +4,12 @@ using Ignixa.Search.Models;
 namespace Ignixa.Search.Sql.Compilation;
 
 /// <summary>
-/// The enforced contract for <see cref="CompilationContext.Create"/>: every property of
-/// <c>SearchOptions</c> is either mapped into a compilation input or explicitly not applicable with a
-/// stated reason.
+/// Build-failing completeness contract for <see cref="CompilationContext.Create"/>: every
+/// <c>SearchOptions</c> property must be classified <see cref="Mapped"/> or <see cref="NotApplicable"/>. A
+/// test over these two collections fails the build when a new property is neither — the shape of past
+/// defects where a live-looking control (once the fail-open <c>AllowedResourceTypes</c>) was silently never
+/// forwarded. Do not weaken it.
 /// </summary>
-/// <remarks>
-/// Properties have, one at a time, been added to <c>SearchOptions</c>, accepted by the compiler, and never
-/// forwarded — each a control that looked live and silently did nothing, and in the case of an
-/// authorization input like <c>AllowedResourceTypes</c> a fail-open one. A test over these two collections
-/// fails the build when the next is added and classified as neither.
-/// </remarks>
 internal static class CompilationContextMapping
 {
     /// <summary>The properties <see cref="CompilationContext.Create"/> reads.</summary>

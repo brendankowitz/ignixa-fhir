@@ -7,23 +7,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a String search value to a ParamSource over StringSearchParam. Values within the inline width
-/// compare against Text; longer values compare against TextOverflow, which holds the whole value.
-/// <para>
-/// Comparing a single column is not correct for every modifier once a row has overflowed, because Text
-/// then holds only the first 256 characters. <c>:exact</c> for a value at or within the inline width
-/// returns <c>IsNull(TextOverflow) AND Text = value</c> — the IsNull guard excludes overflowed rows
-/// whose truncated Text prefix would otherwise false-positive match. For values longer than the inline
-/// width, <c>:exact</c> compares TextOverflow directly, which holds the complete stored value.
-/// <c>:contains</c> within the inline width searches both columns:
-/// <c>Or(And(IsNull(TextOverflow), Like(Text, …, Contains)), Like(TextOverflow, …, Contains))</c>.
-/// Non-overflowed rows are matched via Text (the IsNull guard ensures TextOverflow is absent); overflowed
-/// rows are matched via the complete TextOverflow column. For values exceeding the inline width,
-/// <c>:contains</c> targets TextOverflow only — such a substring can only exist in a value that itself
-/// exceeds the inline width, so TextOverflow is guaranteed populated.
-/// The default StartsWith case is always safe, since a prefix within the inline width is fully captured
-/// in Text.
-/// </para>
+/// Lowers a String search value to a ParamSource over StringSearchParam. Within-width values compare
+/// against Text; longer values against TextOverflow (which holds the whole value). Since an overflowed
+/// row's Text holds only its first 256 chars, within-width :exact/:contains add an <c>IsNull(TextOverflow)</c>
+/// guard so a truncated Text prefix can't false-positive match. StartsWith is always safe.
 /// </summary>
 internal static class StringLoweringRule
 {

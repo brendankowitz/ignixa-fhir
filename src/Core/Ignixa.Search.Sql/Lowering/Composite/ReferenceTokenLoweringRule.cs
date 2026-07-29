@@ -7,10 +7,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Lowers a ReferenceToken composite to a single ParamSource over ReferenceTokenCompositeSearchParam.
-/// Finds the Reference and Token components by runtime ISearchValue type, not array index, because some
-/// definitions swap the component order. Routes the reference slot through <see cref="ReferenceColumnEquality"/>
-/// and the token slot through <see cref="TokenColumnEquality"/>.
+/// Lowers a ReferenceToken composite to a ParamSource over ReferenceTokenCompositeSearchParam. Finds the
+/// Reference and Token components by runtime ISearchValue type, not array index, because some definitions
+/// swap the order. Routes the reference slot through <see cref="ReferenceColumnEquality"/> and the token
+/// slot through <see cref="TokenColumnEquality"/>.
 /// </summary>
 internal static class ReferenceTokenLoweringRule
 {

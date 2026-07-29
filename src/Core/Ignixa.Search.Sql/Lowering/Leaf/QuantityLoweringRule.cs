@@ -6,10 +6,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a Quantity search value to a ParamSource over QuantitySearchParam — value comparison with
-/// optional system and code identity constraints. Non-empty system resolves to SystemId; non-empty
-/// code resolves to QuantityCodeId. A known-miss for either produces <see cref="Predicate.False"/>.
-/// An absent (empty or null) system or code means no constraint — no IS NULL guard is emitted.
+/// Lowers a Quantity search value to a ParamSource over QuantitySearchParam — value comparison with optional
+/// system (SystemId) and code (QuantityCodeId) identity constraints. A known-miss for either yields
+/// <see cref="Predicate.False"/>; an absent (empty/null) system or code means no constraint and emits no
+/// IS NULL guard.
 /// </summary>
 internal static class QuantityLoweringRule
 {

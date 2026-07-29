@@ -26,10 +26,9 @@ internal sealed class LeafContext
     public short ResourceTypeId(string resourceType) => _symbols.ResourceTypeId(resourceType);
 
     /// <summary>
-    /// Attempts to look up a resource type's id without throwing. Maps a type the resolver could not
-    /// find to <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1); returns that same sentinel for
-    /// a type that was never collected at all, so multi-type callers can safely keep the entry rather
-    /// than dropping it (dropping would collapse an all-unknown list to empty, widening to all types).
+    /// Looks up a resource type's id without throwing, mapping an unfound or never-collected type to
+    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) so multi-type callers can keep the entry;
+    /// dropping it would collapse an all-unknown list to empty, widening to all types.
     /// </summary>
     public short ResourceTypeIdOrSentinel(string resourceType)
         => _symbols.TryGetResourceTypeId(resourceType, out var id)
@@ -38,16 +37,9 @@ internal sealed class LeafContext
 
     /// <summary>
     /// The unsatisfiable predicate for a resource type the resolver could not find, or
-    /// <see langword="null"/> when it resolved normally.
+    /// <see langword="null"/> when it resolved normally. Uses <see cref="Predicate.False"/> (not a bare
+    /// <c>Equal(ResourceTypeId, -1)</c>) so the miss carries a reason CompilationDiagnosticsBuilder can report.
     /// </summary>
-    /// <remarks>
-    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> matches no row, so a plain
-    /// <c>Equal(ResourceTypeId, -1)</c> is already unsatisfiable — but only
-    /// <see cref="Predicate.False"/> carries the reason, and CompilationDiagnosticsBuilder.MarkKnownMisses
-    /// recognises nothing else. Emitting it here makes an unknown resource type as diagnosable as the unknown token
-    /// system handled in <see cref="TokenColumnEquality"/>, instead of a miss the caller can only find by
-    /// reading the emitted SQL for a magic -1.
-    /// </remarks>
     public Predicate.False? UnmatchableResourceType(string resourceType)
         => ResourceTypeId(resourceType) == SymbolTable.UnmatchableResourceTypeId
             ? new Predicate.False($"No resource type '{resourceType}' exists in the catalog.")
@@ -65,25 +57,11 @@ internal sealed class LeafContext
     public int? QuantityCodeId(string code) => _symbols.QuantityCodeId(code);
 
     /// <summary>
-    /// The ResourceTypeIds a reference parameter declares it may point at. Empty when the parameter
-    /// declares no targets, which leaves the reference unconstrained by type.
+    /// The ResourceTypeIds a reference parameter declares it may point at; empty leaves it unconstrained by
+    /// type. Unknown targets map to the unmatchable sentinel (-1), not dropped: dropping all of them falls
+    /// through to the id-only predicate and matches any type carrying that id — the false positive the
+    /// type-narrowing pass exists to prevent.
     /// </summary>
-    /// <remarks>
-    /// Every declared target maps to an id, never to nothing: a resolver miss already carries
-    /// <see cref="SymbolTable.UnmatchableResourceTypeId"/> (-1) from <c>Resolve.RunAsync</c>, and a type
-    /// that was never collected at all goes through <see cref="ResourceTypeIdOrSentinel"/> to that same
-    /// sentinel. The sentinel contributes an OR arm that matches nothing — no catalog row carries id -1 —
-    /// but it does not collapse the predicate. Dropping instead would be more dangerous: if every declared
-    /// target were dropped, the resulting empty list falls through to the unconstrained id-only predicate,
-    /// matching a reference to any resource type carrying that id. That is exactly the false-positive
-    /// behaviour the type-narrowing pass exists to prevent, and it must not depend on the collector and
-    /// this consumer staying in agreement about which types get collected.
-    ///
-    /// In the mixed case (<c>[Organization, UnknownType]</c>) the -1 arm contributes nothing to the
-    /// OR and the resolvable arms still work correctly. This mirrors the convention established in
-    /// <see cref="StructuralContext.LowerNotReferenced"/>, where a source type the resolver could
-    /// not find also maps to the unmatchable sentinel.
-    /// </remarks>
     public IReadOnlyList<short> DeclaredTargetResourceTypeIds(SearchParameterInfo parameter)
     {
         ArgumentNullException.ThrowIfNull(parameter);

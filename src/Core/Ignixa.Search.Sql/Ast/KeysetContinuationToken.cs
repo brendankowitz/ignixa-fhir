@@ -4,18 +4,16 @@ using System.Text.Json;
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// Encodes/decodes a keyset-pagination continuation token for this compiler's <see cref="PageSpec"/>
-/// shape. Not compatible with, and not intended to bridge to, Ignixa.Search.Models.ContinuationToken
-/// (an offset+count token for the legacy EF-based read path) -- keyset and offset pagination are
-/// different models, not different formats of the same thing. A token minted before a cutover to the
-/// keyset-based path simply goes stale; the client restarts from page 1, which is acceptable.
+/// Encodes/decodes a keyset-pagination continuation token for this compiler's <see cref="PageSpec"/> shape.
+/// Not interchangeable with Ignixa.Search.Models.ContinuationToken (an offset+count token for the legacy
+/// path) — keyset and offset are different models. A token minted before a cutover goes stale and the
+/// client restarts from page 1, which is acceptable.
 /// </summary>
 public static class KeysetContinuationToken
 {
     /// <summary>
-    /// Encodes a boundary. Always writes <paramref name="resourceTypeId"/>, so every encoded token carries a
-    /// type component -- see <see cref="TryDecode"/> for the caveat that matters to whatever consumes the
-    /// decoded value.
+    /// Encodes a boundary. Always writes <paramref name="resourceTypeId"/>, so every token carries a type
+    /// component — see <see cref="TryDecode"/> for the caveat that matters to consumers of the decoded value.
     /// </summary>
     public static string Encode(IReadOnlyList<string> boundaryValues, int resourceTypeId, long surrogateId)
     {
@@ -31,13 +29,9 @@ public static class KeysetContinuationToken
     }
 
     /// <summary>
-    /// Decodes a previously encoded boundary. Note <paramref name="resourceTypeId"/> is always populated
-    /// on success, because <see cref="Encode"/> always writes one -- but <see cref="PageSpec"/> only accepts
-    /// a type component when the sort is non-custom (<c>SqlBuilder.Run</c> and <c>Lower.Run</c> both reject a
-    /// typed boundary alongside a custom search-parameter <c>_sort</c>). Any future token-to-
-    /// <see cref="PageSpec"/> adapter built on this <c>out</c> parameter must therefore map to
-    /// <c>BoundaryResourceTypeId: null</c> whenever the sort is custom, discarding the decoded type rather
-    /// than forwarding it; the type is redundant there because <c>ResourceSurrogateId</c> is globally unique.
+    /// Decodes a previously encoded boundary. <paramref name="resourceTypeId"/> is always populated on success,
+    /// but a token-to-<see cref="PageSpec"/> adapter must discard it (map to null) when the sort is custom:
+    /// PageSpec rejects a typed boundary there and the type is redundant (ResourceSurrogateId is globally unique).
     /// </summary>
     public static bool TryDecode(string token, out IReadOnlyList<string> boundaryValues, out int resourceTypeId, out long surrogateId)
     {

@@ -5,10 +5,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Lowers one grouped compartment-membership entry (a Reference-type search parameter plus every
-/// resource type that shares it) to a CompartmentSource. Structurally this is an ordinary
-/// reference-equality predicate against a fixed (compartment type, compartment id) pair — the same shape
-/// as an Observation?subject=Patient/123 search — except it covers many resource types in one CTE.
+/// Lowers one grouped compartment-membership entry (a Reference-type search parameter plus every resource
+/// type that shares it) to a CompartmentSource: a reference-equality predicate against a fixed (compartment
+/// type, compartment id) pair — same shape as Observation?subject=Patient/123 — but covering many resource
+/// types in one CTE.
 /// </summary>
 internal static class CompartmentLoweringRule
 {

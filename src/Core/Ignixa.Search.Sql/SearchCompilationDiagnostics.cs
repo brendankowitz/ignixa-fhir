@@ -5,14 +5,10 @@ namespace Ignixa.Search.Sql;
 
 /// <summary>
 /// What a compile recorded about its own work. Present only when
-/// <see cref="SearchPlanOptions.DiagnosticsLevel"/> is above <see cref="SearchDiagnosticsLevel.None"/>.
+/// <see cref="SearchPlanOptions.DiagnosticsLevel"/> is above <see cref="SearchDiagnosticsLevel.None"/>. On
+/// the <see cref="ISearchSqlCompiler.CreatePlanFromOptionsAsync"/> path there is no query string, so
+/// <see cref="Parameters"/> and <see cref="Implicit"/> are always empty; the plan-level traces still populate.
 /// </summary>
-/// <remarks>
-/// <see cref="ISearchSqlCompiler.CreatePlanFromOptionsAsync"/> never runs the options builder, so on that
-/// path <see cref="Parameters"/> and <see cref="Implicit"/> are always empty regardless of level: there is
-/// no query string to attribute outcomes to, and no way to tell an explicit <c>_count</c> from a server
-/// default. <see cref="PlanTrace"/> and <see cref="SqlTextRanges"/> are populated normally.
-/// </remarks>
 public sealed record SearchCompilationDiagnostics
 {
     /// <summary>Per-parameter outcomes from the options builder, stamped by Resolve and Lower.</summary>

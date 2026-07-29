@@ -33,20 +33,16 @@ public sealed record SearchPlanOptions
     /// </summary>
     public int? Top { get; init; }
 
-    /// <summary>
-    /// A keyset continuation boundary. Mutually exclusive with <see cref="OffsetPage"/>. The compiler has
-    /// always supported this; before this API existed no orchestrated entry point could ask for it.
-    /// </summary>
+    /// <summary>A keyset continuation boundary. Mutually exclusive with <see cref="OffsetPage"/>.</summary>
     public PageSpec? Page { get; init; }
 
     /// <summary>An OFFSET/FETCH page. Mutually exclusive with <see cref="Page"/> and <see cref="Top"/>.</summary>
     public OffsetSpec? OffsetPage { get; init; }
 
     /// <summary>
-    /// The keyset continuation boundary for the second and subsequent pages of an <see cref="IncludesOnly"/>
-    /// page: the last include row the previous page returned. Only meaningful together with
-    /// <see cref="IncludesOnly"/> — the resume predicate pages a stream of include rows, and on an ordinary
-    /// search it would silently drop them, so the compiler rejects that combination rather than honouring it.
+    /// The keyset boundary (last include row of the previous page) for paging an <see cref="IncludesOnly"/>
+    /// stream. Only meaningful with <see cref="IncludesOnly"/>; the compiler rejects it on an ordinary search,
+    /// where the resume predicate would silently drop include rows.
     /// </summary>
     public IncludeBoundary? IncludeBoundary { get; init; }
 

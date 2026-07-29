@@ -7,11 +7,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Lowers a TokenQuantity composite to a single ParamSource over TokenQuantityCompositeSearchParam —
-/// components[0] is the token slot (SystemId1/Code1), components[1] is the quantity slot
-/// (LowValue2/HighValue2/SystemId2/QuantityCodeId2). System and code identity constraints on the
-/// quantity slot are delegated to <see cref="QuantityColumnPredicate"/>; a known-miss for either
-/// produces <see cref="Predicate.False"/> for the quantity slot.
+/// Lowers a TokenQuantity composite to a ParamSource over TokenQuantityCompositeSearchParam — components[0]
+/// the token slot (SystemId1/Code1), components[1] the quantity slot (LowValue2/HighValue2/SystemId2/
+/// QuantityCodeId2), delegated to <see cref="QuantityColumnPredicate"/> (a known-miss yields
+/// <see cref="Predicate.False"/> for the quantity slot).
 /// </summary>
 internal static class TokenQuantityLoweringRule
 {
