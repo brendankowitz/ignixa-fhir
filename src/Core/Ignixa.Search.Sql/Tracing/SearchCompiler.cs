@@ -310,7 +310,7 @@ public static class SearchCompiler
         CompilationStage.Resolve => TraceStage.Resolve,
         CompilationStage.Lower => TraceStage.Lower,
         CompilationStage.Emit => TraceStage.Emit,
-        _ => throw new ArgumentOutOfRangeException(nameof(stage)),
+        _ => throw new ArgumentOutOfRangeException(nameof(stage), stage, null),
     };
 
     /// <summary>
