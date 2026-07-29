@@ -17,7 +17,7 @@ namespace Ignixa.Search.Sql.Compilation;
 internal static class CompilationDiagnosticsBuilder
 {
     /// <summary>Names every parameter Resolve could not find in one top-level failure, or null when it found them all.</summary>
-    public static TraceFailure? ResolveFailure(IReadOnlyList<SearchParameterInfo> unresolved)
+    public static SearchCompilationFailure? ResolveFailure(IReadOnlyList<SearchParameterInfo> unresolved)
     {
         if (unresolved.Count == 0)
         {
@@ -25,7 +25,12 @@ internal static class CompilationDiagnosticsBuilder
         }
 
         var codes = string.Join(", ", unresolved.Select(p => $"'{p.Code}'"));
-        return new TraceFailure(TraceStage.Resolve, $"Search parameters could not be resolved: {codes}.", null);
+        return new SearchCompilationFailure(
+            CompilationStage.Resolve,
+            $"Search parameters could not be resolved: {codes}.",
+            unresolved.Count == 1 ? unresolved[0].Code : null,
+            Span: null,
+            Exception: null);
     }
 
     /// <summary>
@@ -230,14 +235,15 @@ internal static class CompilationDiagnosticsBuilder
     /// dispatcher named one. Attribution is by parameter, never by span alone: spans repeat across
     /// parameters, so a span-only match would mark same-length neighbours failed too. Guards that throw
     /// from outside the dispatchers name no parameter; their message still reaches the caller through the
-    /// returned <see cref="TraceFailure"/>.
+    /// returned <see cref="SearchCompilationFailure"/>.
     /// </summary>
-    public static TraceFailure RecordFailure(IList<ParameterTrace> outcomes, TraceStage stage, Exception ex)
+    public static SearchCompilationFailure RecordFailure(IList<ParameterTrace> outcomes, CompilationStage stage, Exception ex)
     {
         var span = ex.Data[LeafLoweringDispatcher.SpanDataKey] as SourceSpan?;
-        var failure = new TraceFailure(stage, ex.Message, span);
+        var parameter = ex.Data[LeafLoweringDispatcher.ParameterDataKey] as SearchParameterInfo;
+        var failure = new SearchCompilationFailure(stage, ex.Message, parameter?.Code, span, ex);
 
-        if (ex.Data[LeafLoweringDispatcher.ParameterDataKey] is not SearchParameterInfo parameter)
+        if (parameter is null)
         {
             return failure;
         }
@@ -250,11 +256,20 @@ internal static class CompilationDiagnosticsBuilder
                 continue;
             }
 
-            outcomes[i] = trace with { Outcome = new ParameterOutcome.Failed(stage, ex.Message, span) };
+            outcomes[i] = trace with { Outcome = new ParameterOutcome.Failed(ToTraceStage(stage), ex.Message, span) };
         }
 
         return failure;
     }
+
+    private static TraceStage ToTraceStage(CompilationStage stage) => stage switch
+    {
+        CompilationStage.Build => TraceStage.Parse,
+        CompilationStage.Resolve => TraceStage.Resolve,
+        CompilationStage.Lower => TraceStage.Lower,
+        CompilationStage.Emit => TraceStage.Emit,
+        _ => throw new ArgumentOutOfRangeException(nameof(stage)),
+    };
 
     /// <summary>
     /// Yields every search parameter one IR node names, with the node's own span where it has one. Covers

@@ -94,7 +94,10 @@ public static class SearchCompiler
         // one for ParameterCategory.Search alone -- an unresolved _include, _revinclude, _sort, or synthesized
         // compartment parameter is attributable to nothing. Recording the failure unconditionally guarantees
         // the absent plan below always has a stated cause, whether or not attribution found an owner.
-        var failure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved);
+        var resolveFailure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved);
+        TraceFailure? failure = resolveFailure is null
+            ? null
+            : new TraceFailure(ToTraceStage(resolveFailure.Stage), resolveFailure.Message, resolveFailure.Span);
 
         // An unresolved parameter guarantees Lower will throw KeyNotFoundException the moment it looks
         // up that parameter's SearchParamId -- skip the call rather than let a second, less specific
@@ -123,7 +126,8 @@ public static class SearchCompiler
             // bug in this compiler as though it were a property of the user's query.
             catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
             {
-                failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, lowered is null ? TraceStage.Lower : TraceStage.Emit, ex);
+                var compilationFailure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, lowered is null ? CompilationStage.Lower : CompilationStage.Emit, ex);
+                failure = new TraceFailure(ToTraceStage(compilationFailure.Stage), compilationFailure.Message, compilationFailure.Span);
             }
         }
 
@@ -234,7 +238,10 @@ public static class SearchCompiler
 
         QueryPlanTrace? planTrace = null;
         EmittedSqlTrace? sqlTrace = null;
-        var failure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved);
+        var resolveFailure2 = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved);
+        TraceFailure? failure = resolveFailure2 is null
+            ? null
+            : new TraceFailure(ToTraceStage(resolveFailure2.Stage), resolveFailure2.Message, resolveFailure2.Span);
 
         // Declared here, not inside the `if` block below, even though it's only ever assigned inside it --
         // the final `return`'s `CompiledPlan = lowered?.Plan` needs it in scope whether or not that block
@@ -262,7 +269,8 @@ public static class SearchCompiler
             }
             catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
             {
-                failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, lowered is null ? TraceStage.Lower : TraceStage.Emit, ex);
+                var compilationFailure2 = CompilationDiagnosticsBuilder.RecordFailure(outcomes, lowered is null ? CompilationStage.Lower : CompilationStage.Emit, ex);
+                failure = new TraceFailure(ToTraceStage(compilationFailure2.Stage), compilationFailure2.Message, compilationFailure2.Span);
             }
         }
 
@@ -294,6 +302,15 @@ public static class SearchCompiler
         _ => new ResourceVisibility(
             IncludeHistory: types.HasFlag(ResourceVersionTypes.History),
             IncludeDeleted: types.HasFlag(ResourceVersionTypes.SoftDeleted)),
+    };
+
+    private static TraceStage ToTraceStage(CompilationStage stage) => stage switch
+    {
+        CompilationStage.Build => TraceStage.Parse,
+        CompilationStage.Resolve => TraceStage.Resolve,
+        CompilationStage.Lower => TraceStage.Lower,
+        CompilationStage.Emit => TraceStage.Emit,
+        _ => throw new ArgumentOutOfRangeException(nameof(stage)),
     };
 
     /// <summary>
