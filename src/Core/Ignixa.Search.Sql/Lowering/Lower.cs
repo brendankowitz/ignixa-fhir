@@ -299,8 +299,12 @@ public static class Lower
     /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR,
     /// union, chain, or compartment).
     /// A null <paramref name="resourceType"/> reaches here only under system-level search. Chain carries its own
-    /// resource types rather than consuming the ambient one, so it needs an explicit guard here: without it a
-    /// type-less chain would fall through every null-type guard in <see cref="Run"/> and appear to work.
+    /// resource types rather than consuming the ambient one — a reverse chain scopes its inner expression against
+    /// its single referencing type and emits its target types, a forward chain the mirror image — so it needs no
+    /// ambient scope and none is passed to <see cref="StructuralContext.LowerChain"/>. The identities a ChainJoin
+    /// yields are always over concrete types, so an enclosing cross-type intersection stays well-typed. The
+    /// ambiguity that would genuinely break a chain (more than one type on the side that must be single) is
+    /// guarded inside <c>LowerChain</c> itself, where both directions reach it.
     /// <para>
     /// <see cref="UnionExpression"/> and an OR both lower to the same set union. They are distinct nodes because
     /// they say different things about their operands - an OR combines alternative <em>values</em> of one
@@ -332,11 +336,6 @@ public static class Lower
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
         UnionExpression union => context.Union(
             union.Expressions.Select(leg => LowerScopedExpression(leg, context, resourceType)).ToList()),
-        ChainedExpression when resourceType is null => throw new NotSupportedException(
-            "Chain is not supported in system-level search in this phase -- a chain resolves and joins against " +
-            "a concrete referencing/target type, which a cross-type search has no single value for. Guarding at " +
-            "the chain dispatch choke point covers a top-level chain and one nested in an AND equally; a chain " +
-            "reached inside another chain's scope always has a concrete type and never trips this."),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
