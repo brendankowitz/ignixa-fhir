@@ -18,6 +18,7 @@ Built using the [Superpower](https://github.com/datalust/superpower) parser comb
 - **Type Inference** - Static analyzer validates expressions before execution
 - **High Performance** - Significant improvements over traditional switch-based evaluators
 - **Extensible** - Custom functions registered via attributes and source generators
+- **Instance Selectors** - Inline object construction (`Coding { code: '8480-6' }`) delegated to a host-supplied factory
 
 ## Installation
 
@@ -163,6 +164,40 @@ name.family.startsWith('Sm')    // String operations
 name.family.contains('ith')     // String operations
 ```
 
+### Instance Selectors
+
+An instance selector constructs a new FHIR object inline, using the type name followed by a brace-delimited list of element assignments:
+
+```text
+Coding { system: 'http://loinc.org', code: '8480-6' }
+Quantity { value: 120, unit: 'mm[Hg]' }
+FHIR.Quantity { value: 120 }        // Namespace-qualified type name
+Coding {}                           // Empty object
+Coding {:}                          // Empty object, alternate form
+Coding { `code`: 'c1' }             // Delimited (backtick) element name
+```
+
+Assigned values are themselves FHIRPath expressions, and selectors nest:
+
+```text
+(1 | 2 | 3).select(Coding { code: $this.toString() })
+Observation { value: Quantity { value: 70 } }
+Coding { code: 'TEST'.lower() }
+```
+
+Evaluation semantics:
+
+- An empty input collection produces an empty result.
+- An input collection with more than one item is an error.
+- An element whose value expression evaluates to an empty collection is omitted from the created object.
+- Construction itself is delegated to the host — see [Instance Creator](#instance-creator) for the required wiring.
+
+The static analyzer resolves the declared type against the schema and infers it, so an unknown type name is reported as an analysis error. At runtime an unknown type is simply declined by the creator, producing an empty collection rather than an exception.
+
+:::note
+FHIRPath [object creation](https://build.fhir.org/ig/HL7/FHIRPath/branches/BP-FHIR-44774/index.html#instance-selector) is a Standard for Trial Use (STU) section of the specification, not normative. It has no conformance tests in `fhir-test-cases`, so behaviour the spec leaves open (choice-element naming, repeated assignments, primitive construction) is an Ignixa implementation decision rather than a compliance claim. Those decisions are recorded in `docs/features/fhirpath/investigations/instance-creation-delegate.md` in the repository.
+:::
+
 ### Functions
 
 See the [FHIRPath N1 specification](http://hl7.org/fhirpath/N1/) for the complete function reference. Commonly used functions include:
@@ -202,22 +237,28 @@ The caching is automatic and internal - no configuration needed.
 ### Built-in Variables
 
 ```fhirpath
-%resource          // Current resource (set via context.Resource)
-%rootResource      // Root resource (set via context.RootResource)
+%resource          // Current resource (set via WithResource())
+%rootResource      // Root resource (set via WithRootResource())
 ```
 
 ### Custom Variables
 
-Custom environment variables can be added to the evaluation context:
+`EvaluationContext` is an immutable record: every `With*` method returns a new context rather than mutating the existing one.
 
 ```csharp
-var context = new EvaluationContext();
-context.Resource = patientElement;  // Sets %resource variable
+using Ignixa.FhirPath.Evaluation;
 
-// Add custom variables
-context.Environment["today"] = new[] { todayElement };
+var context = new EvaluationContext()
+    .WithResource(patientElement)               // Sets %resource
+    .WithEnvironmentVariable("today", todayElement);
 
 var result = element.Select("birthDate < %today", context);
+```
+
+`WithEnvironmentVariable` also accepts an `IEnumerable<IElement>` when a variable holds a collection. Object-initializer syntax works too, since the properties are `init`-only:
+
+```csharp
+var context = new EvaluationContext { Resource = patientElement };
 ```
 
 ### Element Resolver
@@ -233,24 +274,21 @@ using Ignixa.Specification;
 // Example: var schemaProvider = new R4CoreSchemaProvider();
 IFhirSchemaProvider schemaProvider = GetSchemaProvider();
 
-// Create a FHIR evaluation context
-var context = new FhirEvaluationContext();
-
-// Configure the ElementResolver to resolve references
-context.ElementResolver = (reference) =>
+// Create a FHIR evaluation context with an ElementResolver that resolves references
+var context = new FhirEvaluationContext().WithElementResolver(reference =>
 {
     // reference will be a string like "Patient/123" or "Practitioner/456"
-    
+
     // Fetch from your data store (database, API, cache, etc.)
     // This method should return the resource JSON or null if not found
-    string? resourceJson = GetResourceByReference(reference); 
+    string? resourceJson = GetResourceByReference(reference);
     if (resourceJson == null)
         return null; // Return null if resource not found
-    
+
     // Parse and return as IElement
     var sourceNode = JsonSourceNodeFactory.Parse(resourceJson);
     return sourceNode.ToElement(schemaProvider);
-};
+});
 
 // Example implementation of GetResourceByReference:
 // string? GetResourceByReference(string reference)
@@ -316,6 +354,63 @@ The `resolve()` function returns an empty collection if:
 This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions. This allows FHIRPath expressions to continue evaluating even when references can't be resolved.
 :::
 
+### Instance Creator
+
+[Instance selectors](#instance-selectors) require an `InstanceCreator` on the evaluation context. `Ignixa.FhirPath` references only `Ignixa.Abstractions` and has no object model of its own, so it delegates construction to the host — the same extension-point shape as `ElementResolver` for `resolve()`.
+
+`Ignixa.Serialization` ships the reference implementation, `SourceNodeInstanceFactory`. Wire its `Create` method as a method group:
+
+```csharp
+using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Extensions;
+
+IFhirSchemaProvider schemaProvider = FhirVersion.R4.GetSchemaProvider();
+
+var context = new EvaluationContext()
+    .WithInstanceCreator(new SourceNodeInstanceFactory(schemaProvider).Create);
+
+var coding = element
+    .Select("Coding { system: 'http://loinc.org', code: '8480-6' }", context)
+    .Single();
+```
+
+The delegate signature is `Func<InstanceCreationRequest, IElement?>`. The request types live in `Ignixa.Abstractions`:
+
+```csharp
+public sealed record InstanceCreationRequest(
+    string TypeName,
+    string? NamespacePrefix,
+    IReadOnlyList<InstanceElement> Elements);
+
+public sealed record InstanceElement(string Name, IReadOnlyList<IElement> Values);
+```
+
+Implement it directly to construct into your own model. Return `null` to decline a type — the engine then yields an empty collection.
+
+`InstanceCreator` is declared on the base `EvaluationContext`, so it can be combined with the FHIR-specific hooks in a single object initializer:
+
+```csharp
+var context = new FhirEvaluationContext
+{
+    ElementResolver = ResolveReference,
+    InstanceCreator = new SourceNodeInstanceFactory(schemaProvider).Create
+};
+```
+
+`SourceNodeInstanceFactory` builds `ISourceNode`-backed elements and makes these choices, which the STU spec section leaves open:
+
+- Resources get a `resourceType` property, written last so an element assignment cannot forge it.
+- Assigning a choice element by its base name (`value`) emits the type-suffixed property (`valueQuantity`) when the assigned value's type matches a declared choice type. Already-suffixed names pass through unchanged.
+- Repeated assignments to the same element name aggregate into an array rather than overwriting. Exceeding the element's cardinality throws.
+- If the target type is a FHIR primitive and the only assignment is `value`, the result is a primitive node (`HasPrimitiveValue == true`), not an object with a `value` child.
+- Types the schema does not know, and the `System` namespace, are declined.
+
+:::warning
+Unlike `resolve()`, an unconfigured `InstanceCreator` does not degrade to an empty collection - evaluating an instance selector throws `InvalidOperationException` naming `WithInstanceCreator`. A stand-in node would carry no schema metadata and could not be serialized, so the failure is surfaced instead of hidden.
+:::
+
 ## Error Handling
 
 ### Parse Errors
@@ -360,10 +455,22 @@ catch (NotSupportedException ex)
     // "Function 'customFunction' is not yet implemented"
     Console.WriteLine($"Unsupported: {ex.Message}");
 }
+
+try
+{
+    // Instance selectors throw when no InstanceCreator is configured.
+    // Select() is lazy, so the throw surfaces on enumeration.
+    var result = element.Select("Coding { code: 'c1' }").ToList();
+}
+catch (InvalidOperationException ex)
+{
+    // "Cannot construct 'Coding': no instance creator is configured on the evaluation context..."
+    Console.WriteLine($"Not configured: {ex.Message}");
+}
 ```
 
 :::note
-FHIRPath follows propagation semantics for empty collections - operations on empty values typically return empty rather than throwing exceptions. Only constraint violations (like `single()` on multiple items) throw.
+FHIRPath follows propagation semantics for empty collections - operations on empty values typically return empty rather than throwing exceptions. Only constraint violations (like `single()` on multiple items) throw. An instance selector is one of these: it also throws `InvalidOperationException` ("Instance selector requires a single input item or empty collection") when the input collection it is evaluated against holds more than one item.
 :::
 
 ## Architecture
