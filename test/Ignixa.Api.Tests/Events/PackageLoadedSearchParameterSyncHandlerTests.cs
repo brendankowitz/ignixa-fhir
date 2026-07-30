@@ -1,3 +1,4 @@
+using Ignixa.Abstractions;
 using Ignixa.Api.Events;
 using Ignixa.Application.Events.Package;
 using Ignixa.Application.Features.Search;
@@ -6,6 +7,8 @@ using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Definition;
+using Ignixa.Serialization;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
@@ -54,6 +57,46 @@ public class PackageLoadedSearchParameterSyncHandlerTests
 
         await Should.ThrowAsync<Exception>(() => handler.HandleAsync(
             new PackageLoadedEvent("hl7.fhir.us.core", "6.1.0", 1, DateTimeOffset.UnixEpoch), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenTheSyncSucceeds_WhenThePackageLoadedEventIsHandled_ThenTheCapabilityCacheIsInvalidated()
+    {
+        // The happy path reaches the end. Without this, the only capability-cache assertion is a negative on
+        // the unknown-tenant path, which would pass just as well if the invalidation were deleted outright.
+        var tenantStore = Substitute.For<ITenantConfigurationStore>();
+        tenantStore.GetTenantConfigurationAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<TenantConfiguration?>(new TenantConfiguration
+            {
+                TenantId = 1,
+                DisplayName = "Test",
+                FhirVersion = "4.0",
+                Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = "unused" },
+            }));
+
+        var searchParamManager = Substitute.For<ISearchParameterDefinitionManager>();
+        searchParamManager.AllSearchParameters.Returns([]);
+
+        var fhirVersionContext = Substitute.For<IFhirVersionContext>();
+        fhirVersionContext.GetSearchParameterDefinitionManager(Arg.Any<FhirVersion>(), Arg.Any<int?>())
+            .Returns(searchParamManager);
+
+        using var registry = new SqlServerSearchIndexCacheRegistry(
+            new EmptySqlExecutionService(), NullLoggerFactory.Instance);
+
+        var capabilityInvalidator = Substitute.For<ICapabilityCacheInvalidator>();
+
+        var handler = new PackageLoadedSearchParameterSyncHandler(
+            fhirVersionContext,
+            registry,
+            tenantStore,
+            capabilityInvalidator,
+            NullLogger<PackageLoadedSearchParameterSyncHandler>.Instance);
+
+        await handler.HandleAsync(
+            new PackageLoadedEvent("hl7.fhir.us.core", "6.1.0", 1, DateTimeOffset.UnixEpoch), CancellationToken.None);
+
+        await capabilityInvalidator.Received(1).InvalidateForTenantAsync(1, Arg.Any<CancellationToken>());
     }
 
     [Fact]

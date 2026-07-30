@@ -25,10 +25,19 @@ namespace Ignixa.Api.Events;
 /// therefore permanent data loss rather than a deferred cost, which is why this rethrows.
 /// </para>
 /// <para>
-/// Rethrowing surfaces the failure to whoever published <c>PackageLoadedEvent</c> instead of leaving a
-/// package looking loaded when it is only half-indexed. That is the trade this makes deliberately: a visibly
-/// failed package load is recoverable, a silently unindexed one is not discovered until a search returns
-/// nothing.
+/// <b>Rethrowing costs more than failing this handler, and the trade is still worth it.</b> Medino publishes
+/// notification handlers sequentially and the first exception aborts the remainder — verified empirically
+/// against Medino 2.0.7, not inferred — so throwing here also skips every handler registered after this one
+/// for the same event: GraphQL schema invalidation, IPS strategy registration, Transform map-cache
+/// invalidation, and the terminology import handler when auto-import is enabled. It then surfaces at
+/// <c>LoadPackageHandler</c>, which fails the load command.
+/// </para>
+/// <para>
+/// That collateral is recoverable and this handler's failure is not: by the time this runs the package
+/// resources are already stored, so the skipped handlers leave stale caches that correct themselves on the
+/// next load, whereas unindexed resources stay unfindable until someone notices a search returning nothing.
+/// Note the consequence is registration-order dependent — moving this handler earlier in
+/// <c>RegisterEventHandlers</c> widens what a failure here suppresses.
 /// </para>
 /// <para>
 /// <b>Why this lives in the API layer rather than beside the cache it syncs.</b> It needs both
@@ -129,6 +138,12 @@ public class PackageLoadedSearchParameterSyncHandler(
                 notification.TenantId,
                 notification.PackageId,
                 notification.PackageVersion);
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown or a cancelled load is not a sync failure; logging it as one would raise a false
+            // alarm on every graceful stop.
+            throw;
         }
         catch (Exception ex)
         {
