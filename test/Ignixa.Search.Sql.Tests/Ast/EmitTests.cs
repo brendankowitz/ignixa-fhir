@@ -1022,20 +1022,21 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenTheMissingPrimaryPhaseWithALastUpdatedPrimaryKey_WhenEmitted_ThenThrowsInvalidOperationException()
+    public void GivenTheMissingPrimaryPhaseWithALastUpdatedPrimaryKey_WhenEmitted_ThenThrowsNotSupportedException()
     {
         // Arrange -- hand-constructed QueryPlan bypassing Lower.BuildSortSpec's own guard (Lower rejects
         // this combination at construction time -- see LowerTests' equivalent throw test). QueryPlan is
         // a public construction surface, so Emit defends against this shape too rather than trusting
         // every caller to route through Lower: _lastUpdated is never "missing," so EmitMissingPrimaryFilter
         // must never be asked to render a NOT EXISTS for it (its SearchParamId is null by construction).
+        // NotSupportedException specifically, so TryCompile reports it as data rather than letting it escape.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.MissingPrimary);
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 
     [Fact]
@@ -1256,7 +1257,7 @@ public class EmitTests
         // Arrange -- Patient?name=Smith&_total=accurate, no resource-column predicate.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1281,7 +1282,7 @@ public class EmitTests
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            OuterPredicate: outerPredicate, CountOnly: true);
+            OuterPredicate: outerPredicate, Shape: new ResultShape.Count());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1293,17 +1294,17 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountOnlyPlanWithSortAndTopAndIncludesAllSet_WhenEmitted_ThenTheyAreAllIgnored()
+    public void GivenACountPlanWithTopAndIncludesSet_WhenEmitted_ThenTheyAreAllIgnored()
     {
-        // Arrange -- proves CountOnly wins unconditionally, regardless of what else is set on the plan
-        // (a caller should never populate these for a count request, but Emit must not depend on that).
+        // Arrange -- proves the Count shape wins unconditionally over the paging and include slots (a caller
+        // should never populate these for a count request, but Emit must not depend on that). Sort is the one
+        // exception and is covered by the phase-scoped count tests, so it is absent here.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Top: 10, Sort: sort, Includes: [includeStage], CountOnly: true);
+            Top: 10, Includes: [includeStage], Shape: new ResultShape.Count());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1649,7 +1650,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             Projection: new ProjectionSpec(["RawResource"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -1749,7 +1750,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1772,7 +1773,7 @@ public class EmitTests
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
             OuterPredicate: outerPredicate,
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1919,7 +1920,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             SearchParameterHash: new SqlParameterRef("abc123"));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1936,7 +1937,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             SearchParameterHash: new SqlParameterRef("abc123"));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2666,7 +2667,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             OffsetPage: new OffsetSpec(20, 10));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2677,10 +2678,10 @@ public class EmitTests
 
     // ─── End OffsetPage tests ───────────────────────────────────────────────────────────────────────
 
-    // ─── CountPhaseScoped tests ─────────────────────────────────────────────────────────────────────
+    // ─── Phase-scoped count tests ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void GivenACountOnlyPlanWithCountPhaseScoped_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
+    public void GivenACountPlanCarryingASort_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
     {
         // Arrange -- Valued phase: Keys[0]'s join is present and the count must scope to it, not the
         // whole match set, or a two-phase executor would double count rows present in both phases.
@@ -2688,9 +2689,8 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
-            Sort: sort,
-            CountPhaseScoped: true);
+            Shape: new ResultShape.Count(),
+            Sort: sort);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2709,7 +2709,7 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountOnlyPlanWithCountPhaseScopedAndMissingPrimaryPhase_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
+    public void GivenACountPlanCarryingAMissingPrimarySort_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
     {
         // Arrange -- MissingPrimary phase: Keys[0] is excluded from the joins (EmitSortJoins' own
         // MissingPrimary continue) and instead the count must apply the NOT EXISTS filter, the same
@@ -2718,9 +2718,8 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
-            Sort: sort,
-            CountPhaseScoped: true);
+            Shape: new ResultShape.Count(),
+            Sort: sort);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2734,16 +2733,15 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountOnlyPlanWithoutCountPhaseScoped_WhenEmitted_ThenSortIsIgnoredAsBefore()
+    public void GivenACountPlanWithNoSort_WhenEmitted_ThenTheCountCoversTheWholeMatchSet()
     {
-        // Regression guard: CountOnly without CountPhaseScoped must keep ignoring Sort entirely -- no
-        // join, no MissingPrimary filter -- exactly as EmitCountOnlyShape's remarks already document.
-        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        // The inverse of the two tests above: a sort reaches a count plan only when it scopes the count, so a
+        // plan without one counts every match row -- no phase join, no MissingPrimary filter. Lower produces
+        // this shape by dropping the sort from a count that names no continuation.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
-            Sort: sort);
+            Shape: new ResultShape.Count());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2757,7 +2755,7 @@ public class EmitTests
             "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
     }
 
-    // ─── End CountPhaseScoped tests ─────────────────────────────────────────────────────────────────
+    // ─── End phase-scoped count tests ───────────────────────────────────────────────────────────────
 
     [Fact]
     public void GivenAnIncludesPlanWithASurrogateIdRange_WhenEmitted_ThenTheRangeAppliesOnlyToTheMatchArm()
@@ -2843,7 +2841,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2863,7 +2861,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2882,7 +2880,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2902,7 +2900,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2923,7 +2921,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2946,22 +2944,6 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanWithCountOnly_WhenEmitted_ThenThrowsNotSupportedException()
-    {
-        // IncludesOnly requests include rows; CountOnly requests a count of match rows.
-        // The two are self-contradictory and the emitter must refuse rather than emitting
-        // something arbitrary (which would silently return the wrong answer).
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true,
-            CountOnly: true);
-
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
-    }
-
-    [Fact]
     public void GivenAnIncludesOnlyPlanWithNoIncludeStages_WhenEmitted_ThenThrowsNotSupportedException()
     {
         // IncludesOnly with no include stages can only ever return empty, which is a caller error
@@ -2969,7 +2951,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -2988,7 +2970,7 @@ public class EmitTests
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.MissingPrimary),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3016,7 +2998,7 @@ public class EmitTests
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3041,7 +3023,7 @@ public class EmitTests
             Includes: [ForwardIncludeStage(103, 111, 10)],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
             Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3056,7 +3038,7 @@ public class EmitTests
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
             Projection: new ProjectionSpec(["RawResource", "IsDeleted"]),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3086,7 +3068,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3107,8 +3089,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 10)],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(111, 5000));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
 
     [Fact]
     public void GivenAnIncludesOnlyPageWithABoundaryAndTwoStages_WhenEmitted_ThenTheBudgetIsAppliedOnceGloballyOrderedByT1Sid1()
@@ -3159,8 +3140,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(111, 5000));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -3180,8 +3160,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ReverseIncludeStage(103, 112, 10)],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(112, 7000));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(112, 7000)));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -3225,8 +3204,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), stage1],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(111, 5000));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -3241,16 +3219,23 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludeBoundaryWithoutIncludesOnly_WhenEmitted_ThenItIsRefusedRatherThanSilentlyDroppingIncludeRows()
+    public void GivenAMissingPrimarySortWithNoKeys_WhenEmitted_ThenItIsRefusedRatherThanIndexingPastTheKeyList()
     {
-        // QueryPlan is a public construction surface, so SqlBuilder must guard the boundary independently of
-        // Lower. Without IncludesOnly the emitter keeps the match arm and never applies the resume
-        // predicate, so a caller expecting a second page would instead get a full first page back. Refuse it.
+        // QueryPlan is a public construction surface, so a rewritten plan can reach the emitter with a phased
+        // sort and no keys. EmitMissingPrimaryFilter and EmitSeekPredicate both index Keys[0]; refuse it as an
+        // unsupported plan rather than letting an IndexOutOfRangeException escape TryCompile.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludeBoundary: new IncludeBoundary(111, 5000));
+            Sort: new SortSpec([], SortPhase.MissingPrimary));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenANegativeTop_WhenEmitted_ThenItIsRefusedRatherThanDeferredToSqlServer()
+    {
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), Top: -1);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3266,7 +3251,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 20)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3286,7 +3271,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 

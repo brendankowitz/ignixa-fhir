@@ -1316,30 +1316,6 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenLowerRunWithIncludesOnlyAndCountOnly_WhenCalled_ThenThrowsNotSupportedException()
-    {
-        // IncludesOnly asks for include rows; CountOnly counts match rows — these are contradictory.
-        // The guard fires before BuildIncludeStages and before the access-constraint binding loop,
-        // so the combination is rejected immediately without building any include stages.
-        var symbols = new SymbolTable(
-            new Dictionary<string, short>(),
-            new Dictionary<string, short> { ["Patient"] = 103 });
-
-        Should.Throw<NotSupportedException>(() =>
-            LowerHarness.Run(
-                expression: null,
-                symbols,
-                targetResourceType: "Patient",
-                includes: [],
-                revIncludes: [],
-                includeLimit: 0,
-                sort: [],
-                sortPhase: SortPhase.Valued,
-                page: null,
-                new LowerOptions { IncludesOnly = true, CountOnly = true }));
-    }
-
-    [Fact]
     public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenCarriesTheSortPhaseAsAFilterRatherThanRefusing()
     {
         // _sort has two roles here, and an includes-only page keeps only one. The ordering role drops -- the
@@ -1408,36 +1384,6 @@ public class LowerTests
                 sortPhase: SortPhase.Valued,
                 page: page,
                 new LowerOptions { IncludesOnly = true }));
-    }
-
-    [Fact]
-    public void GivenLowerRunWithAnIncludeBoundaryButNotIncludesOnly_WhenCalled_ThenThrowsNotSupportedException()
-    {
-        // The resume boundary pages the union of include stages as one ordered stream, which exists only on
-        // an includes-only page. Without IncludesOnly the emitter keeps the match arm and never applies the
-        // resume predicate, so a caller expecting a second page would silently get a full first page back.
-        // Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
-        var orgParam = new SearchParameterInfo(
-            "organization", "organization", SearchParamType.Reference,
-            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
-            targetResourceTypes: ["Organization"]);
-        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
-        var symbols = new SymbolTable(
-            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
-            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
-
-        Should.Throw<NotSupportedException>(() =>
-            LowerHarness.Run(
-                expression: null,
-                symbols,
-                targetResourceType: "Patient",
-                includes: [include],
-                revIncludes: [],
-                includeLimit: 1000,
-                sort: [],
-                sortPhase: SortPhase.Valued,
-                page: null,
-                new LowerOptions { IncludeBoundary = new IncludeBoundary(105, 4200) }));
     }
 
     [Fact]

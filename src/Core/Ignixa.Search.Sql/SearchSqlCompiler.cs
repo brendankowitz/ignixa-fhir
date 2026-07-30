@@ -85,13 +85,15 @@ public sealed class SearchSqlCompiler(
                 $"Compiling a query string requires an {nameof(ISearchOptionsBuilder)}; none was supplied to {nameof(SearchSqlCompiler)}.");
         }
 
-        var outcomes = new List<ParameterTrace>();
         var traced = options.DiagnosticsLevel != SearchDiagnosticsLevel.None;
+        var outcomes = new List<ParameterTrace>();
 
         SearchOptions searchOptions;
         try
         {
-            searchOptions = optionsBuilder.Build(resourceType, parameters, schemaProvider: null, outcomes);
+            // Untraced compiles pass no collector: the builder's collector-present path parses with a full
+            // syntax tree to record a ParameterTrace per parameter, which nothing would read here.
+            searchOptions = optionsBuilder.Build(resourceType, parameters, schemaProvider: null, traced ? outcomes : null);
         }
         // Diagnostics carry whatever the builder collected before it threw, on the same terms as every
         // other failure path. Implicit parameters are necessarily empty: detecting them compares the

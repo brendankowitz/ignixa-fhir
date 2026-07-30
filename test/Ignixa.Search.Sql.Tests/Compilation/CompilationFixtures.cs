@@ -355,8 +355,7 @@ internal static class CompilationFixtures
         var options = new SearchPlanOptions
         {
             DiagnosticsLevel = SearchDiagnosticsLevel.Full,
-            IncludesOnly = true,
-            IncludeBoundary = new Ignixa.Search.Sql.Ast.IncludeBoundary(105, 900),
+            Shape = new Ignixa.Search.Sql.Ast.ResultShape.IncludesPage(new Ignixa.Search.Sql.Ast.IncludeBoundary(105, 900)),
         };
 
         return new SearchSqlCompiler(resolver, builder).TryCreatePlanAsync(

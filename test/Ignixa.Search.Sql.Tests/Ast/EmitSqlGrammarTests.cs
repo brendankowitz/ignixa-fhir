@@ -161,7 +161,7 @@ public class EmitSqlGrammarTests
     {
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count());
     }
 
     private static QueryPlan LikePlan()
@@ -587,7 +587,7 @@ public class EmitSqlGrammarTests
         return new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count(),
             SearchParameterHash: StandardHash());
     }
 
@@ -817,7 +817,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyTwoStagesPlan()
@@ -832,7 +832,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyWithIteratePlan()
@@ -847,7 +847,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyWithProjectionPlan()
@@ -860,7 +860,7 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage],
             Projection: StandardProjection(),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyPageWithBoundaryPlan()
@@ -879,8 +879,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(105, 4200));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(105, 4200)));
     }
 
     private static QueryPlan IncludesOnlyIteratePageWithBoundaryPlan()
@@ -899,8 +898,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(105, 4200));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(105, 4200)));
     }
 
     private static QueryPlan IncludesOnlyWithMissingPrimarySortPlan()
@@ -917,7 +915,7 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.MissingPrimary),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyWithValuedSortPlan()
@@ -933,7 +931,7 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     [Fact]
@@ -955,7 +953,7 @@ public class EmitSqlGrammarTests
             Includes: [stage],
             Sort: sort,
             Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }

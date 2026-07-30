@@ -31,13 +31,13 @@ internal static class CompilationContextMapping
     public static FrozenDictionary<string, string> NotApplicable { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [nameof(SearchOptions.MaxItemCount)] =
-            "Callers transform it before a search runs — SearchResourcesHandler requests MaxItemCount + 1 to detect 'has more' — so forwarding it as Top would silently fight that transformation. Row capping is SearchPlanOptions.Top, Page, or OffsetPage.",
+            "Callers transform it before a search runs — SearchResourcesHandler requests MaxItemCount + 1 to detect 'has more' — so forwarding it as a row cap would silently fight that transformation. Row capping is SearchPlanOptions.Paging.",
         [nameof(SearchOptions.ContinuationToken)] =
-            "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as SearchPlanOptions.Page or OffsetPage.",
+            "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as SearchPlanOptions.Paging.",
         [nameof(SearchOptions.Elements)] =
             "A serialization-time projection of the returned resource body, applied after the rows are read.",
         [nameof(SearchOptions.Total)] =
-            "Bundle metadata. The compiler's only count concept is SearchPlanOptions.CountOnly, which the caller sets directly.",
+            "Bundle metadata. The compiler's only count concept is the ResultShape.Count result shape, which the caller sets directly.",
         [nameof(SearchOptions.Summary)] =
             "A serialization-time projection, like Elements.",
         [nameof(SearchOptions.UnsupportedParams)] =

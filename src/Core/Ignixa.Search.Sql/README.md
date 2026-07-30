@@ -179,6 +179,46 @@ a built `SearchOptions` and so skip query-string parsing entirely; that overload
 `COUNT_BIG` when the plan is count-only. You bind `compiled.Parameters` and execute against your database
 (e.g. `SqlCommand`, Dapper, or EF Core raw SQL).
 
+## Result shape and paging
+
+`SearchPlanOptions` carries two closed hierarchies rather than a bag of flags, so the combinations that
+have no meaning cannot be written down:
+
+```csharp
+ResultShape.Matches                  // default — the match set
+ResultShape.Count                    // a single COUNT_BIG, no ORDER BY, no TOP
+ResultShape.IncludesPage(resume?)    // $includes: the include stages only, as one ordered stream
+
+SearchPaging.Keyset(top?, from?)     // TOP and/or a keyset seek — the normal path
+SearchPaging.Offset(spec)            // OFFSET/FETCH, for callers that need it
+```
+
+`SearchPaging.Keyset.From` is a `SearchContinuation`: the page boundary *and* the sort phase it belongs to.
+The two travel together because a keyset boundary only means anything within the phase that produced it.
+
+### Two-phase missing-value sort
+
+FHIR lets you `_sort` on a parameter a resource may not have. The sort key lives in a side table, so no
+single seekable statement can order "rows with a value" ahead of "rows without one". The compiler instead
+emits one statement per phase and **the caller drives the sequence**:
+
+```csharp
+var options = new SearchPlanOptions
+{
+    Paging = new SearchPaging.Keyset(Top: pageSize, From: continuation),
+};
+```
+
+- `SortPhase.Valued` (the default) inner-joins the primary sort key: rows that have a value, ordered by it.
+- `SortPhase.MissingPrimary` emits `NOT EXISTS` on that key: rows that lack a value, ordered by surrogate id.
+
+Page through `Valued` until it returns a short page, then restart with
+`new SearchContinuation(SortPhase.MissingPrimary)` and page that to exhaustion. Only the *primary* key is
+phased; secondary keys are always left-joined tie-breakers with a sentinel, so they need no second pass.
+
+The same applies to counting: `ResultShape.Count` with no continuation counts the whole match set, while a
+`Count` carrying a `SearchContinuation` counts only the rows that phase reaches.
+
 ## What's supported
 
 | Area | Supported | Notes |
@@ -191,7 +231,7 @@ a built `SearchOptions` and so skip query-string parsing entirely; that overload
 | **Chaining** | forward and reverse chains, any nesting depth | 10-level depth guard |
 | **Includes** | `_include`, `_revinclude`, `:iterate` | topologically ordered |
 | **Compartment search** | membership over the reference table | grouped by membership parameter |
-| **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, two-phase missing-value sort | |
+| **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, [two-phase missing-value sort](#two-phase-missing-value-sort) | caller drives the phases |
 | **Counting** | `_summary=count` / `_total=accurate` | `COUNT_BIG(DISTINCT …)` |
 | **Missing** | `:missing` for leaf and composite parameters | |
 
@@ -423,9 +463,9 @@ consumer reaches, grouped by namespace.
 
 | Namespace | Public surface |
 |-----------|----------------|
-| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
+| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPaging` / `SearchContinuation`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
 | `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
-| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `PlanExplainer`, and the SQL value types |
+| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `ResultShape`, `PlanExplainer`, and the SQL value types |
 | `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |
 | `Ignixa.Search.Sql.Catalog` | `SqlCatalog` and its `TableDescriptor` / `ColumnDescriptor` (data generated from DDL) |
 

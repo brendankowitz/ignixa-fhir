@@ -29,6 +29,12 @@ internal static class LowerHarness
     {
         options ??= new LowerOptions();
 
+        // The harness keeps the old flat flags and maps them onto the closed option unions, so the call sites
+        // it exists to preserve stay unchanged. CountPhaseScoped now means "the count names a continuation".
+        var continuation = sortPhase != SortPhase.Valued || page is not null || options.CountPhaseScoped
+            ? new SearchContinuation(sortPhase, page)
+            : null;
+
         var context = CompilationContextFactory.For(
             expression,
             targetResourceType,
@@ -43,16 +49,16 @@ internal static class LowerHarness
             surrogateRange: options.SurrogateRange,
             options: new SearchPlanOptions
             {
-                CountOnly = options.CountOnly,
+                Shape = options.CountOnly
+                    ? new ResultShape.Count()
+                    : options.IncludesOnly
+                        ? new ResultShape.IncludesPage(options.IncludeBoundary)
+                        : ResultShape.Default,
                 IncludeLimit = includeLimit,
-                SortPhase = sortPhase,
-                CountPhaseScoped = options.CountPhaseScoped,
-                IncludesOnly = options.IncludesOnly,
-                Top = options.Top,
-                Page = page,
-                OffsetPage = options.OffsetPage,
+                Paging = options.OffsetPage is { } offset
+                    ? new SearchPaging.Offset(offset)
+                    : new SearchPaging.Keyset(options.Top, continuation),
                 SearchParameterHash = options.SearchParameterHash?.Value as string,
-                IncludeBoundary = options.IncludeBoundary,
             });
 
         return Lower.Run(

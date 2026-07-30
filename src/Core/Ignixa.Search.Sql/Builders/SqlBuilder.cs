@@ -170,13 +170,6 @@ internal static class SqlBuilder
     /// <summary>Rejects the plan shapes that have no coherent SQL rendering, before any text is produced.</summary>
     private static void RejectUnsupportedCombinations(QueryPlan plan)
     {
-        if (plan.IncludesOnly && plan.CountOnly)
-        {
-            throw new NotSupportedException(
-                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
-                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
-        }
-
         if (plan.IncludesOnly && plan.Includes is not { Count: > 0 })
         {
             throw new NotSupportedException(
@@ -208,12 +201,20 @@ internal static class SqlBuilder
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
-        if (plan.IncludeBoundary is not null && !plan.IncludesOnly)
+        if (plan.Top is < 0)
         {
             throw new NotSupportedException(
-                "IncludeBoundary was supplied without IncludesOnly. The resume boundary pages the union of " +
-                "include stages as one ordered stream, which exists only on an includes-only page; on an " +
-                "ordinary search there is no such stream for it to resume.");
+                $"Top must not be negative; got {plan.Top}. TOP with a negative row count is a SQL Server " +
+                "runtime error, so it is reported at emit time instead.");
+        }
+
+        // EmitMissingPrimaryFilter and EmitSeekPredicate both index Keys[0]; a phased sort with no keys has no
+        // primary key to be missing.
+        if (plan.Sort is { Phase: SortPhase.MissingPrimary, Keys.Count: 0 })
+        {
+            throw new NotSupportedException(
+                "A MissingPrimary sort phase requires at least one sort key: the phase is defined by the " +
+                "absence of the primary key, so with no keys there is nothing to partition the match set on.");
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
@@ -314,9 +315,9 @@ internal static class SqlBuilder
     }
 
     /// <summary>
-    /// Emits the CountOnly shape: COUNT_BIG(DISTINCT m.Sid1) over the match CTE. Ignores Sort and Page, since
-    /// a count is of the whole result set. <see cref="QueryPlan.CountPhaseScoped"/> is the exception — it
-    /// joins the current sort phase's key and applies the MissingPrimary NOT EXISTS filter.
+    /// Emits the Count shape: COUNT_BIG(DISTINCT m.Sid1) over the match CTE. Ignores Page, since a count is of
+    /// the whole result set rather than a page of it. A Sort present on a count plan means the opposite: the
+    /// count is scoped to that phase, so the phase's key join and MissingPrimary filter apply.
     /// </summary>
     private static void EmitCountOnlyShape(
         QueryPlan plan,
@@ -327,7 +328,7 @@ internal static class SqlBuilder
         WriteCteHeader(writer, cteBlocks);
         writer.Append("\n");
 
-        var countSortJoins = plan.CountPhaseScoped ? EmitSortJoins(plan.Sort) : string.Empty;
+        var countSortJoins = EmitSortJoins(plan.Sort);
         writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
 
         if (NeedsResourceJoin(plan, includesProjection: false))
@@ -342,7 +343,7 @@ internal static class SqlBuilder
             whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters, ResourceJoinQualifier));
         }
 
-        if (plan.CountPhaseScoped && plan.Sort is { Phase: SortPhase.MissingPrimary } countPhaseSort)
+        if (plan.Sort is { Phase: SortPhase.MissingPrimary } countPhaseSort)
         {
             whereClauses.Add(EmitMissingPrimaryFilter(countPhaseSort));
         }
@@ -991,7 +992,7 @@ internal static class SqlBuilder
         var key = sort.Keys[0];
         if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
         {
-            throw new InvalidOperationException(
+            throw new NotSupportedException(
                 "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceType, ResourceId, or otherwise " +
                 "SearchParamId-less primary key reached Emit -- none of these is ever \"missing\" (all are " +
                 "non-nullable resource columns), so none has a MissingPrimary segment. Lower.BuildSortSpec " +

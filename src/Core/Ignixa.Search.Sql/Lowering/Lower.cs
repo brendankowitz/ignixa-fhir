@@ -27,21 +27,40 @@ internal static class Lower
         var targetResourceType = context.TargetResourceType;
         var includes = context.Includes;
         var revIncludes = context.RevIncludes;
-        var includeLimit = options.IncludeLimit;
+        var includeLimit = options.IncludeLimit ?? 0;
         var sort = context.Sort;
-        var sortPhase = options.SortPhase;
-        var page = options.Page;
 
-        if (options.OffsetPage is not null && (page is not null || options.Top is not null))
+        // Paging is one closed choice, so the T-SQL restriction that TOP cannot combine with OFFSET/FETCH
+        // (error 10741) needs no guard here: only one of these two locals can be non-null.
+        var keyset = options.Paging as SearchPaging.Keyset;
+        var offsetPage = (options.Paging as SearchPaging.Offset)?.Spec;
+        var top = keyset?.Top;
+        var continuation = keyset?.From;
+        var sortPhase = continuation?.Phase ?? SortPhase.Valued;
+        var page = continuation?.Boundary;
+        var shape = options.Shape;
+        var includesOnly = shape is ResultShape.IncludesPage;
+
+        if (top is < 0)
         {
             throw new NotSupportedException(
-                "OffsetPage cannot combine with keyset paging or Top: OFFSET/FETCH and TOP are mutually exclusive in T-SQL (error 10741).");
+                $"Top must not be negative; got {top}. A negative TOP is not a smaller page, it is a SQL Server " +
+                "runtime error, so it is reported at compile time instead.");
         }
 
-        if (options.CountPhaseScoped && (!options.CountOnly || sort.Count == 0))
+        if (options.IncludeLimit is < 0)
         {
             throw new NotSupportedException(
-                "CountPhaseScoped requires CountOnly with at least one sort key: there is no sort phase to scope the count to otherwise.");
+                $"IncludeLimit must not be negative; got {options.IncludeLimit}. Use null for no cap.");
+        }
+
+        // A count restricted to a sort phase counts only the rows that phase reaches, so it needs a _sort to
+        // phase on. Requesting the scoping on a non-count plan is unrepresentable.
+        if (shape is ResultShape.Count && continuation is not null && sort.Count == 0)
+        {
+            throw new NotSupportedException(
+                "A count was given a SearchContinuation but the query has no _sort, so there is no sort phase " +
+                "to scope the count to. Drop the continuation to count the whole match set.");
         }
 
         var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);
@@ -120,13 +139,6 @@ internal static class Lower
                 "already established for typed leaves and _include/_revinclude under a null scope.");
         }
 
-        if (options.IncludesOnly && options.CountOnly)
-        {
-            throw new NotSupportedException(
-                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
-                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
-        }
-
         IReadOnlyList<IncludeStage>? includeStages;
         if (targetResourceType is null)
         {
@@ -171,40 +183,35 @@ internal static class Lower
                 .ToList();
         }
 
-        if (options.IncludesOnly && includeStages is not { Count: > 0 })
+        if (includesOnly && includeStages is not { Count: > 0 })
         {
             throw new NotSupportedException(
-                "IncludesOnly was requested with no _include or _revinclude stages, which can only ever " +
+                "IncludesPage was requested with no _include or _revinclude stages, which can only ever " +
                 "return an empty result. This is a caller error rather than a query that legitimately " +
                 "matches nothing, so it is reported rather than silently emitted.");
         }
 
         // A _sort is still allowed here: its ordering role drops (include rows page by (T1, Sid1), not the sort
         // key), but SortPhase (MissingPrimary/Valued) is a *filter* that partitions the match set seeding the
-        // include stages, so it rides into the match-page CTE independently of ORDER BY. A keyset Page is the
+        // include stages, so it rides into the match-page CTE independently of ORDER BY. A keyset boundary is the
         // genuinely unsound combination and is refused below.
-        if (options.IncludesOnly && page is not null)
+        if (includesOnly && page is not null)
         {
             throw new NotSupportedException(
-                "IncludesOnly was requested together with a keyset Page. An includes-only page bounds its " +
-                "match set by a surrogate-id range and pages its include rows by a resume boundary over (T1, Sid1); a " +
-                "keyset Page instead seeks the match rows by the sort-key boundary, a second paging mechanism " +
-                "the includes-only page does not use. The combination is reported rather than silently applying " +
-                "a match-side seek that would change which resources are included.");
+                "IncludesPage was requested together with a keyset continuation boundary. An includes-only page " +
+                "bounds its match set by a surrogate-id range and pages its include rows by a resume boundary over " +
+                "(T1, Sid1); a keyset boundary instead seeks the match rows by the sort-key boundary, a second " +
+                "paging mechanism the includes-only page does not use. The combination is reported rather than " +
+                "silently applying a match-side seek that would change which resources are included.");
         }
 
-        // Without IncludesOnly the resume boundary would silently re-return the first page. Mirrored by
-        // SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
-        if (options.IncludeBoundary is not null && !options.IncludesOnly)
-        {
-            throw new NotSupportedException(
-                "IncludeBoundary was supplied without IncludesOnly. The resume boundary pages the union of " +
-                "include stages as one ordered stream, which exists only on an includes-only page; on an " +
-                "ordinary search there is no such stream for it to resume, so it is reported rather than " +
-                "silently ignored.");
-        }
-
-        var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
+        // A count ignores ordering, so a sort survives onto a count plan only when it constrains the count: the
+        // caller named a continuation and the phase's join is the filter being counted. Without one the plan
+        // carries no sort and the count covers the whole match set. This is what SqlBuilder reads instead of a
+        // separate scoping flag.
+        var sortSpec = shape is ResultShape.Count && continuation is null
+            ? null
+            : BuildSortSpec(sort, sortPhase, symbols);
 
         // A typeless boundary breaks its final tie on Sid1 alone and omits the type column, which agrees with the
         // ORDER BY only for a custom sort (every other sort keeps m.T1 as a tiebreak). Mirror of the guard below,
@@ -233,7 +240,7 @@ internal static class Lower
         }
 
         return new LoweredPlan(
-            new QueryPlan(lowerContext.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, context.Visibility, SurrogateRange: context.SurrogateRange, SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped, IncludeBoundary: options.IncludeBoundary),
+            new QueryPlan(lowerContext.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, shape, context.Visibility, SurrogateRange: context.SurrogateRange, SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null, OffsetPage: offsetPage),
             new PlanProvenance(lowerContext.Origins));
     }
 

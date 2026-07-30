@@ -28,11 +28,11 @@ internal static class PlanFixtures
     }
 
     /// <summary>
-    /// A plan that cannot be emitted: <c>IncludesOnly</c> with no include stages, which
+    /// A plan that cannot be emitted: an includes-only page with no include stages, which
     /// <c>SqlBuilder.RejectUnsupportedCombinations</c> refuses because it can only ever return nothing.
     /// </summary>
     public static async Task<QueryPlan> IncoherentPlanAsync()
-        => await SimplePatientSearchAsync() with { IncludesOnly = true };
+        => await SimplePatientSearchAsync() with { Shape = new ResultShape.IncludesPage() };
 
     /// <summary>An expression no query string can produce, standing in for a FHIR operation root.</summary>
     public static Expression EverythingExpression()

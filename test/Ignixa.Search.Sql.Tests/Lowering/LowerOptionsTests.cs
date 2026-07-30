@@ -24,52 +24,102 @@ public class LowerOptionsTests
         var plan = new QueryPlan(
             ctes,
             match,
-            CountOnly: true,
-            OffsetPage: new OffsetSpec(5, 10),
-            CountPhaseScoped: true);
+            Shape: new ResultShape.Count(),
+            OffsetPage: new OffsetSpec(5, 10));
 
         // Assert
         plan.CountOnly.ShouldBeTrue();
         plan.OffsetPage!.Offset.ShouldBe(5);
-        plan.CountPhaseScoped.ShouldBeTrue();
         plan.Visibility.ShouldBeNull();
         plan.Projection.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenOffsetPageAndKeysetPage_WhenLowering_ThenThrowsNotSupported()
+    public void GivenACountWithoutAContinuation_WhenLowering_ThenTheSortIsDroppedSoTheCountCoversEveryMatch()
     {
         // Arrange
-        var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
-        var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
-        var symbols = new SymbolTable(
-            new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
-            new Dictionary<string, short> { ["Patient"] = 103 });
-        var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(7000L));
-        var options = new LowerOptions { OffsetPage = new OffsetSpec(0, 10) };
+        var (predicate, symbols) = NameQuery();
+        var sortExpression = new SortExpression(
+            new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name")),
+            SortOrder.Ascending);
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+        // Act
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: page, options: options));
+            sort: [sortExpression], sortPhase: SortPhase.Valued, page: null,
+            options: new LowerOptions { CountOnly = true }).Plan;
+
+        // Assert -- a sort survives onto a count plan only when it scopes the count
+        plan.CountOnly.ShouldBeTrue();
+        plan.Sort.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenCountPhaseScopedWithoutCountOnly_WhenLowering_ThenThrowsNotSupported()
+    public void GivenACountWithAContinuation_WhenLowering_ThenTheSortSurvivesToScopeTheCountToItsPhase()
     {
         // Arrange
+        var (predicate, symbols) = NameQuery();
+        var sortExpression = new SortExpression(
+            new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name")),
+            SortOrder.Ascending);
+
+        // Act
+        var plan = LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [sortExpression], sortPhase: SortPhase.MissingPrimary, page: null,
+            options: new LowerOptions { CountOnly = true }).Plan;
+
+        // Assert
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+    }
+
+    [Fact]
+    public void GivenACountWithAContinuationButNoSort_WhenLowering_ThenThrowsNotSupported()
+    {
+        // Arrange -- there is no sort phase for the continuation to scope the count to
+        var (predicate, symbols) = NameQuery();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.MissingPrimary, page: null,
+            options: new LowerOptions { CountOnly = true }));
+    }
+
+    [Fact]
+    public void GivenANegativeTop_WhenLowering_ThenThrowsNotSupported()
+    {
+        // Arrange
+        var (predicate, symbols) = NameQuery();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            options: new LowerOptions { Top = -1 }));
+    }
+
+    [Fact]
+    public void GivenANegativeIncludeLimit_WhenLowering_ThenThrowsNotSupported()
+    {
+        // Arrange
+        var (predicate, symbols) = NameQuery();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: -1,
+            sort: [], sortPhase: SortPhase.Valued, page: null));
+    }
+
+    private static (Expression Predicate, SymbolTable Symbols) NameQuery()
+    {
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Smith"));
         var symbols = new SymbolTable(
             new Dictionary<string, short> { [parameter.Url.ToString()] = 202 },
             new Dictionary<string, short> { ["Patient"] = 103 });
-        var options = new LowerOptions { CountPhaseScoped = true, CountOnly = false };
-
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
-            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.Valued, page: null, options: options));
+        return (predicate, symbols);
     }
 }
