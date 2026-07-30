@@ -9,16 +9,18 @@ namespace Ignixa.Search.Sql.Ast;
 /// <param name="BoundaryValues">
 /// One value per active sort key for <paramref name="Phase"/>: <c>SortSpec.Keys.Count</c> under
 /// <see cref="SortPhase.Valued"/>, one fewer under <see cref="SortPhase.MissingPrimary"/>, since the primary
-/// key contributes no value when it is absent. Empty on an unsorted query.
+/// key contributes no value when it is absent. Empty on an unsorted query, and never more than the three keys
+/// a <c>_sort</c> may carry.
 /// </param>
 /// <param name="BoundaryResourceTypeId">
-/// The type of the boundary row. Always carried; a token-to-<see cref="PageSpec"/> adapter discards it for a
-/// custom sort, where <see cref="PageSpec"/> requires a typeless boundary.
+/// The type of the boundary row, typed to match the schema's <c>smallint</c>. Always carried; a
+/// token-to-<see cref="PageSpec"/> adapter discards it for a custom sort, where <see cref="PageSpec"/>
+/// requires a typeless boundary.
 /// </param>
 /// <param name="BoundarySurrogateId">The boundary row's surrogate id, which breaks the final tie.</param>
 /// <param name="Phase">The segment this position was reached in. A position never crosses a phase boundary.</param>
 public sealed record KeysetPosition(
     IReadOnlyList<string> BoundaryValues,
-    int BoundaryResourceTypeId,
+    short BoundaryResourceTypeId,
     long BoundarySurrogateId,
     SortPhase Phase);
