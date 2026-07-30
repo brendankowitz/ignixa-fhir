@@ -11,6 +11,7 @@ using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tests.Ast;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Tests.Lowering;
@@ -73,7 +74,7 @@ public class AccessConstraintTests
         var f = Arrange();
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -92,7 +93,7 @@ public class AccessConstraintTests
         var revinclude = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false);
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [revinclude], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -119,7 +120,7 @@ public class AccessConstraintTests
             expression: TokenPredicate(f.CategoryParam, "vital-signs"));
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             chain, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -138,7 +139,7 @@ public class AccessConstraintTests
         var iterate = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: true);
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [iterate], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -160,7 +161,7 @@ public class AccessConstraintTests
         var wildcard = new IncludeExpression(["*"], referenceSearchParameter: null, "*", "Patient", referencedTypes: ["Observation"], wildCard: true, reversed: true, iterate: false);
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -181,7 +182,7 @@ public class AccessConstraintTests
         var f = Arrange();
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint], ResourceTypes = ["Observation", "Patient"] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -222,7 +223,7 @@ public class AccessConstraintTests
             f.CategoryParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "vital-signs", text: null));
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             leaf, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null,
             new LowerOptions { SystemLevelSearch = true, AccessConstraints = [f.ObservationConstraint], ResourceTypes = ["Observation", "Patient"] }).Plan;
@@ -248,7 +249,7 @@ public class AccessConstraintTests
         // Arrange
         var f = Arrange();
 
-        QueryPlanSql Build(IReadOnlyList<AccessConstraint>? constraints) => new(SqlBuilder.Run(Lower.Run(
+        QueryPlanSql Build(IReadOnlyList<AccessConstraint>? constraints) => new(SqlBuilder.Run(LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = constraints }).Plan).Sql);
 
@@ -265,10 +266,10 @@ public class AccessConstraintTests
         var duplicate = new AccessConstraint("Observation", TokenPredicate(f.CategoryParam, "vital-signs"));
 
         // Act + Assert -- NotSupportedException, not ArgumentException: these constraints are caller input
-        // arriving on SearchOptions, and SearchCompiler's catch filter deliberately excludes
+        // arriving on SearchOptions, and SearchSqlCompiler's catch filter deliberately excludes
         // ArgumentException (its trace-record guards throw that for genuine programmer errors). Throwing it
-        // here would escape CompileFromOptionsAsync as a 500 rather than a recorded TraceFailure.
-        var ex = Should.Throw<NotSupportedException>(() => Lower.Run(
+        // here would escape TryCreatePlanFromOptionsAsync as a 500 rather than a recorded SearchCompilationFailure.
+        var ex = Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint, duplicate] }));
         ex.Message.ShouldContain("Observation");
@@ -286,7 +287,7 @@ public class AccessConstraintTests
         var deviceConstraint = new AccessConstraint("Device", TokenPredicate(deviceParam, "active"));
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.ObservationConstraint, deviceConstraint] }).Plan;
         var sql = SqlBuilder.Run(plan).Sql;
@@ -311,9 +312,9 @@ public class AccessConstraintTests
 
         // Act + Assert -- Device is unresolved and the wildcard output types are unknown: throw, do not
         // silently drop the constraint. NotSupportedException specifically, because that is what
-        // SearchCompiler's catch filter records as a TraceFailure; an InvalidOperationException would
-        // escape it and surface as an unhandled 500 instead of a reported compile failure.
-        var ex = Should.Throw<NotSupportedException>(() => Lower.Run(
+        // SearchSqlCompiler's catch filter records as a SearchCompilationFailure; an InvalidOperationException
+        // would escape it and surface as an unhandled 500 instead of a reported compile failure.
+        var ex = Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [wildcard], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [unresolvable] }));
         ex.Message.ShouldContain("Device");

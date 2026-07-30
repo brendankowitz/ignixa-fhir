@@ -211,8 +211,7 @@ public class PlanExplainerTests
             ],
             new CteRef(2),
             Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(111, 5000));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -340,7 +339,7 @@ public class PlanExplainerTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var explained = plan.Explain();

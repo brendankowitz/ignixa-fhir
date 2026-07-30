@@ -10,6 +10,7 @@ using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tests.Ast;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Tests.Lowering;
@@ -61,7 +62,7 @@ public class AllowedResourceTypesTests
     }
 
     private static QueryPlan Lowered(Fixture f, string? targetResourceType, LowerOptions options, IReadOnlyList<IncludeExpression>? revIncludes = null, IReadOnlyList<IncludeExpression>? includes = null)
-        => Lower.Run(
+        => LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType, includes: includes ?? [], revIncludes: revIncludes ?? [], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, options).Plan;
 
@@ -94,7 +95,7 @@ public class AllowedResourceTypesTests
         var f = Arrange();
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null,
             new LowerOptions { ResourceTypes = ["Observation", "Patient", "Device"], AllowedResourceTypes = ["Patient", "Observation"] }).Plan;
@@ -232,7 +233,7 @@ public class AllowedResourceTypesTests
         var f = Arrange();
         var include = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", targetResourceType: null, referencedTypes: null, wildCard: false, reversed: false, iterate: false);
 
-        string Build(IReadOnlyList<string>? allowed) => SqlBuilder.Run(Lower.Run(
+        string Build(IReadOnlyList<string>? allowed) => SqlBuilder.Run(LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [include], revIncludes: [], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AllowedResourceTypes = allowed }).Plan).Sql;
 

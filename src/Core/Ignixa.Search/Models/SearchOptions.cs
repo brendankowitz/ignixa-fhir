@@ -112,7 +112,7 @@ public class SearchOptions
     /// </summary>
     /// <remarks>
     /// Like <see cref="AccessConstraints"/>, this property is forwarded into the SQL compiler:
-    /// <c>Ignixa.Search.Sql.Tracing.SearchCompiler.CompileFromOptionsAsync</c> maps it onto the tri-state
+    /// <c>SearchSqlCompiler.TryCreatePlanFromOptionsAsync</c> maps it onto the tri-state
     /// <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c>, resolving each version column independently. A set
     /// that names <see cref="Latest"/> but not a column's non-current partner pins that column to its
     /// current value (<c>IsHistory = 0</c> / <c>IsDeleted = 0</c>); one that names the non-current partner

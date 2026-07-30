@@ -4,6 +4,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -109,7 +110,7 @@ public class LowerSortKeyTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(typeParameter, Ignixa.Search.Expressions.SortOrder.Ascending)],
                 sortPhase: SortPhase.MissingPrimary, page: null))
@@ -129,7 +130,7 @@ public class LowerSortKeyTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(idParameter, Ignixa.Search.Expressions.SortOrder.Ascending)],
                 sortPhase: SortPhase.MissingPrimary, page: null))

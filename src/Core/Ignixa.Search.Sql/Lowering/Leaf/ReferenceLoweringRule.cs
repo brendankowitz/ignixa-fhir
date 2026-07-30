@@ -10,7 +10,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// references (<c>BaseUri IS NULL</c>) from external ones (<c>BaseUri = @p COLLATE BIN2</c>) via the
 /// shared <see cref="ReferenceColumnEquality"/> helper. ReferenceResourceVersion remains outside identity.
 /// </summary>
-public static class ReferenceLoweringRule
+internal static class ReferenceLoweringRule
 {
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, ReferenceSearchValue value, LeafContext context, short? resourceTypeId)
     {

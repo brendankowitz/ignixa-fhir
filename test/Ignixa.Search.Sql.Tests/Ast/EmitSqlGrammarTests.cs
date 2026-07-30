@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Catalog;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
 using SearchSortOrder = Ignixa.Search.Expressions.SortOrder;
@@ -160,7 +161,7 @@ public class EmitSqlGrammarTests
     {
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
     }
 
     private static QueryPlan LikePlan()
@@ -329,7 +330,7 @@ public class EmitSqlGrammarTests
     }
 
     private static QueryPlan EverythingPlan(PatientEverythingExpression expression)
-        => Lower.Run(expression, EverythingSymbols(), "Patient", includes: [], revIncludes: [], includeLimit: 100, sort: [], SortPhase.Valued, page: null).Plan;
+        => LowerHarness.Run(expression, EverythingSymbols(), "Patient", includes: [], revIncludes: [], includeLimit: 100, sort: [], SortPhase.Valued, page: null).Plan;
 
     private static QueryPlan EverythingAlonePlan() => EverythingPlan(new PatientEverythingExpression("pat-1"));
 
@@ -586,7 +587,7 @@ public class EmitSqlGrammarTests
         return new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             SearchParameterHash: StandardHash());
     }
 
@@ -757,7 +758,7 @@ public class EmitSqlGrammarTests
     public void GivenAConstrainedMatchOnlyPlan_WhenParsed_ThenItIsValidTSql()
     {
         var f = AccessConstraintFixture();
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -769,7 +770,7 @@ public class EmitSqlGrammarTests
     {
         var f = AccessConstraintFixture();
         var revinclude = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: false);
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [revinclude], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -781,7 +782,7 @@ public class EmitSqlGrammarTests
     {
         var f = AccessConstraintFixture();
         var iterate = new IncludeExpression(["Observation"], f.SubjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: true, iterate: true);
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [iterate], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -798,7 +799,7 @@ public class EmitSqlGrammarTests
             targetResourceTypes: ["Patient"],
             reversed: true,
             expression: AcTokenPredicate(f.StatusParam, "final"));
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             chain, f.Symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { AccessConstraints = [f.Constraint] }).Plan;
 
@@ -816,7 +817,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyTwoStagesPlan()
@@ -831,7 +832,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyWithIteratePlan()
@@ -846,7 +847,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyWithProjectionPlan()
@@ -859,7 +860,7 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage],
             Projection: StandardProjection(),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyPageWithBoundaryPlan()
@@ -878,8 +879,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(105, 4200));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(105, 4200)));
     }
 
     private static QueryPlan IncludesOnlyIteratePageWithBoundaryPlan()
@@ -898,8 +898,7 @@ public class EmitSqlGrammarTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage0, stage1],
-            IncludesOnly: true,
-            IncludeBoundary: new IncludeBoundary(105, 4200));
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(105, 4200)));
     }
 
     private static QueryPlan IncludesOnlyWithMissingPrimarySortPlan()
@@ -916,7 +915,7 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.MissingPrimary),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     private static QueryPlan IncludesOnlyWithValuedSortPlan()
@@ -932,7 +931,7 @@ public class EmitSqlGrammarTests
             new CteRef(0),
             Includes: [stage],
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SearchSortOrder.Ascending)], SortPhase.Valued),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
     }
 
     [Fact]
@@ -954,7 +953,7 @@ public class EmitSqlGrammarTests
             Includes: [stage],
             Sort: sort,
             Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }

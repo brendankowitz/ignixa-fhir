@@ -4,15 +4,14 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Search.Sql.Tests.Ast;
-using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
 
-namespace Ignixa.Search.Sql.Tests.Tracing;
+namespace Ignixa.Search.Sql.Tests.Compilation;
 
 /// <summary>
-/// Proves <see cref="SearchCompiler.CompileFromOptionsAsync"/> forwards <see cref="SearchOptions.AccessConstraints"/>
+/// Proves <see cref="SearchSqlCompiler.TryCreatePlanFromOptionsAsync"/> forwards <see cref="SearchOptions.AccessConstraints"/>
 /// into the compiler rather than silently dropping them -- the same fail-open defect this branch's own review
 /// caught when it found the property "connected to nothing." The query and the constraint deliberately share
 /// <c>statusParam</c> but bind different codes ("final" vs. "amended"): "amended" reaching the emitted SQL
@@ -28,6 +27,8 @@ namespace Ignixa.Search.Sql.Tests.Tracing;
 /// </summary>
 public class CompileFromOptionsTests
 {
+    private static readonly SearchPlanOptions FullDiagnostics = new() { DiagnosticsLevel = SearchDiagnosticsLevel.Full };
+
     private const short ObservationTypeId = 104;
     private const short PatientTypeId = 103;
     private const short StatusParamId = 220;
@@ -47,24 +48,19 @@ public class CompileFromOptionsTests
         options.AccessConstraints = [new AccessConstraint("Observation", TokenPredicate(statusParam, "amended"))];
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             "Observation",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert -- the constraint's own bound value ("amended") must reach the emitted SQL: the query
         // itself only ever binds "final", so "amended" appearing at all proves the constraint's predicate
         // was lowered, not merely accepted by the API. Ctes.Count > 1 proves it was intersected into the
         // match set, not lowered and discarded.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, "amended"));
-        trace.CompiledPlan.ShouldNotBeNull();
-        trace.CompiledPlan!.Ctes.Count.ShouldBeGreaterThan(1);
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan!.Compile();
+        compiled.Parameters.ShouldContain(p => Equals(p.Value, "amended"));
+        result.Plan!.Query.Ctes.Count.ShouldBeGreaterThan(1);
     }
 
     [Fact]
@@ -88,21 +84,17 @@ public class CompileFromOptionsTests
         options.AccessConstraints = [new AccessConstraint("Observation", TokenPredicate(statusParam, "final"))];
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             "Observation",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert -- compiles, and the constraint is genuinely enforced rather than dropped to make it
         // compile: the constraint's parameter id and its bound value both reach the emitted SQL.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain($"SearchParamId = {StatusParamId}");
-        trace.Sql.Parameters.ShouldContain(p => Equals(p.Value, "final"));
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldContain($"SearchParamId = {StatusParamId}");
+        compiled.Parameters.ShouldContain(p => Equals(p.Value, "final"));
     }
 
     [Fact]
@@ -125,19 +117,15 @@ public class CompileFromOptionsTests
         options.AccessConstraints = [new AccessConstraint("Observation", TokenPredicate(statusParam, "final"))];
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             "Patient",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain($"SearchParamId = {StatusParamId}");
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldContain($"SearchParamId = {StatusParamId}");
     }
 
     [Fact]
@@ -145,7 +133,7 @@ public class CompileFromOptionsTests
     {
         // Arrange -- GET /?_type=Observation,Patient&status=final. resourceType is null (system-level), so
         // the status leaf lowers with no ResourceTypeId of its own; the requested types are the only thing
-        // that can narrow the result. Deleting the ResourceTypes forwarding in CompileFromOptionsAsync makes
+        // that can narrow the result. Deleting the ResourceTypes forwarding in TryCreatePlanFromOptionsAsync makes
         // the IN list vanish and this test fail -- the whole point, since a dropped _type silently returns
         // every resource type rather than erroring.
         var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
@@ -163,20 +151,16 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             resourceType: null,
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert -- the real ids, not the unmatchable sentinel: the requested types must reach the symbol
         // resolver too, not only Lower. An IN (-1, -1) would compile, emit, and match nothing at all.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId}, {PatientTypeId})");
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId}, {PatientTypeId})");
     }
 
     [Fact]
@@ -209,33 +193,29 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             resourceType: null,
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert -- the MultiTypeResourceSource scan must select superseded rows (IsHistory = 1) and must not
-        // filter them out (IsHistory = 0). Deleting the Visibility forwarding in CompileFromOptionsAsync
+        // filter them out (IsHistory = 0). Deleting the Visibility forwarding in CompilationContext.Create
         // restores "IsHistory = 0" to the emitted SQL (EmitMultiTypeResourceSource) and fails this.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId})");
-        trace.Sql!.Sql.ShouldContain("IsHistory = 1");
-        trace.Sql!.Sql.ShouldNotContain("IsHistory = 0");
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan.Compile();
+        compiled.Sql.ShouldContain($"ResourceTypeId IN ({ObservationTypeId})");
+        compiled.Sql.ShouldContain("IsHistory = 1");
+        compiled.Sql.ShouldNotContain("IsHistory = 0");
     }
 
     [Fact]
-    public async Task GivenSearchOptionsWithNoneResourceVersionTypes_WhenCompilingFromOptions_ThenTheTraceRecordsALowerStageFailure()
+    public async Task GivenSearchOptionsWithNoneResourceVersionTypes_WhenCompilingFromOptions_ThenTheResultRecordsABuildStageFailure()
     {
         // Arrange -- None is not a valid search input (SearchOptions.ResourceVersionTypes' own doc); the
         // compiler must reject it rather than silently treating it as Latest, which would reproduce the
         // exact fail-open-by-omission shape this forwarding exists to close. This class's own contract
         // (see the class doc) is that a NotSupportedException at this boundary is recorded on
-        // SearchTrace.Failure rather than thrown past CompileFromOptionsAsync -- the same convention
+        // the result's Failure rather than thrown past TryCreatePlanFromOptionsAsync -- the same convention
         // AccessConstraints/ResourceTypes guards already follow.
         var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
         var expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final"));
@@ -252,19 +232,15 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             "Observation",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert
-        trace.Failure.ShouldNotBeNull();
-        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
-        trace.Sql.ShouldBeNull();
+        result.Succeeded.ShouldBeFalse();
+        result.Failure!.Stage.ShouldBe(CompilationStage.Build);
+        result.Plan.ShouldBeNull();
     }
 
     [Fact]
@@ -290,28 +266,24 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             "Observation",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert -- both the bound predicate against m.Sid1 and the caller's own values (5000/6000) must
-        // reach the emitted statement. Neither can appear unless CompileFromOptionsAsync read the
+        // reach the emitted statement. Neither can appear unless TryCreatePlanFromOptionsAsync read the
         // SearchOptions properties itself, since no explicit surrogateIdRange argument was supplied.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain("m.Sid1 >=");
-        trace.Sql!.Sql.ShouldContain("m.Sid1 <=");
-        trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, 5000L));
-        trace.Sql!.Parameters.ShouldContain(p => Equals(p.Value, 6000L));
+        result.Succeeded.ShouldBeTrue();
+        var compiled = result.Plan!.Compile();
+        compiled.Sql.ShouldContain("m.Sid1 >=");
+        compiled.Sql.ShouldContain("m.Sid1 <=");
+        compiled.Parameters.ShouldContain(p => Equals(p.Value, 5000L));
+        compiled.Parameters.ShouldContain(p => Equals(p.Value, 6000L));
     }
 
     [Fact]
-    public async Task GivenSearchOptionsWithOnlyOneSurrogateBoundSet_WhenCompilingFromOptions_ThenTheTraceRecordsALowerStageFailure()
+    public async Task GivenSearchOptionsWithOnlyOneSurrogateBoundSet_WhenCompilingFromOptions_ThenTheResultRecordsABuildStageFailure()
     {
         // Arrange -- StartSurrogateId set, EndSurrogateId left null. A half-open range is a caller error,
         // not a partial intent to honour: silently treating the unset bound as unbounded would scan outside
@@ -331,19 +303,15 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(
             options,
             "Observation",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+            FullDiagnostics);
 
         // Assert
-        trace.Failure.ShouldNotBeNull();
-        trace.Failure!.Stage.ShouldBe(TraceStage.Lower);
-        trace.Sql.ShouldBeNull();
+        result.Succeeded.ShouldBeFalse();
+        result.Failure!.Stage.ShouldBe(CompilationStage.Build);
+        result.Plan.ShouldBeNull();
     }
 
     [Fact]
@@ -370,23 +338,16 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
-            options,
-            "Patient",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(options, "Patient");
 
         // Assert -- the match is gated to the allowed base set (ResourceTypeId IN (103)), and the disallowed
         // revinclude produces no rows: its output filter is the unmatchable "rsp.ResourceTypeId = -1", never
         // the Observation type id. Both can only appear if AllowedResourceTypes reached Lower.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Sql.ShouldContain($"ResourceTypeId IN ({PatientTypeId})");
-        trace.Sql!.Sql.ShouldContain("rsp.ResourceTypeId = -1");
-        trace.Sql!.Sql.ShouldNotContain($"rsp.ResourceTypeId = {ObservationTypeId}");
+        result.Succeeded.ShouldBeTrue();
+        var sql = result.Plan.Compile().Sql;
+        sql.ShouldContain($"ResourceTypeId IN ({PatientTypeId})");
+        sql.ShouldContain("rsp.ResourceTypeId = -1");
+        sql.ShouldNotContain($"rsp.ResourceTypeId = {ObservationTypeId}");
     }
 
     // One case per row of the ResourceVersionTypes -> visibility truth table (mirrors the legacy generator's
@@ -423,19 +384,11 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
-            options,
-            resourceType: null,
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(options, resourceType: null);
 
         // Assert
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        var sql = trace.Sql!.Sql;
+        result.Succeeded.ShouldBeTrue();
+        var sql = result.Plan.Compile().Sql;
 
         AssertAxis(sql, "IsHistory", expectedHistoryClause);
         AssertAxis(sql, "IsDeleted", expectedDeletedClause);
@@ -489,19 +442,42 @@ public class CompileFromOptionsTests
         };
 
         // Act
-        var trace = await SearchCompiler.CompileFromOptionsAsync(
-            options,
-            "Observation",
-            resolver,
-            compartmentDefinitionManager: null,
-            searchParameterDefinitionManager: null,
-            timeProvider: null,
-            cancellationToken: CancellationToken.None);
+        var result = await new SearchSqlCompiler(resolver).TryCreatePlanFromOptionsAsync(options, "Observation");
 
         // Assert -- it compiled, and the assembled statement parses as valid T-SQL.
-        trace.Failure.ShouldBeNull();
-        trace.Sql.ShouldNotBeNull();
-        SqlGrammar.AssertValid(trace.Sql!.Sql);
+        result.Succeeded.ShouldBeTrue();
+        SqlGrammar.AssertValid(result.Plan.Compile().Sql);
+    }
+
+    [Theory]
+    [InlineData(0, "TOP (1)")]
+    [InlineData(20, "TOP (21)")]
+    public async Task GivenAnIncludeAndAnIncludeLimit_WhenCompilingFromOptions_ThenTheStageOverFetchesOneRow(
+        int includeLimit, string expectedTop)
+    {
+        // The public IncludeLimit has to reach IncludeStage.Limit intact: the emitted TOP is IncludeLimit + 1,
+        // and that extra row is the only signal the caller gets that the includes were truncated. A mapping
+        // regression here would silently mark every page complete, which no emit-level test would catch.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 230;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+
+        var searchOptions = new SearchOptions
+        {
+            ResourceType = "Observation",
+            Expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final")),
+            Include = [new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: false, iterate: false)],
+        };
+
+        var plan = await new SearchSqlCompiler(resolver).CreatePlanFromOptionsAsync(
+            searchOptions, "Observation", new SearchPlanOptions { IncludeLimit = includeLimit });
+
+        plan.Compile().Sql.ShouldContain(expectedTop);
     }
 
     /// <summary>A wrapped token predicate ("&lt;param&gt; eq &lt;code&gt;"), the shape a real bound leaf takes -- mirrors AccessConstraintTests' TokenPredicate.</summary>

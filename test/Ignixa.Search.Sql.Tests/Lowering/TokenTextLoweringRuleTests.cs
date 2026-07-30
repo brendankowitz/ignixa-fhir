@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Tests.Lowering;
@@ -32,7 +33,7 @@ public class TokenTextLoweringRuleTests
             new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
 
         // Act
-        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ParamSource>();
@@ -54,7 +55,7 @@ public class TokenTextLoweringRuleTests
             new StringExpression(StringOperator.Contains, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
 
         // Act
-        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.ParamSource>();
@@ -72,7 +73,7 @@ public class TokenTextLoweringRuleTests
         var tree = new SearchParameterExpression(
             parameter,
             new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
-        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -90,7 +91,7 @@ public class TokenTextLoweringRuleTests
         var tree = new SearchParameterExpression(
             parameter,
             new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
-        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -117,7 +118,7 @@ public class TokenTextLoweringRuleTests
         var tree = new SearchParameterExpression(
             parameter,
             new StringExpression(StringOperator.StartsWith, FieldName.TokenText, componentIndex: null, "aux", ignoreCase: true));
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             tree, Symbols(parameter), targetResourceType: "Observation",
             includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Visibility = new ResourceVisibility(IsHistory: null, IsDeleted: false) }).Plan;
 
@@ -141,7 +142,7 @@ public class TokenTextLoweringRuleTests
             parameter, SearchComparator.Eq, modifier: null,
             new TokenSearchValue(system: null, code: "abc", text: null));
 
-        var plan = Lower.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, Symbols(parameter), targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Act
         var emitted = SqlBuilder.Run(plan);

@@ -5,7 +5,6 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Expressions.Parsers;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Parsing;
-using Ignixa.Search.Sql.Tracing;
 using Ignixa.Serialization.Abstractions;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +13,7 @@ namespace Ignixa.Search.Sql.Tests.Corpus;
 
 /// <summary>
 /// Compiles a captured request URL through the same stages a server would: query-string parsing, the
-/// real R4 search-parameter definitions, then Resolve/Lower/Emit via <see cref="SearchCompiler"/>.
+/// real R4 search-parameter definitions, then Resolve/Lower/Emit via <see cref="SearchSqlCompiler"/>.
 /// Nothing here is faked except the symbol ids (see <see cref="CorpusSymbolResolver"/>), so a failure
 /// is a genuine statement about what the compiler can and cannot do with a real-world query.
 /// </summary>
@@ -57,32 +56,45 @@ public static class CorpusCompiler
 
         try
         {
-            var trace = await SearchCompiler.CompileAsync(
+            var compiler = new SearchSqlCompiler(
+                new CorpusSymbolResolver(),
+                OptionsBuilder,
+                compartmentDefinitionManager: compartmentDefinitionManager,
+                searchParameterDefinitionManager: Definitions);
+
+            var result = await compiler.TryCreatePlanAsync(
                 entry.ResourceType,
                 parameters,
-                OptionsBuilder,
-                new CorpusSymbolResolver(),
-                compartmentDefinitionManager: compartmentDefinitionManager,
-                searchParameterDefinitionManager: Definitions,
-                operationExpression: operationExpression,
+                new SearchPlanOptions
+                {
+                    OperationExpression = operationExpression,
+                    DiagnosticsLevel = SearchDiagnosticsLevel.None,
+                },
                 cancellationToken);
 
-            if (trace.Sql is null)
+            if (!result.Succeeded)
             {
-                var failure = trace.Failure;
-                return CorpusCompilation.Failed(
-                    entry,
-                    failure is null ? "no-sql" : failure.Stage.ToString(),
-                    failure?.Message ?? "compilation produced no SQL and recorded no failure");
+                var planFailure = result.Failure!;
+                return CorpusCompilation.Failed(entry, planFailure.Stage.ToString(), planFailure.Message);
             }
 
-            return CorpusCompilation.Compiled(entry, trace.Sql.Sql);
+            var compiledResult = result.Plan.TryCompile();
+
+            if (!compiledResult.Succeeded)
+            {
+                var emitFailure = compiledResult.Failure!;
+                return CorpusCompilation.Failed(entry, emitFailure.Stage.ToString(), emitFailure.Message);
+            }
+
+            return CorpusCompilation.Compiled(entry, compiledResult.Compiled.Sql);
         }
         catch (Exception exception) when (IsExpressibilityFailure(exception))
         {
-            // SearchCompiler records Lower/Emit NotSupported and KeyNotFound as trace failures, but the
-            // build stage ahead of it (search-parameter binding, value parsing) still throws. Those are
-            // exactly the "the compiler cannot express this query" cases the report exists to surface.
+            // The facade handles Build (FhirException), Lower (NotSupportedException, KeyNotFoundException),
+            // and Emit failures internally, returning them via SearchPlanResult or SearchCompilationResult.
+            // This catch handles the residual cases that still propagate out: Resolve.RunAsync is not
+            // wrapped inside the facade, so a NotSupportedException or KeyNotFoundException from the
+            // resolve stage reaches here and is recorded as a corpus data point rather than crashing the run.
             return CorpusCompilation.Failed(entry, StageOf(exception), exception.Message);
         }
     }

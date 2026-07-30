@@ -10,7 +10,7 @@ namespace Ignixa.Search.Sql.Lowering.Composite;
 /// Lowers a TokenToken composite to a single ParamSource over TokenTokenCompositeSearchParam --
 /// components[0] compares Code1, components[1] compares Code2, both via TokenColumnEquality.
 /// </summary>
-public static class TokenTokenLoweringRule
+internal static class TokenTokenLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

@@ -9,12 +9,10 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Lowering;
 
-/// <summary>
-/// The structural (tier-2) context: builds the CTE graph by dispatching leaves to the leaf rules and
+/// <summary>The structural (tier-2) context: builds the CTE graph by dispatching leaves to the leaf rules and
 /// combining their results with Intersect/Union/Except. Owns the plan's Ctes list, which the leaf-tier
-/// <see cref="LeafContext"/> never sees.
-/// </summary>
-public sealed class StructuralContext
+/// <see cref="LeafContext"/> never sees.</summary>
+internal sealed class StructuralContext
 {
     private readonly List<CteDefinition> _ctes = [];
     private readonly List<CteOrigin> _origins = [];
@@ -59,12 +57,10 @@ public sealed class StructuralContext
         return new CteRef(index);
     }
 
-    /// <summary>
-    /// Lowers a <c>_not-referenced</c> search to a NotReferencedSource CTE: resources of the target type
+    /// <summary>Lowers a <c>_not-referenced</c> search to a NotReferencedSource CTE: resources of the target type
     /// that no reference row points at. A named source type and reference path narrow the anti-join; a
     /// path that did not resolve to a reference parameter falls back to a source-type-only (path-agnostic)
-    /// filter, matching the shipping engine.
-    /// </summary>
+    /// filter, matching the shipping engine.</summary>
     public CteRef LowerNotReferenced(NotReferencedExpression expression, string? resourceType)
     {
         if (resourceType is null)
@@ -77,13 +73,10 @@ public sealed class StructuralContext
 
         var targetTypeId = _leafContext.ResourceTypeId(resourceType);
 
-        // A source type the resolver could not find yields UnmatchableResourceTypeId (-1), which Emit
-        // renders as `rsp.ResourceTypeId = -1` inside the anti-join subquery. No row has that id, so the
-        // inner EXISTS is empty and NOT EXISTS is vacuously true -- every target passes. That is the
-        // OPPOSITE of the sentinel's effect in a positive position (an empty match), yet it is the correct
-        // answer here: a source type that does not exist has no reference rows, so no target is referenced
-        // by it, so all targets are "not referenced by it". The unmatchable target type at the outer scan
-        // still (correctly) matches nothing.
+        // A source type the resolver could not find yields UnmatchableResourceTypeId (-1), so the anti-join's
+        // inner EXISTS is empty and NOT EXISTS is vacuously true -- every target passes. Correct here (a source
+        // type that does not exist references nothing, so nothing is "referenced by it"), the opposite of the
+        // sentinel's empty-match effect in a positive position. The unmatchable target type still matches nothing.
         short? sourceTypeId = expression.SourceResourceType is { } sourceType
             ? _leafContext.ResourceTypeId(sourceType)
             : null;
@@ -149,12 +142,10 @@ public sealed class StructuralContext
         return new CteRef(index);
     }
 
-    /// <summary>
-    /// Resolves a leaf/composite rule's resource-type scope: the type's id, or null for system-level
+    /// <summary>Resolves a leaf/composite rule's resource-type scope: the type's id, or null for system-level
     /// (cross-type) search, where the rule emits no ResourceTypeId filter at all. Kept as one helper so
     /// the "null means every type, do not resolve it" convention is stated once rather than repeated at
-    /// each dispatch site, where an accidental <c>ResourceTypeId(null!)</c> would throw instead.
-    /// </summary>
+    /// each dispatch site, where an accidental <c>ResourceTypeId(null!)</c> would throw instead.</summary>
     private short? ResolveTypeScope(string? resourceType)
         => resourceType is null ? null : _leafContext.ResourceTypeId(resourceType);
 
@@ -236,33 +227,16 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
-    /// <summary>
-    /// Lowers a multi-type or system-wide base set. Each name is resolved through the symbol table; an
-    /// unresolvable name yields the sentinel -1, which is kept in the list rather than dropped.
-    /// <para>
-    /// Dropping unresolvable ids would be dangerous: if every requested type is unknown the list would
-    /// collapse to empty, and an empty <see cref="CteDefinition.MultiTypeResourceSource"/> means
-    /// <em>every</em> resource type — a full-table scan instead of an empty match. The sentinel -1
-    /// matches no row, so keeping it produces the correct empty result without widening the query.
-    /// </para>
-    /// <para>
-    /// An empty <paramref name="resourceTypes"/> input is the explicit system-wide contract ("all types"):
-    /// <see cref="CteDefinition.MultiTypeResourceSource.AllTypes"/> is called in that case so the intent
-    /// is named rather than inferred from an empty list.
-    /// </para>
-    /// </summary>
+    /// <summary>Lowers a multi-type or system-wide base set. An unresolvable name yields the sentinel -1 and is kept,
+    /// not dropped: dropping every unknown id would collapse the list to empty, and an empty
+    /// <see cref="CteDefinition.MultiTypeResourceSource"/> means <em>every</em> type (a full-table scan). An
+    /// empty <paramref name="resourceTypes"/> input is instead the explicit AllTypes ("all types") contract.</summary>
     public CteRef LowerMultiTypeResourceSource(IReadOnlyList<string> resourceTypes)
     {
-        // Use ResourceTypeIdOrSentinel rather than ResourceTypeId so that a type name not present in the
-        // symbol table (never collected) maps to -1 rather than throwing. This matters for the fail-safe
-        // contract: dropping unresolvable ids would collapse an all-unknown list to empty, which means
-        // "every resource type" — a full-table scan instead of the correct empty result. Keeping -1
-        // produces IN (-1), which matches no row. See also the comment at EmitMultiTypeResourceSource.
-        //
-        // An empty resourceTypes input is the explicit system-wide contract ("all types"): the caller at
-        // LowerBaseSet deliberately passes an empty list for a bare GET /. Use AllTypes() in that case to
-        // make the intent unambiguous; use ForTypes() for every non-empty list so the guard in ForTypes
-        // enforces that no future caller can accidentally pass an empty list and silently widen.
+        // ResourceTypeIdOrSentinel (not ResourceTypeId) maps an uncollected type name to -1 rather than throwing;
+        // keeping -1 yields IN (-1) which matches no row, avoiding the all-unknown-collapses-to-every-type scan.
+        // Empty input is the explicit AllTypes() contract (a bare GET /); ForTypes() is used for every non-empty
+        // list so its guard forbids a future caller silently passing an empty list.
         CteDefinition.MultiTypeResourceSource source = resourceTypes.Count == 0
             ? CteDefinition.MultiTypeResourceSource.AllTypes()
             : CteDefinition.MultiTypeResourceSource.ForTypes(
@@ -272,18 +246,10 @@ public sealed class StructuralContext
         return new CteRef(_ctes.Count - 1);
     }
 
-    /// <summary>
-    /// Folds a resource-column predicate (<c>_id</c>/<c>_type</c>/<c>_lastUpdated</c>) into a system-wide
-    /// dbo.Resource scan. This is the cross-type counterpart of <see cref="LowerResourceSourceWithPredicate"/>:
-    /// a union leg reached under a null (system-level) scope has no single ResourceTypeId to attach an outer
-    /// WHERE to, so its resource-column predicate rides inside a <see cref="CteDefinition.MultiTypeResourceSource"/>
-    /// instead. It is always <see cref="CteDefinition.MultiTypeResourceSource.AllTypes"/>, never
-    /// <c>ForTypes</c>: the leg names no type list of its own — any type constraint it carries is already
-    /// <em>inside</em> <paramref name="predicate"/> as a <c>ResourceTypeId</c> equality — and passing an empty
-    /// list to <c>ForTypes</c> is forbidden precisely because it would silently widen to a full scan. The
-    /// requested <c>_type</c> list, when there is one, is applied to the finished union by
-    /// <see cref="Lower.NarrowToRequestedTypes"/>, so this base deliberately does not reproduce that narrowing.
-    /// </summary>
+    /// <summary>Folds a resource-column predicate into a system-wide dbo.Resource scan -- the cross-type counterpart of
+    /// <see cref="LowerResourceSourceWithPredicate"/>. Always <c>AllTypes</c>: the leg names no type list of its
+    /// own (any type constraint lives inside <paramref name="predicate"/>), and the requested <c>_type</c> list
+    /// is applied later by <see cref="Lower.NarrowToRequestedTypes"/>.</summary>
     public CteRef LowerMultiTypeResourceSourceWithPredicate(Predicate? predicate)
     {
         _ctes.Add(CteDefinition.MultiTypeResourceSource.AllTypes(predicate));
@@ -293,12 +259,10 @@ public sealed class StructuralContext
     public CteRef LowerNot(CteRef innerMatch, string? resourceType)
         => Except(LowerNegationAnchor(resourceType), innerMatch);
 
-    /// <summary>
-    /// The base set a negation subtracts from: every resource of <paramref name="resourceType"/>. Rejects a
+    /// <summary>The base set a negation subtracts from: every resource of <paramref name="resourceType"/>. Rejects a
     /// null (system-level) type — the single choke point every negation reaches, whether it arrives as
-    /// <c>:not</c>, <c>:missing=true</c>, or the no-positive-sibling arm of <see cref="Lower"/>'s AND
-    /// handling. Guarding here rather than at each caller is what keeps the three from diverging.
-    /// </summary>
+    /// <c>:not</c>, <c>:missing=true</c>, or the no-positive-sibling arm of this class's AND handling.
+    /// Guarding here rather than at each caller is what keeps the three from diverging.</summary>
     public CteRef LowerNegationAnchor(string? resourceType)
     {
         if (resourceType is null)
@@ -314,11 +278,9 @@ public sealed class StructuralContext
         return LowerResourceSource(resourceType);
     }
 
-    /// <summary>
-    /// Subtracts one match set from another. Callers that already hold a narrower left-hand set should
+    /// <summary>Subtracts one match set from another. Callers that already hold a narrower left-hand set should
     /// use this directly rather than <see cref="LowerNot"/>, whose ResourceSource anchor reads every
-    /// resource of the type.
-    /// </summary>
+    /// resource of the type.</summary>
     public CteRef Except(CteRef left, CteRef right)
     {
         _ctes.Add(new CteDefinition.Except(left, right));
@@ -386,26 +348,10 @@ public sealed class StructuralContext
     public CteRef LowerCompartment(CompartmentSearchExpression expression)
         => LowerCompartmentCore(expression.CompartmentType, expression.CompartmentId, expression.FilteredResourceTypes);
 
-    /// <summary>
-    /// Lowers a compartment membership set to a Union of one CompartmentSource per membership search
-    /// parameter, narrowing member types to <paramref name="filteredResourceTypes"/> when non-empty.
-    /// Shared by an ordinary compartment search and by <c>$everything</c> so both reach the identical
-    /// CompartmentSource emitter rather than a parallel implementation.
-    /// <para>
-    /// A <paramref name="filteredResourceTypes"/> filter that narrows the membership to zero groups is the
-    /// same situation for both callers -- an ordinary <c>GET /Patient/123/NotInCompartment</c> naming a type
-    /// outside the compartment, or a <c>$everything?_type=foo</c> doing exactly the same -- namely
-    /// caller-supplied input describing something this compartment cannot contain. Both lower to an empty
-    /// match: a <see cref="Predicate.False"/> anchored on the compartment's own type, carrying the reason.
-    /// This follows <see cref="ISymbolResolver"/>'s "not found is data, not an error" convention that the
-    /// rest of the compiler already applies (<c>TokenColumnEquality</c> on an unknown system,
-    /// <c>QuantityColumnPredicate</c> on an unknown unit, an unresolvable resource type); answering the
-    /// compartment case the same way keeps it from being the lone path that turns a can-never-match filter
-    /// into a thrown 500. There is no membership short-circuit ahead of this in the compiler --
-    /// <c>Lower.Run</c> compiles <c>GET /Patient/{id}/{nonMemberType}</c> straight through here -- so a throw
-    /// would be reachable directly from user input.
-    /// </para>
-    /// </summary>
+    /// <summary>Lowers a compartment membership set to a Union of one CompartmentSource per membership search parameter,
+    /// narrowing member types to <paramref name="filteredResourceTypes"/> when non-empty. Shared by an ordinary
+    /// compartment search and <c>$everything</c>. A filter that narrows membership to zero groups lowers to an
+    /// empty match (a <see cref="Predicate.False"/>), following the "not found is data, not an error" convention.</summary>
     private CteRef LowerCompartmentCore(
         string compartmentType,
         string compartmentId,
@@ -421,11 +367,8 @@ public sealed class StructuralContext
 
         if (groups.Count == 0)
         {
-            // The compartment/_type filter named only types outside this compartment, so the correct answer
-            // is an empty member set, not an exception -- the same shape an unresolvable token system or
-            // resource type lowers to. Anchor the false predicate on the compartment's own type so the CTE
-            // still emits valid, well-typed SQL (WHERE ResourceTypeId = @p AND 1 = 0), and keep the reason so
-            // the trace reports the known miss.
+            // Named only types outside this compartment, so the answer is an empty member set, not an exception.
+            // Anchor the false predicate on the compartment's own type so the CTE still emits well-typed SQL.
             var reason =
                 $"Compartment search for '{compartmentType}/{compartmentId}' resolved to " +
                 "zero membership search parameters for the requested resource type(s) -- this compartment/filter " +
@@ -444,101 +387,24 @@ public sealed class StructuralContext
         return Union(refs);
     }
 
-    /// <summary>
-    /// The resource types $everything pulls in as "referenced resources" outside the patient compartment.
+    /// <summary>The resource types $everything pulls in as "referenced resources" outside the patient compartment.
     /// Matches the legacy PatientEverythingQueryGenerator's own fixed list (Practitioner/Organization/
-    /// Location/Medication) -- the FHIR spec's SHOULD-include set for the operation.
-    /// </summary>
+    /// Location/Medication) -- the FHIR spec's SHOULD-include set for the operation.</summary>
     public static readonly IReadOnlyList<string> PatientEverythingReferencedResourceTypes =
         ["Practitioner", "Organization", "Location", "Medication"];
 
-    /// <summary>
-    /// Orchestrates a Patient/Group $everything into the CTE graph, composing five pieces in legacy's own
-    /// order: (1) the Patient resource(s) themselves, (2) the patient compartment, (3) an optional
-    /// conditional clinical-date filter, (4) an optional _since incremental filter scoped to the compartment
-    /// branch only, and (5) an optional referenced-type expansion seeded from the filtered compartment set.
-    /// The result is a Union of the Patient-itself branch, the (filtered) compartment branch, and -- when
-    /// requested -- the referenced-type expansion.
-    /// </summary>
-    /// <remarks>
-    /// Paging model: one windowed query over the whole union, deliberately NOT the shipping engine's
-    /// phased walk. Microsoft's $everything pages in four phases behind a continuation token -- phase 1
-    /// the patient plus its generalPractitioner/managingOrganization, phases 2-3 the compartment, phase 4
-    /// devices referencing the patient -- and the captured legacy corpus SQL is phase 1 alone. Phasing was
-    /// considered and rejected: phase 1 union phases 2-3 union phase 4 is the same resource set this
-    /// method's own union already produces, so the phases are how that engine assembles the result, not
-    /// what the operation returns. Reproducing them would need a phase concept this compiler does not
-    /// have, and four round trips where one suffices.
-    /// <para>
-    /// Consequently this node contributes no paging machinery of its own: the window is the ordinary
-    /// keyset <c>PageSpec</c> or <c>OffsetSpec</c> the shape emitters already apply to any match set,
-    /// which reach the union's output rather than any one arm. That is only safe because every structural
-    /// Union here emits a de-duplicating UNION, so (T1, Sid1) is unique across the arms and the
-    /// (T1 ASC, Sid1 ASC) ordering the keyset seek predicate mirrors is a total order over the whole
-    /// result. A UNION ALL here would leave the page boundary undefined between two arms and silently
-    /// duplicate or drop resources between pages -- no text-level test would see it.
-    /// </para>
-    /// <para>
-    /// Two consequences accepted knowingly. Phased paging bounds memory per phase for a very large
-    /// compartment; a single windowed query relies on the window to do that instead. And the legacy shape
-    /// orders <c>IsMatch DESC</c> first, so its outbound expansion rows follow every match across page
-    /// boundaries, where here the expansion is part of the match set and interleaves by (T1, Sid1). Both
-    /// are reversible: nothing in this lowering forecloses adding phases later.
-    /// </para>
-    /// <para>
-    /// <b>Decision -- expansion rows are matches, not includes.</b> The captured shipping-engine SQL marks
-    /// its outbound expansion <c>IsMatch = 0</c>, which surfaces as <c>search.mode = "include"</c>, and
-    /// orders <c>IsMatch DESC</c>. This lowering deliberately does neither: the expansion is a plain arm of
-    /// the match union, so every row is a match and the page partition follows the (T1, Sid1) total order.
-    /// Three reasons, in order of weight. First, the search spec defines <c>include</c> as "because of an
-    /// <c>_include</c> requirement" -- $everything carries no <c>_include</c>; the referenced resources are
-    /// part of the result set the operation itself defines, so <c>match</c> is the accurate code and the
-    /// engine's <c>IsMatch = 0</c> is an artefact of implementing $everything on top of its <c>_include</c>
-    /// SQL machinery rather than a spec requirement. Second, this repo's own executing engine (the legacy
-    /// EF <c>PatientEverythingQueryGenerator</c>) returns one flat surrogate-id set that hydrates entirely
-    /// as <c>match</c>, so emitting <c>include</c> here would make the two Ignixa engines disagree on
-    /// bundle output while they are meant to be interchangeable. Third, the include machinery caps each
-    /// stage at its <c>Limit</c> and flags <c>IsPartial</c>; silently truncating the referenced half of an
-    /// operation named "everything" is a worse failure than a different page partition.
-    /// </para>
-    /// <para>
-    /// That decision is reversible and the migration is known: give <see cref="Ast.IncludeStage"/> a null
-    /// <c>ReferenceSearchParamId</c> (already nullable) with <c>OutputTypeIds</c> set to the referenced
-    /// types and <c>SeedFromMatch = true</c>, which emits almost exactly what
-    /// <c>CteDefinition.ReferencedTypeExpansion</c> emits today. Revisit when a compiled search service
-    /// exists to consume the flag -- no path on this branch reads <c>IsMatch</c> for $everything -- and
-    /// when the truncation question above has an answer.
-    /// </para>
-    /// <para>
-    /// <b>Decision -- <c>_since</c> narrows the seed, not the expansion output.</b> <c>_since</c> is
-    /// intersected into <c>compartmentRef</c> before that set seeds the expansion, and the expansion's own
-    /// output carries no visibility bound. The consequence is stated rather than emergent: a Practitioner
-    /// whose only referencing compartment rows all predate the cutoff disappears from an incremental pull,
-    /// even though the Practitioner itself may have changed after it. Kept because it is what the legacy EF
-    /// generator does (it seeds <c>GetReferencedResourceIdsAsync</c> from the already-<c>_since</c>-filtered
-    /// compartment set) and because the alternative -- expanding from the unfiltered compartment, then
-    /// <c>_since</c>-filtering the referenced resources -- would make an incremental pull traverse the whole
-    /// compartment, which is the cost <c>_since</c> exists to avoid.
-    /// </para>
-    /// <para>
-    /// <b>Known gap -- Device.</b> Verified against this repo's own generated compartment definitions:
-    /// STU3, R4, R4B, R5 and R6 all list <c>Device</c> in the Patient compartment with an <em>empty</em>
-    /// parameter list, so no compartment traversal can ever return one and $everything silently omits a
-    /// clinically significant type. (R5/R6 reach devices only indirectly, through
-    /// <c>DeviceAssociation{subject,operator}</c> and <c>DeviceUsage{patient}</c> -- the association, not
-    /// the Device.) This is a gap in the spec's own CompartmentDefinition, which is why the shipping engine
-    /// patches it with a bespoke phase 4. Not closed here: the fix is a fixed extra traversal over a
-    /// patient-referencing Device parameter that exists in STU3/R4/R4B (<c>Device.patient</c>) and not in
-    /// R5+, so it needs a version-conditional symbol that <see cref="Symbols.SymbolCollectingVisitor"/>
-    /// must request and tolerate the absence of -- a resolve-stage change, not a lowering one, and the
-    /// seam where this compiler has already shipped one collection defect. Scoped as follow-up rather than
-    /// half-built.
-    /// </para>
-    /// </remarks>
+    /// <summary>Orchestrates a Patient/Group $everything into the CTE graph, composing (in legacy's order) the Patient
+    /// resource(s), the patient compartment, an optional clinical-date filter, an optional _since filter scoped
+    /// to the compartment branch, and an optional referenced-type expansion seeded from the filtered compartment
+    /// set. Returns a Union of those branches.</summary>
     public CteRef LowerPatientEverything(PatientEverythingExpression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
+        // Known gap: STU3/R4/R4B/R5/R6 all list Device in the Patient compartment with an empty parameter list,
+        // so no compartment traversal can return one and $everything silently omits it. Closing it needs a
+        // version-conditional Device.patient symbol (absent in R5+) requested at the resolve stage, not here.
+        // Tracked as #379.
         var patientItselfRef = LowerPatientItself(expression.PatientIds);
         var compartmentRef = LowerEverythingCompartment(expression.PatientIds, expression.FilteredResourceTypes);
 
@@ -549,33 +415,26 @@ public sealed class StructuralContext
 
         if (expression.SinceDate is { } since)
         {
-            // _since is answered from dbo.Transactions.VisibleDate -- when the writing transaction became
-            // visible -- not from a meta.lastUpdated floor expressed as a ResourceSurrogateId bound. The
-            // two are not interchangeable: a resource written before the cutoff in a transaction that only
-            // became visible after it is returned by the first and missed by the second, and a resource in
-            // a transaction still awaiting visibility is returned by the second and correctly withheld by
-            // the first. VisibleDate is what the legacy PatientEverythingQueryGenerator filters on and what
-            // this compiler's output has been row-compared against, so it is the definition kept here.
+            // _since is answered from dbo.Transactions.VisibleDate (when the writing transaction became visible),
+            // not a meta.lastUpdated/ResourceSurrogateId floor: the two disagree for a resource written before the
+            // cutoff but made visible after (or vice versa). VisibleDate is what legacy filters on and row-compares.
             compartmentRef = Intersect(compartmentRef, VisibleSinceFilterRef(since));
         }
 
         var unionParts = new List<CteRef> { patientItselfRef, compartmentRef };
 
-        // Resolve the expansion's types only when the expansion is actually requested. SymbolCollectingVisitor
-        // .VisitPatientEverything collects them under the same condition, so hoisting this out of the guard
-        // makes the lowerer resolve symbols the collector deliberately never gathered, and ResourceTypeId
-        // throws on the miss. That is not hypothetical: includeReferencedResources is false exactly when
-        // _type is present, so $everything?_type=X failed outright.
+        // Resolve the expansion's types only when requested: SymbolCollectingVisitor.VisitPatientEverything
+        // collects them under the same condition, so hoisting this out of the guard makes the lowerer resolve
+        // symbols the collector never gathered and ResourceTypeId throws. Not hypothetical -- includeReferenced
+        // is false exactly when _type is present, so $everything?_type=X failed outright.
         if (expression.IncludeReferencedResources)
         {
             var expansionTypeIds = ResolveReferencedTypeIds(expression);
             if (expansionTypeIds.Count > 0)
             {
-                // The seed patient is not a member of its own compartment -- no ReferenceSearchParam row
-                // points from the patient at itself -- so seeding the expansion from compartmentRef alone
-                // misses the patient's own generalPractitioner/managingOrganization unless some compartment
-                // member happens to reference them too. Union in patientItselfRef so those two are found
-                // even in isolation.
+                // The seed patient is not a member of its own compartment, so seeding the expansion from
+                // compartmentRef alone misses the patient's own generalPractitioner/managingOrganization. Union
+                // in patientItselfRef so those are found even in isolation.
                 var expansionSeed = Union([patientItselfRef, compartmentRef]);
                 unionParts.Add(ReferencedTypeExpansionRef(expansionSeed, expansionTypeIds));
             }
@@ -603,12 +462,10 @@ public sealed class StructuralContext
         return refs.Count == 1 ? refs[0] : Union(refs);
     }
 
-    /// <summary>
-    /// Composes the conditional clinical-date filter: keep a compartment resource if it has a date-typed
+    /// <summary>Composes the conditional clinical-date filter: keep a compartment resource if it has a date-typed
     /// index row matching the range, OR if it has no date-typed index row at all. Both checks are
     /// table-wide over DateTimeSearchParam (no SearchParamId), so neither is expressible via ParamSource --
-    /// hence TableExistsPredicate. Union(compartment ∩ hasMatchingDate, compartment − hasAnyDateRow).
-    /// </summary>
+    /// hence TableExistsPredicate. Union(compartment ∩ hasMatchingDate, compartment − hasAnyDateRow).</summary>
     private CteRef ApplyConditionalDateFilter(CteRef compartmentRef, DateTimeOffset? startDate, DateTimeOffset? endDate)
     {
         var table = SqlCatalog.Default.Table("DateTimeSearchParam");
@@ -639,23 +496,10 @@ public sealed class StructuralContext
             ?? throw new InvalidOperationException("BuildDateRangePredicate reached with neither startDate nor endDate -- ApplyConditionalDateFilter's own guard should have prevented this.");
     }
 
-    /// <summary>
-    /// The referenced types the expansion may output, intersected with the request's <c>_type</c> filter.
-    /// <c>$everything?_type=Encounter</c> must return Encounters only, but the expansion's output set is
-    /// fixed, so without this intersection it would emit Practitioner/Organization/Location/Medication rows
-    /// the caller excluded -- a filter the compartment branch honours and the expansion branch did not. An
-    /// empty intersection means the filter excluded every referenced type, and the caller drops the
-    /// expansion entirely rather than emitting a type-in filter over nothing.
-    /// <para>
-    /// This is deliberately redundant with <c>PatientEverythingHandler</c>, which clears
-    /// <see cref="PatientEverythingExpression.IncludeReferencedResources"/> whenever any <c>_type</c> is
-    /// present. That guard is the one the legacy EF generator relies on (its own expansion applies no type
-    /// filter at all), and it is coarser than this one: it also suppresses the expansion for
-    /// <c>_type=Practitioner</c>, where a referenced Practitioner is exactly what was asked for. Keeping
-    /// the intersection here makes the compiled plan correct for any caller that sets the flag itself --
-    /// the IPS generator does, with a <c>_type</c> set -- rather than correct only by the handler's grace.
-    /// </para>
-    /// </summary>
+    /// <summary>The referenced types the expansion may output, intersected with the request's <c>_type</c> filter so
+    /// <c>$everything?_type=Encounter</c> does not emit the expansion's fixed referenced-type rows. An empty
+    /// intersection means the filter excluded every referenced type and the caller drops the expansion. Finer
+    /// than <c>PatientEverythingHandler</c>'s flag-clearing, so a caller that sets the flag itself gets a correct plan.</summary>
     private IReadOnlyList<short> ResolveReferencedTypeIds(PatientEverythingExpression expression)
         => PatientEverythingReferencedResourceTypes
             .Where(type => expression.FilteredResourceTypes.Count == 0 || expression.FilteredResourceTypes.Contains(type))

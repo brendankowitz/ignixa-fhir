@@ -7,13 +7,12 @@ using Ignixa.Search.Sql.Lowering.Leaf;
 namespace Ignixa.Search.Sql.Lowering.Composite;
 
 /// <summary>
-/// Dispatches a composite's components to their composite lowering rule, by the runtime types of the
-/// components' wrapped ISearchValues. Orders by Position first, since callers need not hand components in
-/// order. TokenToken, TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken
-/// (either component order) are wired; any other combination throws — a loud, explicit gap over a silent
-/// wrong answer.
+/// Dispatches a composite's components to their composite lowering rule by the runtime types of the wrapped
+/// ISearchValues, ordering by Position first since callers need not pass them in order. TokenToken,
+/// TokenNumberNumber, TokenString, TokenQuantity, TokenDateTime, and ReferenceToken (either order) are
+/// wired; any other combination throws — a loud gap over a silent wrong answer.
 /// </summary>
-public static class CompositeLoweringDispatcher
+internal static class CompositeLoweringDispatcher
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo compositeParameter,

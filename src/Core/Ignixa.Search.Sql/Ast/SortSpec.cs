@@ -4,14 +4,10 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// The sort-key kinds the compiler can emit joins and value-expressions for. String and Date read from
-/// their search-parameter tables via an IsMin/IsMax-flagged row (no aggregation needed); LastUpdated
-/// needs no join at all because ResourceSurrogateId already encodes it; ResourceType needs no join
-/// either, since the CTE graph already projects the resource's type id as T1; ResourceId needs a join,
-/// but to dbo.Resource directly rather than a search-param table, since the CTE graph's own (T1, Sid1)
-/// projection doesn't carry the resource's own ResourceId string value; Aggregated covers every other
-/// leaf type (Token/Number/Quantity/Reference/Uri) via a MIN/MAX-aggregating derived-table join, since
-/// none of those tables carry IsMin/IsMax columns.
+/// The sort-key kinds the compiler emits joins/value-expressions for. String/Date read their search-param
+/// tables via an IsMin/IsMax-flagged row; LastUpdated and ResourceType need no join (surrogate id and the
+/// T1 projection carry them); ResourceId joins dbo.Resource; Aggregated covers the other leaf types via a
+/// MIN/MAX-aggregating derived-table join.
 /// </summary>
 #pragma warning disable CA1720 // Identifier contains type name -- 'String' mirrors the FHIR sort-parameter type it represents.
 public enum SortKeyKind
@@ -26,14 +22,9 @@ public enum SortKeyKind
 #pragma warning restore CA1720
 
 /// <summary>
-/// One _sort key. SearchParamId is null for <see cref="SortKeyKind.LastUpdated"/>,
-/// <see cref="SortKeyKind.ResourceType"/> and <see cref="SortKeyKind.ResourceId"/> (none is a
-/// search-parameter-table lookup). Table and Column
-/// are non-null only for <see cref="SortKeyKind.Aggregated"/> -- String/Date resolve their table/column
-/// inline in Emit (StringSearchParam.Text / DateTimeSearchParam.StartDateTime, both fixed), LastUpdated
-/// and ResourceType have no column at all (their sort values are the surrogate id and the type id the
-/// match set already projects), and ResourceId resolves its column inline in Emit too
-/// (dbo.Resource.ResourceId, fixed).
+/// One _sort key. SearchParamId is null for LastUpdated, ResourceType and ResourceId (none is a
+/// search-param-table lookup). Table and Column are non-null only for <see cref="SortKeyKind.Aggregated"/>;
+/// the other kinds resolve their column inline in Emit or have none (surrogate id / type id).
 /// </summary>
 public sealed record SortKey(
     short? SearchParamId,
@@ -43,11 +34,10 @@ public sealed record SortKey(
     ColumnDescriptor? Column = null);
 
 /// <summary>
-/// Which segment of a two-phase missing-value sort a plan computes. Valued makes Keys[0]'s join INNER,
-/// so it also gates on the key being present; MissingPrimary drops Keys[0] from the joins and instead
-/// requires it absent via NOT EXISTS. Only Keys[0] has a phase; every other key is always a LEFT-JOIN
-/// tie-breaker. The phase is a caller input — the executor drives the transition between the two — not
-/// something Lower infers from the query.
+/// Which segment of a two-phase missing-value sort a plan computes. Valued makes Keys[0]'s join INNER (also
+/// gating on presence); MissingPrimary drops Keys[0] and requires it absent via NOT EXISTS. Only Keys[0]
+/// has a phase; other keys are tie-breakers that never gate a row out. The phase is a caller input, not
+/// inferred.
 /// </summary>
 public enum SortPhase
 {
@@ -57,37 +47,26 @@ public enum SortPhase
 
 /// <summary>
 /// A compiled _sort, capped at 3 keys. Keys[0] is the primary key that <see cref="SortPhase"/> segments;
-/// Keys[1..] are always LEFT-JOIN tie-breakers.
+/// Keys[1..] are tie-breakers that never gate a row out. How a tie-breaker reaches its value varies by kind:
+/// a search-parameter key (String/Date/Aggregated) LEFT-joins and substitutes a sentinel when absent, whereas
+/// <c>_lastUpdated</c> and <c>_type</c> read match-set columns with no join, and <c>_id</c> LEFT-joins the
+/// clustered PK, which never misses. Only the first kind needs a sentinel.
 /// </summary>
-public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase);
+public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase)
+{
+    /// <summary>
+    /// How many keys carry a value in this phase: all of them when <see cref="SortPhase.Valued"/>, all but
+    /// the primary when <see cref="SortPhase.MissingPrimary"/>. A keyset boundary must supply exactly this
+    /// many values, which is why a boundary never survives a phase transition.
+    /// </summary>
+    public int ActiveKeyCount => Phase == SortPhase.Valued ? Keys.Count : Math.Max(Keys.Count - 1, 0);
+}
 
 /// <summary>
-/// The keyset boundary a caller decodes from a continuation token; a null PageSpec means "first page."
-/// Boundary carries one value per active key for the current phase — Keys.Count values in Valued,
-/// Keys.Count-1 in MissingPrimary (Keys[0] has no value there). Values must already have Emit's
-/// ISNULL/sentinel substitution applied, so a decoded token compares equal to a live column. Every
-/// non-null field renders as a bound parameter, never an inlined literal, because they are
-/// client-controlled input.
-/// <para>
-/// <see cref="BoundaryResourceTypeId"/> is null for a <em>typeless</em> boundary: the seek then compares
-/// only the sort-value key(s) and the surrogate id, with no resource-type component. This is the shape a
-/// multi-type search with a custom (search-parameter) <c>_sort</c> needs — the legacy continuation token
-/// for such a sort is <c>[sortValue, resourceSurrogateId]</c>, carrying no type slot, and no single type
-/// exists to substitute across more than one resource type. It is sound because
-/// <c>ResourceSurrogateId</c> is globally unique across resource types (a single
-/// <c>dbo.ResourceSurrogateIdUniquifierSequence</c> hands out per-transaction ranges), so a seek on the
-/// surrogate id alone is already a total order; the composite <c>(ResourceTypeId, ResourceSurrogateId)</c>
-/// key exists only because the table is partitioned on <c>ResourceTypeId</c>. When it is non-null the
-/// historical typed seek — <c>(… T1 = @t AND Sid1 &gt; @sid) OR (… T1 &gt; @t)</c> — is emitted unchanged.
-/// </para>
-/// <para>
-/// The pairing is an enforced invariant, not a convention: <c>SqlBuilder.Run</c> rejects both mismatches
-/// before emitting any text. A typed boundary requires a non-custom sort (absent, or a
-/// <c>_lastUpdated</c> / <c>_type</c> / <c>_id</c> resource-column sort), whose ORDER BY keeps the
-/// <c>m.T1</c> tiebreak the type-major seek needs; a typeless boundary requires a custom
-/// (search-parameter) sort, whose ORDER BY drops that tiebreak. Either mismatch leaves the seek and the
-/// ORDER BY disagreeing, which silently drops rows at a page seam rather than failing.
-/// </para>
+/// The keyset boundary decoded from a continuation token (null = first page). Boundary carries one value per
+/// active key for the phase (Keys.Count in Valued, Keys.Count-1 in MissingPrimary), already ISNULL/sentinel-
+/// substituted and bound as parameters. BoundaryResourceTypeId null is a typeless boundary for a multi-type
+/// custom _sort (sound: ResourceSurrogateId is globally unique); SqlBuilder.Run rejects a type/sort mismatch.
 /// </summary>
 public sealed record PageSpec(
     IReadOnlyList<SqlParameterRef> Boundary,

@@ -4,7 +4,7 @@ using Ignixa.Search.Sql.Catalog;
 using Shouldly;
 using Xunit;
 
-namespace Ignixa.Search.Sql.Tests.Tracing;
+namespace Ignixa.Search.Sql.Tests.Compilation;
 
 /// <summary>
 /// Guards the structured plan rows against the flat text they were extracted from. Dozens of goldens across
@@ -180,7 +180,7 @@ public class PlanExplainDescribeTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var rows = PlanExplainer.Describe(plan);
@@ -193,10 +193,10 @@ public class PlanExplainDescribeTests
     public async Task GivenACompiledTrace_WhenReadingItsPlanRows_ThenEveryStageOfThatPlanIsAddressableByLabel()
     {
         // Arrange
-        var trace = await SearchTraceFixtures.TracePatientActiveWithIncludeAsync();
+        var result = await CompilationFixtures.TracePatientActiveWithIncludeAsync();
 
         // Act
-        var plan = trace.Plan.ShouldNotBeNull();
+        var plan = result.Plan!.Diagnostics!.PlanTrace.ShouldNotBeNull();
 
         // Assert
         plan.Rows.ShouldContain(row => row.Label == "root");

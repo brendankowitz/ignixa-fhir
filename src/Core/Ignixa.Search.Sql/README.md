@@ -15,8 +15,9 @@ concatenation buried in a query builder.
 >
 > - It is **not yet wired into any production data layer** — it runs in parallel to the shipping SQL
 >   search backend, not in place of it.
-> - The public API (`Resolve` / `Lower` / `SqlBuilder`, the AST records, `ISymbolResolver`) **may change
->   without notice** between alpha releases.
+> - The public API (`ISearchSqlCompiler` / `SearchSqlCompiler`, `SearchPlan`, the AST records,
+>   `ISymbolResolver`) **may change without notice** between alpha releases. The pipeline stages it
+>   orchestrates — `Resolve`, `Lower`, `SqlBuilder` — are now internal.
 > - Generated SQL is covered by exhaustive unit and golden tests, but end-to-end execution against a
 >   live SQL Server is not yet part of continuous integration.
 >
@@ -45,9 +46,14 @@ dotnet add package Ignixa.Search.Sql --prerelease
 
 The `--prerelease` flag is required while the package is in alpha.
 
-## How it works
+## How it works inside
 
-Compilation is three pure stages plus a build-time catalog. Only the first stage does I/O:
+Compilation is three stages plus a build-time catalog. Only the first stage does I/O. All three are
+**internal** — the boundary a consumer sees is `CreatePlanAsync` (which runs the first two) and
+`Compile` (which runs the third). The stage *names* still matter to a caller, though:
+`SearchCompilationFailure.Stage` reports exactly these values — `Resolve`, `Lower`, `Emit`, plus `Build`
+for anything that rejects the caller's input before the query is examined (query-string parsing, and
+mapping a supplied `SearchOptions`) — so a failed compile points at the stage that rejected it.
 
 ```
                          ┌─────────────────────────────────────────────┐
@@ -68,16 +74,17 @@ Compilation is three pure stages plus a build-time catalog. Only the first stage
                          │                     │                        │
                          └─────────────────────┼────────────────────────┘
                                                ▼
-                                          EmittedSql  (SQL text + @pN parameters)
+                                   CompiledSearch  (SQL text + @pN parameters)
 ```
 
 ### 1. Resolve — the only I/O
 
-`Resolve.RunAsync` walks the expression tree once, collects every search parameter and resource type it
-references, and resolves them all through `ISymbolResolver` — a single interface your data layer
-implements. The output is a `ResolvedSymbols` — an immutable `SymbolTable` plus the parameters the
-resolver could not find, reported rather than silently dropped. This is the *only* stage that touches the
-outside world; it does all lookups up front so the later stages can be pure, synchronous functions.
+Internally, the first stage walks the expression tree once, collects every search parameter and resource
+type it references, and resolves them all through `ISymbolResolver` — a single interface your data layer
+implements. It produces an immutable symbol table plus the parameters the resolver could not find,
+reported rather than silently dropped. This is the *only* stage that touches the outside world, which is
+why `CreatePlanAsync` is the compiler's one asynchronous entry point: it does all lookups up front so the
+later stages can be pure, synchronous functions.
 
 `ISymbolResolver` is the whole seam between the compiler and your storage:
 
@@ -95,7 +102,7 @@ The package itself has no EF or ASP.NET dependency and does no database access o
 
 ### 2. Lower — build the plan
 
-`Lower.Run` turns the bound tree into a `LoweredPlan` — a `QueryPlan` plus provenance linking each CTE
+The lowering stage turns the bound tree into a `QueryPlan`, plus provenance linking each CTE
 back to the IR node that produced it. The plan is a **graph of CTEs**, not a tree of
 inline joins: every AND becomes a set intersection, every OR a union, `:not` a set subtraction, a chain a
 join through the reference table, and so on — each as its own named CTE, so any node can reference any
@@ -113,8 +120,8 @@ Lowering is organised in two tiers, enforced as types rather than convention:
 
 ### 3. Emit — render the SQL
 
-`SqlBuilder.Run` renders the `QueryPlan` to `EmittedSql` — the SQL text and its bound parameters. SqlBuilder is a
-dumb, deterministic renderer: it never inlines a user value (those are all `@pN`), fully parenthesizes
+The emit stage renders the `QueryPlan` to SQL text and its bound parameters — the `CompiledSearch` that
+`Compile()` hands back. It is a dumb, deterministic renderer: it never inlines a user value (those are all `@pN`), fully parenthesizes
 every `AND`/`OR` so precedence never depends on context, and keeps the keyset-seek predicate in lockstep
 with the `ORDER BY` so pagination can't drift.
 
@@ -127,61 +134,120 @@ storage conventions (e.g. which column an over-long string lands in) live in the
 
 ## Quick start
 
-The compiler consumes the bound expression tree produced by `Ignixa.Search`'s parser and hands you back
-SQL plus parameters to execute however you like.
-
 ```csharp
-using Ignixa.Search.Sql.Ast;
-using Ignixa.Search.Sql.Builders;
-using Ignixa.Search.Sql.Lowering;
-using Ignixa.Search.Sql.Symbols;
+var compiler = new SearchSqlCompiler(resolver, optionsBuilder);
 
-// 0. Parse a FHIR search into a bound expression tree (via Ignixa.Search).
-//    e.g. Patient?name=Smith
-Expression searchExpression = ParsePatientNameEquals("Smith");
+// Phase 1 — build, resolve, lower. Asynchronous: resolving symbols is the only I/O.
+SearchPlan plan = await compiler.CreatePlanAsync("Patient", parameters, cancellationToken: cancellationToken);
 
-// 1. Resolve — the only async / I/O step. `resolver` is your ISymbolResolver.
-//    Returns the symbol table plus any parameters the resolver could not find, so a caller can
-//    explain the failure instead of hitting a KeyNotFoundException later during lowering.
-ResolvedSymbols resolved = await Resolve.RunAsync(
-    expression: searchExpression,
-    includes: [],
-    revIncludes: [],
-    sort: [],
-    resolver: resolver,
-    targetResourceType: "Patient",
-    cancellationToken: cancellationToken);
+// Optional: inspect or rewrite the plan before any SQL exists.
+Console.WriteLine(plan.Query.Explain());
+plan = plan with { Query = plan.Query with { Top = 50 } };
 
-// 2. Lower — pure. Produce the query plan, plus provenance linking each CTE to the IR node
-//    that produced it.
-LoweredPlan lowered = Lower.Run(
-    expression: searchExpression,
-    symbols: resolved.Symbols,
-    targetResourceType: "Patient",
-    includes: [],
-    revIncludes: [],
-    includeLimit: 0,
-    sort: [],
-    sortPhase: SortPhase.Valued,
-    page: null);
-
-QueryPlan plan = lowered.Plan;
-
-// Inspect the plan shape (great for tests / debugging):
-Console.WriteLine(plan.Explain());
-
-// 3. Emit — pure. Render to parameterized T-SQL.
-EmittedSql emitted = SqlBuilder.Run(plan);
-
-Console.WriteLine(emitted.Sql);            // the T-SQL text, with @p0, @p1, ...
-foreach (var p in emitted.Parameters)      // the values to bind
-    Console.WriteLine($"{p.Name} = {p.Value}");
+// Phase 2 — emit. Synchronous: lowering and emission are pure.
+CompiledSearch compiled = plan.Compile();
 ```
 
-`emitted.Sql` returns `(ResourceTypeId, ResourceSurrogateId)` rows — or
+When a query-shape problem should be data rather than an exception, use the `Try` pair:
+
+```csharp
+var result = await compiler.TryCreatePlanAsync("Patient", parameters, cancellationToken: cancellationToken);
+if (!result.Succeeded)
+{
+    logger.LogWarning("Search failed at {Stage}: {Message}", result.Failure.Stage, result.Failure.Message);
+    return;
+}
+```
+
+Diagnostics are opt-in and off by default:
+
+```csharp
+var options = new SearchPlanOptions { DiagnosticsLevel = SearchDiagnosticsLevel.Full };
+var plan = await compiler.CreatePlanAsync("Patient", parameters, options, cancellationToken);
+foreach (var parameter in plan.Diagnostics!.Parameters)
+{
+    Console.WriteLine($"{parameter.Key}: {parameter.Outcome}");
+}
+```
+
+`CreatePlanFromOptionsAsync` (and its `Try` counterpart) is the entry point for callers that already hold
+a built `SearchOptions` and so skip query-string parsing entirely; that overload needs no
+`ISearchOptionsBuilder`.
+
+`compiled.Sql` returns `(ResourceTypeId, ResourceSurrogateId)` rows — or
 `(…, IsMatch, IsPartial)` when the plan includes `_include`/`_revinclude`, or a single
-`COUNT_BIG` when the plan is count-only. You bind `emitted.Parameters` and execute against your database
+`COUNT_BIG` when the plan is count-only. You bind `compiled.Parameters` and execute against your database
 (e.g. `SqlCommand`, Dapper, or EF Core raw SQL).
+
+### Two defaults that will surprise you
+
+Neither `_count` nor the include budget is inferred from the query string. Both are caller decisions, and
+both default to *not fetching*:
+
+| You wrote | You get by default | To change it |
+|-----------|--------------------|--------------|
+| `?_count=10` | an **uncapped** statement — `SearchOptions.MaxItemCount` is deliberately not forwarded, because callers transform it (`MaxItemCount + 1`, to detect "has more") before a search runs | `Shape = new ResultShape.Matches(new SearchPaging.Keyset(Top: n))` |
+| `?_include=…` | **zero** include rows — `IncludeLimit` defaults to `0`, which emits `TOP (1)` per stage: enough to report *whether* includes exist, not to return any | `IncludeLimit = n` |
+
+`IncludeLimit` always over-fetches one row so truncation is detectable: the extra row comes back flagged
+`IsPartial` and the caller trims it. There is no uncapped setting.
+
+Counting is the same: `_summary=count` and `_total=accurate` are Bundle metadata that the compiler does not
+read. Set `Shape = new ResultShape.Count.AllMatches()` yourself when you want the `COUNT_BIG`.
+`CompilationContextMapping.NotApplicable` lists every `SearchOptions` property in this category with the
+reason, and `SearchCompilationDiagnostics` reports the resolved values at `Full` diagnostics.
+
+## Result shape and paging
+
+`SearchPlanOptions.Shape` is a closed hierarchy rather than a bag of flags, so the combinations that have no
+meaning cannot be written down:
+
+```csharp
+new ResultShape.Matches();                          // default -- the match set, unpaged
+new ResultShape.Matches(new SearchPaging.Keyset(Top: 50));                 // TOP and/or a keyset seek
+new ResultShape.Matches(new SearchPaging.Offset(new OffsetSpec(100, 50))); // OFFSET/FETCH, if you need it
+new ResultShape.Count.AllMatches();                 // one COUNT_BIG, no ORDER BY, no TOP
+new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segment the sort names
+new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
+```
+
+Paging hangs off `Matches` because that is the only shape that pages. A count reads the whole match set, and
+an includes page carries its own boundary in `IncludesPage.Resume` — so neither has a second paging
+coordinate that could contradict it.
+
+Which segment of a two-phase sort you read is `SearchPlanOptions.SortPhase`, not a paging property: it
+filters the match set, so it applies under either paging mechanism and with no paging at all.
+`Keyset.Boundary` is the seek boundary, and it only means anything within the phase that produced it, so the
+two are set together.
+
+### Two-phase missing-value sort
+
+FHIR lets you `_sort` on a parameter a resource may not have. The sort key lives in a side table, so no
+single seekable statement can order "rows with a value" ahead of "rows without one". The compiler instead
+emits one statement per phase and **the caller drives the sequence**:
+
+```csharp
+var options = new SearchPlanOptions
+{
+    SortPhase = phase,
+    Shape = new ResultShape.Matches(new SearchPaging.Keyset(Top: pageSize, Boundary: boundary)),
+};
+```
+
+- `SortPhase.Valued` (the default) inner-joins the primary sort key: rows that have a value, ordered by it.
+- `SortPhase.MissingPrimary` emits `NOT EXISTS` on that key: rows that lack a value, ordered by the secondary
+  keys if there are any, then surrogate id.
+
+Page through `Valued` until it runs out, then restart at the first page of
+`SortPhase.MissingPrimary` and page that to exhaustion. Only the *primary* key is
+phased; secondary keys are always left-joined tie-breakers with a sentinel, so they need no second pass.
+
+`_lastUpdated`, `_type` and `_id` sort on non-nullable resource columns, so they have no `MissingPrimary`
+segment and need only one pass.
+
+Counting works the same way: `ResultShape.Count.AllMatches` counts the whole match set and ignores any sort
+the plan carries, while `ResultShape.Count.CurrentSortPhase` counts only the rows the phase reaches -- which
+is what a caller totalling the two phases separately needs.
 
 ## What's supported
 
@@ -193,10 +259,10 @@ foreach (var p in emitted.Parameters)      // the values to bind
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
 | **Chaining** | forward and reverse chains, any nesting depth | 10-level depth guard |
-| **Includes** | `_include`, `_revinclude`, `:iterate` | topologically ordered |
+| **Includes** | `_include`, `_revinclude`, `:iterate` | topologically ordered; budget is `IncludeLimit`, default 0 |
 | **Compartment search** | membership over the reference table | grouped by membership parameter |
-| **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, two-phase missing-value sort | |
-| **Counting** | `_summary=count` / `_total=accurate` | `COUNT_BIG(DISTINCT …)` |
+| **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, [two-phase missing-value sort](#two-phase-missing-value-sort) | caller drives the phases |
+| **Counting** | `ResultShape.Count` | `COUNT_BIG(DISTINCT …)`; the caller sets the shape — `_summary=count` / `_total` are not read |
 | **Missing** | `:missing` for leaf and composite parameters | |
 
 ## Comparator semantics
@@ -326,14 +392,14 @@ the same system-then-code order every other quantity comparator already uses.
 A date `:ap` search has no "current time" of its own to compare against — it needs a reference instant
 supplied from outside the pure `Lower` stage. That instant is captured **exactly once per compilation**:
 
-- `SearchCompiler.CompileAsync` / `CompileWithTimeProviderAsync` call `TimeProvider.GetUtcNow()` a single
-  time up front (before `Resolve` even runs) and pass the one resulting value through to `Lower.Run`'s
-  `approximationReferenceTime` parameter. A caller invoking `Lower.Run` directly must supply that same
-  parameter explicitly; omitting it while a `:ap` date predicate is present throws
-  `InvalidOperationException` rather than silently reading the system clock.
+- `SearchSqlCompiler` reads `TimeProvider.GetUtcNow()` a single time up front — before the internal
+  `Resolve` stage runs — and threads that one value through lowering as the reference instant for every
+  `:ap` date predicate in the compilation. The clock is the compiler's own `TimeProvider`: the one passed
+  to its constructor, defaulting to `TimeProvider.System`. A caller pins the instant by supplying a fixed
+  `TimeProvider`; nothing inside lowering ever reads an ambient clock.
 - Because the instant is captured once and reused for every `:ap` predicate in the same compilation, two
-  compilations against the same supplied instant (the same `TimeProvider`, or the same explicit
-  `approximationReferenceTime`) always produce byte-identical SQL and parameter values — the determinism
+  compilations that observe the same instant (the same `TimeProvider` returning the same `GetUtcNow()`)
+  always produce byte-identical SQL and parameter values — the determinism
   guarantee above extends to `:ap` exactly as it does to every other comparator.
 
 The tolerance is `max(precision, abs(referenceInstant - midpoint) / 10)`, where `midpoint` is the search
@@ -409,8 +475,10 @@ only a confirmed "not found" result produces the `1 = 0` path.
 
 ## Design principles
 
-- **Functional core, imperative shell.** `Lower` and `SqlBuilder` are pure functions of
-  `(IR, SymbolTable, SqlCatalog)`. All I/O happens in `Resolve`, up front.
+- **Functional core, imperative shell.** Lowering and emission are pure functions of the resolved
+  symbols, the plan, and the catalog; the only I/O is resolving symbols, done once up front. The public
+  API draws its two-phase seam on exactly that line: `CreatePlanAsync` is asynchronous because it
+  resolves, and `Compile` is synchronous because emitting a plan is pure.
 - **Parameterize everything user-supplied.** SQL text never contains a literal user value.
 - **Fail loud, never silently wrong.** An unsupported case throws with an actionable message; the
   compiler never degrades a query into one that returns the wrong rows.
@@ -420,13 +488,16 @@ only a confirmed "not found" result produces the `1 = 0` path.
 
 ## Package layout
 
-| Namespace | What's in it |
-|-----------|--------------|
-| `Ignixa.Search.Sql.Symbols` | `Resolve`, `SymbolTable`, `ISymbolResolver`, the tree-walking collector |
-| `Ignixa.Search.Sql.Lowering` | `Lower`, the structural/leaf contexts, and the per-type lowering rules |
-| `Ignixa.Search.Sql.Ast` | `QueryPlan`, `CteDefinition`, `Predicate`, `PlanExplainer`, and the SQL value types (the plan data model) |
-| `Ignixa.Search.Sql.Builders` | `SqlBuilder` (QueryPlan → parameterized T-SQL) and its `EmittedSql` result |
-| `Ignixa.Search.Sql.Catalog` | `SqlCatalog` and its table/column descriptors (data generated from DDL) |
+The pipeline stages (`Resolve`, `Lower`, `SqlBuilder`) are internal; this table lists the public types a
+consumer reaches, grouped by namespace.
+
+| Namespace | Public surface |
+|-----------|----------------|
+| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
+| `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
+| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `SortPhase`, `ResultShape`, `SearchPaging`, `KeysetContinuationToken`, `KeysetPosition`, `PlanExplainer`, and the SQL value types |
+| `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |
+| `Ignixa.Search.Sql.Catalog` | `SqlCatalog` and its `TableDescriptor` / `ColumnDescriptor` (data generated from DDL) |
 
 ## Related packages
 

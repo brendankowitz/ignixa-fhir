@@ -1,30 +1,12 @@
 using Ignixa.Search.Expressions;
 
-namespace Ignixa.Search.Sql.Tracing;
+namespace Ignixa.Search.Sql;
 
-/// <summary>One CTE's link back to the parameter that produced it. Null ordinal where exempt —
-/// compartment and structural CTEs have no single owning parameter.</summary>
-/// <remarks>
-/// <see cref="ParameterOrdinal"/> is set only when the CTE was lowered from a node inside exactly one
-/// parameter's IR. A structural CTE (Intersect, Union, Except, ChainJoin) combines other CTEs by
-/// construction and so belongs to no single parameter — <see cref="ContributingOrdinals"/> is the set it
-/// draws from, closed over its children, so a consumer can say "this join came from parameters 1 and 3"
-/// without re-deriving the tree itself.
-/// <para>
-/// Not a positional record: <see cref="CteIndex"/> and <see cref="ParameterOrdinal"/> are plan and query
-/// positions and must be non-negative, so construction validates rather than trusting every producer to
-/// pass well-formed indices. The properties are get-only rather than <c>init</c> for the same reason — a
-/// <c>with</c> expression copies through the compiler-generated copy constructor and would skip these
-/// checks entirely, so the guard is only worth having if that route does not exist.
-/// </para>
-/// <para>
-/// <see cref="ContributingOrdinals"/> is normalized and copied on the way in, so the ascending, distinct,
-/// non-negative shape the docs promise holds by construction rather than by producer discipline, and a
-/// caller mutating the list it passed cannot reach inside afterwards. It is compared element-wise by
-/// <see cref="Equals(CteProvenance)"/>, because a record's synthesized equality compares a collection
-/// property by reference.
-/// </para>
-/// </remarks>
+/// <summary>
+/// One CTE's link back to the parameter that produced it. <see cref="ParameterOrdinal"/> is set only when
+/// the CTE was lowered from a single parameter's IR; a structural CTE (Intersect, Union, Except, ChainJoin)
+/// owns none, and <see cref="ContributingOrdinals"/> is the set it draws from, closed over its children.
+/// </summary>
 public sealed record CteProvenance
 {
     public CteProvenance(
@@ -51,10 +33,9 @@ public sealed record CteProvenance
         ParameterOrdinal = parameterOrdinal;
         Span = span;
 
-        // A directly-attributed CTE contributes itself, so the set is never empty where an ordinal exists
-        // -- consumers can read ContributingOrdinals uniformly instead of branching on ParameterOrdinal.
-        // Normalizing here rather than validating means a producer that hands over an unsorted or
-        // duplicated set gets the documented shape instead of an exception it cannot act on.
+        // Append the CTE's own ordinal so a directly-attributed CTE contributes itself and the set is never
+        // empty where an ordinal exists; normalize (rather than validate) so an unsorted/duplicated producer
+        // input still yields the documented ascending-distinct shape.
         IEnumerable<int> contributors = contributingOrdinals ?? [];
         if (parameterOrdinal is { } own)
         {
@@ -99,9 +80,8 @@ public sealed record CteProvenance
     }
 
     /// <summary>
-    /// Four-arity to match the property count. Deliberately not left at three: a stale
-    /// <c>var (i, ord, span) = provenance</c> would keep compiling and silently ignore
-    /// <see cref="ContributingOrdinals"/>, which is the field a consumer is most likely to have missed.
+    /// Four-arity to match the property count: a stale three-element deconstruction would keep compiling and
+    /// silently ignore <see cref="ContributingOrdinals"/>.
     /// </summary>
     public void Deconstruct(
         out int cteIndex,

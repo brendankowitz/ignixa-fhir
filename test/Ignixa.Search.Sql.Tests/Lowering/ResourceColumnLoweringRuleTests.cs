@@ -71,7 +71,7 @@ public class ResourceColumnLoweringRuleTests
     public void GivenATypeParameterNamingATypeTheResolverCouldNotFind_WhenTried_ThenLowersToADiagnosablePredicateFalse()
     {
         // Arrange — Resolve records an unfound type as UnmatchableResourceTypeId (-1). Equal(col, -1) is
-        // already unsatisfiable, but only Predicate.False carries the reason SearchCompiler reports as a
+        // already unsatisfiable, but only Predicate.False carries the reason SearchSqlCompiler reports as a
         // KnownMiss; anything else leaves the miss discoverable only by spotting a magic -1 in the SQL.
         var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Nonexistent", text: null));
         var context = ContextResolving("Nonexistent", SymbolTable.UnmatchableResourceTypeId);
@@ -244,7 +244,7 @@ public class ResourceColumnLoweringRuleTests
     }
 
     [Fact]
-    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingLowerRun()
+    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingSearchSqlCompiler()
     {
         // Arrange -- ApproximateDateRange.Widen (the shared helper Task 3 already covers directly)
         // requires an explicit reference instant; this proves this rule's :ap call site surfaces that
@@ -254,7 +254,7 @@ public class ResourceColumnLoweringRuleTests
 
         var exception = Should.Throw<InvalidOperationException>(
             () => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
-        exception.Message.ShouldContain("Lower.Run");
+        exception.Message.ShouldContain("SearchSqlCompiler");
     }
 
     [Fact]

@@ -12,50 +12,19 @@ namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
 /// Binds <see cref="AccessConstraint"/>s to the CTE graph. A constrained stage becomes the intersection
-/// of what it produced and what the constraint admits, so the restriction survives every later set
-/// operation rather than being a filter a subsequent union could widen back out.
+/// of what it produced and what the constraint admits, so the restriction survives later set operations.
+/// Enforced on every row-producing stage (match set, include/:iterate, chain target), not just the match.
 /// </summary>
-/// <remarks>
-/// Enforcement runs on every stage that produces rows — the match set (single- or multi-type), each
-/// include/:iterate stage, and each chain target — not only the top-level match. Applying a constraint
-/// at the match set alone would let an _include or a chain reach a resource the caller may not see, which
-/// is the failure mode an expression-rewriting approach is prone to and the reason this type exists.
-/// <para>
-/// Adding a new row-producing stage? Pick the enforcement method by what the stage produces — choosing
-/// wrong is an authorization bypass, so this contract is explicit:
-/// <list type="bullet">
-/// <item><description>Rows of one statically known type (a single-type match, a chain target) — call
-/// <see cref="Apply"/>: it intersects directly with that type's constraint.</description></item>
-/// <item><description>A set spanning several types, or an unknown mix (a multi-<c>_type</c> or wildcard
-/// compartment match) — call <see cref="ApplyToTypes"/>: it narrows each constrained type without
-/// dropping the others.</description></item>
-/// <item><description>A stage filtered post-hoc rather than intersected in place (an
-/// include/:iterate stage the emitter guards with an EXISTS) — call <see cref="BindIncludeStage"/>: it
-/// records per-stage bindings and fails closed on a wildcard whose output types are unknown.</description></item>
-/// </list>
-/// </para>
-/// </remarks>
 internal sealed class AccessConstraintApplier
 {
     private readonly IReadOnlyDictionary<string, AccessConstraint> _byType;
 
     /// <summary>
-    /// Indexes the constraints by resource type. A duplicate type is a caller error, not something to
-    /// silently collapse: two constraints for one type means the claim-translation layer failed to combine
-    /// them, and keeping only the first (what a plain last-wins dictionary build would do) would silently
-    /// drop half of a security rule. We throw instead. Combining them with AND would also be defensible,
-    /// but throwing keeps the one-constraint-per-type contract the compiler relies on visible at the seam
-    /// where the mistake was made.
+    /// Indexes the constraints by resource type. A duplicate type throws rather than last-wins, which would
+    /// silently drop half of an authorization rule. Uses <see cref="NotSupportedException"/> (not
+    /// <see cref="ArgumentException"/>, which <c>SearchSqlCompiler</c>'s catch filter excludes) so a duplicate
+    /// is recorded as a SearchCompilationFailure instead of escaping as a 500.
     /// </summary>
-    /// <remarks>
-    /// <see cref="NotSupportedException"/> rather than <see cref="ArgumentException"/>, for the same reason
-    /// <see cref="BindIncludeStage"/> uses it: these constraints arrive on
-    /// <see cref="Search.Models.SearchOptions"/> from the claim-translation layer, so a duplicate is
-    /// unsupported *input*, not a programmer error inside the compiler. SearchCompiler's catch filter
-    /// deliberately excludes ArgumentException — its trace-record guards throw that and cannot trip on a
-    /// well-formed plan — so throwing it here would escape CompileFromOptionsAsync and surface as a 500
-    /// instead of the recorded TraceFailure its contract promises.
-    /// </remarks>
     public AccessConstraintApplier(IReadOnlyList<AccessConstraint>? constraints)
     {
         if (constraints is not { Count: > 0 })
@@ -102,20 +71,9 @@ internal sealed class AccessConstraintApplier
     }
 
     /// <summary>
-    /// Applies constraints to a match set that spans several types (a system-wide, multi-<c>_type</c>, or
-    /// compartment search where no single target type scopes the rows). A plain intersect would be wrong
-    /// here: the constraint CTE for one type holds only that type's rows, so intersecting would drop every
-    /// other type. Instead, for each constrained type the result keeps all rows that are not of that type,
-    /// unioned with the rows of that type the constraint admits — narrowing the constrained type without
-    /// touching the others.
-    /// <para>
-    /// It iterates the applier's own constrained types rather than a caller-supplied type list, so a match
-    /// whose produced types are not enumerable up front (a compartment search across every type) is still
-    /// guarded: a constraint whose type the match never produces is a harmless no-op (the Except removes
-    /// nothing and the Intersect admits nothing), while a constraint whose type the match does produce is
-    /// enforced. Enumerating the caller's list instead would silently skip a constraint on a type the list
-    /// omitted — a fail-open this avoids.
-    /// </para>
+    /// Applies constraints to a match set spanning several types. A plain intersect would drop every other
+    /// type, so for each constrained type this keeps the non-matching rows unioned with the admitted ones.
+    /// Iterates the applier's own constrained types so a wildcard/compartment match cannot skip a constraint.
     /// </summary>
     public CteRef ApplyToTypes(CteRef stage, StructuralContext context, Func<Expression, StructuralContext, string, CteRef> lowerNode)
     {
@@ -136,10 +94,8 @@ internal sealed class AccessConstraintApplier
     /// <summary>
     /// Lowers the constraints that could bind to an include/:iterate stage into CTEs and returns the
     /// bindings the emitter turns into type-guarded EXISTS filters, or <see langword="null"/> when none
-    /// apply. For a stage with known output types, only constraints on those types can bind. For a wildcard
-    /// stage (<paramref name="outputTypeIds"/> is <see langword="null"/>) the produced types are unknown at
-    /// compile time, so every constraint is bound conservatively — failing closed, because letting a
-    /// wildcard include skip a constraint would be a way to read a resource the caller may not see.
+    /// apply. A wildcard stage (<paramref name="outputTypeIds"/> is <see langword="null"/>) binds every
+    /// constraint conservatively, failing closed since its produced types are unknown at compile time.
     /// </summary>
     public IReadOnlyList<IncludeConstraint>? BindIncludeStage(
         IReadOnlyList<short>? outputTypeIds,
@@ -163,20 +119,9 @@ internal sealed class AccessConstraintApplier
             {
                 if (outputTypeIds is null)
                 {
-                    // Wildcard stage whose produced types are unknown, and a constraint whose type is absent
-                    // from the symbol table entirely: we cannot emit a guard for a type id we do not have,
-                    // and we cannot prove the wildcard will not produce that type. Refuse to compile.
-                    //
-                    // Unreachable through SearchCompiler: Resolve now collects every constraint's
-                    // ResourceType (SymbolCollectingVisitor.CollectConstraint) and records a resolver miss as
-                    // the unmatchable sentinel rather than omitting the key, so TryGetResourceTypeId always
-                    // succeeds on that path. A sentinel id is safe to bind -- it names a type with no catalog
-                    // row and therefore no rows to leak. This guard remains for callers that reach Lower.Run
-                    // without going through Resolve, which is every test and any future direct caller.
-                    //
-                    // NotSupportedException, not InvalidOperationException: SearchCompiler's catch filter
-                    // records the former as a TraceFailure and lets the latter escape, which would break its
-                    // documented "failures are data, never thrown" contract and surface as a 500.
+                    // Unreachable through SearchSqlCompiler (Resolve records a resolver miss as the
+                    // unmatchable sentinel, so TryGetResourceTypeId always succeeds); this guard fails closed
+                    // for direct callers of Lower.Run that bypass Resolve.
                     throw new NotSupportedException(
                         $"Cannot enforce the access constraint for resource type '{constraint.ResourceType}' on a " +
                         "wildcard include: the type was never resolved, so no guard can be emitted and closure " +

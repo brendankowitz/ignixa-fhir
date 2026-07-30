@@ -1,7 +1,8 @@
-using Ignixa.Search.Expressions;
+﻿using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Tests.Symbols;
@@ -30,7 +31,7 @@ public class ResolvedSymbolsTests
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, null, new StringSearchValue("Smith"));
 
-        var resolved = await Resolve.RunAsync(
+        var resolved = await ResolveHarness.RunAsync(
             predicate, includes: [], revIncludes: [], sort: [], new NullResolver(), "Patient", CancellationToken.None);
 
         resolved.Unresolved.ShouldContain(p => p.Code == "name");
@@ -56,13 +57,13 @@ public class ResolvedSymbolsTests
     {
         // SymbolTable is keyed by Url, so a parameter without one can never be looked up even when the
         // resolver hands back an id -- SymbolTable.SearchParamId says exactly that. Resolve used to
-        // dereference the null Url instead, and the NullReferenceException escaped SearchCompiler's
+        // dereference the null Url instead, and the NullReferenceException escaped SearchSqlCompiler's
         // catch (which only handles NotSupportedException/KeyNotFoundException), killing the whole trace.
         var parameter = new SearchParameterInfo("name", "name", SearchParamType.String);
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, null, new StringSearchValue("Smith"));
 
-        var resolved = await Resolve.RunAsync(
+        var resolved = await ResolveHarness.RunAsync(
             predicate, includes: [], revIncludes: [], sort: [], new AlwaysResolvingResolver(), "Patient", CancellationToken.None);
 
         resolved.Unresolved.ShouldContain(p => p.Code == "name");

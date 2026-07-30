@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Lowering.Leaf;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -285,7 +286,7 @@ public class ReferenceLoweringRuleTests
     public void GivenAReferenceNamingATypeTheResolverCouldNotFind_WhenLowered_ThenLowersToADiagnosablePredicateFalse()
     {
         // Arrange — subject=Nonexistent/123 where the catalog has never seen that type. Equal(col, -1)
-        // matches nothing but is not reportable; Predicate.False is what SearchCompiler turns into a
+        // matches nothing but is not reportable; Predicate.False is what SearchSqlCompiler turns into a
         // KnownMiss, the same treatment an unknown token system already gets.
         var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
         var value = new ReferenceSearchValue(ReferenceKind.InternalOrExternal, baseUri: null!, resourceType: "Nonexistent", resourceId: "123");
@@ -351,7 +352,7 @@ public class ReferenceLoweringRuleTests
             new Dictionary<string, short> { [parameter.Url!.ToString()] = 210 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate,
             symbols,
             "Patient",
@@ -388,7 +389,7 @@ public class ReferenceLoweringRuleTests
             new Dictionary<string, short> { [parameter.Url!.ToString()] = 211 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 111, ["Practitioner"] = 114 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate,
             symbols,
             "Patient",

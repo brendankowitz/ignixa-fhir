@@ -8,32 +8,42 @@
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
+using Ignixa.Search.Sql;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Symbols;
-using Ignixa.Search.Sql.Tracing;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 
 namespace Ignixa.Application.Tests.Search.Parsing;
 
 /// <summary>
-/// Drives the real parser through <see cref="SearchCompiler.CompileAsync"/>. Every other tracing test
+/// Drives the real parser through <see cref="SearchSqlCompiler.TryCreatePlanAsync"/>. Every other tracing test
 /// hands the compiler a hand-built IR with hand-picked spans, which cannot catch a span the real scanner
 /// computes wrongly, nor a real-world shape the fixtures never imagined. These assert against the actual
 /// query text: a span is only useful if slicing the input with it yields the substring it claims.
 /// </summary>
-public class SearchTraceRealParserTests
+public class RealParserSpanDiagnosticsTests
 {
-    private static Task<SearchTrace> CompileAsync(
+    private static readonly SearchPlanOptions FullDiagnostics = new() { DiagnosticsLevel = SearchDiagnosticsLevel.Full };
+
+    private static Task<SearchPlanResult> CompileAsync(
         SearchOptionsBuilderHarness harness,
         FakeSymbolResolver resolver,
         params (string Key, string Value)[] parameters)
-        => SearchCompiler.CompileAsync(
+        => new SearchSqlCompiler(resolver, harness.Builder).TryCreatePlanAsync(
             "Patient",
             parameters.Select(p => new QueryParameter(p.Key, p.Value)).ToList(),
-            harness.Builder,
-            resolver);
+            FullDiagnostics);
+
+    // Asserts the surface it reads from: every test here expects a successful compilation, and a failure
+    // still carries populated diagnostics at Full -- so falling back to result.Failure would keep the
+    // assertions running against the wrong surface instead of reporting that compilation broke.
+    private static SearchCompilationDiagnostics DiagnosticsOf(SearchPlanResult result)
+    {
+        result.Succeeded.ShouldBeTrue();
+        return result.Plan!.Diagnostics.ShouldNotBeNull();
+    }
 
     [Fact]
     public async Task GivenARealParse_WhenTraced_ThenEachSpanSlicesTheValueItClaims()
@@ -41,9 +51,9 @@ public class SearchTraceRealParserTests
         var harness = SearchOptionsBuilderHarness.ForPatient(("name", SearchParamType.String));
         var resolver = FakeSymbolResolver.For("name");
 
-        var trace = await CompileAsync(harness, resolver, ("name:exact", "Smith"));
+        var result = await CompileAsync(harness, resolver, ("name:exact", "Smith"));
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = DiagnosticsOf(result).Parameters.ShouldHaveSingleItem();
         var predicate = Flatten(parameter.Ir!).OfType<SearchParameterPredicateExpression>().ShouldHaveSingleItem();
 
         predicate.Span.ShouldNotBeNull();
@@ -56,9 +66,9 @@ public class SearchTraceRealParserTests
         var harness = SearchOptionsBuilderHarness.ForPatient(("name", SearchParamType.String));
         var resolver = FakeSymbolResolver.For("name");
 
-        var trace = await CompileAsync(harness, resolver, ("name", "Smith,Jones"));
+        var result = await CompileAsync(harness, resolver, ("name", "Smith,Jones"));
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = DiagnosticsOf(result).Parameters.ShouldHaveSingleItem();
         var slices = Flatten(parameter.Ir!)
             .OfType<SearchParameterPredicateExpression>()
             .Select(p => Slice(parameter, p.Span!.Value))
@@ -73,9 +83,9 @@ public class SearchTraceRealParserTests
         var harness = SearchOptionsBuilderHarness.ForPatient(("birthdate", SearchParamType.Date));
         var resolver = FakeSymbolResolver.For("birthdate");
 
-        var trace = await CompileAsync(harness, resolver, ("birthdate", "gt2000"));
+        var result = await CompileAsync(harness, resolver, ("birthdate", "gt2000"));
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = DiagnosticsOf(result).Parameters.ShouldHaveSingleItem();
         var predicate = Flatten(parameter.Ir!).OfType<SearchParameterPredicateExpression>().ShouldHaveSingleItem();
 
         // Prefix-inclusive is load-bearing: the span is what joins a syntax node back to its IR node,
@@ -90,9 +100,9 @@ public class SearchTraceRealParserTests
         var harness = SearchOptionsBuilderHarness.ForPatient(("name", SearchParamType.String), ("gender", SearchParamType.Token));
         var resolver = FakeSymbolResolver.For("name", "gender");
 
-        var trace = await CompileAsync(harness, resolver, ("gender", "male"), ("name", "abcd"));
+        var result = await CompileAsync(harness, resolver, ("gender", "male"), ("name", "abcd"));
 
-        var spans = trace.Parameters
+        var spans = DiagnosticsOf(result).Parameters
             .Select(p => Flatten(p.Ir!).OfType<SearchParameterPredicateExpression>().First().Span)
             .ToList();
 
@@ -109,9 +119,9 @@ public class SearchTraceRealParserTests
             "general-practitioner", "Practitioner", "name", SearchParamType.String);
         var resolver = FakeSymbolResolver.For("general-practitioner", "name");
 
-        var trace = await CompileAsync(harness, resolver, ("general-practitioner.name", "Smith"));
+        var result = await CompileAsync(harness, resolver, ("general-practitioner.name", "Smith"));
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = DiagnosticsOf(result).Parameters.ShouldHaveSingleItem();
         parameter.KeySyntax.ShouldNotBeNull("the chain structure lives only on the key syntax");
         parameter.ValueSyntax.ShouldNotBeNull();
     }
@@ -124,16 +134,18 @@ public class SearchTraceRealParserTests
 
         // :exact on a date is dropped by lenient handling -- the outcome the playground exists to show,
         // since nothing in the response body tells the user their parameter was silently discarded.
-        var trace = await CompileAsync(harness, resolver, ("name", "Smith"), ("birthdate:exact", "2000-01-01"));
+        var result = await CompileAsync(harness, resolver, ("name", "Smith"), ("birthdate:exact", "2000-01-01"));
 
-        var ignored = trace.Parameters
+        var diagnostics = DiagnosticsOf(result);
+
+        var ignored = diagnostics.Parameters
             .Select(p => p.Outcome)
             .OfType<ParameterOutcome.Ignored>()
             .ShouldHaveSingleItem();
         ignored.Reason.ShouldNotBeNullOrWhiteSpace();
 
-        trace.Parameters.Single(p => p.Key == "name").Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
-        trace.Plan.ShouldNotBeNull("dropping one parameter must not stop the rest compiling");
+        diagnostics.Parameters.Single(p => p.Key == "name").Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
+        diagnostics.PlanTrace.ShouldNotBeNull("dropping one parameter must not stop the rest compiling");
     }
 
     [Fact]
@@ -142,18 +154,19 @@ public class SearchTraceRealParserTests
         var harness = SearchOptionsBuilderHarness.ForPatient(("name", SearchParamType.String));
         var resolver = FakeSymbolResolver.For("name");
 
-        var trace = await CompileAsync(harness, resolver, ("name", "Smith"));
+        var result = await CompileAsync(harness, resolver, ("name", "Smith"));
 
-        var parameter = trace.Parameters.ShouldHaveSingleItem();
+        var parameter = DiagnosticsOf(result).Parameters.ShouldHaveSingleItem();
         parameter.Outcome.ShouldBeOfType<ParameterOutcome.Compiled>();
-        trace.Failure.ShouldBeNull();
+        result.Failure.ShouldBeNull();
 
-        trace.Plan.ShouldNotBeNull();
-        var cte = trace.Plan!.Ctes.FirstOrDefault(c => c.ParameterOrdinal == parameter.Ordinal);
+        var planTrace = DiagnosticsOf(result).PlanTrace;
+        planTrace.ShouldNotBeNull();
+        var cte = planTrace!.Ctes.FirstOrDefault(c => c.ParameterOrdinal == parameter.Ordinal);
         cte.ShouldNotBeNull("no CTE was attributed to the parameter");
 
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Ranges.ShouldContain(r => r.Label == SqlLabels.CteLabel(cte.CteIndex));
+        var compiled = result.Plan!.Compile();
+        compiled.Diagnostics.ShouldNotBeNull().SqlTextRanges.ShouldContain(r => r.Label == SqlLabels.CteLabel(cte.CteIndex));
     }
 
     [Fact]
@@ -164,10 +177,10 @@ public class SearchTraceRealParserTests
         var resolver = FakeSymbolResolver.For("birthdate");
 
         // Act
-        var trace = await CompileAsync(harness, resolver, ("birthdate", "2020-01-01"));
+        var result = await CompileAsync(harness, resolver, ("birthdate", "2020-01-01"));
 
         // Assert
-        trace.Parameters.ShouldHaveSingleItem().DataType.ShouldBe(SearchParamType.Date);
+        DiagnosticsOf(result).Parameters.ShouldHaveSingleItem().DataType.ShouldBe(SearchParamType.Date);
     }
 
     [Fact]
@@ -178,16 +191,17 @@ public class SearchTraceRealParserTests
         var resolver = FakeSymbolResolver.For("name");
 
         // Act
-        var trace = await CompileAsync(harness, resolver, ("name", "Smith"));
+        var result = await CompileAsync(harness, resolver, ("name", "Smith"));
 
         // Assert -- the match CTE displays as "root" but is emitted as cte{i}. A consumer joining a plan
         // row to its SQL range must be able to do it without knowing about that renaming.
-        trace.Plan.ShouldNotBeNull();
-        var root = trace.Plan!.Rows.First(r => r.Label == "root");
+        var planTrace = DiagnosticsOf(result).PlanTrace;
+        planTrace.ShouldNotBeNull();
+        var root = planTrace!.Rows.First(r => r.Label == "root");
         root.CanonicalLabel.ShouldNotBe("root");
 
-        trace.Sql.ShouldNotBeNull();
-        trace.Sql!.Ranges.ShouldContain(r => r.Label == root.CanonicalLabel);
+        var compiled = result.Plan!.Compile();
+        compiled.Diagnostics.ShouldNotBeNull().SqlTextRanges.ShouldContain(r => r.Label == root.CanonicalLabel);
     }
 
     [Fact]
@@ -201,14 +215,15 @@ public class SearchTraceRealParserTests
         var resolver = FakeSymbolResolver.For("name", "gender");
 
         // Act
-        var trace = await CompileAsync(harness, resolver, ("name", "Smith"), ("gender", "male"));
+        var result = await CompileAsync(harness, resolver, ("name", "Smith"), ("gender", "male"));
 
         // Assert
-        trace.Plan.ShouldNotBeNull();
-        var structural = trace.Plan!.Ctes.First(c => c.ParameterOrdinal is null);
+        var planTrace = DiagnosticsOf(result).PlanTrace;
+        planTrace.ShouldNotBeNull();
+        var structural = planTrace!.Ctes.First(c => c.ParameterOrdinal is null);
         structural.ContributingOrdinals.ShouldBe([0, 1]);
 
-        foreach (var leaf in trace.Plan.Ctes.Where(c => c.ParameterOrdinal is not null))
+        foreach (var leaf in planTrace.Ctes.Where(c => c.ParameterOrdinal is not null))
         {
             leaf.ContributingOrdinals.ShouldBe([leaf.ParameterOrdinal!.Value]);
         }
@@ -227,15 +242,16 @@ public class SearchTraceRealParserTests
         var resolver = FakeSymbolResolver.For("name", "gender", "birthdate");
 
         // Act
-        var trace = await CompileAsync(
+        var result = await CompileAsync(
             harness, resolver, ("name", "Smith"), ("gender", "male"), ("birthdate", "2020-01-01"));
 
         // Assert
-        trace.Plan.ShouldNotBeNull();
-        var structural = trace.Plan!.Ctes.Where(c => c.ParameterOrdinal is null).ToList();
+        var planTrace = DiagnosticsOf(result).PlanTrace;
+        planTrace.ShouldNotBeNull();
+        var structural = planTrace!.Ctes.Where(c => c.ParameterOrdinal is null).ToList();
         structural.Count.ShouldBeGreaterThanOrEqualTo(2, "a three-way AND should nest intersects");
 
-        var outermost = trace.Plan.Ctes[trace.Plan.Ctes.Count - 1];
+        var outermost = planTrace.Ctes[planTrace.Ctes.Count - 1];
         outermost.ContributingOrdinals.ShouldBe([0, 1, 2]);
     }
 

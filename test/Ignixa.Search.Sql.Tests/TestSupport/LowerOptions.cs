@@ -6,18 +6,14 @@
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 
-namespace Ignixa.Search.Sql.Lowering;
+namespace Ignixa.Search.Sql.Tests.TestSupport;
 
 /// <summary>
-/// The optional inputs to <see cref="Lower.Run"/>, grouped onto one record so each is supplied by name
-/// through an init-only property rather than as a trailing positional argument. The eight optionals used
-/// to sit at the tail of a seventeen-parameter method, where <c>ResourceTypes</c>
-/// (<see cref="IReadOnlyList{String}"/>) sat immediately before the authorization input
-/// <c>AccessConstraints</c> (<see cref="IReadOnlyList{AccessConstraint}"/>); a caller slipping into
-/// positional style could land the two in each other's slot with no compiler complaint. On a record the
-/// only way to set either is by name, so that class of mistake cannot compile.
+/// Test-support only. The optional inputs Lower.Run took before it was collapsed onto CompilationContext,
+/// preserved so the existing corpus of lowering tests migrates by renaming the call and nothing else. No
+/// production code references this type; new tests should build a CompilationContext directly.
 /// </summary>
-public sealed record LowerOptions
+internal sealed record LowerOptions
 {
     /// <summary>Emit a row count instead of the rows themselves. The compiler's only "count" concept.</summary>
     public bool CountOnly { get; init; }
@@ -81,7 +77,7 @@ public sealed record LowerOptions
 
     /// <summary>
     /// Scopes a <see cref="CountOnly"/> count to the current sort phase's own join output rather than the
-    /// whole match set. The compiler-side half of two-phase sort execution.
+    /// whole match set. Maps to <c>ResultShape.Count.CurrentSortPhase</c> on the compiled options.
     /// </summary>
     public bool CountPhaseScoped { get; init; }
 

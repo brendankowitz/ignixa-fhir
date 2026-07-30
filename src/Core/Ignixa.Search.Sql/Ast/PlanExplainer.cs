@@ -25,15 +25,11 @@ public static class PlanExplainer
     }
 
     /// <summary>
-    /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, with
-    /// the label kept apart from the body. Tooling needs the label to address a row (and to join it to the
-    /// owning parameter via <see cref="Tracing.CteProvenance.CteIndex"/>); <see cref="Print"/> is defined in
-    /// terms of this method so the two can never disagree.
+    /// Renders the same content <see cref="Print(QueryPlan)"/> does, one <see cref="PlanExplainRow"/> per line,
+    /// label kept apart from body so tooling can address a row. <see cref="Print(QueryPlan)"/> is defined in
+    /// terms of this so the two can never disagree. The match CTE is the row whose display and canonical
+    /// labels differ.
     /// </summary>
-    /// <remarks>
-    /// Every row carries both the name it displays and the identifier it is addressable by — see
-    /// <see cref="PlanExplainRow.CanonicalLabel"/>. The match CTE is the row where those differ.
-    /// </remarks>
     public static IReadOnlyList<PlanExplainRow> Describe(QueryPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -106,9 +102,8 @@ public static class PlanExplainer
     }
 
     /// <summary>
-    /// Which <see cref="CteDefinition"/> case produced a row. Deliberately a separate switch from
-    /// <see cref="PrintCte"/> rather than a tuple returned alongside the body: the two answer different
-    /// questions (what it is vs how it reads), and the compiler still flags either one if a case is added.
+    /// Which <see cref="CteDefinition"/> case produced a row. A separate switch from <see cref="PrintCte"/>
+    /// (what it is vs how it reads); the compiler still flags either one if a case is added.
     /// </summary>
     private static string KindOf(CteDefinition cte) => cte switch
     {
@@ -128,16 +123,10 @@ public static class PlanExplainer
     };
 
     /// <summary>
-    /// The CTEs a structural node composes, in the order it names them — the same fields
-    /// <see cref="PrintCte"/> renders into the body, kept as data so consumers need not parse it back out.
+    /// The CTEs a structural node composes, in naming order — the same fields <see cref="PrintCte"/> renders,
+    /// kept as data. Leaf sources are listed explicitly and an unknown case throws: a silent <c>[]</c> would
+    /// let a new composing node report no children, silently corrupting parameter provenance.
     /// </summary>
-    /// <remarks>
-    /// The leaf sources are listed explicitly rather than caught by a default arm, and an unknown case
-    /// throws like <see cref="KindOf"/> does. A silent <c>[]</c> here would let a new composing
-    /// <see cref="CteDefinition"/> report no children, which
-    /// <see cref="Tracing.SearchCompiler"/> would turn into silently-wrong parameter provenance with
-    /// nothing to fail.
-    /// </remarks>
     internal static IReadOnlyList<int> ReferencedCteIndexesOf(CteDefinition cte) => cte switch
     {
         CteDefinition.Intersect x => [x.Left.Index, x.Right.Index],
@@ -174,10 +163,8 @@ public static class PlanExplainer
     }
 
     /// <summary>
-    /// Renders the <c>$includes</c> resume boundary the way <see cref="PrintPageSpec"/> renders a keyset
-    /// page: the parameters it binds, not the values. Both components are always bound — the boundary
-    /// carries no optional type component the way a <see cref="PageSpec"/> does — so two ordinals are
-    /// consumed unconditionally.
+    /// Renders the <c>$includes</c> resume boundary as parameters, not values, like <see cref="PrintPageSpec"/>.
+    /// Both components are always bound (no optional type), so two ordinals are consumed unconditionally.
     /// </summary>
     private static string PrintIncludeBoundary(ref int parameterOrdinal)
     {
@@ -224,11 +211,9 @@ public static class PlanExplainer
 
     private static string PrintNotReferencedSource(CteDefinition.NotReferencedSource nr, int? top, ref int parameterOrdinal)
     {
-        // The target ResourceTypeId is a bound parameter in Emit (EmitNotReferencedSource binds it as
-        // @pN, exactly as ResourceSource does), so this must consume an ordinal too or Explain()'s @pN
-        // numbering diverges from the emitted SQL. It is still shown inline for readability, like
-        // ResourceSource; only the counter is shared. The source-type and ref-param ids are inlined
-        // literals in Emit and consume no ordinal.
+        // TargetResourceTypeId is a bound parameter in Emit, so consume an ordinal here too or Explain()'s
+        // @pN numbering diverges from the emitted SQL. Shown inline for readability; only the counter is
+        // shared. Source-type and ref-param ids are inline literals in Emit and consume no ordinal.
         parameterOrdinal++;
         var qualifiers = new List<string>();
         if (nr.SourceResourceTypeId is { } sourceTypeId)
@@ -262,25 +247,19 @@ public static class PlanExplainer
     }
 
     private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, ref int parameterOrdinal)    {
-        // ResourceTypeId is a real bound parameter in Emit (EmitResourceSource), so this must consume
-        // an ordinal too -- otherwise Explain()'s @pN numbering silently diverges from the emitted
-        // SQL's real parameter numbering for any plan mixing a ResourceSource with another
-        // parameterized CTE or an OuterPredicate. The literal ResourceTypeId is still shown inline
-        // (not "@pN") because it reads better in a human-facing summary; only the counter is shared.
-        // rs.Predicate (nested-scope resource-column filter, e.g. a chain target's _id=X), when
-        // present, is a real predicate rendered the same way OuterPredicate is -- it also consumes
-        // whatever ordinals PrintPredicate consumes internally.
+        // ResourceTypeId is a bound parameter in Emit, so consume an ordinal here too or Explain()'s @pN
+        // numbering diverges from the emitted SQL. The literal id is still shown inline for readability;
+        // only the counter is shared. rs.Predicate, when present, is rendered like OuterPredicate and
+        // consumes whatever ordinals PrintPredicate consumes internally.
         parameterOrdinal++;
         var predicateSuffix = rs.Predicate is null ? string.Empty : $" WHERE {PrintPredicate(rs.Predicate, ref parameterOrdinal)}";
         return $"ResourceSource[{rs.ResourceTypeId}]{predicateSuffix}{PrintTop(top)}";
     }
 
     /// <summary>
-    /// How <see cref="Predicate.False"/> reads in an explained plan. Deliberately the same text the SQL
-    /// emitter produces, rather than a friendlier <c>false</c>: a plan and its SQL are read side by side in
-    /// a trace, and the emitter has no choice — <c>1 = 0</c> is the portable SQL literal for an
-    /// unsatisfiable predicate, while <c>false</c> is not valid in a T-SQL WHERE clause. Two spellings of
-    /// one node make the reader decide whether they are the same thing, and make a trace ungreppable.
+    /// How <see cref="Predicate.False"/> reads in an explained plan — the same <c>1 = 0</c> the emitter
+    /// produces, not a friendlier <c>false</c>, so plan and SQL stay greppable side by side (and <c>false</c>
+    /// isn't valid in a T-SQL WHERE clause anyway).
     /// </summary>
     internal const string UnsatisfiableRendering = "1 = 0";
 

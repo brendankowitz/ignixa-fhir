@@ -2,54 +2,42 @@ using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql.Compilation;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Symbols;
 
 /// <summary>
-/// The compiler's Resolve stage: walks a typed predicate tree once (plus the includes, sort, and
-/// compartments), collects every search parameter and resource type it references, and resolves them all
-/// through <see cref="ISymbolResolver"/>. This is the compiler's only I/O, done up front, producing an
-/// immutable <see cref="SymbolTable"/> that Lower and Emit consume synchronously, plus the list of
-/// parameters the resolver could not find (see <see cref="ResolvedSymbols"/>).
+/// The compiler's Resolve stage: walks the predicate tree once (plus includes, sort, and compartments),
+/// collects every search parameter and resource type, and resolves them through <see cref="ISymbolResolver"/>.
+/// This is the compiler's only I/O, done up front, producing an immutable <see cref="SymbolTable"/> that
+/// Lower and Emit consume synchronously, plus the parameters the resolver could not find.
 /// </summary>
-/// <remarks>
-/// <para>
-/// <see cref="ISymbolResolver.GetSearchParamIdAsync"/> takes the whole <see cref="SearchParameterInfo"/>,
-/// not a bare URL, so the resolver can apply its own override-URL fallback. The resolved id is stored
-/// under the requesting parameter's own <c>Url</c> — the key Lower looks it up by later — so how the id
-/// was found stays invisible once resolved.
-/// </para>
-/// <para>
-/// <c>targetResourceType</c> is the query's own resource type (e.g. "Patient" for a
-/// Patient?... search); every ordinary leaf and composite predicate needs it to scope its ParamSource,
-/// because a SearchParamId is assigned per parameter-definition URL, not per resource type. It is
-/// nullable for the wildcard-compartment and system-level cases, where only the types collected from the
-/// tree, includes, sort, compartments, and <c>additionalResourceTypes</c> are resolved. Compartment entries are expanded into
-/// <see cref="SymbolTable.CompartmentMembership"/> via the two optional definition managers, which are
-/// required only when a compartment search is actually present.
-/// </para>
-/// </remarks>
-public static class Resolve
+internal static class Resolve
 {
-    public static async Task<ResolvedSymbols> RunAsync(
-        Expression? expression,
-        IReadOnlyList<IncludeExpression> includes,
-        IReadOnlyList<IncludeExpression> revIncludes,
-        IReadOnlyList<SortExpression> sort,
-        ISymbolResolver resolver,
-        string? targetResourceType,
-        CancellationToken cancellationToken,
-        ICompartmentDefinitionManager? compartmentDefinitionManager = null,
-        ISearchParameterDefinitionManager? searchParameterDefinitionManager = null,
-        IReadOnlyList<string>? additionalResourceTypes = null,
-        IReadOnlyList<AccessConstraint>? accessConstraints = null,
-        IReadOnlyList<string>? allowedResourceTypes = null)
+    internal static async Task<ResolvedSymbols> RunAsync(
+        CompilationContext context,
+        SymbolResolution deps,
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(includes);
-        ArgumentNullException.ThrowIfNull(revIncludes);
-        ArgumentNullException.ThrowIfNull(sort);
-        ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(deps);
+
+        var expression = context.Expression;
+        var includes = context.Includes;
+        var revIncludes = context.RevIncludes;
+        var sort = context.Sort;
+        var resolver = deps.Resolver;
+        var targetResourceType = context.TargetResourceType;
+        var compartmentDefinitionManager = deps.CompartmentDefinitionManager;
+        var searchParameterDefinitionManager = deps.SearchParameterDefinitionManager;
+        var additionalResourceTypes = context.ResourceTypes;
+        var accessConstraints = context.AccessConstraints;
+
+        // Kept in step with the allow-list Lower enforces from the same context: each permitted type's id
+        // must resolve here (an unknown one keeps the unmatchable sentinel rather than being dropped, which
+        // would widen the allow-list into a fail-open bypass).
+        var allowedResourceTypes = context.AllowedResourceTypes;
 
         var collector = new SymbolCollectingVisitor();
         if (expression is not null)
@@ -72,10 +60,9 @@ public static class Resolve
             collector.CollectSort(sortExpression);
         }
 
-        // Access constraints are lowered as ordinary expressions by AccessConstraintApplier, so their
-        // symbols have to be resolved here like any other. Omitting them made every constraint whose
-        // predicate named a parameter the user's own query did not also name throw KeyNotFoundException
-        // out of Lower -- an authorization control that worked only by coincidence.
+        // Access constraints are lowered as ordinary expressions by AccessConstraintApplier, so their symbols
+        // must be resolved here. Omitting them made a constraint throw from Lower unless the user's query also
+        // named the same parameter.
         foreach (var constraint in accessConstraints ?? [])
         {
             collector.CollectConstraint(constraint);
@@ -90,9 +77,7 @@ public static class Resolve
         {
             var id = await resolver.GetSearchParamIdAsync(parameter, cancellationToken);
 
-            // A null Url is unresolvable, not a crash: SymbolTable is keyed by Url, so such a parameter
-            // could never be looked up even with an id in hand -- SymbolTable.SearchParamId says exactly
-            // that on the lookup side. Report it the same way as a resolver miss.
+            // A null Url is unresolvable, not a crash: SymbolTable is keyed by Url, so report it as a miss.
             if (id.HasValue && parameter.Url is { } url)
             {
                 searchParamIds[url.ToString()] = id.Value;
@@ -109,37 +94,26 @@ public static class Resolve
             resourceTypes.Add(targetResourceType);
         }
 
-        // A system-level caller that already resolved _type before compiling passes its type list here
-        // rather than in the expression, so nothing in the tree collects those names. Without this they
-        // resolve to the unmatchable sentinel and the base set narrows to IN (-1, ...) -- a query that
-        // compiles, emits, and matches nothing. The names still go through the resolver like any other,
-        // so a genuinely unknown type keeps the sentinel it deserves.
+        // A system-level caller resolves _type before compiling and passes its type list here, not in the
+        // tree. Without this those names resolve to the unmatchable sentinel and the query matches nothing;
+        // genuinely unknown types still keep the sentinel.
         if (additionalResourceTypes is not null)
         {
             resourceTypes.UnionWith(additionalResourceTypes);
         }
 
-        // The allow-list type names must resolve so their ids are available to Lower's allow-list
-        // enforcement, exactly as the access-constraint types above are resolved for AccessConstraintApplier.
-        // This unions into the RESOLUTION set only -- it does NOT widen the searched base set. "What types
-        // are searched" is derived downstream in Lower from targetResourceType / LowerOptions.ResourceTypes
-        // (a MultiTypeResourceSource over the requested types, or AllTypes for a bare system-level search),
-        // never from this symbol table's full type map, so resolving an allowed name here cannot make a
-        // multi-type search return a type the user did not ask for. Keeping "permitted" separate from
-        // "searched" is the whole point of the allow-list. An unresolvable allowed type keeps the unmatchable
-        // sentinel assigned by the loop below rather than being dropped -- same treatment as an unknown
-        // constraint type or _type; dropping it would let an all-unknown allow-list collapse and, once
-        // intersected in Lower, fail open to every type.
+        // Resolves the allow-list type names so their ids are available to Lower's enforcement. Unions into
+        // the RESOLUTION set only — never the searched base set (Lower derives that from the context's
+        // TargetResourceType/ResourceTypes) — so resolving a permitted name here cannot widen results. An
+        // unresolvable allowed type keeps the sentinel rather than being dropped, which would fail open.
         if (allowedResourceTypes is not null)
         {
             resourceTypes.UnionWith(allowedResourceTypes);
         }
 
-        // A resource type the resolver cannot find is recorded as unmatchable rather than dropped: dropping
-        // it turns into a KeyNotFoundException the moment Lower looks it up, so the very first search
-        // against an empty catalog throws instead of returning an empty bundle. An unknown system already
-        // lowers to a false predicate; an unknown resource type is the same structurally-unsatisfiable
-        // query and now behaves the same way.
+        // A resource type the resolver cannot find is recorded as unmatchable rather than dropped: dropping it
+        // becomes a KeyNotFoundException when Lower looks it up, so the first search against an empty catalog
+        // would throw instead of returning an empty bundle.
         var resourceTypeIds = new Dictionary<string, short>();
         foreach (var resourceType in resourceTypes)
         {
@@ -149,9 +123,8 @@ public static class Resolve
 
         var allSystems = new HashSet<string>(collector.TokenSystems, StringComparer.Ordinal);
         allSystems.UnionWith(collector.QuantitySystems);
-        // Re-keyed off the requested set rather than trusted verbatim: SymbolTable's three-state contract
-        // needs an entry for every collected system, and a resolver overriding the batch method could
-        // return fewer.
+        // Re-keyed off the requested set: SymbolTable's three-state contract needs an entry for every collected
+        // system, and a resolver overriding the batch method could return fewer.
         var resolvedSystems = await resolver.GetSystemIdsAsync(allSystems, cancellationToken);
         var systemIds = new Dictionary<string, int?>(StringComparer.Ordinal);
         foreach (var system in allSystems)
@@ -170,14 +143,9 @@ public static class Resolve
     }
 
     /// <summary>
-    /// Resolves each <c>_not-referenced=Type:path</c> pair to its reference search parameter and adds that
-    /// parameter to the collector so it gets a SearchParamId like any other. A pair whose path the resolver
-    /// cannot find, that carries no Url, or that is not a reference-type parameter is dropped rather than
-    /// recorded: Lower then falls back to a path-agnostic (source-type-only) anti-join, which is the shipping
-    /// engine's lenient behaviour for an unresolvable path. A missing definition manager is a different case
-    /// -- a required dependency was not supplied -- and throws rather than silently degrading every path
-    /// filter, mirroring <see cref="ResolveCompartmentMembership"/>. Returns null when there are no pairs, so
-    /// the common case allocates nothing.
+    /// Resolves each <c>_not-referenced=Type:path</c> pair to its reference parameter and adds it to the
+    /// collector. An unresolvable/non-reference/null-Url pair is dropped (Lower falls back to a path-agnostic
+    /// anti-join); a missing definition manager throws instead. Returns null when there are no pairs.
     /// </summary>
     private static Dictionary<(string SourceResourceType, string ReferencePath), SearchParameterInfo>? ResolveNotReferencedPaths(
         SymbolCollectingVisitor collector,
@@ -268,10 +236,9 @@ public static class Resolve
                             continue;
                         }
 
-                        // Same null-Url reasoning as the leaf loop below: SymbolTable is keyed by Url, so a
-                        // compartment member carrying none could never be looked up even once resolved. Skip
-                        // it -- CompileAsync awaits this outside its try/catch, so a dereference here would
-                        // escape as an NRE and destroy the whole trace.
+                        // Same null-Url reasoning as the leaf loop: a member carrying none could never be
+                        // looked up, so skip it. Resolve.RunAsync awaits this outside its try/catch, so an NRE
+                        // here would escape and destroy the whole compilation.
                         if (searchParam.Url is not { } url)
                         {
                             continue;
