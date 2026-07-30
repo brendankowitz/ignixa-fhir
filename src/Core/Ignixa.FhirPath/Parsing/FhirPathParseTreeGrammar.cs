@@ -149,12 +149,12 @@ internal static class FhirPathParseTreeGrammar
             from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
             select (elements: assignments.ToArray(), isEmpty: false, rbrace)
         )
+        // The type name is the last identifier; anything before it is the namespace
+        // qualifier (`FHIR.Quantity { ... }`). Unqualified names have no prefix.
         select (ParseNode)new InstanceSelectorParseNode(
-            typeIdentifiers.Length == 1
-                ? UnescapeIdentifier(typeIdentifiers[0].ToStringValue())
-                : UnescapeIdentifier(typeIdentifiers[typeIdentifiers.Length - 1].ToStringValue()),
+            UnescapeIdentifier(typeIdentifiers[^1].ToStringValue()),
             typeIdentifiers.Length > 1
-                ? string.Join(".", typeIdentifiers.Take(typeIdentifiers.Length - 1).Select(t => UnescapeIdentifier(t.ToStringValue())))
+                ? string.Join(".", typeIdentifiers[..^1].Select(t => UnescapeIdentifier(t.ToStringValue())))
                 : null,
             elements.elements,
             elements.isEmpty,
