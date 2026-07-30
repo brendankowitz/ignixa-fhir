@@ -35,7 +35,7 @@ internal static class Lower
         var keyset = options.Paging as SearchPaging.Keyset;
         var top = keyset?.Top;
         var page = keyset?.Boundary;
-        var sortPhase = options.Paging?.Phase ?? SortPhase.Valued;
+        var sortPhase = options.SortPhase;
         var shape = options.Shape;
         var includesOnly = shape is ResultShape.IncludesPage;
 
@@ -65,12 +65,22 @@ internal static class Lower
                 "runtime error, so it is reported at compile time instead.");
         }
 
-        if (includeLimit < 0)
+        if (includeLimit is < 0 or int.MaxValue)
         {
             throw new NotSupportedException(
-                $"IncludeLimit must not be negative; got {includeLimit}. Each stage emits TOP (IncludeLimit + 1), " +
-                "so a negative budget is a SQL Server runtime error. Use 0 to probe for included resources " +
-                "without returning any.");
+                $"IncludeLimit must be between 0 and {int.MaxValue - 1}; got {includeLimit}. The budget is " +
+                "emitted as TOP (IncludeLimit + 1) — a negative value is a SQL Server runtime error, and " +
+                "int.MaxValue overflows the probe to a negative TOP. Use 0 to detect included resources " +
+                "without fetching them.");
+        }
+
+        // The count guard runs first: for a phase-restricted count with no _sort, both guards apply, and the
+        // generic one would advise switching to SortPhase.Valued, which leaves the count still unsatisfiable.
+        if (shape is ResultShape.Count { Scope: CountScope.CurrentSortPhase } && sort.Count == 0)
+        {
+            throw new NotSupportedException(
+                "A count was asked to restrict itself to the sort phase but the query has no _sort, so there is " +
+                "no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
         }
 
         // The MissingPrimary segment is defined by the absence of the primary sort key, so with no _sort there
@@ -81,13 +91,6 @@ internal static class Lower
             throw new NotSupportedException(
                 "SortPhase.MissingPrimary was requested but the query has no _sort, so there is no primary sort " +
                 "key to be missing and no second segment to read. Use SortPhase.Valued for an unsorted query.");
-        }
-
-        if (shape is ResultShape.Count { RestrictToSortPhase: true } && sort.Count == 0)
-        {
-            throw new NotSupportedException(
-                "A count was asked to restrict itself to the sort phase but the query has no _sort, so there is " +
-                "no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
         }
 
         var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);

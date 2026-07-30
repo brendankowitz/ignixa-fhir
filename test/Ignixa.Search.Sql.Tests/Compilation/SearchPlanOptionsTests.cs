@@ -15,6 +15,7 @@ public class SearchPlanOptionsTests
         options.Shape.ShouldBe(ResultShape.Default);
         options.Shape.ShouldBeOfType<ResultShape.Matches>();
         options.Paging.ShouldBeNull();
+        options.SortPhase.ShouldBe(SortPhase.Valued);
         options.IncludeLimit.ShouldBe(0);
         options.SurrogateRange.ShouldBeNull();
         options.SearchParameterHash.ShouldBeNull();
@@ -34,24 +35,23 @@ public class SearchPlanOptionsTests
     }
 
     [Fact]
-    public void GivenAKeysetPaging_WhenReadingItsDefaults_ThenItIsAnUncappedFirstPageOfTheValuedSegment()
+    public void GivenAKeysetPaging_WhenReadingItsDefaults_ThenItIsAnUncappedFirstPage()
     {
         var paging = new SearchPaging.Keyset();
 
         paging.Top.ShouldBeNull();
         paging.Boundary.ShouldBeNull();
-        paging.Phase.ShouldBe(SortPhase.Valued);
     }
 
     [Fact]
-    public void GivenAnOffsetPaging_WhenReadingItsDefaults_ThenItAlsoStartsInTheValuedSegment()
+    public void GivenAnOffsetPaging_WhenReadingIt_ThenItCarriesOnlyItsSpec()
     {
-        // Phase sits on the base rather than on Keyset: it names which segment of a two-phase sort the query
-        // reads, which is orthogonal to how that segment is paged.
+        // The sort phase is not a paging property: it names which segment of a two-phase sort the query
+        // reads, which applies under either mechanism and with no paging at all.
         var paging = new SearchPaging.Offset(new OffsetSpec(20, 10));
 
-        paging.Phase.ShouldBe(SortPhase.Valued);
         paging.Spec.Offset.ShouldBe(20);
+        paging.Spec.Limit.ShouldBe(10);
     }
 
     [Fact]
@@ -59,6 +59,6 @@ public class SearchPlanOptionsTests
     {
         var count = new ResultShape.Count();
 
-        count.RestrictToSortPhase.ShouldBeFalse();
+        count.Scope.ShouldBe(CountScope.AllMatches);
     }
 }

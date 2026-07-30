@@ -29,8 +29,8 @@ internal static class LowerHarness
     {
         options ??= new LowerOptions();
 
-        // The harness keeps the old flat flags and maps them onto the closed option unions, so the call sites
-        // it exists to preserve stay unchanged.
+        // The harness takes each lowering input as a separate argument and maps them onto the option unions,
+        // so the ~100 call sites it exists to serve stay unchanged.
         var context = CompilationContextFactory.For(
             expression,
             targetResourceType,
@@ -46,14 +46,15 @@ internal static class LowerHarness
             options: new SearchPlanOptions
             {
                 Shape = options.CountOnly
-                    ? new ResultShape.Count(RestrictToSortPhase: options.CountPhaseScoped)
+                    ? new ResultShape.Count(options.CountPhaseScoped ? CountScope.CurrentSortPhase : CountScope.AllMatches)
                     : options.IncludesOnly
                         ? new ResultShape.IncludesPage(options.IncludeBoundary)
                         : ResultShape.Default,
                 IncludeLimit = includeLimit,
+                SortPhase = sortPhase,
                 Paging = options.OffsetPage is { } offset
-                    ? new SearchPaging.Offset(offset) { Phase = sortPhase }
-                    : new SearchPaging.Keyset(options.Top, page) { Phase = sortPhase },
+                    ? new SearchPaging.Offset(offset)
+                    : new SearchPaging.Keyset(options.Top, page),
                 SearchParameterHash = options.SearchParameterHash?.Value as string,
             });
 
@@ -64,6 +65,28 @@ internal static class LowerHarness
                 SystemLevelSearch = options.SystemLevelSearch,
             },
             symbols);
+    }
+
+    /// <summary>
+    /// Lowers with <c>SearchPlanOptions.Paging</c> left null — the shape <see cref="Run"/> cannot produce,
+    /// since it always materialises a <c>Keyset</c> to carry its <c>top</c> and <c>page</c> arguments.
+    /// </summary>
+    public static LoweredPlan RunWithoutPaging(
+        Expression? expression,
+        SymbolTable symbols,
+        string? targetResourceType,
+        IReadOnlyList<SortExpression> sort,
+        SortPhase sortPhase = SortPhase.Valued)
+    {
+        var context = CompilationContextFactory.For(
+            expression,
+            targetResourceType,
+            includes: [],
+            revIncludes: [],
+            sort: sort,
+            options: new SearchPlanOptions { SortPhase = sortPhase });
+
+        return Lower.Run(context, symbols);
     }
 
     /// <summary>

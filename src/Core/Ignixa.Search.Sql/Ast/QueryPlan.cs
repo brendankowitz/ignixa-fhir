@@ -5,9 +5,10 @@ namespace Ignixa.Search.Sql.Ast;
 /// named CTE, forming a graph <see cref="Match"/> references at any depth. <see cref="OuterPredicate"/> holds
 /// the resource-column filters (_id/_type/_lastUpdated) lifted out of the CTE graph onto the outer join to
 /// dbo.Resource; <see cref="Page"/>, <see cref="SurrogateRange"/>, <see cref="SearchParameterHash"/> and a
-/// MissingPrimary <see cref="Sort"/> each contribute their own outer filter alongside it. Base result is
-/// (T1, Sid1); <see cref="Includes"/> adds (IsMatch, IsPartial), and <see cref="Shape"/> can replace it with a
-/// count or with include rows alone.
+/// MissingPrimary <see cref="Sort"/> each contribute their own outer filter alongside it, subject to
+/// <see cref="Shape"/> — a count ignores <see cref="Page"/> outright and applies <see cref="Sort"/> only when
+/// it is restricted to the sort phase. Base result is (T1, Sid1); <see cref="Includes"/> adds
+/// (IsMatch, IsPartial), and <see cref="Shape"/> can replace it with a count or with include rows alone.
 /// </summary>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,

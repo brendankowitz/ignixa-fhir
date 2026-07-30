@@ -185,18 +185,19 @@ a built `SearchOptions` and so skip query-string parsing entirely; that overload
 have no meaning cannot be written down:
 
 ```csharp
-new ResultShape.Matches()                          // default -- the match set
-new ResultShape.Count()                            // one COUNT_BIG, no ORDER BY, no TOP
-new ResultShape.Count(RestrictToSortPhase: true)   // ...restricted to the segment the sort names
-new ResultShape.IncludesPage(resume: null)         // $includes: the include stages only, as one stream
+new ResultShape.Matches();                          // default -- the match set
+new ResultShape.Count();                            // one COUNT_BIG, no ORDER BY, no TOP
+new ResultShape.Count(CountScope.CurrentSortPhase); // ...restricted to the segment the sort names
+new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
 
-new SearchPaging.Keyset(Top: 50)                   // TOP and/or a keyset seek -- the normal path
-new SearchPaging.Offset(new OffsetSpec(100, 50))   // OFFSET/FETCH, for callers that need it
+new SearchPaging.Keyset(Top: 50);                   // TOP and/or a keyset seek -- the normal path
+new SearchPaging.Offset(new OffsetSpec(100, 50));   // OFFSET/FETCH, for callers that need it
 ```
 
-Both paging cases carry a `Phase`, because which segment of a two-phase sort you are reading is independent
-of how you page through it. `Keyset.Boundary` is the seek boundary; it only means anything within the phase
-that produced it, so the two are set together.
+Which segment of a two-phase sort you read is `SearchPlanOptions.SortPhase`, not a paging property: it
+filters the match set, so it applies under either paging mechanism and with no paging at all.
+`Keyset.Boundary` is the seek boundary, and it only means anything within the phase that produced it, so the
+two are set together.
 
 ### Two-phase missing-value sort
 
@@ -207,12 +208,14 @@ emits one statement per phase and **the caller drives the sequence**:
 ```csharp
 var options = new SearchPlanOptions
 {
-    Paging = new SearchPaging.Keyset(Top: pageSize, Boundary: boundary) { Phase = phase },
+    SortPhase = phase,
+    Paging = new SearchPaging.Keyset(Top: pageSize, Boundary: boundary),
 };
 ```
 
 - `SortPhase.Valued` (the default) inner-joins the primary sort key: rows that have a value, ordered by it.
-- `SortPhase.MissingPrimary` emits `NOT EXISTS` on that key: rows that lack a value, ordered by surrogate id.
+- `SortPhase.MissingPrimary` emits `NOT EXISTS` on that key: rows that lack a value, ordered by the secondary
+  keys if there are any, then surrogate id.
 
 Page through `Valued` until it runs out, then restart at the first page of
 `SortPhase.MissingPrimary` and page that to exhaustion. Only the *primary* key is
@@ -222,7 +225,7 @@ phased; secondary keys are always left-joined tie-breakers with a sentinel, so t
 segment and need only one pass.
 
 Counting works the same way: `ResultShape.Count()` counts the whole match set and ignores any sort the plan
-carries, while `ResultShape.Count(RestrictToSortPhase: true)` counts only the rows the phase reaches -- which
+carries, while `ResultShape.Count(CountScope.CurrentSortPhase)` counts only the rows the phase reaches -- which
 is what a caller totalling the two phases separately needs.
 
 ## What's supported

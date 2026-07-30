@@ -90,7 +90,7 @@ public class LowerOptionsTests
         // Assert
         plan.Sort.ShouldNotBeNull();
         plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
-        plan.EffectiveShape.ShouldBe(new ResultShape.Count(RestrictToSortPhase: true));
+        plan.EffectiveShape.ShouldBe(new ResultShape.Count(CountScope.CurrentSortPhase));
     }
 
     [Fact]
@@ -132,15 +132,18 @@ public class LowerOptionsTests
             options: new LowerOptions { Top = -1 }));
     }
 
-    [Fact]
-    public void GivenANegativeIncludeLimit_WhenLowering_ThenThrowsNotSupported()
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MaxValue)]
+    public void GivenAnOutOfRangeIncludeLimit_WhenLowering_ThenThrowsNotSupported(int includeLimit)
     {
-        // Arrange
+        // Arrange -- the limit is emitted as TOP (IncludeLimit + 1), so int.MaxValue overflows the
+        // truncation probe to a negative row count just as a negative limit is invalid outright.
         var (predicate, symbols) = NameQuery();
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => LowerHarness.Run(
-            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: -1,
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: includeLimit,
             sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
@@ -179,7 +182,8 @@ public class LowerOptionsTests
     public void GivenAnOffsetPageInTheMissingPrimaryPhase_WhenLowering_ThenBothSurvive()
     {
         // Arrange -- the phase names a segment of the sort, which is orthogonal to how that segment is paged.
-        // Nesting it under keyset paging would make resources missing the sort key unreachable by offset paging.
+        // Were it a property of keyset paging, resources missing the sort key would be unreachable by offset
+        // paging at all.
         var (predicate, symbols) = NameQuery();
         var sortExpression = new SortExpression(
             new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name")),
@@ -194,6 +198,47 @@ public class LowerOptionsTests
         // Assert
         plan.OffsetPage!.Offset.ShouldBe(20);
         plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+    }
+
+    [Fact]
+    public void GivenASortedQueryWithNoPaging_WhenLowering_ThenTheSortStartsInTheValuedSegment()
+    {
+        // Arrange -- the phase is independent of paging, so an unpaged sorted query still has to name a
+        // segment. Valued is the first one a caller reads, so it is the default.
+        var (predicate, symbols) = NameQuery();
+        var sortExpression = new SortExpression(
+            new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name")),
+            SortOrder.Ascending);
+
+        // Act
+        var plan = LowerHarness.RunWithoutPaging(
+            predicate, symbols, targetResourceType: "Patient", sort: [sortExpression]).Plan;
+
+        // Assert
+        plan.Top.ShouldBeNull();
+        plan.Page.ShouldBeNull();
+        plan.OffsetPage.ShouldBeNull();
+        plan.Sort!.Phase.ShouldBe(SortPhase.Valued);
+    }
+
+    [Fact]
+    public void GivenAnUnpagedMissingPrimaryQuery_WhenLowering_ThenTheSegmentStillApplies()
+    {
+        // Arrange -- the missing segment is reachable with no paging at all, which is why the phase does not
+        // live on SearchPaging: expressing this would otherwise need a keyset that pages nothing.
+        var (predicate, symbols) = NameQuery();
+        var sortExpression = new SortExpression(
+            new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name")),
+            SortOrder.Ascending);
+
+        // Act
+        var plan = LowerHarness.RunWithoutPaging(
+            predicate, symbols, targetResourceType: "Patient", sort: [sortExpression],
+            sortPhase: SortPhase.MissingPrimary).Plan;
+
+        // Assert
+        plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+        plan.Top.ShouldBeNull();
     }
 
     private static (Expression Predicate, SymbolTable Symbols) NameQuery()

@@ -449,6 +449,37 @@ public class CompileFromOptionsTests
         SqlGrammar.AssertValid(result.Plan.Compile().Sql);
     }
 
+    [Theory]
+    [InlineData(0, "TOP (1)")]
+    [InlineData(20, "TOP (21)")]
+    public async Task GivenAnIncludeAndAnIncludeLimit_WhenCompilingFromOptions_ThenTheStageOverFetchesOneRow(
+        int includeLimit, string expectedTop)
+    {
+        // The public IncludeLimit has to reach IncludeStage.Limit intact: the emitted TOP is IncludeLimit + 1,
+        // and that extra row is the only signal the caller gets that the includes were truncated. A mapping
+        // regression here would silently mark every page complete, which no emit-level test would catch.
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = StatusParamId;
+        resolver.SearchParamIds[subjectParam.Url!.ToString()] = 230;
+        resolver.ResourceTypeIds["Observation"] = ObservationTypeId;
+        resolver.ResourceTypeIds["Patient"] = PatientTypeId;
+
+        var searchOptions = new SearchOptions
+        {
+            ResourceType = "Observation",
+            Expression = new SearchParameterExpression(statusParam, TokenPredicateLeaf(statusParam, "final")),
+            Include = [new IncludeExpression(["Observation"], subjectParam, "Observation", "Patient", referencedTypes: null, wildCard: false, reversed: false, iterate: false)],
+        };
+
+        var plan = await new SearchSqlCompiler(resolver).CreatePlanFromOptionsAsync(
+            searchOptions, "Observation", new SearchPlanOptions { IncludeLimit = includeLimit });
+
+        plan.Compile().Sql.ShouldContain(expectedTop);
+    }
+
     /// <summary>A wrapped token predicate ("&lt;param&gt; eq &lt;code&gt;"), the shape a real bound leaf takes -- mirrors AccessConstraintTests' TokenPredicate.</summary>
     private static Expression TokenPredicate(SearchParameterInfo parameter, string code)
         => new SearchParameterExpression(parameter, TokenPredicateLeaf(parameter, code));

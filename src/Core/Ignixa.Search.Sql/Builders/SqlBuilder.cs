@@ -209,11 +209,30 @@ internal static class SqlBuilder
                 "the mismatch is reported rather than silently paged on whichever limit is first.");
         }
 
-        if (plan.EffectiveShape is ResultShape.Count { RestrictToSortPhase: true } && plan.Sort is null)
+        // Keys.Count, not a null check: SortSpec is a positional record, so SortSpec([], Valued) is
+        // constructible and would emit no sort join and no MissingPrimary filter — a whole-set count
+        // silently contradicting the restriction.
+        if (plan.EffectiveShape is ResultShape.Count { Scope: CountScope.CurrentSortPhase } && plan.Sort is not { Keys.Count: > 0 })
         {
             throw new NotSupportedException(
-                "A count was asked to restrict itself to the sort phase but the plan carries no Sort, so there " +
-                "is no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
+                "A count was asked to restrict itself to the sort phase but the plan carries no sort keys, so " +
+                "there is no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
+        }
+
+        // Guarded independently of Lower.Run because QueryPlan is a public construction surface, and every
+        // emission path writes TOP (Limit + 1): int.MaxValue overflows that to a negative row count.
+        if (plan.Includes is { Count: > 0 } stages)
+        {
+            for (var i = 0; i < stages.Count; i++)
+            {
+                if (stages[i].Limit is < 0 or int.MaxValue)
+                {
+                    throw new NotSupportedException(
+                        $"Include stage limits must be between 0 and {int.MaxValue - 1}; stage {i} has " +
+                        $"{stages[i].Limit}. The limit is emitted as TOP (Limit + 1) to probe for truncation, " +
+                        "so a negative value is a SQL Server runtime error and int.MaxValue overflows the probe.");
+                }
+            }
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
@@ -341,8 +360,8 @@ internal static class SqlBuilder
     /// <summary>
     /// Emits the Count shape: COUNT_BIG(DISTINCT m.Sid1) over the match CTE. Row caps, offsets and keyset
     /// boundaries are ignored, since a count is of the whole result set rather than a page of it. So is the
-    /// sort, unless <see cref="ResultShape.Count.RestrictToSortPhase"/> asked the count to cover only the
-    /// segment the sort names, which applies the phase's key join and its MissingPrimary filter.
+    /// sort, unless <see cref="CountScope.CurrentSortPhase"/> asked the count to cover only the segment the
+    /// sort names, which applies the phase's key join and its MissingPrimary filter.
     /// </summary>
     private static void EmitCountOnlyShape(
         QueryPlan plan,
@@ -353,7 +372,7 @@ internal static class SqlBuilder
         WriteCteHeader(writer, cteBlocks);
         writer.Append("\n");
 
-        var phaseSort = plan.EffectiveShape is ResultShape.Count { RestrictToSortPhase: true } ? plan.Sort : null;
+        var phaseSort = plan.EffectiveShape is ResultShape.Count { Scope: CountScope.CurrentSortPhase } ? plan.Sort : null;
 
         var countSortJoins = EmitSortJoins(phaseSort);
         writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
@@ -1020,11 +1039,9 @@ internal static class SqlBuilder
         if (key.Kind == SortKeyKind.LastUpdated || key.SearchParamId is null)
         {
             throw new NotSupportedException(
-                "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceType, ResourceId, or otherwise " +
-                "SearchParamId-less primary key reached Emit -- none of these is ever \"missing\" (all are " +
-                "non-nullable resource columns), so none has a MissingPrimary segment. Compiling from " +
-                "SearchPlanOptions rejects this combination; QueryPlan is a public construction surface, so " +
-                "this guard exists defensively rather than trusting every caller routes through one.");
+                "A MissingPrimary sort phase requires a search-parameter primary key. LastUpdated, " +
+                "ResourceType and ResourceId are non-nullable resource columns, so they are never missing and " +
+                "have no second segment. Sort on a search parameter, or use SortPhase.Valued.");
         }
 
         if (key.Kind == SortKeyKind.Aggregated)

@@ -22,14 +22,8 @@ public abstract record ResultShape
     /// A single <c>COUNT_BIG(DISTINCT …)</c> over the match set. Row caps, offsets and keyset boundaries do
     /// not bound it: a count is of the whole set, not of a page.
     /// </summary>
-    /// <param name="RestrictToSortPhase">
-    /// Whether the count covers only the segment <see cref="QueryPlan.Sort"/> names. False — the default —
-    /// counts every matching resource and ignores the sort entirely, which is the FHIR <c>Bundle.total</c>.
-    /// True joins the primary sort key (or applies its <c>NOT EXISTS</c> for
-    /// <see cref="SortPhase.MissingPrimary"/>) so the count answers "how many rows are in the segment I am
-    /// currently paging", and requires the plan to carry a sort.
-    /// </param>
-    public sealed record Count(bool RestrictToSortPhase = false) : ResultShape;
+    /// <param name="Scope">Which rows the count covers. Defaults to <see cref="CountScope.AllMatches"/>.</param>
+    public sealed record Count(CountScope Scope = CountScope.AllMatches) : ResultShape;
 
     /// <summary>
     /// Include-stage rows only, omitting the match page from the result while still using it to seed the

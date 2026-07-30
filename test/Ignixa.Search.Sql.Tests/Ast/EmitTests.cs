@@ -2689,7 +2689,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(RestrictToSortPhase: true),
+            Shape: new ResultShape.Count(CountScope.CurrentSortPhase),
             Sort: sort);
 
         // Act
@@ -2718,7 +2718,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(RestrictToSortPhase: true),
+            Shape: new ResultShape.Count(CountScope.CurrentSortPhase),
             Sort: sort);
 
         // Act
@@ -2776,7 +2776,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(RestrictToSortPhase: true));
+            Shape: new ResultShape.Count(CountScope.CurrentSortPhase));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3050,6 +3050,80 @@ public class EmitTests
             Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
             Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
             Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithATopCap_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // Top bounds the match set that seeds the include stages, so it drops include rows without marking
+        // the result partial. An includes-only page bounds its match set with SurrogateRange instead.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Top: 25,
+            Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAnOffsetPage_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            OffsetPage: new OffsetSpec(100, 50),
+            Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Theory]
+    [InlineData(-1, 50)]
+    [InlineData(0, 0)]
+    [InlineData(0, -50)]
+    public void GivenAPlanWithAnOutOfRangeOffsetPage_WhenEmitted_ThenThrowsNotSupportedException(int offset, int limit)
+    {
+        // OFFSET/FETCH rejects a negative skip and a non-positive fetch at runtime. QueryPlan is a public
+        // construction surface, so the emitter reports it rather than relying on every caller routing
+        // through Lower.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            OffsetPage: new OffsetSpec(offset, limit));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAPhaseRestrictedCountWithAnEmptySortSpec_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // SortSpec is a positional record, so a keyless one is constructible. It emits no sort join and no
+        // MissingPrimary filter, which would silently produce the whole-set count the restriction excludes.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([], SortPhase.Valued),
+            Shape: new ResultShape.Count(CountScope.CurrentSortPhase));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MaxValue)]
+    public void GivenAnIncludeStageWithAnOutOfRangeLimit_WhenEmitted_ThenThrowsNotSupportedException(int limit)
+    {
+        // Every emission path writes TOP (Limit + 1): a negative limit is a SQL Server runtime error, and
+        // int.MaxValue overflows the truncation probe to a negative row count.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, limit)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
