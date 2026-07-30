@@ -23,7 +23,11 @@ public sealed record SearchPlan
     /// </summary>
     public string? ResourceType { get; init; }
 
-    /// <summary>Build, Resolve, and Lower diagnostics. Null when <see cref="DiagnosticsLevel"/> is <see cref="SearchDiagnosticsLevel.None"/>.</summary>
+    /// <summary>
+    /// Build, Resolve, and Lower diagnostics. Null when <see cref="DiagnosticsLevel"/> is
+    /// <see cref="SearchDiagnosticsLevel.None"/>, and on a plan constructed directly rather than by
+    /// <c>CreatePlanAsync</c>, which never ran those stages.
+    /// </summary>
     public SearchCompilationDiagnostics? Diagnostics { get; init; }
 
     /// <summary>Carried from <see cref="SearchPlanOptions.DiagnosticsLevel"/> so <see cref="Compile"/> emits at the same detail.</summary>
@@ -59,12 +63,12 @@ public sealed record SearchPlan
 
         var compiled = new CompiledSearch(emitted.Sql, emitted.Parameters, Query)
         {
-            Diagnostics = DiagnosticsLevel == SearchDiagnosticsLevel.None
+            // No fabrication when Diagnostics is null. CreatePlanAsync always populates it at any level above
+            // None, so null here means the plan was hand-constructed and never ran Build/Resolve/Lower. An
+            // empty envelope would be indistinguishable from a real compile in which nothing resolved.
+            Diagnostics = DiagnosticsLevel == SearchDiagnosticsLevel.None || Diagnostics is null
                 ? null
-                : (Diagnostics ?? new SearchCompilationDiagnostics()) with
-                {
-                    SqlTextRanges = emitted.TextRanges ?? [],
-                },
+                : Diagnostics with { SqlTextRanges = emitted.TextRanges ?? [] },
         };
 
         return SearchCompilationResult.Success(compiled);

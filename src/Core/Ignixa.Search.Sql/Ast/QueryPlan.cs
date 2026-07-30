@@ -10,6 +10,43 @@ namespace Ignixa.Search.Sql.Ast;
 /// it is restricted to the sort phase. Base result is (T1, Sid1); <see cref="Includes"/> adds
 /// (IsMatch, IsPartial), and <see cref="Shape"/> can replace it with a count or with include rows alone.
 /// </summary>
+/// <param name="Ctes">The CTE graph, in declaration order. Each entry becomes one named CTE.</param>
+/// <param name="Match">Which CTE the outer query joins to dbo.Resource to produce the match set.</param>
+/// <param name="Top">
+/// Row cap on the match page, emitted as <c>TOP (Top + 1)</c> so the caller can tell a full page from the
+/// last one. Null means uncapped.
+/// </param>
+/// <param name="OuterPredicate">
+/// Resource-column filters (_id/_type/_lastUpdated) lifted out of the CTE graph onto the outer join.
+/// </param>
+/// <param name="Includes">
+/// The _include/_revinclude stages, in dependency order. Null (never an empty list) when the plan includes
+/// nothing, so such a plan emits exactly what it emitted before includes existed.
+/// </param>
+/// <param name="Sort">The _sort keys and the phase they are evaluated in. Null means the default (T1, Sid1) order.</param>
+/// <param name="Page">
+/// The keyset boundary the match page seeks past. Its arity must match the active key count of
+/// <paramref name="Sort"/>'s current phase.
+/// </param>
+/// <param name="Shape">
+/// What the statement returns; null means <see cref="ResultShape.Matches"/>. Read it through
+/// <see cref="EffectiveShape"/>, which resolves the default.
+/// </param>
+/// <param name="Visibility">
+/// Which resource versions are in scope; null means <see cref="ResourceVisibility.Current"/>. Read it through
+/// <see cref="EffectiveVisibility"/>.
+/// </param>
+/// <param name="Projection">Extra result columns beyond (T1, Sid1), emitted in declared order.</param>
+/// <param name="SurrogateRange">Bounds the match set by surrogate id, which is how a bulk export shards work.</param>
+/// <param name="SearchParameterHash">
+/// When set, restricts the match set to rows whose dbo.Resource.SearchParamHash differs from this value — the
+/// resources reindex must revisit because their indexed parameters predate the current definition set. A row
+/// with a NULL hash has never been indexed and always qualifies.
+/// </param>
+/// <param name="OffsetPage">
+/// OFFSET/FETCH paging, mutually exclusive with <paramref name="Top"/> and <paramref name="Page"/>: SQL Server
+/// rejects TOP alongside OFFSET (error 10741), and a seek alongside OFFSET applies two paging mechanisms at once.
+/// </param>
 public sealed record QueryPlan(
     IReadOnlyList<CteDefinition> Ctes,
     CteRef Match,
@@ -18,19 +55,10 @@ public sealed record QueryPlan(
     IReadOnlyList<IncludeStage>? Includes = null,
     SortSpec? Sort = null,
     PageSpec? Page = null,
-    /// <summary>
-    /// What the statement returns; null means <see cref="ResultShape.Matches"/>. Read it through
-    /// <see cref="EffectiveShape"/>, which resolves the default.
-    /// </summary>
     ResultShape? Shape = null,
     ResourceVisibility? Visibility = null,
     ProjectionSpec? Projection = null,
     SurrogateIdRange? SurrogateRange = null,
-    /// <summary>
-    /// When set, restricts the match set to rows whose dbo.Resource.SearchParamHash differs from this
-    /// value — the resources reindex must revisit because their indexed parameters predate the current
-    /// definition set. A row with a NULL hash has never been indexed and always qualifies.
-    /// </summary>
     SqlParameterRef? SearchParameterHash = null,
     OffsetSpec? OffsetPage = null)
 {

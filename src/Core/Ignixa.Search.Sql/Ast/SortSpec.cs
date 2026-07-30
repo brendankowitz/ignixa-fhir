@@ -36,7 +36,8 @@ public sealed record SortKey(
 /// <summary>
 /// Which segment of a two-phase missing-value sort a plan computes. Valued makes Keys[0]'s join INNER (also
 /// gating on presence); MissingPrimary drops Keys[0] and requires it absent via NOT EXISTS. Only Keys[0]
-/// has a phase; other keys are always LEFT-JOIN tie-breakers. The phase is a caller input, not inferred.
+/// has a phase; other keys are tie-breakers that never gate a row out. The phase is a caller input, not
+/// inferred.
 /// </summary>
 public enum SortPhase
 {
@@ -46,7 +47,10 @@ public enum SortPhase
 
 /// <summary>
 /// A compiled _sort, capped at 3 keys. Keys[0] is the primary key that <see cref="SortPhase"/> segments;
-/// Keys[1..] are always LEFT-JOIN tie-breakers.
+/// Keys[1..] are tie-breakers that never gate a row out. How a tie-breaker reaches its value varies by kind:
+/// a search-parameter key (String/Date/Aggregated) LEFT-joins and substitutes a sentinel when absent, whereas
+/// <c>_lastUpdated</c> and <c>_type</c> read match-set columns with no join, and <c>_id</c> LEFT-joins the
+/// clustered PK, which never misses. Only the first kind needs a sentinel.
 /// </summary>
 public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase)
 {

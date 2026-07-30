@@ -25,9 +25,10 @@ public static class PlanExplainer
     }
 
     /// <summary>
-    /// Renders the same content <see cref="Print"/> does, one <see cref="PlanExplainRow"/> per line, label
-    /// kept apart from body so tooling can address a row. <see cref="Print"/> is defined in terms of this so
-    /// the two can never disagree. The match CTE is the row whose display and canonical labels differ.
+    /// Renders the same content <see cref="Print(QueryPlan)"/> does, one <see cref="PlanExplainRow"/> per line,
+    /// label kept apart from body so tooling can address a row. <see cref="Print(QueryPlan)"/> is defined in
+    /// terms of this so the two can never disagree. The match CTE is the row whose display and canonical
+    /// labels differ.
     /// </summary>
     public static IReadOnlyList<PlanExplainRow> Describe(QueryPlan plan)
     {

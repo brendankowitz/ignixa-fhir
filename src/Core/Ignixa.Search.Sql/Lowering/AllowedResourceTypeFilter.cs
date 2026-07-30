@@ -42,8 +42,8 @@ internal sealed class AllowedResourceTypeFilter
     }
 
     /// <summary>Whether the allow-list is inactive (null or empty). Every enforcement site short-circuits on
-    /// this so an unrestricted plan is byte-identical to one compiled before the allow-list existed —
-    /// the same "empty is inert" philosophy as <see cref="AccessConstraintApplier.IsEmpty"/>.</summary>
+    /// this, so an unrestricted plan emits no allow-list SQL at all rather than a filter that happens to
+    /// match everything — the same "empty is inert" philosophy as <see cref="AccessConstraintApplier.IsEmpty"/>.</summary>
     public bool IsEmpty => _allowedTypeIds.Count == 0;
 
     /// <summary>

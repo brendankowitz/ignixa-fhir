@@ -11,6 +11,8 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageStability>alpha</PackageStability>
+    <!-- The package's value is its documented API; without this, consumers get no IntelliSense on any of it. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <Description>FHIR search-to-SQL compiler infrastructure (alpha). Compiles a bound FHIR search expression tree into parameterized T-SQL against the Ignixa search-index schema. Experimental and not yet wired into a production data layer — the public API may change without notice.</Description>
   </PropertyGroup>
 

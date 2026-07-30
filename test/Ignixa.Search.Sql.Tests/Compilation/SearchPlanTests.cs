@@ -84,13 +84,31 @@ public class SearchPlanTests
     [Fact]
     public async Task GivenAPlanAtDiagnosticsLevelFull_WhenCompilingIt_ThenSqlTextRangesAreAttached()
     {
+        // Created through the compiler, not hand-constructed: a plan that never ran Build/Resolve/Lower has no
+        // diagnostics to merge into, and Compile refuses to fabricate an empty envelope for it.
+        var compiler = CompilerFixtures.ForPatient();
+        var result = await compiler.TryCreatePlanAsync(
+            "Patient",
+            [new QueryParameter("name", "smith")],
+            new SearchPlanOptions { DiagnosticsLevel = SearchDiagnosticsLevel.Full });
+
+        result.Succeeded.ShouldBeTrue();
+        result.Plan!.Compile().Diagnostics!.SqlTextRanges.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task GivenAHandConstructedPlanAtAFullDiagnosticsLevel_WhenCompilingIt_ThenNoEmptyDiagnosticsAreFabricated()
+    {
+        // A plan built directly carries no Diagnostics because it never ran the earlier stages. Synthesising
+        // an empty record here would be type-indistinguishable from a real compile in which nothing resolved,
+        // so a caller reading "0 parameters resolved" could not tell a bug from a plan that skipped the stage.
         var plan = new SearchPlan
         {
             Query = await PlanFixtures.SimplePatientSearchAsync(),
             DiagnosticsLevel = SearchDiagnosticsLevel.Full,
         };
 
-        plan.Compile().Diagnostics!.SqlTextRanges.ShouldNotBeEmpty();
+        plan.Compile().Diagnostics.ShouldBeNull();
     }
 
     [Fact]
@@ -102,8 +120,8 @@ public class SearchPlanTests
         var compiler = CompilerFixtures.ForPatient();
         var options = new SearchPlanOptions
         {
-            Paging = new SearchPaging.Keyset(Boundary: new PageSpec(
-                [new SqlParameterRef("Smith")], new SqlParameterRef((short)103), new SqlParameterRef(9000L))),
+            Shape = new ResultShape.Matches(new SearchPaging.Keyset(Boundary: new PageSpec(
+                [new SqlParameterRef("Smith")], new SqlParameterRef((short)103), new SqlParameterRef(9000L)))),
         };
 
         var result = await compiler.TryCreatePlanAsync("Patient", [new QueryParameter("name", "smith")], options);

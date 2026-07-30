@@ -5,8 +5,7 @@ namespace Ignixa.Search.Sql;
 /// <summary>
 /// The outcome of a <c>TryCreatePlan</c> call: exactly one of <see cref="Plan"/> and <see cref="Failure"/>
 /// is non-null. Test <see cref="Succeeded"/> rather than either member. Constructed only through
-/// <see cref="Success"/>/<see cref="Failed"/>, which is what makes the <see cref="MemberNotNullWhenAttribute"/>
-/// pair sound.
+/// <see cref="Success"/>/<see cref="Failed"/>, which is what makes the <c>[MemberNotNullWhen]</c> pair sound.
 /// </summary>
 public sealed record SearchPlanResult
 {

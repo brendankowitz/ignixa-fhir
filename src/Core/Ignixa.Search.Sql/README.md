@@ -179,20 +179,41 @@ a built `SearchOptions` and so skip query-string parsing entirely; that overload
 `COUNT_BIG` when the plan is count-only. You bind `compiled.Parameters` and execute against your database
 (e.g. `SqlCommand`, Dapper, or EF Core raw SQL).
 
+### Two defaults that will surprise you
+
+Neither `_count` nor the include budget is inferred from the query string. Both are caller decisions, and
+both default to *not fetching*:
+
+| You wrote | You get by default | To change it |
+|-----------|--------------------|--------------|
+| `?_count=10` | an **uncapped** statement — `SearchOptions.MaxItemCount` is deliberately not forwarded, because callers transform it (`MaxItemCount + 1`, to detect "has more") before a search runs | `Shape = new ResultShape.Matches(new SearchPaging.Keyset(Top: n))` |
+| `?_include=…` | **zero** include rows — `IncludeLimit` defaults to `0`, which emits `TOP (1)` per stage: enough to report *whether* includes exist, not to return any | `IncludeLimit = n` |
+
+`IncludeLimit` always over-fetches one row so truncation is detectable: the extra row comes back flagged
+`IsPartial` and the caller trims it. There is no uncapped setting.
+
+Counting is the same: `_summary=count` and `_total=accurate` are Bundle metadata that the compiler does not
+read. Set `Shape = new ResultShape.Count.AllMatches()` yourself when you want the `COUNT_BIG`.
+`CompilationContextMapping.NotApplicable` lists every `SearchOptions` property in this category with the
+reason, and `SearchCompilationDiagnostics` reports the resolved values at `Full` diagnostics.
+
 ## Result shape and paging
 
-`SearchPlanOptions` carries two closed hierarchies rather than a bag of flags, so the combinations that
-have no meaning cannot be written down:
+`SearchPlanOptions.Shape` is a closed hierarchy rather than a bag of flags, so the combinations that have no
+meaning cannot be written down:
 
 ```csharp
-new ResultShape.Matches();                          // default -- the match set
+new ResultShape.Matches();                          // default -- the match set, unpaged
+new ResultShape.Matches(new SearchPaging.Keyset(Top: 50));                 // TOP and/or a keyset seek
+new ResultShape.Matches(new SearchPaging.Offset(new OffsetSpec(100, 50))); // OFFSET/FETCH, if you need it
 new ResultShape.Count.AllMatches();                 // one COUNT_BIG, no ORDER BY, no TOP
 new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segment the sort names
 new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
-
-new SearchPaging.Keyset(Top: 50);                   // TOP and/or a keyset seek -- the normal path
-new SearchPaging.Offset(new OffsetSpec(100, 50));   // OFFSET/FETCH, for callers that need it
 ```
+
+Paging hangs off `Matches` because that is the only shape that pages. A count reads the whole match set, and
+an includes page carries its own boundary in `IncludesPage.Resume` — so neither has a second paging
+coordinate that could contradict it.
 
 Which segment of a two-phase sort you read is `SearchPlanOptions.SortPhase`, not a paging property: it
 filters the match set, so it applies under either paging mechanism and with no paging at all.
@@ -209,7 +230,7 @@ emits one statement per phase and **the caller drives the sequence**:
 var options = new SearchPlanOptions
 {
     SortPhase = phase,
-    Paging = new SearchPaging.Keyset(Top: pageSize, Boundary: boundary),
+    Shape = new ResultShape.Matches(new SearchPaging.Keyset(Top: pageSize, Boundary: boundary)),
 };
 ```
 
@@ -238,10 +259,10 @@ is what a caller totalling the two phases separately needs.
 | **Composites** | token-token, token-number-number, token-string, token-quantity, token-date, reference-token | |
 | **Resource columns** | `_id`, `_type`, `_lastUpdated` | lifted into an outer `WHERE` |
 | **Chaining** | forward and reverse chains, any nesting depth | 10-level depth guard |
-| **Includes** | `_include`, `_revinclude`, `:iterate` | topologically ordered |
+| **Includes** | `_include`, `_revinclude`, `:iterate` | topologically ordered; budget is `IncludeLimit`, default 0 |
 | **Compartment search** | membership over the reference table | grouped by membership parameter |
 | **Sort & paging** | `_sort` (up to 3 keys), keyset pagination, [two-phase missing-value sort](#two-phase-missing-value-sort) | caller drives the phases |
-| **Counting** | `_summary=count` / `_total=accurate` | `COUNT_BIG(DISTINCT …)` |
+| **Counting** | `ResultShape.Count` | `COUNT_BIG(DISTINCT …)`; the caller sets the shape — `_summary=count` / `_total` are not read |
 | **Missing** | `:missing` for leaf and composite parameters | |
 
 ## Comparator semantics
@@ -472,9 +493,9 @@ consumer reaches, grouped by namespace.
 
 | Namespace | Public surface |
 |-----------|----------------|
-| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPaging`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
+| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
 | `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
-| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `ResultShape`, `PlanExplainer`, and the SQL value types |
+| `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `SortPhase`, `ResultShape`, `SearchPaging`, `KeysetContinuationToken`, `KeysetPosition`, `PlanExplainer`, and the SQL value types |
 | `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |
 | `Ignixa.Search.Sql.Catalog` | `SqlCatalog` and its `TableDescriptor` / `ColumnDescriptor` (data generated from DDL) |
 

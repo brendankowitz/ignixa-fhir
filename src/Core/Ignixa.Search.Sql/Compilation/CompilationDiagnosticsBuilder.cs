@@ -32,10 +32,17 @@ internal static class CompilationDiagnosticsBuilder
     }
 
     /// <summary>
-    /// Reports control values that took effect without the caller sending them, read back off the resolved
+    /// Reports control values the caller did not send, read back off the resolved
     /// <see cref="SearchOptions"/> so a changed default shows in the trace. Supplied-ness uses
     /// <see cref="QueryParameter.Category"/>; a <see cref="TotalType.None"/> value is skipped and <c>_summary</c>
     /// is never reported (it is only ever set explicitly).
+    /// <para>
+    /// Both reported values are advisory: this package emits neither. <c>_count</c> is not forwarded to
+    /// <c>SearchPlanOptions</c> (the caller decides the page size via <c>ResultShape.Matches(SearchPaging)</c>)
+    /// and <c>_total</c> only tells the caller a count is wanted, which it satisfies by compiling a second plan
+    /// under <c>ResultShape.Count</c>. They are reported so the caller can see the defaults it is expected to
+    /// act on, and both are classified <c>NotApplicable</c> in the plan trace to say so.
+    /// </para>
     /// </summary>
     public static IReadOnlyList<ImplicitParameter> DetectImplicit(IReadOnlyList<QueryParameter> parameters, SearchOptions options)
     {

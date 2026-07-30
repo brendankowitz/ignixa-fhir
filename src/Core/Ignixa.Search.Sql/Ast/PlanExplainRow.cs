@@ -2,7 +2,7 @@ namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// One line of an explained plan, kept as its parts rather than the concatenated text
-/// <see cref="PlanExplainer.Print"/> produces — a UI renders plan lines as selectable rows and joins each
+/// <see cref="PlanExplainer.Print(QueryPlan)"/> produces — a UI renders plan lines as selectable rows and joins each
 /// back to its parameter and SQL text, which it cannot do once label and body are glued with " = ".
 /// </summary>
 public sealed record PlanExplainRow

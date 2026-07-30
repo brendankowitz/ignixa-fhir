@@ -261,8 +261,8 @@ internal sealed class StructuralContext
 
     /// <summary>The base set a negation subtracts from: every resource of <paramref name="resourceType"/>. Rejects a
     /// null (system-level) type — the single choke point every negation reaches, whether it arrives as
-    /// <c>:not</c>, <c>:missing=true</c>, or the no-positive-sibling arm of <see cref="Lower"/>'s AND
-    /// handling. Guarding here rather than at each caller is what keeps the three from diverging.</summary>
+    /// <c>:not</c>, <c>:missing=true</c>, or the no-positive-sibling arm of this class's AND handling.
+    /// Guarding here rather than at each caller is what keeps the three from diverging.</summary>
     public CteRef LowerNegationAnchor(string? resourceType)
     {
         if (resourceType is null)
