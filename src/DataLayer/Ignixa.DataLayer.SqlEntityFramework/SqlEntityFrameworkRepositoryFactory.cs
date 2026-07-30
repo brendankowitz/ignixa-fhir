@@ -36,6 +36,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
     private readonly ISchemaDeployer _schemaDeployer;
     private readonly ISqlExecutionService _sqlExecutionService;
+    private readonly SqlServerSearchIndexCacheRegistry _sqlServerCacheRegistry;
     private readonly string _environment;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
@@ -70,8 +71,10 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         MultiTenantSearchIndexCache multiTenantCache,
         ISchemaDeployer schemaDeployer,
         ISqlExecutionService sqlExecutionService,
+        SqlServerSearchIndexCacheRegistry sqlServerCacheRegistry,
         string environment = "Production")
     {
+        _sqlServerCacheRegistry = sqlServerCacheRegistry ?? throw new ArgumentNullException(nameof(sqlServerCacheRegistry));
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
@@ -353,8 +356,12 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Construction and preloading are relocated to SqlServerRepositoryFactory
         // (Ignixa.DataLayer.SqlServer), which preserves the same once-per-tenant scope: this call
         // happens exactly once here, outside the createRepository closure below.
-        var sqlServerSearchIndexCache = SqlServerRepositoryFactory
-            .CreateReferenceDataCacheAsync(_sqlExecutionService, tenantId, _loggerFactory, CancellationToken.None)
+        // Obtained from the registry rather than constructed here: row generators read the cache instance the
+        // write path was handed, so the package-load search-parameter sync has to be able to reach that same
+        // instance. While this was a local construction it was unreachable from outside this method, and a
+        // sync against any other instance left the write path still dropping index rows.
+        var sqlServerSearchIndexCache = _sqlServerCacheRegistry
+            .GetOrCreateAsync(tenantId, CancellationToken.None)
             .GetAwaiter().GetResult();
 
         // Create factory delegate for Repository (accepts DbContext parameter, retained for

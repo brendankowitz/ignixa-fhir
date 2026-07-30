@@ -39,6 +39,11 @@ public static class DataLayerRegistration
         // MultiTenantSearchIndexCache (per-tenant cache for search index reference data)
         services.AddSingleton<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>();
 
+        // One SqlServer reference-data cache per tenant, shared by the write path and the package-load
+        // search-parameter sync. Singleton because the identity of the instance is the point: a sync against
+        // any other instance leaves the write path dropping index rows.
+        services.AddSingleton<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>();
+
         // SchemaDeployer (DacFx-based schema deployment for brand-new, empty tenant databases)
         services.AddIgnixaSqlServerSchemaDeployment(configuration);
 
@@ -172,6 +177,7 @@ public static class DataLayerRegistration
                 c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
                 c.Resolve<ISchemaDeployer>(),
                 c.Resolve<ISqlExecutionService>(),
+                c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
                 environmentName))
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")

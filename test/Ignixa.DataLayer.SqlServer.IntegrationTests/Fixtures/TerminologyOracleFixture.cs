@@ -51,15 +51,25 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
     // Reference-data caches created for the ported importer; disposed with the fixture.
     private readonly List<global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache> _searchCaches = [];
 
+    private readonly global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry _cacheRegistry;
+
     private TerminologyOracleFixture(
         TestTenantDatabase database,
         SqlEntityFrameworkRepositoryFactory factory,
-        ISqlExecutionService sqlExecutionService)
+        ISqlExecutionService sqlExecutionService,
+        global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry cacheRegistry)
     {
         _database = database;
         _factory = factory;
         SqlExecutionService = sqlExecutionService;
+        _cacheRegistry = cacheRegistry;
     }
+
+    /// <summary>
+    /// The registry the factory was built with, so a test can reach the same per-tenant cache instance the
+    /// write path uses. Obtaining a cache any other way defeats the point of the registry.
+    /// </summary>
+    public global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry CacheRegistry => _cacheRegistry;
 
     public ISqlExecutionService SqlExecutionService { get; }
 
@@ -84,6 +94,9 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
         // ValidateManagedIdentityAuthentication rejects any connection string carrying a password when the
         // environment is Production. The fixture uses integrated security so it would pass either way, but
         // pinning it here keeps the fixture working if the connection string ever gains credentials.
+        var cacheRegistry = new global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry(
+            sqlExecutionService, NullLoggerFactory.Instance);
+
         var factory = new SqlEntityFrameworkRepositoryFactory(
             store,
             NullLoggerFactory.Instance,
@@ -91,9 +104,10 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
             new MultiTenantSearchIndexCache(NullLoggerFactory.Instance),
             deployer,
             sqlExecutionService,
+            cacheRegistry,
             environment: "Development");
 
-        return new TerminologyOracleFixture(database, factory, sqlExecutionService);
+        return new TerminologyOracleFixture(database, factory, sqlExecutionService, cacheRegistry);
     }
 
     /// <summary>
@@ -325,6 +339,8 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
         {
             searchCache.Dispose();
         }
+
+        _cacheRegistry.Dispose();
 
         await _database.DisposeAsync();
     }
