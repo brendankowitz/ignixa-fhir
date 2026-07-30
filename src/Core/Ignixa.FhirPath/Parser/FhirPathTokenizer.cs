@@ -119,6 +119,7 @@ public static class FhirPathTokenizer
                 .Match(Character.EqualTo('{'), FhirPathTokenKind.LeftBrace)
                 .Match(Character.EqualTo('}'), FhirPathTokenKind.RightBrace)
                 .Match(Character.EqualTo(','), FhirPathTokenKind.Comma)
+                .Match(Character.EqualTo(':'), FhirPathTokenKind.Colon)
                 .Match(Character.EqualTo('.'), FhirPathTokenKind.Dot)
 
                 .Build();
@@ -224,6 +225,7 @@ public static class FhirPathTokenizer
                 .Match(Character.EqualTo('{'), FhirPathTokenKind.LeftBrace)
                 .Match(Character.EqualTo('}'), FhirPathTokenKind.RightBrace)
                 .Match(Character.EqualTo(','), FhirPathTokenKind.Comma)
+                .Match(Character.EqualTo(':'), FhirPathTokenKind.Colon)
                 .Match(Character.EqualTo('.'), FhirPathTokenKind.Dot)
 
                 // Whitespace (ignore for standard parsing)

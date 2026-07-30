@@ -204,3 +204,35 @@ internal sealed record EmptyParseNode(
     public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
         => visitor.VisitEmpty(this, context);
 }
+
+/// <summary>
+/// Represents an element assignment in an instance selector.
+/// Example: system: 'http://example.org'
+/// </summary>
+internal sealed record ElementAssignmentParseNode(
+    string ElementName,
+    ParseNode ValueExpression,
+    SourceLocation Location) : ParseNode(Location)
+{
+    // This is a helper node, doesn't need Accept method as it's not visited directly
+    public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
+        => throw new NotSupportedException("ElementAssignmentParseNode is not directly visitable");
+}
+
+/// <summary>
+/// Represents an instance selector expression in the parse tree.
+/// Examples:
+/// - Coding { system: 'http://example.org', code: 'c1' }
+/// - FHIR.Identifier { system: 'http://example.org', value: 'N0001' }
+/// - Period {:}
+/// </summary>
+internal sealed record InstanceSelectorParseNode(
+    string TypeName,
+    string? NamespacePrefix,
+    IReadOnlyList<ElementAssignmentParseNode> Elements,
+    bool IsEmpty,
+    SourceLocation Location) : ParseNode(Location)
+{
+    public override TResult Accept<TContext, TResult>(IParseTreeVisitor<TContext, TResult> visitor, TContext context)
+        => visitor.VisitInstanceSelector(this, context);
+}

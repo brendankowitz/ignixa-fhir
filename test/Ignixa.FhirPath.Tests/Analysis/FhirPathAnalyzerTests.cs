@@ -582,4 +582,30 @@ public class FhirPathAnalyzerTests
     }
 
     #endregion
+
+    #region Instance Selector Type Inference
+
+    [Fact]
+    public void GivenCodingInstanceSelector_WhenAnalyzing_ThenInfersCodingType()
+    {
+        var result = _analyzer.Analyze("Coding { system: 'http://x', code: 'c1' }", "Patient");
+
+        Assert.True(result.IsValid);
+        Assert.Contains("Coding", result.TypeNames);
+    }
+
+    [Fact]
+    public void GivenUnknownTypeInstanceSelector_WhenAnalyzing_ThenReportsError()
+    {
+        var result = _analyzer.Analyze("UnknownFhirType { value: 'x' }", "Patient");
+
+        // The engine cannot construct this type, so the expression can only ever yield empty.
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Contains("UnknownFhirType", StringComparison.Ordinal));
+
+        // The name is still contributed so downstream navigation does not cascade extra errors.
+        Assert.Contains("UnknownFhirType", result.TypeNames);
+    }
+
+    #endregion
 }

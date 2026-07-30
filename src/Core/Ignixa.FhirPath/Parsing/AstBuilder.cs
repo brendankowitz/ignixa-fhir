@@ -124,6 +124,22 @@ internal class AstBuilder : IParseTreeVisitor<AstBuildContext, Expression>
         return new EmptyExpression(location);
     }
 
+    public virtual Expression VisitInstanceSelector(InstanceSelectorParseNode node, AstBuildContext context)
+    {
+        var elementAssignments = node.Elements
+            .Select(e => new ElementAssignment(
+                e.ElementName,
+                e.ValueExpression.Accept(this, context)))
+            .ToList();
+
+        return new InstanceSelectorExpression(
+            node.TypeName,
+            elementAssignments,
+            node.NamespacePrefix,
+            node.IsEmpty,
+            CreateLocation(node.Location));
+    }
+
     protected static ISourcePositionInfo CreateLocation(SourceLocation location) =>
         new FhirPathExpressionLocationInfo
         {

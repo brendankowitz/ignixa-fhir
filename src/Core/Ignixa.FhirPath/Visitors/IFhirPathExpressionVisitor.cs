@@ -9,7 +9,7 @@ namespace Ignixa.FhirPath.Visitors;
 
 /// <summary>
 /// Visitor interface for traversing FhirPath expression trees.
-/// Provides 13 visit methods for all expression types in the FhirPath AST.
+/// Provides 14 visit methods for all expression types in the FhirPath AST.
 /// </summary>
 /// <typeparam name="TContext">The context type passed during traversal</typeparam>
 /// <typeparam name="TOutput">The output type produced by visiting expressions</typeparam>
@@ -28,4 +28,5 @@ public interface IFhirPathExpressionVisitor<TContext, TOutput>
     TOutput VisitQuantity(QuantityExpression expression, TContext context);
     TOutput VisitEmpty(EmptyExpression expression, TContext context);
     TOutput VisitPropertyAccess(PropertyAccessExpression expression, TContext context);
+    TOutput VisitInstanceSelector(InstanceSelectorExpression expression, TContext context);
 }

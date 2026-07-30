@@ -1829,6 +1829,55 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [];
     }
 
+    public IEnumerable<IElement> VisitInstanceSelector(InstanceSelectorExpression expression, EvaluationContext context)
+    {
+        // Instance selector: TypeName { element: value, element: value, ... }
+        // Creates a new FHIR object of the specified type
+
+        // Per spec: If input collection has multiple items, signal an error
+        if (context.Focus.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Instance selector requires a single input item or empty collection, but got {context.Focus.Count} items");
+        }
+
+        // Per spec: If input collection is empty, result is empty
+        if (context.Focus.Count == 0)
+        {
+            return [];
+        }
+
+        var typeName = expression.TypeName;
+
+        // Evaluate element assignments. Per spec: an element whose value evaluates
+        // to an empty collection is omitted. Handles {:} / {} as zero elements.
+        var elements = new List<InstanceElement>();
+        foreach (var assignment in expression.Elements)
+        {
+            var values = EvaluateExpression(context.Focus, assignment.ValueExpression, context).ToList();
+            if (values.Count == 0)
+            {
+                continue;
+            }
+
+            elements.Add(new InstanceElement(assignment.ElementName, values));
+        }
+
+        // Construction is delegated to the host's model/type system; there is no engine-local
+        // object model to fall back on. A transient stand-in node would look like it worked while
+        // producing something that carries no schema metadata and cannot be serialized, so an
+        // unconfigured engine fails loudly instead.
+        if (context.InstanceCreator is not { } createInstance)
+        {
+            throw new InvalidOperationException(
+                $"Cannot construct '{expression.FullTypeName}': no instance creator is configured on the evaluation context. " +
+                $"Set one via {nameof(EvaluationContext.WithInstanceCreator)} (for example, Ignixa.Serialization's SourceNodeInstanceFactory.Create).");
+        }
+
+        var created = createInstance(new InstanceCreationRequest(typeName, expression.NamespacePrefix, elements));
+        return created is null ? [] : [created];
+    }
+
     private IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
     private IElement CreateInteger(int value) => new PrimitiveElement(value, "integer");
     private IElement CreateDecimal(decimal value) => new PrimitiveElement(value, "decimal");

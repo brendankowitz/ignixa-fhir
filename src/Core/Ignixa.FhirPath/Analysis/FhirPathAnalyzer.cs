@@ -696,6 +696,36 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         return result;
     }
 
+    public override FhirPathTypeSet VisitInstanceSelector(InstanceSelectorExpression expression, AnalysisContext context)
+    {
+        var result = new FhirPathTypeSet();
+        var visitor = _childVisitor ?? this;
+
+        foreach (var element in expression.Elements)
+        {
+            element.ValueExpression.AcceptVisitor(visitor, context);
+        }
+
+        var typeDef = _schema.GetTypeDefinition(expression.TypeName);
+        if (typeDef != null)
+        {
+            result.AddType(typeDef, false, expression.TypeName);
+        }
+        else
+        {
+            // The spec is silent on unknown construction types, but an expression naming a type this
+            // schema cannot construct always evaluates to empty, so surfacing it at analysis time is
+            // strictly more useful than a silent empty result at runtime.
+            context.AddError($"Unknown type '{expression.FullTypeName}' in instance selector", expression);
+
+            // Still contribute the name so downstream navigation reports its own problems rather
+            // than cascading "empty context" errors from this one.
+            result.AddPrimitiveType(expression.TypeName);
+        }
+
+        return result;
+    }
+
     public override FhirPathTypeSet VisitEmpty(EmptyExpression expression, AnalysisContext context)
     {
         return new FhirPathTypeSet();
@@ -1193,6 +1223,11 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         public FhirPathTypeSet VisitIndexer(IndexerExpression expression, AnalysisContext context)
         {
             return VisitAndCollect(expression, context, ctx => _analyzer.VisitIndexer(expression, ctx));
+        }
+
+        public FhirPathTypeSet VisitInstanceSelector(InstanceSelectorExpression expression, AnalysisContext context)
+        {
+            return VisitAndCollect(expression, context, ctx => _analyzer.VisitInstanceSelector(expression, ctx));
         }
 
         public FhirPathTypeSet VisitParenthesized(ParenthesizedExpression expression, AnalysisContext context)
