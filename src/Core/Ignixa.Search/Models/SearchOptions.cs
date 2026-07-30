@@ -13,6 +13,64 @@ namespace Ignixa.Search.Models;
 public class SearchOptions
 {
     /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptions"/> class with default values.
+    /// </summary>
+    public SearchOptions()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptions"/> class as a shallow copy of
+    /// <paramref name="other"/>.
+    /// </summary>
+    /// <param name="other">The instance to copy every property from.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This type is a mutable configuration object that callers routinely need to vary by one or two
+    /// properties — a <c>_total=accurate</c> pass that reuses a page's options but drops its includes, or a
+    /// data layer that must hand a compiler a request scoped differently from the one its caller holds.
+    /// Without a copy constructor the only options are to mutate the caller's instance, which leaks across
+    /// every other holder of that reference, or to hand-copy the properties at the call site, which silently
+    /// drops any property added later. Both have caused real defects.
+    /// </para>
+    /// <para>
+    /// The copy is shallow: collection properties are shared with <paramref name="other"/>. That is sound
+    /// because every one is typed as a read-only interface and this class never mutates them in place —
+    /// varying a collection means assigning a new one.
+    /// </para>
+    /// <para>
+    /// A derived type is <em>not</em> preserved: copying through this constructor produces a
+    /// <see cref="SearchOptions"/>. A subclass that adds state must supply its own copy constructor.
+    /// </para>
+    /// </remarks>
+    public SearchOptions(SearchOptions other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        MaxItemCount = other.MaxItemCount;
+        ContinuationToken = other.ContinuationToken;
+        Expression = other.Expression;
+        Sort = other.Sort;
+        Include = other.Include;
+        RevInclude = other.RevInclude;
+        Elements = other.Elements;
+        Total = other.Total;
+        Summary = other.Summary;
+        UnsupportedParams = other.UnsupportedParams;
+        BundleIssues = other.BundleIssues;
+        ResourceType = other.ResourceType;
+        ResourceTypes = other.ResourceTypes;
+        StartSurrogateId = other.StartSurrogateId;
+        EndSurrogateId = other.EndSurrogateId;
+        IncludesMaxItemCount = other.IncludesMaxItemCount;
+        IncludesContinuationToken = other.IncludesContinuationToken;
+        ResourceVersionTypes = other.ResourceVersionTypes;
+        AccessConstraints = other.AccessConstraints;
+        AllowedResourceTypes = other.AllowedResourceTypes;
+    }
+
+    /// <summary>
     /// Gets or sets the maximum number of items to return per page.
     /// </summary>
     public int MaxItemCount { get; set; } = 10;
