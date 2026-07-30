@@ -17,8 +17,13 @@ internal static class ResourceColumnLoweringRule
     /// True for the parameter codes this rule handles. These target dbo.Resource's own columns, so they
     /// never need a SearchParamId — callers that resolve or dispatch by SearchParamId must skip them.
     /// </summary>
+    /// <remarks>
+    /// Delegates to the public <see cref="ResourceColumnParameters"/> so that a host outside this assembly
+    /// and this rule cannot disagree about the set. The alias is kept because it reads correctly at the
+    /// lowering call sites, which are about <em>this rule's</em> applicability.
+    /// </remarks>
     public static bool IsResourceColumnCode(string parameterCode)
-        => parameterCode is "_id" or "_type" or "_lastUpdated";
+        => ResourceColumnParameters.IsResourceColumnCode(parameterCode);
 
     public static Predicate? TryLower(SearchParameterPredicateExpression predicate, LeafContext context) => predicate.Parameter.Code switch
     {
