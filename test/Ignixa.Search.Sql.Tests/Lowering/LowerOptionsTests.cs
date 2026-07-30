@@ -35,7 +35,7 @@ public class LowerOptionsTests
     }
 
     [Fact]
-    public void GivenACountWithoutAContinuation_WhenLowering_ThenTheSortIsDroppedSoTheCountCoversEveryMatch()
+    public void GivenAnUnrestrictedCount_WhenLowering_ThenTheSortIsStillValidatedAndCarried()
     {
         // Arrange
         var (predicate, symbols) = NameQuery();
@@ -49,13 +49,31 @@ public class LowerOptionsTests
             sort: [sortExpression], sortPhase: SortPhase.Valued, page: null,
             options: new LowerOptions { CountOnly = true }).Plan;
 
-        // Assert -- a sort survives onto a count plan only when it scopes the count
+        // Assert -- lowering never skips sort validation; the emitter ignores the Sort for a count that did
+        // not ask to be restricted to the phase.
         plan.CountOnly.ShouldBeTrue();
-        plan.Sort.ShouldBeNull();
+        plan.Sort.ShouldNotBeNull();
+        plan.EffectiveShape.ShouldBe(new ResultShape.Count());
     }
 
     [Fact]
-    public void GivenACountWithAContinuation_WhenLowering_ThenTheSortSurvivesToScopeTheCountToItsPhase()
+    public void GivenAnUnrestrictedCountWithTooManySortKeys_WhenLowering_ThenThrowsNotSupported()
+    {
+        // Arrange -- a count must not become a hole in sort validation. Four keys are rejected for a row search,
+        // so they are rejected here too even though the emitter will ignore the Sort.
+        var (predicate, symbols) = NameQuery();
+        var name = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var fourKeys = Enumerable.Repeat(new SortExpression(name, SortOrder.Ascending), 4).ToList();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: fourKeys, sortPhase: SortPhase.Valued, page: null,
+            options: new LowerOptions { CountOnly = true }));
+    }
+
+    [Fact]
+    public void GivenACountRestrictedToItsSortPhase_WhenLowering_ThenTheSortSurvivesToScopeTheCountToItsPhase()
     {
         // Arrange
         var (predicate, symbols) = NameQuery();
@@ -67,24 +85,38 @@ public class LowerOptionsTests
         var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [sortExpression], sortPhase: SortPhase.MissingPrimary, page: null,
-            options: new LowerOptions { CountOnly = true }).Plan;
+            options: new LowerOptions { CountOnly = true, CountPhaseScoped = true }).Plan;
 
         // Assert
         plan.Sort.ShouldNotBeNull();
         plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+        plan.EffectiveShape.ShouldBe(new ResultShape.Count(RestrictToSortPhase: true));
     }
 
     [Fact]
-    public void GivenACountWithAContinuationButNoSort_WhenLowering_ThenThrowsNotSupported()
+    public void GivenACountRestrictedToASortPhaseButNoSort_WhenLowering_ThenThrowsNotSupported()
     {
-        // Arrange -- there is no sort phase for the continuation to scope the count to
+        // Arrange -- there is no sort phase for the count to be restricted to
         var (predicate, symbols) = NameQuery();
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
-            sort: [], sortPhase: SortPhase.MissingPrimary, page: null,
-            options: new LowerOptions { CountOnly = true }));
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            options: new LowerOptions { CountOnly = true, CountPhaseScoped = true }));
+    }
+
+    [Fact]
+    public void GivenAMissingPrimaryPhaseWithNoSort_WhenLoweringAMatch_ThenThrowsNotSupported()
+    {
+        // Arrange -- with no _sort there is no primary key to be missing, so there is no second segment. Emitting
+        // the phase-free statement instead would hand a two-phase caller an ordinary first page.
+        var (predicate, symbols) = NameQuery();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.MissingPrimary, page: null));
     }
 
     [Fact]
@@ -110,6 +142,58 @@ public class LowerOptionsTests
         Should.Throw<NotSupportedException>(() => LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: -1,
             sort: [], sortPhase: SortPhase.Valued, page: null));
+    }
+
+    [Theory]
+    [InlineData(-1, 10)]
+    [InlineData(0, 0)]
+    [InlineData(0, -5)]
+    public void GivenAnOutOfRangeOffsetSpec_WhenLowering_ThenThrowsNotSupported(int offset, int limit)
+    {
+        // Arrange -- OFFSET/FETCH rejects a negative skip and a non-positive fetch at runtime
+        var (predicate, symbols) = NameQuery();
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            options: new LowerOptions { OffsetPage = new OffsetSpec(offset, limit) }));
+    }
+
+    [Fact]
+    public void GivenANullOffsetSpec_WhenLowering_ThenThrowsRatherThanSilentlyUnpaging()
+    {
+        // Arrange -- a positional record parameter cannot enforce non-nullness against a caller who ignores the
+        // annotation, and falling through would emit an unpaged statement returning every row.
+        var (predicate, symbols) = NameQuery();
+        var context = CompilationContextFactory.For(
+            predicate,
+            "Patient",
+            options: new SearchPlanOptions { Paging = new SearchPaging.Offset(null!) });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => Lower.Run(context, symbols));
+    }
+
+    [Fact]
+    public void GivenAnOffsetPageInTheMissingPrimaryPhase_WhenLowering_ThenBothSurvive()
+    {
+        // Arrange -- the phase names a segment of the sort, which is orthogonal to how that segment is paged.
+        // Nesting it under keyset paging would make resources missing the sort key unreachable by offset paging.
+        var (predicate, symbols) = NameQuery();
+        var sortExpression = new SortExpression(
+            new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name")),
+            SortOrder.Ascending);
+
+        // Act
+        var plan = LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [sortExpression], sortPhase: SortPhase.MissingPrimary, page: null,
+            options: new LowerOptions { OffsetPage = new OffsetSpec(20, 10) }).Plan;
+
+        // Assert
+        plan.OffsetPage!.Offset.ShouldBe(20);
+        plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
     }
 
     private static (Expression Predicate, SymbolTable Symbols) NameQuery()

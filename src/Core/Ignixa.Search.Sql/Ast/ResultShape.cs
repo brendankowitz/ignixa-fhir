@@ -1,10 +1,8 @@
 namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// What a compiled statement returns. Closed and exhaustive: the cases are the terminal shapes
-/// <see cref="Builders.SqlBuilder"/> can emit, and a plan is exactly one of them. Replaces the former
-/// CountOnly/IncludesOnly/IncludeBoundary flag set, whose contradictory combinations had to be rejected at
-/// emit time; here they are unrepresentable.
+/// What a compiled statement returns. The cases are the terminal shapes <see cref="Builders.SqlBuilder"/> can
+/// emit and a plan is exactly one of them, so match, count and include-only semantics cannot be combined.
 /// </summary>
 public abstract record ResultShape
 {
@@ -21,12 +19,17 @@ public abstract record ResultShape
     public sealed record Matches : ResultShape;
 
     /// <summary>
-    /// A single <c>COUNT_BIG(DISTINCT …)</c> over the match set. Paging is ignored — a count is of the
-    /// whole set, not of a page. The count is scoped to the plan's sort phase when
-    /// <see cref="QueryPlan.Sort"/> is present and unscoped when it is absent, so a plan asking for a
-    /// whole-result total simply carries no sort.
+    /// A single <c>COUNT_BIG(DISTINCT …)</c> over the match set. Row caps, offsets and keyset boundaries do
+    /// not bound it: a count is of the whole set, not of a page.
     /// </summary>
-    public sealed record Count : ResultShape;
+    /// <param name="RestrictToSortPhase">
+    /// Whether the count covers only the segment <see cref="QueryPlan.Sort"/> names. False — the default —
+    /// counts every matching resource and ignores the sort entirely, which is the FHIR <c>Bundle.total</c>.
+    /// True joins the primary sort key (or applies its <c>NOT EXISTS</c> for
+    /// <see cref="SortPhase.MissingPrimary"/>) so the count answers "how many rows are in the segment I am
+    /// currently paging", and requires the plan to carry a sort.
+    /// </param>
+    public sealed record Count(bool RestrictToSortPhase = false) : ResultShape;
 
     /// <summary>
     /// Include-stage rows only, omitting the match page from the result while still using it to seed the

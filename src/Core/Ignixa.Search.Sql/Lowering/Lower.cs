@@ -27,19 +27,36 @@ internal static class Lower
         var targetResourceType = context.TargetResourceType;
         var includes = context.Includes;
         var revIncludes = context.RevIncludes;
-        var includeLimit = options.IncludeLimit ?? 0;
+        var includeLimit = options.IncludeLimit;
         var sort = context.Sort;
 
         // Paging is one closed choice, so the T-SQL restriction that TOP cannot combine with OFFSET/FETCH
         // (error 10741) needs no guard here: only one of these two locals can be non-null.
         var keyset = options.Paging as SearchPaging.Keyset;
-        var offsetPage = (options.Paging as SearchPaging.Offset)?.Spec;
         var top = keyset?.Top;
-        var continuation = keyset?.From;
-        var sortPhase = continuation?.Phase ?? SortPhase.Valued;
-        var page = continuation?.Boundary;
+        var page = keyset?.Boundary;
+        var sortPhase = options.Paging?.Phase ?? SortPhase.Valued;
         var shape = options.Shape;
         var includesOnly = shape is ResultShape.IncludesPage;
+
+        OffsetSpec? offsetPage = null;
+
+        if (options.Paging is SearchPaging.Offset offset)
+        {
+            // A positional record parameter cannot enforce non-nullness against a caller who ignores the
+            // annotation, and a null Spec would fall through to an unpaged statement returning every row.
+            offsetPage = offset.Spec
+                ?? throw new NotSupportedException(
+                    "SearchPaging.Offset requires an OffsetSpec. Use SearchPaging.Keyset, or leave Paging null, " +
+                    "to compile without an OFFSET/FETCH page.");
+
+            if (offsetPage.Offset < 0 || offsetPage.Limit <= 0)
+            {
+                throw new NotSupportedException(
+                    $"OffsetSpec must skip a non-negative row count and fetch a positive one; got Offset " +
+                    $"{offsetPage.Offset} and Limit {offsetPage.Limit}. OFFSET/FETCH rejects both at runtime.");
+            }
+        }
 
         if (top is < 0)
         {
@@ -48,19 +65,29 @@ internal static class Lower
                 "runtime error, so it is reported at compile time instead.");
         }
 
-        if (options.IncludeLimit is < 0)
+        if (includeLimit < 0)
         {
             throw new NotSupportedException(
-                $"IncludeLimit must not be negative; got {options.IncludeLimit}. Use null for no cap.");
+                $"IncludeLimit must not be negative; got {includeLimit}. Each stage emits TOP (IncludeLimit + 1), " +
+                "so a negative budget is a SQL Server runtime error. Use 0 to probe for included resources " +
+                "without returning any.");
         }
 
-        // A count restricted to a sort phase counts only the rows that phase reaches, so it needs a _sort to
-        // phase on. Requesting the scoping on a non-count plan is unrepresentable.
-        if (shape is ResultShape.Count && continuation is not null && sort.Count == 0)
+        // The MissingPrimary segment is defined by the absence of the primary sort key, so with no _sort there
+        // is no such segment. Emitting the phase-free statement instead hands back an ordinary first page, and a
+        // caller driving the two-phase loop would re-read every row it already saw.
+        if (sortPhase is SortPhase.MissingPrimary && sort.Count == 0)
         {
             throw new NotSupportedException(
-                "A count was given a SearchContinuation but the query has no _sort, so there is no sort phase " +
-                "to scope the count to. Drop the continuation to count the whole match set.");
+                "SortPhase.MissingPrimary was requested but the query has no _sort, so there is no primary sort " +
+                "key to be missing and no second segment to read. Use SortPhase.Valued for an unsorted query.");
+        }
+
+        if (shape is ResultShape.Count { RestrictToSortPhase: true } && sort.Count == 0)
+        {
+            throw new NotSupportedException(
+                "A count was asked to restrict itself to the sort phase but the query has no _sort, so there is " +
+                "no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
         }
 
         var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);
@@ -205,13 +232,23 @@ internal static class Lower
                 "silently applying a match-side seek that would change which resources are included.");
         }
 
-        // A count ignores ordering, so a sort survives onto a count plan only when it constrains the count: the
-        // caller named a continuation and the phase's join is the filter being counted. Without one the plan
-        // carries no sort and the count covers the whole match set. This is what SqlBuilder reads instead of a
-        // separate scoping flag.
-        var sortSpec = shape is ResultShape.Count && continuation is null
-            ? null
-            : BuildSortSpec(sort, sortPhase, symbols);
+        // Top truncates the seed match set and an offset page skips into it, so either silently changes which
+        // resources the include stages reach. Same reasoning as the keyset boundary above: the includes page
+        // bounds its match set by a surrogate-id range and pages its own rows by the resume boundary.
+        if (includesOnly && (top is not null || offsetPage is not null))
+        {
+            throw new NotSupportedException(
+                "IncludesPage was requested together with " + (top is not null ? "a Top cap" : "an offset page") +
+                ". An includes-only page bounds its match set by a surrogate-id range and pages its include rows " +
+                "by a resume boundary; a match-side row cap or offset instead changes which resources seed the " +
+                "include stages, dropping include rows with no indication that they are missing. Bound the match " +
+                "set with SurrogateRange and page the include rows with ResultShape.IncludesPage.Resume.");
+        }
+
+        // BuildSortSpec validates the sort -- key count, key types, and MissingPrimary against a resource-column
+        // primary key -- so it runs for every shape. A count reads it only when it asked to be restricted to the
+        // phase; otherwise SqlBuilder ignores it and counts the whole match set.
+        var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
         // A typeless boundary breaks its final tie on Sid1 alone and omits the type column, which agrees with the
         // ORDER BY only for a custom sort (every other sort keeps m.T1 as a tiebreak). Mirror of the guard below,

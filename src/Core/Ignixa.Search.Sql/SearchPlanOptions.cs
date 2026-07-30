@@ -5,7 +5,7 @@ namespace Ignixa.Search.Sql;
 
 /// <summary>
 /// Everything a caller controls about a compile that is not the query itself. Every property is optional; the
-/// default instance is a plain, untraced, uncapped search returning the first page of matches.
+/// default instance is a plain, untraced search with no row cap and no continuation.
 /// </summary>
 public sealed record SearchPlanOptions
 {
@@ -13,13 +13,18 @@ public sealed record SearchPlanOptions
     public ResultShape Shape { get; init; } = ResultShape.Default;
 
     /// <summary>
-    /// How the statement is bounded and positioned. Null means no cap and the first page, which for a sorted
-    /// search is the first page of the <see cref="SortPhase.Valued"/> segment.
+    /// How the statement is bounded and positioned. Null means no row cap, no offset and no continuation,
+    /// starting a sorted search in <see cref="SortPhase.Valued"/>.
     /// </summary>
     public SearchPaging? Paging { get; init; }
 
-    /// <summary>The per-stage cap on included resources; null means no cap. Rejected when negative.</summary>
-    public int? IncludeLimit { get; init; }
+    /// <summary>
+    /// The per-stage budget of included resources. Each stage emits <c>TOP (IncludeLimit + 1)</c>, over-fetching
+    /// one row so truncation stays detectable as an <c>IsPartial</c> flag. Zero — the default — is therefore a
+    /// probe: it returns no included resources but still reports whether any exist. There is no uncapped
+    /// setting. Rejected when negative.
+    /// </summary>
+    public int IncludeLimit { get; init; }
 
     /// <summary>
     /// An inclusive surrogate-id bound. When set it wins over <c>SearchOptions.StartSurrogateId</c>/

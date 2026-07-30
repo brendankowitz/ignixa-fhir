@@ -173,19 +173,29 @@ internal static class SqlBuilder
         if (plan.IncludesOnly && plan.Includes is not { Count: > 0 })
         {
             throw new NotSupportedException(
-                "IncludesOnly was requested with no include stages, which can only ever return an empty " +
-                "result. This is a caller error rather than a query that legitimately matches nothing.");
+                "ResultShape.IncludesPage requires at least one include stage; with none it can only ever " +
+                "return an empty result. Add an _include or _revinclude, or use ResultShape.Matches.");
         }
 
         if (plan.IncludesOnly && plan.Page is not null)
         {
-            // A _sort is still allowed here: its SortPhase filters the seed match set rather than ordering it.
+            // A Sort is still allowed here: its phase filters the seed match set rather than ordering it.
             throw new NotSupportedException(
-                "IncludesOnly was requested together with a keyset Page, but an includes-only page bounds its " +
-                "match set by a surrogate-id range and pages its include rows by a resume boundary over (T1, Sid1). A " +
-                "keyset Page seeks the match rows by the sort-key boundary, a second paging mechanism the " +
-                "includes-only page does not use, so it is reported rather than silently applying a match-side " +
-                "seek that would change which resources are included.");
+                "ResultShape.IncludesPage cannot be combined with a keyset Page. An includes page bounds its " +
+                "match set by a surrogate-id range and pages its include rows by a resume boundary over " +
+                "(T1, Sid1); a keyset Page seeks the match rows by the sort-key boundary instead, silently " +
+                "changing which resources are included. Put the resume boundary in " +
+                "ResultShape.IncludesPage.Resume and clear Page.");
+        }
+
+        if (plan.IncludesOnly && (plan.Top is not null || plan.OffsetPage is not null))
+        {
+            throw new NotSupportedException(
+                "ResultShape.IncludesPage cannot be combined with " +
+                (plan.Top is not null ? "a Top cap" : "an OffsetPage") +
+                ". Either one bounds the match set that seeds the include stages, dropping include rows with no " +
+                "indication that they are missing. Bound the match set with SurrogateRange and page the include " +
+                "rows with ResultShape.IncludesPage.Resume.");
         }
 
         if (plan.IncludesOnly && plan.Includes is { Count: > 0 } includeStages
@@ -194,10 +204,16 @@ internal static class SqlBuilder
             // One TOP is applied over the union of every stage (budget from includes[0].Limit), so differing
             // per-stage limits would silently page on whichever limit is first.
             throw new NotSupportedException(
-                "IncludesOnly was requested with include stages that do not all share one Limit. The page " +
-                "budget applies once across the union of every stage, so a per-stage limit has no coherent " +
-                "meaning here; the stages must agree on a single Limit. The mismatch is reported rather than " +
-                "silently paged on whichever limit is first.");
+                "ResultShape.IncludesPage applies one page budget across the union of every include stage, so " +
+                "the stages must agree on a single Limit. A per-stage limit has no coherent meaning here, and " +
+                "the mismatch is reported rather than silently paged on whichever limit is first.");
+        }
+
+        if (plan.EffectiveShape is ResultShape.Count { RestrictToSortPhase: true } && plan.Sort is null)
+        {
+            throw new NotSupportedException(
+                "A count was asked to restrict itself to the sort phase but the plan carries no Sort, so there " +
+                "is no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
@@ -224,6 +240,14 @@ internal static class SqlBuilder
                 "OffsetPage cannot be combined with Top or a keyset Page: TOP alongside OFFSET/FETCH is " +
                 "rejected by SQL Server, and a keyset seek alongside OFFSET/FETCH applies two independent " +
                 "paging mechanisms to one query.");
+        }
+
+        // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
+        if (plan.OffsetPage is { } offsetSpec && (offsetSpec.Offset < 0 || offsetSpec.Limit <= 0))
+        {
+            throw new NotSupportedException(
+                $"OffsetPage must skip a non-negative row count and fetch a positive one; got Offset " +
+                $"{offsetSpec.Offset} and Limit {offsetSpec.Limit}. OFFSET/FETCH rejects both at runtime.");
         }
 
         // A typeless seek is sound only against a type-free ORDER BY (sort keys…, Sid1), which EmitOrderBy
@@ -315,9 +339,10 @@ internal static class SqlBuilder
     }
 
     /// <summary>
-    /// Emits the Count shape: COUNT_BIG(DISTINCT m.Sid1) over the match CTE. Ignores Page, since a count is of
-    /// the whole result set rather than a page of it. A Sort present on a count plan means the opposite: the
-    /// count is scoped to that phase, so the phase's key join and MissingPrimary filter apply.
+    /// Emits the Count shape: COUNT_BIG(DISTINCT m.Sid1) over the match CTE. Row caps, offsets and keyset
+    /// boundaries are ignored, since a count is of the whole result set rather than a page of it. So is the
+    /// sort, unless <see cref="ResultShape.Count.RestrictToSortPhase"/> asked the count to cover only the
+    /// segment the sort names, which applies the phase's key join and its MissingPrimary filter.
     /// </summary>
     private static void EmitCountOnlyShape(
         QueryPlan plan,
@@ -328,7 +353,9 @@ internal static class SqlBuilder
         WriteCteHeader(writer, cteBlocks);
         writer.Append("\n");
 
-        var countSortJoins = EmitSortJoins(plan.Sort);
+        var phaseSort = plan.EffectiveShape is ResultShape.Count { RestrictToSortPhase: true } ? plan.Sort : null;
+
+        var countSortJoins = EmitSortJoins(phaseSort);
         writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
 
         if (NeedsResourceJoin(plan, includesProjection: false))
@@ -343,7 +370,7 @@ internal static class SqlBuilder
             whereClauses.Add(EmitPredicate(plan.OuterPredicate, parameters, ResourceJoinQualifier));
         }
 
-        if (plan.Sort is { Phase: SortPhase.MissingPrimary } countPhaseSort)
+        if (phaseSort is { Phase: SortPhase.MissingPrimary } countPhaseSort)
         {
             whereClauses.Add(EmitMissingPrimaryFilter(countPhaseSort));
         }
@@ -995,9 +1022,9 @@ internal static class SqlBuilder
             throw new NotSupportedException(
                 "SortSpec.Phase == MissingPrimary with a LastUpdated, ResourceType, ResourceId, or otherwise " +
                 "SearchParamId-less primary key reached Emit -- none of these is ever \"missing\" (all are " +
-                "non-nullable resource columns), so none has a MissingPrimary segment. Lower.BuildSortSpec " +
-                "already rejects this combination for all three; QueryPlan is a public construction surface, " +
-                "so this guard exists defensively rather than trusting every caller routes through Lower.");
+                "non-nullable resource columns), so none has a MissingPrimary segment. Compiling from " +
+                "SearchPlanOptions rejects this combination; QueryPlan is a public construction surface, so " +
+                "this guard exists defensively rather than trusting every caller routes through one.");
         }
 
         if (key.Kind == SortKeyKind.Aggregated)

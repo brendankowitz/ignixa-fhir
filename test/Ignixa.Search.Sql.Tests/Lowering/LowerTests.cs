@@ -1355,6 +1355,47 @@ public class LowerTests
     }
 
     [Fact]
+    public void GivenAnIncludesPageWithATopCap_WhenLowering_ThenThrowsNotSupported()
+    {
+        // Arrange -- a match-side cap truncates the seed set, dropping include rows with no indication that
+        // they are missing. Same unsoundness as the keyset-boundary guard.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [],
+            includeLimit: 10, sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { IncludesOnly = true, Top = 50 }));
+    }
+
+    [Fact]
+    public void GivenAnIncludesPageWithAnOffsetPage_WhenLowering_ThenThrowsNotSupported()
+    {
+        // Arrange -- an offset skips into the seed set, which changes which resources the include stages reach.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        // Act & Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [],
+            includeLimit: 10, sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { IncludesOnly = true, OffsetPage = new OffsetSpec(20, 10) }));
+    }
+
+    [Fact]
     public void GivenLowerRunWithIncludesOnlyAndAPage_WhenCalled_ThenThrowsNotSupportedException()
     {
         // A keyset Page seeks the match rows by the sort-key boundary -- a second paging mechanism the

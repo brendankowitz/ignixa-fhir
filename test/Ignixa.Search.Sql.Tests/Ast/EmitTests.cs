@@ -2681,7 +2681,7 @@ public class EmitTests
     // ─── Phase-scoped count tests ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void GivenACountPlanCarryingASort_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
+    public void GivenACountRestrictedToItsSortPhase_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
     {
         // Arrange -- Valued phase: Keys[0]'s join is present and the count must scope to it, not the
         // whole match set, or a two-phase executor would double count rows present in both phases.
@@ -2689,7 +2689,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count(RestrictToSortPhase: true),
             Sort: sort);
 
         // Act
@@ -2709,7 +2709,7 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountPlanCarryingAMissingPrimarySort_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
+    public void GivenACountRestrictedToAMissingPrimaryPhase_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
     {
         // Arrange -- MissingPrimary phase: Keys[0] is excluded from the joins (EmitSortJoins' own
         // MissingPrimary continue) and instead the count must apply the NOT EXISTS filter, the same
@@ -2718,7 +2718,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count(RestrictToSortPhase: true),
             Sort: sort);
 
         // Act
@@ -2735,9 +2735,6 @@ public class EmitTests
     [Fact]
     public void GivenACountPlanWithNoSort_WhenEmitted_ThenTheCountCoversTheWholeMatchSet()
     {
-        // The inverse of the two tests above: a sort reaches a count plan only when it scopes the count, so a
-        // plan without one counts every match row -- no phase join, no MissingPrimary filter. Lower produces
-        // this shape by dropping the sort from a count that names no continuation.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
@@ -2753,6 +2750,35 @@ public class EmitTests
             "    WHERE ResourceTypeId = @p0 AND IsHistory = 0 AND IsDeleted = 0\n" +
             ")\n" +
             "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
+    }
+
+    [Fact]
+    public void GivenASortedPlanRewrittenToACount_WhenEmitted_ThenTheCountStillCoversTheWholeMatchSet()
+    {
+        // `plan with { Shape = ... }` is the reason QueryPlan is public, so an unrestricted count must ignore a
+        // Sort the plan already carried. Scoping off the Sort's presence instead would make this rewrite emit an
+        // INNER JOIN to the sort table, silently excluding every resource missing the sort key from the total.
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var sorted = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: sort);
+
+        var sql = SqlBuilder.Run(sorted with { Shape = new ResultShape.Count() }).Sql;
+
+        sql.ShouldNotContain("StringSearchParam sk0");
+        sql.ShouldEndWith("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
+    }
+
+    [Fact]
+    public void GivenACountRestrictedToASortPhaseWithNoSort_WhenEmitted_ThenThrowsNotSupported()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Shape: new ResultShape.Count(RestrictToSortPhase: true));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 
     // ─── End phase-scoped count tests ───────────────────────────────────────────────────────────────

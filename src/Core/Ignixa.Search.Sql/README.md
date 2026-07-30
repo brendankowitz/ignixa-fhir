@@ -185,16 +185,18 @@ a built `SearchOptions` and so skip query-string parsing entirely; that overload
 have no meaning cannot be written down:
 
 ```csharp
-ResultShape.Matches                  // default — the match set
-ResultShape.Count                    // a single COUNT_BIG, no ORDER BY, no TOP
-ResultShape.IncludesPage(resume?)    // $includes: the include stages only, as one ordered stream
+new ResultShape.Matches()                          // default -- the match set
+new ResultShape.Count()                            // one COUNT_BIG, no ORDER BY, no TOP
+new ResultShape.Count(RestrictToSortPhase: true)   // ...restricted to the segment the sort names
+new ResultShape.IncludesPage(resume: null)         // $includes: the include stages only, as one stream
 
-SearchPaging.Keyset(top?, from?)     // TOP and/or a keyset seek — the normal path
-SearchPaging.Offset(spec)            // OFFSET/FETCH, for callers that need it
+new SearchPaging.Keyset(Top: 50)                   // TOP and/or a keyset seek -- the normal path
+new SearchPaging.Offset(new OffsetSpec(100, 50))   // OFFSET/FETCH, for callers that need it
 ```
 
-`SearchPaging.Keyset.From` is a `SearchContinuation`: the page boundary *and* the sort phase it belongs to.
-The two travel together because a keyset boundary only means anything within the phase that produced it.
+Both paging cases carry a `Phase`, because which segment of a two-phase sort you are reading is independent
+of how you page through it. `Keyset.Boundary` is the seek boundary; it only means anything within the phase
+that produced it, so the two are set together.
 
 ### Two-phase missing-value sort
 
@@ -205,19 +207,23 @@ emits one statement per phase and **the caller drives the sequence**:
 ```csharp
 var options = new SearchPlanOptions
 {
-    Paging = new SearchPaging.Keyset(Top: pageSize, From: continuation),
+    Paging = new SearchPaging.Keyset(Top: pageSize, Boundary: boundary) { Phase = phase },
 };
 ```
 
 - `SortPhase.Valued` (the default) inner-joins the primary sort key: rows that have a value, ordered by it.
 - `SortPhase.MissingPrimary` emits `NOT EXISTS` on that key: rows that lack a value, ordered by surrogate id.
 
-Page through `Valued` until it returns a short page, then restart with
-`new SearchContinuation(SortPhase.MissingPrimary)` and page that to exhaustion. Only the *primary* key is
+Page through `Valued` until it runs out, then restart at the first page of
+`SortPhase.MissingPrimary` and page that to exhaustion. Only the *primary* key is
 phased; secondary keys are always left-joined tie-breakers with a sentinel, so they need no second pass.
 
-The same applies to counting: `ResultShape.Count` with no continuation counts the whole match set, while a
-`Count` carrying a `SearchContinuation` counts only the rows that phase reaches.
+`_lastUpdated`, `_type` and `_id` sort on non-nullable resource columns, so they have no `MissingPrimary`
+segment and need only one pass.
+
+Counting works the same way: `ResultShape.Count()` counts the whole match set and ignores any sort the plan
+carries, while `ResultShape.Count(RestrictToSortPhase: true)` counts only the rows the phase reaches -- which
+is what a caller totalling the two phases separately needs.
 
 ## What's supported
 
@@ -463,7 +469,7 @@ consumer reaches, grouped by namespace.
 
 | Namespace | Public surface |
 |-----------|----------------|
-| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPaging` / `SearchContinuation`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
+| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPaging`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
 | `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
 | `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `ResultShape`, `PlanExplainer`, and the SQL value types |
 | `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |

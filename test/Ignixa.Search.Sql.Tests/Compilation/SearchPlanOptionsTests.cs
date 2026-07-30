@@ -15,7 +15,7 @@ public class SearchPlanOptionsTests
         options.Shape.ShouldBe(ResultShape.Default);
         options.Shape.ShouldBeOfType<ResultShape.Matches>();
         options.Paging.ShouldBeNull();
-        options.IncludeLimit.ShouldBeNull();
+        options.IncludeLimit.ShouldBe(0);
         options.SurrogateRange.ShouldBeNull();
         options.SearchParameterHash.ShouldBeNull();
         options.OperationExpression.ShouldBeNull();
@@ -39,15 +39,26 @@ public class SearchPlanOptionsTests
         var paging = new SearchPaging.Keyset();
 
         paging.Top.ShouldBeNull();
-        paging.From.ShouldBeNull();
+        paging.Boundary.ShouldBeNull();
+        paging.Phase.ShouldBe(SortPhase.Valued);
     }
 
     [Fact]
-    public void GivenAContinuation_WhenReadingItsDefaults_ThenItIsTheFirstPageOfTheValuedSegment()
+    public void GivenAnOffsetPaging_WhenReadingItsDefaults_ThenItAlsoStartsInTheValuedSegment()
     {
-        var continuation = new SearchContinuation();
+        // Phase sits on the base rather than on Keyset: it names which segment of a two-phase sort the query
+        // reads, which is orthogonal to how that segment is paged.
+        var paging = new SearchPaging.Offset(new OffsetSpec(20, 10));
 
-        continuation.Phase.ShouldBe(SortPhase.Valued);
-        continuation.Boundary.ShouldBeNull();
+        paging.Phase.ShouldBe(SortPhase.Valued);
+        paging.Spec.Offset.ShouldBe(20);
+    }
+
+    [Fact]
+    public void GivenACountShape_WhenReadingItsDefaults_ThenItCoversTheWholeMatchSet()
+    {
+        var count = new ResultShape.Count();
+
+        count.RestrictToSortPhase.ShouldBeFalse();
     }
 }

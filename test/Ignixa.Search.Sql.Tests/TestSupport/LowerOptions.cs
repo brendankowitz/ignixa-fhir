@@ -77,7 +77,7 @@ internal sealed record LowerOptions
 
     /// <summary>
     /// Scopes a <see cref="CountOnly"/> count to the current sort phase's own join output rather than the
-    /// whole match set. Maps to naming a <c>SearchContinuation</c> on the compiled options.
+    /// whole match set. Maps to <c>ResultShape.Count(RestrictToSortPhase: true)</c> on the compiled options.
     /// </summary>
     public bool CountPhaseScoped { get; init; }
 

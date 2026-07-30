@@ -104,8 +104,8 @@ public class SearchPlanTests
         var compiler = CompilerFixtures.ForPatient();
         var options = new SearchPlanOptions
         {
-            Paging = new SearchPaging.Keyset(From: new SearchContinuation(Boundary: new PageSpec(
-                [new SqlParameterRef("Smith")], new SqlParameterRef((short)103), new SqlParameterRef(9000L)))),
+            Paging = new SearchPaging.Keyset(Boundary: new PageSpec(
+                [new SqlParameterRef("Smith")], new SqlParameterRef((short)103), new SqlParameterRef(9000L))),
         };
 
         var plan = await compiler.CreatePlanAsync("Patient", [new QueryParameter("name", "smith")], options);

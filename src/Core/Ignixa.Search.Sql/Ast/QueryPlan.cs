@@ -2,8 +2,10 @@ namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// The compiler's plan output: Lower produces it, Emit consumes it. Each <see cref="Ctes"/> entry becomes a
-/// named CTE, forming a graph <see cref="Match"/> references at any depth. <see cref="OuterPredicate"/> is the
-/// lone non-CTE filter (_id/_type/_lastUpdated as a WHERE on the outer join to dbo.Resource). Base result is
+/// named CTE, forming a graph <see cref="Match"/> references at any depth. <see cref="OuterPredicate"/> holds
+/// the resource-column filters (_id/_type/_lastUpdated) lifted out of the CTE graph onto the outer join to
+/// dbo.Resource; <see cref="Page"/>, <see cref="SurrogateRange"/>, <see cref="SearchParameterHash"/> and a
+/// MissingPrimary <see cref="Sort"/> each contribute their own outer filter alongside it. Base result is
 /// (T1, Sid1); <see cref="Includes"/> adds (IsMatch, IsPartial), and <see cref="Shape"/> can replace it with a
 /// count or with include rows alone.
 /// </summary>
