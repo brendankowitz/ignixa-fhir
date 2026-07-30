@@ -1,5 +1,43 @@
 # Phase F — Task 8 expanded: the composition root is not a relocation
 
+## RULINGS ON THE OPEN CALLS (2026-07-29)
+
+Four decisions this plan left open, resolved against the repository's own ADRs and CLAUDE.md rather than
+taste.
+
+**Resource-type negative caching: match EF, do not add a TTL.** `GetResourceTypeIdAsync` no longer caches
+misses, so a search naming a spec-valid type absent from `dbo.ResourceType` re-queries every time, serialized
+on the ingest lock. Giving resource types their own TTL-bounded negative cache would be strictly better than
+either reference implementation, and is still rejected: ADR-2510's cache model states "no TTL/expiration... no
+complex TTL logic or background expiration", and inventing machinery neither implementation has, to solve a
+problem neither has, is local overreach. **Recorded as a tracked, non-blocking cost** — not silently accepted
+and not silently fixed.
+
+**The disappearing differential oracles: capture golden snapshots before deletion.** The ~46 tests under
+`Differential/` are the only proof the EF and SqlServer write paths ever agreed, and they stop working when
+EF goes. Freeze their expected row snapshots to committed files while EF still runs, then rewrite the
+assertions against those. Direct precedent: ADR-2607 freezes a graded baseline for the validator conformance
+suite specifically to avoid a silent miss. Keeping the EF project alive purely to host a fixture is rejected —
+one data layer is the point of the phase.
+
+**A failed search-parameter sync must be loud.** `PackageLoadedSearchParameterSyncHandler` swallows every
+exception with the comment "the parameters will be loaded lazily on first search". There is no lazy load on
+this data layer: row generators read the cache dictionary directly and a missing parameter has its index rows
+dropped. So the swallow degrades to permanently unindexed data. CLAUDE.md is unambiguous — "Never swallow
+errors silently (empty catch blocks are bugs)" — and this branch already shipped a search cutover on the
+strength of failures being loud rather than silently wrong. Port the behaviour changed, not the comment
+corrected. It has no test coverage today; that is a test to write, not a reason to defer.
+
+**Deleting the EF project is not this session's call to make.** Every port and the pre-deletion gate get
+finished, the golden snapshots get captured, and deletion is left staged and one command away — presented
+with the evidence rather than executed. CLAUDE.md's Git Workflow ("Never commit without user approval") and
+Transformer Mandate ("Generate options, human decides") both apply, and this branch's own precedent is to
+reserve irreversible steps even after authorising the work leading to them. The evidence that makes it a real
+decision: fourteen defects found so far, **four of them introduced by the port itself and caught only by
+comparison against the implementation deletion would remove.**
+
+---
+
 ## ADJUDICATED PREMISES (2026-07-29, after this plan was drafted)
 
 Two investigations disagreed on three points. Each was settled from the code, and this plan is **wrong in two
