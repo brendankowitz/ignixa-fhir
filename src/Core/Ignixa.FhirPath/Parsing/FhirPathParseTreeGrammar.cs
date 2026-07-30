@@ -134,7 +134,8 @@ internal static class FhirPathParseTreeGrammar
             from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
             select (elements: Array.Empty<ElementAssignmentParseNode>(), isEmpty: true, rbrace)
         ).Or(
-            // Parse element assignments
+            // Parse element assignments. ManyDelimitedBy accepts zero elements, so this
+            // also covers the empty object `{}`.
             from assignments in (
                 from elementName in Token.EqualTo(FhirPathTokenKind.Identifier)
                     .Or(Token.EqualTo(FhirPathTokenKind.DelimitedIdentifier))
@@ -147,10 +148,6 @@ internal static class FhirPathParseTreeGrammar
             ).ManyDelimitedBy(Token.EqualTo(FhirPathTokenKind.Comma))
             from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
             select (elements: assignments.ToArray(), isEmpty: false, rbrace)
-        ).Or(
-            // Empty object without colon: {} (already parsed by EmptyCollection, but handle here too)
-            from rbrace in Token.EqualTo(FhirPathTokenKind.RightBrace)
-            select (elements: Array.Empty<ElementAssignmentParseNode>(), isEmpty: false, rbrace)
         )
         select (ParseNode)new InstanceSelectorParseNode(
             typeIdentifiers.Length == 1

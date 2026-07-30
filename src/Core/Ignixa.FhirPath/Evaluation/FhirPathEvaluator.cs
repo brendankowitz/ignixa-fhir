@@ -1834,18 +1834,15 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Instance selector: TypeName { element: value, element: value, ... }
         // Creates a new FHIR object of the specified type
 
-        // Materialize the focus collection to check count
-        var focusList = context.Focus.ToList();
-
         // Per spec: If input collection has multiple items, signal an error
-        if (focusList.Count > 1)
+        if (context.Focus.Count > 1)
         {
             throw new InvalidOperationException(
-                $"Instance selector requires a single input item or empty collection, but got {focusList.Count} items");
+                $"Instance selector requires a single input item or empty collection, but got {context.Focus.Count} items");
         }
 
         // Per spec: If input collection is empty, result is empty
-        if (focusList.Count == 0)
+        if (context.Focus.Count == 0)
         {
             return [];
         }
