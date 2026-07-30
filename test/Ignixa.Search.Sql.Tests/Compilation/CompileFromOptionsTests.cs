@@ -209,7 +209,7 @@ public class CompileFromOptionsTests
     }
 
     [Fact]
-    public async Task GivenSearchOptionsWithNoneResourceVersionTypes_WhenCompilingFromOptions_ThenTheResultRecordsALowerStageFailure()
+    public async Task GivenSearchOptionsWithNoneResourceVersionTypes_WhenCompilingFromOptions_ThenTheResultRecordsABuildStageFailure()
     {
         // Arrange -- None is not a valid search input (SearchOptions.ResourceVersionTypes' own doc); the
         // compiler must reject it rather than silently treating it as Latest, which would reproduce the
@@ -239,7 +239,7 @@ public class CompileFromOptionsTests
 
         // Assert
         result.Succeeded.ShouldBeFalse();
-        result.Failure!.Stage.ShouldBe(CompilationStage.Lower);
+        result.Failure!.Stage.ShouldBe(CompilationStage.Build);
         result.Plan.ShouldBeNull();
     }
 
@@ -283,7 +283,7 @@ public class CompileFromOptionsTests
     }
 
     [Fact]
-    public async Task GivenSearchOptionsWithOnlyOneSurrogateBoundSet_WhenCompilingFromOptions_ThenTheResultRecordsALowerStageFailure()
+    public async Task GivenSearchOptionsWithOnlyOneSurrogateBoundSet_WhenCompilingFromOptions_ThenTheResultRecordsABuildStageFailure()
     {
         // Arrange -- StartSurrogateId set, EndSurrogateId left null. A half-open range is a caller error,
         // not a partial intent to honour: silently treating the unset bound as unbounded would scan outside
@@ -310,7 +310,7 @@ public class CompileFromOptionsTests
 
         // Assert
         result.Succeeded.ShouldBeFalse();
-        result.Failure!.Stage.ShouldBe(CompilationStage.Lower);
+        result.Failure!.Stage.ShouldBe(CompilationStage.Build);
         result.Plan.ShouldBeNull();
     }
 

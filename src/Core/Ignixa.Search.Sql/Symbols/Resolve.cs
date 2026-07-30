@@ -103,8 +103,8 @@ internal static class Resolve
         }
 
         // Resolves the allow-list type names so their ids are available to Lower's enforcement. Unions into
-        // the RESOLUTION set only — never the searched base set (Lower derives that from targetResourceType/
-        // LowerOptions.ResourceTypes) — so resolving a permitted name here cannot widen results. An
+        // the RESOLUTION set only — never the searched base set (Lower derives that from the context's
+        // TargetResourceType/ResourceTypes) — so resolving a permitted name here cannot widen results. An
         // unresolvable allowed type keeps the sentinel rather than being dropped, which would fail open.
         if (allowedResourceTypes is not null)
         {

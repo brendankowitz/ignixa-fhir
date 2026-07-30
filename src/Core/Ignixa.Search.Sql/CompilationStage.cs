@@ -3,7 +3,11 @@ namespace Ignixa.Search.Sql;
 /// <summary>Which stage of the compiler produced a failure.</summary>
 public enum CompilationStage
 {
-    /// <summary>The options builder turning query parameters into a <c>SearchOptions</c>.</summary>
+    /// <summary>
+    /// Turning caller input into the compiler's request, before any part of the query is examined: the options
+    /// builder parsing query parameters into a <c>SearchOptions</c>, and mapping that <c>SearchOptions</c> onto
+    /// the compilation context. A malformed input reaches the caller here, not at a later stage.
+    /// </summary>
     Build,
 
     /// <summary>Resolving search parameters, compartments, and access constraints to storage symbols.</summary>

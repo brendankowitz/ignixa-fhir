@@ -52,7 +52,8 @@ Compilation is three stages plus a build-time catalog. Only the first stage does
 **internal** — the boundary a consumer sees is `CreatePlanAsync` (which runs the first two) and
 `Compile` (which runs the third). The stage *names* still matter to a caller, though:
 `SearchCompilationFailure.Stage` reports exactly these values — `Resolve`, `Lower`, `Emit`, plus `Build`
-for query-string parsing — so a failed compile points at the stage that rejected it.
+for anything that rejects the caller's input before the query is examined (query-string parsing, and
+mapping a supplied `SearchOptions`) — so a failed compile points at the stage that rejected it.
 
 ```
                          ┌─────────────────────────────────────────────┐
@@ -422,7 +423,7 @@ consumer reaches, grouped by namespace.
 
 | Namespace | Public surface |
 |-----------|----------------|
-| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
+| `Ignixa.Search.Sql` | `SearchSqlCompiler` / `ISearchSqlCompiler`, `SearchPlan`, `CompiledSearch`, `SearchPlanOptions`, `SearchPlanResult` / `SearchCompilationResult`, `SearchCompilationFailure` / `SearchCompilationException`, and the diagnostics types (`SearchCompilationDiagnostics`, `QueryPlanTrace`, `CteProvenance`, `ImplicitParameter`, `CompilationStage`, `SearchDiagnosticsLevel`) |
 | `Ignixa.Search.Sql.Symbols` | `ISymbolResolver` — the one seam your data layer implements |
 | `Ignixa.Search.Sql.Ast` | `QueryPlan` and the plan data model — `CteDefinition`, `Predicate`, `PageSpec`, `SortSpec`, `PlanExplainer`, and the SQL value types |
 | `Ignixa.Search.Sql.Builders` | `EmittedSqlParameter` (the bound `@pN` values on `CompiledSearch`) and `SqlTextRange` |

@@ -128,11 +128,12 @@ public sealed class SearchSqlCompiler(
             context = CompilationContext.Create(searchOptions, resourceType, options, _timeProvider.GetUtcNow());
         }
         // Create eagerly maps ResourceVersionTypes and the surrogate bounds; both throw NotSupportedException
-        // on a malformed SearchOptions. Reported at Lower (its sole consumer; no mapping stage exists in the
-        // public vocabulary) so the Try* contract holds: caller-input errors come back as data, not a throw.
+        // on a malformed SearchOptions. Reported at Build — it is input mapping, and runs before Resolve — so
+        // the stage names where the failure actually happened, and the Try* contract holds: caller-input
+        // errors come back as data, not a throw.
         catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
         {
-            var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Lower, ex);
+            var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Build, ex);
             return SearchPlanResult.Failed(
                 failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
         }

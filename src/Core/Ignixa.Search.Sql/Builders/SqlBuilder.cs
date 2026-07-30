@@ -23,6 +23,7 @@ internal static class SqlBuilder
     /// </summary>
     public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
     {
+        RejectDanglingReferences(plan);
         RejectUnsupportedCombinations(plan);
 
         var parameters = new List<EmittedSqlParameter>();
@@ -44,6 +45,126 @@ internal static class SqlBuilder
         }
 
         return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
+    }
+
+    /// <summary>
+    /// Rejects a CTE graph that is not closed and ordered. <see cref="QueryPlan"/> is a public construction
+    /// surface and <c>plan with { Query = rewritten }</c> is a documented rewrite path, so a stale index has
+    /// to fail here as a compilation failure rather than as an IndexOutOfRangeException from emission, or as
+    /// SQL naming a CTE that does not exist yet. T-SQL binds CTEs in order, so a reference must point
+    /// strictly backwards.
+    /// </summary>
+    private static void RejectDanglingReferences(QueryPlan plan)
+    {
+        RequireIndex(plan.Match.Index, plan.Ctes.Count, ReferenceBound.Defined, "QueryPlan.Match");
+
+        for (var i = 0; i < plan.Ctes.Count; i++)
+        {
+            switch (plan.Ctes[i])
+            {
+                case CteDefinition.Intersect(var left, var right):
+                    RequireChild(left, i, "Left");
+                    RequireChild(right, i, "Right");
+                    break;
+                case CteDefinition.Except(var exceptLeft, var exceptRight):
+                    RequireChild(exceptLeft, i, "Left");
+                    RequireChild(exceptRight, i, "Right");
+                    break;
+                case CteDefinition.Union(var parts):
+                    for (var part = 0; part < parts.Count; part++)
+                    {
+                        RequireChild(parts[part], i, "Parts", part);
+                    }
+
+                    break;
+                case CteDefinition.ChainJoin chain:
+                    RequireChild(chain.InnerMatch, i, "InnerMatch");
+                    break;
+                case CteDefinition.ReferencedTypeExpansion expansion:
+                    RequireChild(expansion.Seed, i, "Seed");
+                    break;
+            }
+        }
+
+        RejectDanglingIncludeReferences(plan);
+
+        static void RequireChild(CteRef reference, int ordinal, string member, int part = -1)
+            => RequireIndex(reference.Index, ordinal, ReferenceBound.EarlierCte, "Ctes", ordinal, member, part);
+    }
+
+    /// <summary>
+    /// Include stages occupy their own index space (incN), so their seeds are bounded by the stage count
+    /// while their access constraints index into <see cref="QueryPlan.Ctes"/>.
+    /// </summary>
+    private static void RejectDanglingIncludeReferences(QueryPlan plan)
+    {
+        if (plan.Includes is not { Count: > 0 } includes)
+        {
+            return;
+        }
+
+        for (var i = 0; i < includes.Count; i++)
+        {
+            foreach (var seed in includes[i].SeedStages)
+            {
+                RequireIndex(seed, i, ReferenceBound.EarlierStage, "Includes", i, "SeedStages");
+            }
+
+            foreach (var constraint in includes[i].Constraints ?? [])
+            {
+                RequireIndex(
+                    constraint.ConstraintCteIndex,
+                    plan.Ctes.Count,
+                    ReferenceBound.Defined,
+                    "Includes",
+                    i,
+                    "Constraints");
+            }
+        }
+    }
+
+    /// <summary>What bounds a plan index: the whole CTE list, or the entries emitted before the referrer.</summary>
+    private enum ReferenceBound
+    {
+        Defined,
+        EarlierCte,
+        EarlierStage,
+    }
+
+    /// <summary>
+    /// Guards one plan index. The path is assembled only on failure so a valid plan allocates nothing here:
+    /// <paramref name="owner"/> and <paramref name="member"/> are literals, and the ordinals are unboxed ints.
+    /// </summary>
+    private static void RequireIndex(
+        int index,
+        int exclusiveUpperBound,
+        ReferenceBound bound,
+        string owner,
+        int ownerOrdinal = -1,
+        string? member = null,
+        int memberOrdinal = -1)
+    {
+        if (index >= 0 && index < exclusiveUpperBound)
+        {
+            return;
+        }
+
+        var path = ownerOrdinal < 0 ? owner : $"{owner}[{ownerOrdinal}].{member}";
+        if (memberOrdinal >= 0)
+        {
+            path += $"[{memberOrdinal}]";
+        }
+
+        var limit = bound switch
+        {
+            ReferenceBound.Defined => $"the plan defines {exclusiveUpperBound} CTEs",
+            ReferenceBound.EarlierCte => $"a CTE may only reference the {exclusiveUpperBound} emitted before it",
+            _ => $"a stage may only seed from the {exclusiveUpperBound} emitted before it",
+        };
+
+        throw new NotSupportedException(
+            $"{path} references index {index}, but {limit}. A plan whose CTE graph is not closed and ordered " +
+            "cannot be emitted; a rewritten plan must renumber the references it moved.");
     }
 
     /// <summary>Rejects the plan shapes that have no coherent SQL rendering, before any text is produced.</summary>

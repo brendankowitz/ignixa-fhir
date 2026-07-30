@@ -35,8 +35,8 @@ public interface ISearchSqlCompiler
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resolves and lowers an already-built <see cref="SearchOptions"/>, skipping the build stage — and so
-    /// needs no <c>ISearchOptionsBuilder</c>. Throws <see cref="SearchCompilationException"/> on failure.
+    /// Resolves and lowers an already-built <see cref="SearchOptions"/>, skipping the options builder — and so
+    /// needs none. Throws <see cref="SearchCompilationException"/> on failure.
     /// </summary>
     Task<SearchPlan> CreatePlanFromOptionsAsync(
         SearchOptions searchOptions,

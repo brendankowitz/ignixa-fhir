@@ -129,6 +129,19 @@ public class SearchSqlCompilerTests
     }
 
     [Fact]
+    public async Task GivenNoOptionsBuilder_WhenTryingToCreateAPlanFromAQueryString_ThenItStillThrowsRatherThanReturningAFailure()
+    {
+        // Try* trades throwing for data on a failed compile, not on a misconfigured compiler. Folding this
+        // into a Build failure would dress a wiring bug up as a bad query and send it back to the caller.
+        var compiler = new SearchSqlCompiler(CompilerFixtures.PatientResolver());
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => compiler.TryCreatePlanAsync("Patient", [new QueryParameter("name", "smith")]));
+
+        exception.Message.ShouldContain(nameof(ISearchOptionsBuilder));
+    }
+
+    [Fact]
     public async Task GivenAFhirExceptionFromTheOptionsBuilder_WhenCreatingAPlan_ThenItPropagatesUnwrapped()
     {
         var compiler = CompilerFixtures.WithThrowingOptionsBuilder();
@@ -208,6 +221,6 @@ public class SearchSqlCompilerTests
         var exception = await Should.ThrowAsync<SearchCompilationException>(
             () => compiler.CreatePlanFromOptionsAsync(searchOptions, "Patient"));
 
-        exception.Failure.Stage.ShouldBe(CompilationStage.Lower);
+        exception.Failure.Stage.ShouldBe(CompilationStage.Build);
     }
 }

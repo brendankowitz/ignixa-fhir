@@ -18,7 +18,8 @@ public sealed record SearchPlan
 
     /// <summary>
     /// The resource type this plan was compiled against, normalized: null means a system-level (cross-type)
-    /// search. Exposed so callers read the compiler's own normalization rather than reimplementing it.
+    /// search. Exposed so callers read the compiler's own normalization rather than reimplementing it. A
+    /// snapshot of the original compile — rewriting <see cref="Query"/> does not re-derive it.
     /// </summary>
     public string? ResourceType { get; init; }
 
