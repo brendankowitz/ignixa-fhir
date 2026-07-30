@@ -196,6 +196,36 @@ live, unflagged read cutover with 31 documented search gaps still open. Before T
       | `Ignixa.DataLayer.SqlServer.IntegrationTests` | **260 / 0 / 0** | was quoted as 187; see below |
       | `Ignixa.DataLayer.SqlEntityFramework.IntegrationTests` | 95 / 0 / 8 skip — 103 total | disappears at Task 10 |
       | `Ignixa.Api.E2ETests` | **569 / 31 / 20 — 620 total** | confirmed real; 31 are the documented gaps |
+      | `Ignixa.SqlOnFhir.Tests` | **54 / 2 / 0 — 56 total**, both TFMs | see below — NOT ours, do not try to fix at the gate |
+      | `Ignixa.RepoGuards.Tests` | 17 / 0 / 0, both TFMs | was 16/1 until `PackageStability` was corrected |
+      | `Ignixa.Validation.Tests` | 678 / 0 / 0, both TFMs | slowest non-SQL suite, ~2.5 min |
+      | `Ignixa.FhirPath.Tests` | 3966 total (1 skip), both TFMs | |
+      | `Ignixa.FhirFakes.Tests` | 1428 / 0 / 0, both TFMs | |
+      | `Ignixa.DeId.Tests` | 204 total (1 skip), both TFMs | |
+      | `Ignixa.FhirMappingLanguage.Tests` | 536 total (1 skip), both TFMs | |
+      | `Ignixa.TestScript.Tests` | 379 / 0 / 0, both TFMs | |
+      | `Ignixa.Extensions.Tests` | 89 / 0 / 0, both TFMs | |
+      | `Ignixa.Models.Tests` / `.R4.Tests` | 130 / 63 | |
+      | `Ignixa.NarrativeGenerator.Tests` | 110, both TFMs | |
+      | `Ignixa.PackageManagement.Tests` | 86, both TFMs | |
+      | `Ignixa.Serialization.Tests` | 85 | |
+      | `Ignixa.Search.Sql.Generators.Tests` | 11, both TFMs | |
+      | `Ignixa.Application.Experimental.Tests` | 43 | |
+      | `Ignixa.ConformanceMatrix.Cli.Tests` | 68 | |
+      | `Ignixa.SchemaUpgrade.Cli.Tests` | 13 | |
+      | `Ignixa.SqlOnFhir.Cli.Tests` | 36 | |
+      | `Ignixa.FhirFakes.Cli.Tests` | 28 | |
+      | `Ignixa.Validation.Cli.Tests` | 14 | |
+
+      **28 suites, ~11,000 tests. 26 green; two carry known failures.** The first census covered six suites
+      chosen by hand and reported them "all green" while `RepoGuards` was failing on this branch and
+      `SqlOnFhir` was failing for an unrelated reason — the same error as the `187` baseline, a specific
+      number that looked authoritative. Enumerate test projects from `All.sln`; do not curate the list.
+
+      `Ignixa.SqlOnFhir.Tests`'s two failures — `OfficialSqlOnFhirTestRunner` and
+      `SqlOnFhirReportCoverageTests` — are driven by `test/Ignixa.SqlOnFhir.Tests/sql-on-fhir-tests`, a git
+      submodule tracking upstream `FHIR/sql-on-fhir.js`. Upstream corpus drift, unrelated to this phase.
+      Expected at the gate; investigate only if the count changes.
 
       The integration baseline was **187/187 and that number never existed**. The fixture's unserialised
       `CREATE DATABASE` timed out under sixteen-way xUnit parallelism, so every run silently lost a random

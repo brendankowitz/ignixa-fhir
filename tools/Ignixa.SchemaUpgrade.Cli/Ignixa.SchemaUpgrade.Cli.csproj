@@ -15,7 +15,11 @@
   <!-- NuGet Package & Tool Configuration -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageStability>stable</PackageStability>
+    <!-- alpha, not stable: this tool references Ignixa.DataLayer.SqlServer and Ignixa.Application, both
+         alpha, and ADR 2606 forbids a public-feed package being more stable than what it depends on. It was
+         declared stable when added, which PackageStabilityGuardTests caught. Graduate this only when those
+         dependencies graduate. -->
+    <PackageStability>alpha</PackageStability>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>ignixa-schema-upgrade</ToolCommandName>
     <PackageId>Ignixa.SchemaUpgrade.Cli</PackageId>
