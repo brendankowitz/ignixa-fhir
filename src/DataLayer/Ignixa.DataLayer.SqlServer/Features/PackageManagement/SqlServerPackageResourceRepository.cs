@@ -569,6 +569,102 @@ public sealed class SqlServerPackageResourceRepository(
         return [.. rows];
     }
 
+    /// <summary>
+    /// Returns the same eleven columns every other read here does, which means the six terminology-import
+    /// fields are null on the result regardless of what the row holds. Callers that need the import status
+    /// or content hash must read them directly, as <see cref="Terminology.SqlServerCodeSystemImporter"/>
+    /// does — it re-reads both itself rather than trusting the model it is handed.
+    /// </summary>
+    public async Task<PackageResource?> GetByPackageResourceIdAsync(
+        long packageResourceId, CancellationToken cancellationToken)
+    {
+        // No IsActive filter, unlike every other read here. The terminology import orchestration is handed
+        // ids that were active when it was scheduled, and a package deactivated mid-import should surface as
+        // the resource it is rather than as "not found", which the activity reports as a hard failure.
+        using var command = Command(
+            $"SELECT TOP 1 {SelectColumns} FROM {QualifiedTable} " +
+            $"WHERE {Packages.Column("PackageResourceId").Name} = @packageResourceId");
+        command.Parameters.AddWithValue("@packageResourceId", packageResourceId);
+
+        return await SingleAsync(command, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PendingTerminologyImport>> ListPendingTerminologyImportsAsync(
+        string? packageId, string? packageVersion, CancellationToken cancellationToken)
+    {
+        var filters = new StringBuilder();
+        using var command = Command(string.Empty);
+
+        if (!string.IsNullOrEmpty(packageId))
+        {
+            filters.Append(CultureInfo.InvariantCulture, $" AND {Packages.Column("PackageId").Name} = @packageId");
+            command.Parameters.AddWithValue("@packageId", packageId);
+        }
+
+        if (!string.IsNullOrEmpty(packageVersion))
+        {
+            filters.Append(CultureInfo.InvariantCulture, $" AND {Packages.Column("PackageVersion").Name} = @packageVersion");
+            command.Parameters.AddWithValue("@packageVersion", packageVersion);
+        }
+
+        // Excluding the terminal statuses rather than listing the non-terminal ones, so that a status nobody
+        // anticipated is retried rather than stranded. Written as IS NULL OR NOT IN rather than wrapping the
+        // column in ISNULL, which would make the predicate non-sargable and scan the table on every package
+        // load and every startup.
+        var status = Packages.Column("TerminologyImportStatus").Name;
+
+#pragma warning disable CA2100
+        command.CommandText =
+            $"SELECT {Packages.Column("PackageId").Name}, {Packages.Column("PackageVersion").Name}, " +
+            $"{Packages.Column("PackageResourceId").Name} FROM {QualifiedTable} " +
+            $"WHERE {ActiveOnly} " +
+            $"AND {Packages.Column("ResourceType").Name} IN ('CodeSystem', 'ValueSet', 'ConceptMap') " +
+            $"AND ({status} IS NULL OR {status} NOT IN ('Completed', 'Skipped'))" +
+            $"{filters} " +
+            $"ORDER BY {Packages.Column("PackageId").Name}, {Packages.Column("PackageVersion").Name}, " +
+            $"{Packages.Column("PackageResourceId").Name}";
+#pragma warning restore CA2100
+
+        var rows = await sqlExecutionService.ExecuteReaderAsync(
+            connectionTenantId,
+            command,
+            reader => (PackageId: reader.GetString(0), PackageVersion: reader.GetString(1), Id: reader.GetInt64(2)),
+            cancellationToken);
+
+        return
+        [
+            .. rows
+                .GroupBy(r => (r.PackageId, r.PackageVersion))
+                .Select(g => new PendingTerminologyImport(
+                    g.Key.PackageId, g.Key.PackageVersion, [.. g.Select(r => r.Id)]))
+        ];
+    }
+
+    public async Task MarkTerminologyImportFailedAsync(
+        long packageResourceId, string errorMessage, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(errorMessage);
+
+        // ImportErrorMessage is NVARCHAR(1000); an over-length message would otherwise fail the write and
+        // lose the error entirely, which is the trap SqlServerCodeSystemImporter.RecordFailureAsync documents.
+        var message = errorMessage.Length > 1000 ? errorMessage[..1000] : errorMessage;
+
+        using var command = Command(
+            $"UPDATE {QualifiedTable} SET " +
+            $"{Packages.Column("TerminologyImportStatus").Name} = 'Failed', " +
+            $"{Packages.Column("ImportCompletedDate").Name} = SYSDATETIMEOFFSET(), " +
+            $"{Packages.Column("ImportErrorMessage").Name} = @message " +
+            $"WHERE {Packages.Column("PackageResourceId").Name} = @packageResourceId");
+        command.Parameters.AddWithValue("@message", message);
+        command.Parameters.AddWithValue("@packageResourceId", packageResourceId);
+
+        await sqlExecutionService.ExecuteNonQueryAsync(connectionTenantId, command, cancellationToken);
+
+        logger.LogWarning(
+            "Recorded terminology import failure for PackageResourceId {PackageResourceId}: {ErrorMessage}",
+            packageResourceId, message);
+    }
+
     private static string ActiveOnly => $"{Packages.Column("IsActive").Name} = 1";
 
     private async Task<IReadOnlyList<PackageResource>> ByResourceTypeAsync(string resourceType, CancellationToken cancellationToken)

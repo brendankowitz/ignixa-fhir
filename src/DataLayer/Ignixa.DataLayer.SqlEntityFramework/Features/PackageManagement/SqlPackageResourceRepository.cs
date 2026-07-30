@@ -907,6 +907,87 @@ public class SqlPackageResourceRepository : IPackageResourceRepository
     }
 
     /// <summary>
+    /// Implemented only to keep this type satisfying <see cref="IPackageResourceRepository"/>. The live
+    /// consumer is <c>SqlServerPackageResourceRepository</c>; nothing resolves this implementation for
+    /// terminology import.
+    /// </summary>
+    public async Task<PackageResource?> GetByPackageResourceIdAsync(
+        long packageResourceId, CancellationToken cancellationToken)
+    {
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var entity = await dbContext.PackageResources
+            .AsNoTracking()
+            .FirstOrDefaultAsync(pr => pr.PackageResourceId == packageResourceId, cancellationToken)
+            .ConfigureAwait(false);
+
+        return entity != null ? MapEntityToModel(entity) : null;
+    }
+
+    /// <inheritdoc cref="GetByPackageResourceIdAsync" />
+    public async Task<IReadOnlyList<PendingTerminologyImport>> ListPendingTerminologyImportsAsync(
+        string? packageId, string? packageVersion, CancellationToken cancellationToken)
+    {
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var query = dbContext.PackageResources
+            .AsNoTracking()
+            .Where(pr => pr.IsActive)
+            .Where(pr => pr.ResourceType == "CodeSystem" || pr.ResourceType == "ValueSet" || pr.ResourceType == "ConceptMap")
+            .Where(pr => pr.TerminologyImportStatus == null
+                || (pr.TerminologyImportStatus != "Completed" && pr.TerminologyImportStatus != "Skipped"));
+
+        if (!string.IsNullOrEmpty(packageId))
+        {
+            query = query.Where(pr => pr.PackageId == packageId);
+        }
+
+        if (!string.IsNullOrEmpty(packageVersion))
+        {
+            query = query.Where(pr => pr.PackageVersion == packageVersion);
+        }
+
+        var rows = await query
+            .Select(pr => new { pr.PackageId, pr.PackageVersion, pr.PackageResourceId })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return rows
+            .GroupBy(r => (r.PackageId, r.PackageVersion))
+            .Select(g => new PendingTerminologyImport(
+                g.Key.PackageId,
+                g.Key.PackageVersion,
+                g.Select(r => r.PackageResourceId).ToList()))
+            .ToList();
+    }
+
+    /// <inheritdoc cref="GetByPackageResourceIdAsync" />
+    public async Task MarkTerminologyImportFailedAsync(
+        long packageResourceId, string errorMessage, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(errorMessage);
+
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var message = errorMessage.Length > 1000 ? errorMessage[..1000] : errorMessage;
+
+        await dbContext.PackageResources
+            .Where(pr => pr.PackageResourceId == packageResourceId)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(pr => pr.TerminologyImportStatus, "Failed")
+                    .SetProperty(pr => pr.ImportCompletedDate, DateTimeOffset.UtcNow)
+                    .SetProperty(pr => pr.ImportErrorMessage, message),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogWarning(
+            "Recorded terminology import failure for PackageResourceId {PackageResourceId}: {ErrorMessage}",
+            packageResourceId,
+            message);
+    }
+
+    /// <summary>
     /// Maps domain model to database entity.
     /// </summary>
     private static PackageResourceEntity MapModelToEntity(PackageResource model)

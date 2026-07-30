@@ -10,11 +10,13 @@ using Ignixa.DataLayer.FileSystem.FileSystem;
 using Ignixa.DataLayer.InMemoryIndex;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
-using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
+using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
+using Ignixa.Domain.Terminology;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IO;
 
@@ -309,6 +311,19 @@ public static class DataLayerRegistration
                 c.Resolve<ISqlExecutionService>(),
                 GlobalPackageTenantId,
                 c.Resolve<ILogger<SqlServerPackageResourceRepository>>()))
+            .InstancePerDependency();
+
+        // Terminology importer factory. SystemPartitionId rather than GlobalPackageTenantId above: the
+        // terminology tables are server-wide and live in the system partition's database, matching the
+        // SqlServerTerminologyService registration in ValidationServicesRegistration. A factory rather than
+        // a direct ITerminologyImporter registration because the importer needs a reference-data cache that
+        // is produced asynchronously and must be the registry's instance -- see ITerminologyImporterFactory.
+        builder.Register<ITerminologyImporterFactory>(c =>
+            new SqlServerTerminologyImporterFactory(
+                c.Resolve<ISqlExecutionService>(),
+                c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
+                SystemConstants.SystemPartitionId,
+                c.Resolve<ILoggerFactory>()))
             .InstancePerDependency();
     }
 }

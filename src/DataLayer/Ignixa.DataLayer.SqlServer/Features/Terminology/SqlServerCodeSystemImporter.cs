@@ -90,16 +90,16 @@ public sealed class SqlServerCodeSystemImporter(
             var resource = ParseResourceJson(packageResource.ResourceJson, resourceType);
             var contentHash = packageResource.ComputeContentHash();
 
-            // Unchanged content that already completed is skipped before any write, which is what keeps
-            // re-loading a package from multiplying its rows.
+            // Unchanged content that already reached a terminal outcome is skipped before any write, which is
+            // what keeps re-loading a package from multiplying its rows.
             if (string.Equals(existing.ContentHash, contentHash, StringComparison.Ordinal)
-                && string.Equals(existing.Status, nameof(TerminologyImportStatus.Completed), StringComparison.Ordinal))
+                && TerminalStatusOf(existing.Status) is { } retainedStatus)
             {
                 logger.LogInformation(
-                    "{ResourceType} '{Canonical}' content unchanged (hash: {Hash}), skipping import",
-                    resourceType, packageResource.Canonical, contentHash);
+                    "{ResourceType} '{Canonical}' content unchanged (hash: {Hash}), retaining status {Status}",
+                    resourceType, packageResource.Canonical, contentHash, retainedStatus);
 
-                return TerminologyImportResult.CreateSkipped();
+                return TerminologyImportResult.CreateUnchanged(retainedStatus);
             }
 
             return await import(packageResource, resource, contentHash, cancellationToken);
@@ -147,6 +147,23 @@ public sealed class SqlServerCodeSystemImporter(
 
         return TerminologyImportResult.CreateSuccess(concepts.Count);
     }
+
+    /// <summary>
+    /// The two statuses that mean "this content has already been dealt with", and so make an unchanged hash
+    /// sufficient to do nothing.
+    /// <para>
+    /// <c>Skipped</c> belongs here alongside <c>Completed</c>. A resource skipped for its own sake — a
+    /// CodeSystem with <c>content=not-present</c>, or a supplement — has its hash stamped by
+    /// <see cref="RecordSkippedAsync"/> and will never import no matter how often it is retried. Matching
+    /// only <c>Completed</c> meant re-parsing and re-deciding every one of those on every package load.
+    /// </para>
+    /// </summary>
+    private static TerminologyImportStatus? TerminalStatusOf(string? status) => status switch
+    {
+        nameof(TerminologyImportStatus.Completed) => TerminologyImportStatus.Completed,
+        nameof(TerminologyImportStatus.Skipped) => TerminologyImportStatus.Skipped,
+        _ => null,
+    };
 
     /// <summary>
     /// Two <c>content</c> values mean "do not build a CodeSystem from this".

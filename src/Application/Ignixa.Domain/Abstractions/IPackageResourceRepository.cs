@@ -267,4 +267,56 @@ public interface IPackageResourceRepository
         string packageId,
         string version,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Retrieves a single package resource by its surrogate key.
+    /// Used by the terminology import activity, which is handed an id by its orchestration and has no
+    /// canonical or package coordinates to look the resource up by.
+    /// </summary>
+    /// <param name="packageResourceId">Surrogate key of the package resource.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The package resource if found, null otherwise.</returns>
+    Task<PackageResource?> GetByPackageResourceIdAsync(
+        long packageResourceId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Lists the active terminology resources (CodeSystem, ValueSet, ConceptMap) whose import has not
+    /// reached a terminal outcome, grouped by the package version they came from.
+    /// <para>
+    /// Terminal means <c>Completed</c> or <c>Skipped</c>, and everything else is owed work. A skipped
+    /// resource is one that was examined and will never import — a CodeSystem with
+    /// <c>content=not-present</c>, or a supplement — so re-offering it on every scan would queue work that
+    /// is guaranteed to do nothing.
+    /// </para>
+    /// <para>
+    /// Defined by excluding the terminal statuses rather than by listing the non-terminal ones, so that a
+    /// resource left <c>InProgress</c> by an import that died mid-flight is retried rather than stranded.
+    /// </para>
+    /// </summary>
+    /// <param name="packageId">Optional: restrict to one NPM package identifier.</param>
+    /// <param name="packageVersion">Optional: restrict to one NPM package version.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>One entry per package version that has resources awaiting import; empty if none do.</returns>
+    Task<IReadOnlyList<PendingTerminologyImport>> ListPendingTerminologyImportsAsync(
+        string? packageId,
+        string? packageVersion,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records that terminology import failed for a package resource.
+    /// <para>
+    /// Deliberately the only status write on this interface. <see cref="Terminology.ITerminologyImporter"/>
+    /// owns <c>TerminologyImportStatus</c> on every path it reaches, so a second writer can only contradict
+    /// it. This covers only what the importer never sees: a resource it was not called for, because the type
+    /// is unsupported or because something failed between loading the row and invoking it.
+    /// </para>
+    /// </summary>
+    /// <param name="packageResourceId">Surrogate key of the package resource.</param>
+    /// <param name="errorMessage">Failure detail; truncated to fit the column.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task MarkTerminologyImportFailedAsync(
+        long packageResourceId,
+        string errorMessage,
+        CancellationToken cancellationToken);
 }

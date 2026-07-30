@@ -7,11 +7,8 @@ using DurableTask.Core;
 using Ignixa.Abstractions;
 using Ignixa.Application.BackgroundOperations.Terminology.Models;
 using Ignixa.Application.Infrastructure;
-using Ignixa.DataLayer.SqlEntityFramework;
-using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
-using Ignixa.Domain.Models;
+using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Terminology;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -19,11 +16,26 @@ namespace Ignixa.Application.BackgroundOperations.Terminology.Activities;
 
 /// <summary>
 /// DurableTask activity for importing a single terminology resource (CodeSystem, ValueSet, or ConceptMap).
-/// Loads PackageResource from database, routes to appropriate ITerminologyImporter method, and updates status.
-/// Uses IServiceProvider to create scoped services (FhirDbContext, ITerminologyImporter) per activity execution.
+/// Loads the PackageResource, routes it to the matching <see cref="ITerminologyImporter"/> method, and
+/// reports the outcome back to the orchestration.
+/// <para>
+/// <b>The importer owns <c>TerminologyImportStatus</c>; this activity must not write it on any path the
+/// importer reaches.</b> Stamping <c>InProgress</c> here before handing off is what previously made the
+/// importer's unchanged-content guard unreachable — that guard tests the status on the row, so it never saw
+/// anything but <c>InProgress</c> and every package load re-imported every terminology resource in full.
+/// Writing <c>result.Status</c> back afterwards then overwrote <c>Completed</c> rows with <c>Skipped</c>,
+/// which <c>HybridTerminologyService</c> reads as "not in the database" and answers from the in-memory
+/// fallback instead.
+/// </para>
+/// <para>
+/// The exception is a resource the importer was never called for, which nothing else can record. That goes
+/// through <see cref="IPackageResourceRepository.MarkTerminologyImportFailedAsync"/>.
+/// </para>
 /// </summary>
 public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTerminologyResourceInput, ImportTerminologyResourceOutput>
 {
+    private static readonly string[] SupportedResourceTypes = ["CodeSystem", "ValueSet", "ConceptMap"];
+
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ImportTerminologyResourceActivity> _logger;
 
@@ -39,21 +51,12 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
         TaskContext context,
         ImportTerminologyResourceInput input)
     {
-        // Create scope for this activity execution to get scoped services (FhirDbContext, ITerminologyImporter)
-        using var scope = _serviceProvider.CreateScope();
-        var repositoryFactory = scope.ServiceProvider.GetRequiredService<SqlEntityFrameworkRepositoryFactory>();
-        var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        var fhirContextAccessor = scope.ServiceProvider.GetRequiredService<IFhirRequestContextAccessor>();
+        ArgumentNullException.ThrowIfNull(input);
 
-        await using var fhirDbContext = await repositoryFactory.GetDbContextAsync(input.TenantId, CancellationToken.None);
-        var systemRepository = new SqlSystemRepository(
-            fhirDbContext,
-            loggerFactory.CreateLogger<SqlSystemRepository>(),
-            scope.ServiceProvider.GetService<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>());
-        ITerminologyImporter terminologyImporter = new SqlCodeSystemImporter(
-            fhirDbContext,
-            systemRepository,
-            loggerFactory.CreateLogger<SqlCodeSystemImporter>());
+        using var scope = _serviceProvider.CreateScope();
+        var packageResources = scope.ServiceProvider.GetRequiredService<IPackageResourceRepository>();
+        var importerFactory = scope.ServiceProvider.GetRequiredService<ITerminologyImporterFactory>();
+        var fhirContextAccessor = scope.ServiceProvider.GetRequiredService<IFhirRequestContextAccessor>();
 
         // Establish the ambient request context for the duration of the activity so any reference
         // resolution the importer performs resolves the same tenant-scoped base URIs the HTTP request
@@ -63,129 +66,16 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
 
         try
         {
-            _logger.LogInformation(
-                "Starting terminology import for PackageResourceId {PackageResourceId}",
-                input.PackageResourceId);
-
-            // Load PackageResource entity from database
-            var entity = await fhirDbContext.PackageResources
-                .AsNoTracking()
-                .FirstOrDefaultAsync(pr => pr.PackageResourceId == input.PackageResourceId)
-                .ConfigureAwait(false);
-
-            if (entity == null)
-            {
-                var errorMessage = $"PackageResource {input.PackageResourceId} not found";
-                _logger.LogError("PackageResource {PackageResourceId} not found", input.PackageResourceId);
-
-                // Return failure output (do not throw - let orchestration continue)
-                return new ImportTerminologyResourceOutput(
-                    PackageResourceId: input.PackageResourceId,
-                    Canonical: "unknown",
-                    ResourceType: "unknown",
-                    Success: false,
-                    ConceptCount: 0,
-                    ErrorMessage: errorMessage);
-            }
-
-            // Map entity to domain model
-            var packageResource = MapEntityToModel(entity);
-
-            _logger.LogDebug(
-                "Loaded PackageResource: {Canonical} ({ResourceType}) from package {PackageId}@{PackageVersion}",
-                packageResource.Canonical,
-                packageResource.ResourceType,
-                packageResource.PackageId,
-                packageResource.PackageVersion);
-
-            // Update status to InProgress
-            await UpdateImportStatusAsync(
-                fhirDbContext,
-                input.PackageResourceId,
-                TerminologyImportStatus.InProgress,
-                importStartDate: DateTimeOffset.UtcNow,
-                cancellationToken: CancellationToken.None).ConfigureAwait(false);
-
-            // Route to appropriate importer based on ResourceType
-            TerminologyImportResult result;
-            try
-            {
-                result = packageResource.ResourceType switch
-                {
-                    "CodeSystem" => await terminologyImporter.ImportCodeSystemAsync(input.TenantId, packageResource, CancellationToken.None).ConfigureAwait(false),
-                    "ValueSet" => await terminologyImporter.ImportValueSetAsync(input.TenantId, packageResource, CancellationToken.None).ConfigureAwait(false),
-                    "ConceptMap" => await terminologyImporter.ImportConceptMapAsync(input.TenantId, packageResource, CancellationToken.None).ConfigureAwait(false),
-                    _ => throw new InvalidOperationException($"Unsupported ResourceType for terminology import: {packageResource.ResourceType}")
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Error importing {ResourceType} {Canonical}: {Message}",
-                    packageResource.ResourceType,
-                    packageResource.Canonical,
-                    ex.Message);
-
-                // Update status to Failed
-                await UpdateImportStatusAsync(
-                    fhirDbContext,
-                    input.PackageResourceId,
-                    TerminologyImportStatus.Failed,
-                    errorMessage: ex.Message,
-                    importCompletedDate: DateTimeOffset.UtcNow,
-                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
-
-                // Return failure output (do not throw)
-                return new ImportTerminologyResourceOutput(
-                    PackageResourceId: input.PackageResourceId,
-                    Canonical: packageResource.Canonical,
-                    ResourceType: packageResource.ResourceType,
-                    Success: false,
-                    ConceptCount: 0,
-                    ErrorMessage: ex.Message);
-            }
-
-            // Update final status based on result
-            await UpdateImportStatusAsync(
-                fhirDbContext,
-                input.PackageResourceId,
-                result.Status,
-                errorMessage: result.ErrorMessage,
-                importCompletedDate: DateTimeOffset.UtcNow,
-                importedConceptCount: result.ItemCount,
-                cancellationToken: CancellationToken.None).ConfigureAwait(false);
-
-            _logger.LogInformation(
-                "Completed terminology import for {Canonical} ({ResourceType}): {Status}, {ItemCount} concepts",
-                packageResource.Canonical,
-                packageResource.ResourceType,
-                result.Status,
-                result.ItemCount);
-
-            return new ImportTerminologyResourceOutput(
-                PackageResourceId: input.PackageResourceId,
-                Canonical: packageResource.Canonical,
-                ResourceType: packageResource.ResourceType,
-                Success: result.Success,
-                ConceptCount: result.ItemCount,
-                ErrorMessage: result.ErrorMessage);
+            return await ImportAsync(packageResources, importerFactory, input);
         }
         catch (Exception ex)
         {
-            // Catch-all for unexpected errors
             _logger.LogError(
                 ex,
                 "Unexpected error in ImportTerminologyResourceActivity for PackageResourceId {PackageResourceId}",
                 input.PackageResourceId);
 
-            return new ImportTerminologyResourceOutput(
-                PackageResourceId: input.PackageResourceId,
-                Canonical: "unknown",
-                ResourceType: "unknown",
-                Success: false,
-                ConceptCount: 0,
-                ErrorMessage: ex.Message);
+            return Failure(input.PackageResourceId, "unknown", "unknown", ex.Message);
         }
         finally
         {
@@ -193,118 +83,94 @@ public class ImportTerminologyResourceActivity : AsyncTaskActivity<ImportTermino
         }
     }
 
-    /// <summary>
-    /// Updates PackageResource import status fields in database.
-    /// Uses raw SQL to avoid tracking conflicts.
-    /// </summary>
-    private async Task UpdateImportStatusAsync(
-        FhirDbContext context,
-        long packageResourceId,
-        TerminologyImportStatus status,
-        DateTimeOffset? importStartDate = null,
-        DateTimeOffset? importCompletedDate = null,
-        string? errorMessage = null,
-        int? importedConceptCount = null,
-        CancellationToken cancellationToken = default)
+    private async Task<ImportTerminologyResourceOutput> ImportAsync(
+        IPackageResourceRepository packageResources,
+        ITerminologyImporterFactory importerFactory,
+        ImportTerminologyResourceInput input)
     {
-        try
+        _logger.LogInformation(
+            "Starting terminology import for PackageResourceId {PackageResourceId}",
+            input.PackageResourceId);
+
+        var packageResource = await packageResources.GetByPackageResourceIdAsync(
+            input.PackageResourceId, CancellationToken.None);
+
+        if (packageResource is null)
         {
-            // Execute raw SQL update to avoid loading entity into DbContext
-            // This prevents tracking conflicts and is more efficient for status updates
-            var sql = @"
-                UPDATE dbo.PackageResource
-                SET TerminologyImportStatus = {0}";
+            // No row to record a status against, so this is reported to the orchestration only.
+            _logger.LogError("PackageResource {PackageResourceId} not found", input.PackageResourceId);
 
-            var parameters = new List<object> { status.ToString() };
-            var paramIndex = 1;
-
-            if (importStartDate.HasValue)
-            {
-                sql += $", ImportStartDate = {{{paramIndex}}}";
-                parameters.Add(importStartDate.Value);
-                paramIndex++;
-            }
-
-            if (importCompletedDate.HasValue)
-            {
-                sql += $", ImportCompletedDate = {{{paramIndex}}}";
-                parameters.Add(importCompletedDate.Value);
-                paramIndex++;
-            }
-
-            if (errorMessage != null)
-            {
-                sql += $", ImportErrorMessage = {{{paramIndex}}}";
-                parameters.Add(errorMessage.Length > 1000 ? errorMessage.Substring(0, 1000) : errorMessage);
-                paramIndex++;
-            }
-
-            if (importedConceptCount.HasValue)
-            {
-                sql += $", ImportedConceptCount = {{{paramIndex}}}";
-                parameters.Add(importedConceptCount.Value);
-                paramIndex++;
-            }
-
-            sql += $" WHERE PackageResourceId = {{{paramIndex}}}";
-            parameters.Add(packageResourceId);
-
-            await context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
-
-            _logger.LogDebug(
-                "Updated PackageResource {PackageResourceId} import status to {Status}",
-                packageResourceId,
-                status);
+            return Failure(
+                input.PackageResourceId, "unknown", "unknown", $"PackageResource {input.PackageResourceId} not found");
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "Failed to update import status for PackageResourceId {PackageResourceId}",
-                packageResourceId);
-            // Don't throw - status update failure shouldn't block import
-        }
-    }
 
-    /// <summary>
-    /// Maps PackageResourceEntity to PackageResource domain model.
-    /// </summary>
-    private static PackageResource MapEntityToModel(Ignixa.DataLayer.SqlEntityFramework.Entities.PackageResourceEntity entity)
-    {
-        return new PackageResource
+        _logger.LogDebug(
+            "Loaded PackageResource: {Canonical} ({ResourceType}) from package {PackageId}@{PackageVersion}",
+            packageResource.Canonical,
+            packageResource.ResourceType,
+            packageResource.PackageId,
+            packageResource.PackageVersion);
+
+        if (!SupportedResourceTypes.Contains(packageResource.ResourceType))
         {
-            PackageResourceId = entity.PackageResourceId,
-            PackageId = entity.PackageId,
-            PackageVersion = entity.PackageVersion,
-            ResourceType = entity.ResourceType,
-            Canonical = entity.Canonical,
-            Version = entity.Version,
-            ResourceId = entity.ResourceId,
-            ResourceJson = entity.ResourceJson,
-            FhirVersion = entity.FhirVersion,
-            LoadedDate = entity.LoadedDate,
-            IsActive = entity.IsActive,
-            TerminologyImportStatus = ParseTerminologyImportStatus(entity.TerminologyImportStatus),
-            ContentHash = entity.ContentHash,
-            ImportStartDate = entity.ImportStartDate,
-            ImportCompletedDate = entity.ImportCompletedDate,
-            ImportErrorMessage = entity.ImportErrorMessage,
-            ImportedConceptCount = entity.ImportedConceptCount
+            // Reachable only from a hand-built orchestration -- ListPendingTerminologyImportsAsync offers
+            // nothing but the three supported types. Recorded because the importer is never called and so
+            // cannot record it, leaving no trace of why the resource never imported. Failed rather than
+            // Skipped deliberately: Skipped is terminal and would suppress the retry that adding support for
+            // the type should get, whereas Failed carries a diagnosable message and stays retryable.
+            var message = $"Unsupported ResourceType for terminology import: {packageResource.ResourceType}";
+            _logger.LogError("{Message} (PackageResourceId: {PackageResourceId})", message, input.PackageResourceId);
+
+            await packageResources.MarkTerminologyImportFailedAsync(
+                input.PackageResourceId, message, CancellationToken.None);
+
+            return Failure(input.PackageResourceId, packageResource.Canonical, packageResource.ResourceType, message);
+        }
+
+        var importer = await importerFactory.CreateAsync(CancellationToken.None);
+
+        // The importer converts its own failures into a Failed status on the package row and a failure
+        // result, so there is no catch here: an exception escaping it is a genuine fault and belongs to the
+        // caller's handler.
+        var result = packageResource.ResourceType switch
+        {
+            "CodeSystem" => await importer.ImportCodeSystemAsync(input.TenantId, packageResource, CancellationToken.None),
+            "ValueSet" => await importer.ImportValueSetAsync(input.TenantId, packageResource, CancellationToken.None),
+            "ConceptMap" => await importer.ImportConceptMapAsync(input.TenantId, packageResource, CancellationToken.None),
+
+            // Unreachable past the SupportedResourceTypes guard above, and spelled out anyway so that adding
+            // a fourth entry to that list does not quietly import it as a ConceptMap.
+            _ => throw new InvalidOperationException(
+                $"Unsupported ResourceType for terminology import: {packageResource.ResourceType}"),
         };
+
+        _logger.LogInformation(
+            "Completed terminology import for {Canonical} ({ResourceType}): {Status}, {ItemCount} concepts",
+            packageResource.Canonical,
+            packageResource.ResourceType,
+            result.Status,
+            result.ItemCount);
+
+        return new ImportTerminologyResourceOutput(
+            PackageResourceId: input.PackageResourceId,
+            Canonical: packageResource.Canonical,
+            ResourceType: packageResource.ResourceType,
+            Success: result.Success,
+            ConceptCount: result.ItemCount,
+            ErrorMessage: result.ErrorMessage);
     }
 
     /// <summary>
-    /// Parses TerminologyImportStatus from string (database stores as varchar).
+    /// Failures are returned rather than thrown so one bad resource does not abort the orchestration's
+    /// remaining imports.
     /// </summary>
-    private static TerminologyImportStatus? ParseTerminologyImportStatus(string? statusString)
-    {
-        if (string.IsNullOrEmpty(statusString))
-        {
-            return null;
-        }
-
-        return Enum.TryParse<TerminologyImportStatus>(statusString, out var status)
-            ? status
-            : null;
-    }
+    private static ImportTerminologyResourceOutput Failure(
+        long packageResourceId, string canonical, string resourceType, string errorMessage)
+        => new(
+            PackageResourceId: packageResourceId,
+            Canonical: canonical,
+            ResourceType: resourceType,
+            Success: false,
+            ConceptCount: 0,
+            ErrorMessage: errorMessage);
 }

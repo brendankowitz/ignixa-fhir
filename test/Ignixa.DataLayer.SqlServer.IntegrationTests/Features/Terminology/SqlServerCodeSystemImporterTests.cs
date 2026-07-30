@@ -109,17 +109,73 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenTheSameCodeSystemTwice_WhenTheContentIsUnchanged_ThenTheSecondImportIsSkipped()
+    public async Task GivenTheSameCodeSystemTwice_WhenTheContentIsUnchanged_ThenTheStatusStaysCompletedAndNoWorkIsRedone()
     {
+        // The second pass must report Completed, not Skipped. Reporting Skipped was how the row's status got
+        // downgraded from Completed, which both took $expand off the database for this CodeSystem --
+        // HybridTerminologyService routes anything other than Completed to the in-memory fallback -- and
+        // failed this very guard on the following load, re-importing in full every time.
         var packageResource = await _fixture.SeedPackageResourceAsync(
             "CodeSystem", SystemUrl, TerminologyOracleFixture.HierarchicalCodeSystemJson(SystemUrl));
 
         var importer = _fixture.CreateSqlServerImporter();
 
-        await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
-        await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
+        var first = await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
+        var second = await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
+
+        first.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Completed);
+        first.ItemCount.ShouldBe(4);
+
+        second.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Completed);
+        second.ItemCount.ShouldBe(0);
 
         (await ConceptCountAsync(SystemUrl)).ShouldBe(4);
+
+        var status = await _fixture.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
+
+        status.ShouldBe("Completed");
+    }
+
+    [Fact]
+    public async Task GivenACodeSystemSkippedForItsOwnSake_WhenImportedAgain_ThenItStaysSkippedAndIsNotReconsidered()
+    {
+        // content=not-present will never import no matter how often it is retried, so Skipped has to satisfy
+        // the unchanged-content guard as well as Completed does. While the guard matched only Completed,
+        // every one of these was re-parsed and re-decided on every package load.
+        var url = "http://example.org/fhir/CodeSystem/ported-skip-stays-skipped";
+
+        var packageResource = await _fixture.SeedPackageResourceAsync(
+            "CodeSystem", url, CodeSystemWithContentJson(url, "not-present"));
+
+        var importer = _fixture.CreateSqlServerImporter();
+
+        await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
+
+        var completedAfterFirst = await _fixture.ExecuteScalarAsync<DateTimeOffset>(
+            "SELECT TOP 1 ImportCompletedDate FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
+
+        var second = await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
+
+        second.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Skipped);
+
+        var status = await _fixture.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
+
+        status.ShouldBe("Skipped");
+        (await ConceptCountAsync(url)).ShouldBe(0);
+
+        // The load-bearing assertion: everything above holds whether or not the guard accepts Skipped,
+        // because re-deciding the skip reaches the same outcome. RecordSkippedAsync re-stamps this timestamp
+        // every time it runs, so an unmoved value is what proves the second pass short-circuited instead.
+        var completedAfterSecond = await _fixture.ExecuteScalarAsync<DateTimeOffset>(
+            "SELECT TOP 1 ImportCompletedDate FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
+
+        completedAfterSecond.ShouldBe(completedAfterFirst);
     }
 
     [Fact]

@@ -60,7 +60,9 @@ public class TerminologyImportResult
     }
 
     /// <summary>
-    /// Creates a skipped result (content hash unchanged).
+    /// Creates a skipped result: this resource was examined and deliberately not imported, so nothing of it
+    /// is in the terminology tables. <see cref="TerminologyImportStatus.Skipped"/> is the accurate terminal
+    /// status for that, and it is what routes lookups to the JSON fallback.
     /// </summary>
     public static TerminologyImportResult CreateSkipped()
     {
@@ -69,6 +71,29 @@ public class TerminologyImportResult
             Success = true,
             ItemCount = 0,
             Status = TerminologyImportStatus.Skipped
+        };
+    }
+
+    /// <summary>
+    /// Creates a result for content that is unchanged since a previous terminal import, where no work was
+    /// done and the status already on the row is the truth about what is in the terminology tables.
+    /// <para>
+    /// Distinct from <see cref="CreateSkipped"/> on purpose. Reporting this case as
+    /// <see cref="TerminologyImportStatus.Skipped"/> overwrote a <see cref="TerminologyImportStatus.Completed"/>
+    /// row that had every one of its concepts in the database, which both lied to
+    /// <c>HybridTerminologyService</c> — it routes anything other than <c>Completed</c> to the in-memory
+    /// fallback, so <c>$expand</c> stopped using the tables — and broke the importer's own
+    /// unchanged-content guard, which re-imported the resource in full on the next package load.
+    /// </para>
+    /// </summary>
+    /// <param name="retainedStatus">The terminal status already recorded on the package resource.</param>
+    public static TerminologyImportResult CreateUnchanged(TerminologyImportStatus retainedStatus)
+    {
+        return new TerminologyImportResult
+        {
+            Success = true,
+            ItemCount = 0,
+            Status = retainedStatus
         };
     }
 }

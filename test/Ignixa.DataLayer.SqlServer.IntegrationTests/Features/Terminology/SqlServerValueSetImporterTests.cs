@@ -359,8 +359,11 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenTheSameValueSetTwice_WhenTheContentIsUnchanged_ThenTheSecondImportIsSkipped()
+    public async Task GivenTheSameValueSetTwice_WhenTheContentIsUnchanged_ThenTheStatusStaysCompleted()
     {
+        // Was asserting Skipped. That is what overwrote a Completed row whose expansion was fully in the
+        // database, and HybridTerminologyService reads that column to decide whether $expand may use the
+        // database at all -- so this ValueSet silently fell back to in-memory expansion on every reload.
         const string url = "http://example.org/fhir/ValueSet/ported-reimport";
 
         var packageResource = await _fixture.SeedPackageResourceAsync(
@@ -372,7 +375,14 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         var second = await importer.ImportValueSetAsync(
             _fixture.SystemPartitionId, packageResource, CancellationToken.None);
 
-        second.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Skipped);
+        second.Status.ShouldBe(Ignixa.Domain.Terminology.TerminologyImportStatus.Completed);
+        second.ItemCount.ShouldBe(0);
         (await ExpansionRowCountAsync(url)).ShouldBe(2);
+
+        var status = await _fixture.ExecuteScalarAsync<string>(
+            "SELECT TOP 1 TerminologyImportStatus FROM dbo.PackageResource " +
+            $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);
+
+        status.ShouldBe("Completed");
     }
 }
