@@ -1,3 +1,4 @@
+using System.Text;
 using Ignixa.Search.Sql.Ast;
 using Shouldly;
 using Xunit;
@@ -10,48 +11,93 @@ public class KeysetContinuationTokenTests
     public void GivenASingleBoundaryValue_WhenEncodedThenDecoded_ThenRoundTripsExactly()
     {
         // Arrange
-        var token = KeysetContinuationToken.Encode(["Adams"], resourceTypeId: 103, surrogateId: 5000L);
+        var token = KeysetContinuationToken.Encode(
+            new KeysetPosition(["Adams"], 103, 5000L, SortPhase.Valued));
 
         // Act
-        var decoded = KeysetContinuationToken.TryDecode(token, out var boundaryValues, out var resourceTypeId, out var surrogateId);
+        var decoded = KeysetContinuationToken.TryDecode(token, out var position);
 
         // Assert
         decoded.ShouldBeTrue();
-        boundaryValues.ShouldBe(["Adams"]);
-        resourceTypeId.ShouldBe(103);
-        surrogateId.ShouldBe(5000L);
+        position!.BoundaryValues.ShouldBe(["Adams"]);
+        position.BoundaryResourceTypeId.ShouldBe(103);
+        position.BoundarySurrogateId.ShouldBe(5000L);
+        position.Phase.ShouldBe(SortPhase.Valued);
     }
 
     [Fact]
     public void GivenMultipleBoundaryValues_WhenEncodedThenDecoded_ThenRoundTripsExactly()
     {
         // Arrange
-        var token = KeysetContinuationToken.Encode(["Zorro", "2000-01-01T00:00:00.0000000"], resourceTypeId: 103, surrogateId: 9000L);
+        var token = KeysetContinuationToken.Encode(
+            new KeysetPosition(["Zorro", "2000-01-01T00:00:00.0000000"], 103, 9000L, SortPhase.Valued));
 
         // Act
-        var decoded = KeysetContinuationToken.TryDecode(token, out var boundaryValues, out var resourceTypeId, out var surrogateId);
+        var decoded = KeysetContinuationToken.TryDecode(token, out var position);
 
         // Assert
         decoded.ShouldBeTrue();
-        boundaryValues.ShouldBe(["Zorro", "2000-01-01T00:00:00.0000000"]);
-        resourceTypeId.ShouldBe(103);
-        surrogateId.ShouldBe(9000L);
+        position!.BoundaryValues.ShouldBe(["Zorro", "2000-01-01T00:00:00.0000000"]);
+        position.BoundaryResourceTypeId.ShouldBe(103);
+        position.BoundarySurrogateId.ShouldBe(9000L);
     }
 
     [Fact]
-    public void GivenAZeroBoundaryValueToken_WhenEncodedThenDecoded_ThenRoundTripsAnEmptyList()
+    public void GivenAMissingPrimaryPosition_WhenEncodedThenDecoded_ThenTheSegmentSurvivesTheRoundTrip()
     {
-        // Arrange -- a MissingPrimary-phase first page has no boundary values at all.
-        var token = KeysetContinuationToken.Encode([], resourceTypeId: 103, surrogateId: 7000L);
+        // Arrange -- the whole point of carrying the phase: a caller resuming from this token alone must land
+        // back in the missing segment, not restart the valued one.
+        var token = KeysetContinuationToken.Encode(
+            new KeysetPosition([], 103, 7000L, SortPhase.MissingPrimary));
 
         // Act
-        var decoded = KeysetContinuationToken.TryDecode(token, out var boundaryValues, out var resourceTypeId, out var surrogateId);
+        var decoded = KeysetContinuationToken.TryDecode(token, out var position);
 
         // Assert
         decoded.ShouldBeTrue();
-        boundaryValues.ShouldBeEmpty();
-        resourceTypeId.ShouldBe(103);
-        surrogateId.ShouldBe(7000L);
+        position!.Phase.ShouldBe(SortPhase.MissingPrimary);
+        position.BoundaryValues.ShouldBeEmpty();
+        position.BoundarySurrogateId.ShouldBe(7000L);
+    }
+
+    [Fact]
+    public void GivenBothPhasesAtTheSameBoundary_WhenEncoded_ThenTheTokensDiffer()
+    {
+        // A boundary is meaningless without its segment, so the encoding must not collapse the two.
+        var valued = KeysetContinuationToken.Encode(new KeysetPosition(["Adams"], 103, 5000L, SortPhase.Valued));
+        var missing = KeysetContinuationToken.Encode(new KeysetPosition(["Adams"], 103, 5000L, SortPhase.MissingPrimary));
+
+        valued.ShouldNotBe(missing);
+    }
+
+    [Fact]
+    public void GivenATokenMintedBeforeThePhaseWasCarried_WhenDecoded_ThenItIsRefusedRatherThanDefaulted()
+    {
+        // Arrange -- a pre-cutover token has no Phase field. Deserialisation would give Valued, which is a
+        // real segment, so the client would silently resume in the wrong one. Refusing restarts it at page 1.
+        var stale = Base64Json("""{"BoundaryValues":["Adams"],"BoundaryResourceTypeId":103,"BoundarySurrogateId":5000}""");
+
+        // Act
+        var decoded = KeysetContinuationToken.TryDecode(stale, out var position);
+
+        // Assert
+        decoded.ShouldBeFalse();
+        position.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenACraftedTokenWithAnOutOfRangePhase_WhenDecoded_ThenItIsRefused()
+    {
+        // Arrange -- a token is client input, so the phase is attacker-controlled. Any value but MissingPrimary
+        // reads the valued segment, so an unchecked cast would hand back rows the client has already paged.
+        var crafted = Base64Json("""{"BoundaryValues":["Adams"],"BoundaryResourceTypeId":103,"BoundarySurrogateId":5000,"Phase":7}""");
+
+        // Act
+        var decoded = KeysetContinuationToken.TryDecode(crafted, out var position);
+
+        // Assert
+        decoded.ShouldBeFalse();
+        position.ShouldBeNull();
     }
 
     [Theory]
@@ -61,9 +107,13 @@ public class KeysetContinuationTokenTests
     public void GivenAMalformedToken_WhenDecoded_ThenReturnsFalseWithoutThrowing(string malformed)
     {
         // Act
-        var decoded = KeysetContinuationToken.TryDecode(malformed, out _, out _, out _);
+        var decoded = KeysetContinuationToken.TryDecode(malformed, out var position);
 
         // Assert
         decoded.ShouldBeFalse();
+        position.ShouldBeNull();
     }
+
+    private static string Base64Json(string json)
+        => Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
 }
