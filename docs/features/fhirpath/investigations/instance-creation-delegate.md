@@ -1,7 +1,7 @@
 # Investigation: Instance Creation Delegate
 
 **Feature**: fhirpath
-**Status**: In Progress
+**Status**: Implemented
 **Created**: 2026-06-16
 
 ## Problem
@@ -52,8 +52,8 @@ element's value expression (dropping empty-valued elements per spec), then:
 1. If `InstanceCreator` is set → delegate construction; the host returns a
    real node (JSON/source-node-backed `SchemaAwareElement`, or a Firely
    POCO-backed node via the `Ignixa.Extensions.FirelySdk6` adapter).
-2. If no creator is set → fall back to `ComplexElement`, documented as a
-   **transient, navigation-only, no-round-trip** node.
+2. If no creator is set → throw. The engine has no object model of its own, so
+   there is nothing honest to return (see Decisions, #2).
 
 The host (Validation / DataLayer / Api / mapping) wires the delegate. The engine
 stays model-agnostic.
@@ -62,9 +62,9 @@ stays model-agnostic.
 
 | Pros | Cons |
 |------|------|
-| Object construction lives in the host/model layer, not the Core engine (correct layering) | Requires host wiring; an unwired host silently gets the degraded fallback |
+| Object construction lives in the host/model layer, not the Core engine (correct layering) | Requires host wiring; an unwired host gets a hard failure at the first instance selector |
 | Factory returns the SAME node kind the engine already navigates → no fidelity divergence | Ignixa's canonical node is read-only source-node-backed; host must build a `MutableNode`/`JsonObject` and wrap it (real work, but in the right place) |
-| Round-trip/serialization comes for free from the returned node | Two construction paths exist during migration (factory + fallback) until callers adopt |
+| Serialization comes from the returned node rather than a parallel model | Only one construction path exists, so every host that wants instance selectors must wire one |
 | Replaces the `Schema` property added for this feature — net-neutral context surface, no redundant model coupling | Fallback semantics must be specified and tested, or behavior is ambiguous |
 | Matches Firely prior art; eases future Firely-backed scenarios | Marginally more context surface (`EvaluationContext` already a `record`, low cost) |
 
@@ -93,7 +93,7 @@ a standalone issue, and the pivot should address them:
 ## Alignment
 
 - [x] Follows architectural layering rules — moves type materialization out of the Core engine into the host
-- [x] Developer Experience (works with minimal setup) — degraded `ComplexElement` fallback keeps schema-less/test usage working with zero wiring
+- [x] Developer Experience (works with minimal setup) — a host that has not wired a creator gets an error naming `WithInstanceCreator` and the concrete factory to use, instead of a node that silently behaves differently from a parsed one
 - [x] Specification compliance — enables `value`/conversion and namespace handling the bespoke node can't
 - [x] Consistent with existing patterns — `with`-based optional dependency on `EvaluationContext` (same shape as `TraceHandler`/`NodeEvaluationHandler`)
 
@@ -129,9 +129,8 @@ a standalone issue, and the pivot should address them:
 
 ## Open decisions
 
-1. **Fallback when no factory is wired**: degrade to `ComplexElement`
-   (recommended — preserves test/schema-less usage) vs. throw
-   "instance creation not supported in this context".
+1. **Fallback when no factory is wired**: ~~degrade to `ComplexElement` vs. throw~~
+   — **resolved (2026-07-29): throw.** See Decisions, #2.
 2. **Creation-hook ownership**: ~~a new `IInstanceFactory` (engine context drops
    `ISchema` entirely) vs. extending `ISchema` with a `Create(...)` method~~ —
    **resolved (2026-07-28): a delegate on the context.** Construction and
@@ -206,11 +205,9 @@ Built the native backing and proved it:
 
 Wiring strategy: **explicit per-call injection** at schema-bearing sites.
 
-- **Validation invariants wired**: `FhirPathInvariantCheck` builds a lazy
-  `EvaluationContext().WithInstanceFactory(new SourceNodeInstanceFactory(_schema))`
-  and passes it to `Evaluate`. Validation suite green (489/490; the one failure
-  is a pre-existing wall-clock flake on a `Minimal`-depth timing test that
-  doesn't run invariants — passes in isolation at 270ms).
+- **Validation invariants wired**: `FhirPathInvariantCheck` builds an
+  `EvaluationContext().WithInstanceCreator(new SourceNodeInstanceFactory(_schema).Create)`
+  and passes it to `Evaluate`. Validation suite green.
 - **Analyzer type inference** (gap #3): `FhirPathAnalyzer.VisitInstanceSelector`
   now infers the declared type (resolves via schema; falls back to the type name
   for unknowns) and still visits child value expressions. Analyzer tests green.
@@ -247,14 +244,122 @@ a class, and the two host hooks on the context (`resolve()` and instance creatio
 are now shaped identically. Reversible — an interface can be reintroduced as a
 wrapper without touching the engine.
 
+## Decisions (2026-07-29)
+
+### What the spec actually settles
+
+Before deciding anything, the source was checked directly
+([HL7/FHIRPath@`c95ad83`](https://github.com/HL7/FHIRPath/blob/c95ad83b35babc67a383369c96535c39e9487fd3/input/pages/index.md)):
+
+- **The Object Creation section is marked STU**, not normative, even though the
+  page as a whole is normative.
+- **No conformance tests exist.** `FHIR/fhir-test-cases` `tests-fhir-r5.xml`
+  self-identifies as FHIRPath 2.0.0 and contains no object-construction cases.
+- **HAPI does not implement the syntax at all** — its `ExpressionNode.Kind` enum
+  has only `Name, Function, Constant, Group, Unary`.
+- **Firely's implementation is real but unmerged** (branch
+  `feature/BP-fhirpath-long-and-instanceselector`): a `ModelObjectFactory`
+  delegate on `FhirEvaluationContext` that throws when unset and treats a null
+  return as empty.
+- Grepping every packaged specification for instance-selector syntax inside
+  invariant `expression` fields returns **zero matches** — no shipped FHIR
+  constraint uses this today.
+
+The spec **is** explicit about: the singleton-input rule, dropping
+empty-valued elements, `{:}`, populating repeating elements from a multi-item
+expression, that "the engine **MAY** throw an error" when it cannot represent the
+requested multiplicity, the special `value` element, and that the engine is
+responsible for converting FHIRPath primitives into the target type system.
+
+The spec is **silent** about: unknown type names, duplicate element keys,
+singleton-vs-array representation, choice-element naming, whether the result must
+be a valid standalone instance, and `System.*` construction.
+
+Note that `is`/`as` *do* specify throwing on unresolved type names, but that
+language is deliberately not carried into the instance-selector section — it was
+not assumed to apply here.
+
+So the four decisions below are **Ignixa implementation choices in spec-silent
+territory**, not compliance requirements. They are recorded here so the reasoning
+survives, and because a future normative revision may contradict them.
+
+### 1. Factory contract — produce canonical FHIR JSON
+
+`SourceNodeInstanceFactory` now emits what a FHIR parser would accept:
+
+- `resourceType` is written when the target type is a resource. Without it the
+  backing JSON has no type discriminator and cannot be read back.
+- A choice element assigned by its base name is stored under the type-suffixed
+  name: `Observation { value: Quantity{...} }` → `valueQuantity`. The suffix is
+  only applied when the assigned value's type matches one of the element's
+  declared choice types; an unmatched type keeps the base name rather than
+  inventing a property. Names that already carry a suffix are left alone.
+  FHIRPath navigation by the base name still works, because
+  `SchemaAwareElement` already resolves choice variants.
+
+**Deliberately not done:** a single value assigned to a repeating element is
+still emitted as a JSON scalar, not a one-item array. Fixing that means
+consulting cardinality on every write and changes the shape of existing output;
+it is a separate change with its own blast radius.
+
+**Consequence worth knowing:** because created nodes are read back through the
+schema exactly like parsed ones, values are typed by the schema, not by the
+FHIRPath literal. `Quantity { value: 42 }` yields a `decimal`, not an `integer` —
+which is precisely the conversion the spec asks for. Conversely, an element the
+schema does not know has no type to convert against, so its value surfaces as
+text.
+
+### 2. No creator wired — throw
+
+The engine owns no object model, so with no creator there is nothing truthful to
+return. The previous `ComplexElement` fallback produced a node that navigated
+like a real one but had no schema metadata and could not be serialized, so
+misconfiguration surfaced later as confusing downstream behaviour rather than at
+the point of failure. Matches Firely. The exception names both
+`WithInstanceCreator` and the concrete factory to wire.
+
+**Known gap:** `FhirPathInvariantCheck` is the only host wiring a creator.
+`SqlOnFhirEvaluationVisitor` and the general-purpose `TypedElementExtensions`
+helpers build bare contexts, and `FhirMappingLanguage.FhirPathIntegration` has no
+`ISchema` in scope at all. Instance selectors used from those paths now fail
+loudly. Wiring them means threading a schema through each host — a separate
+change, and FML additionally has its own `create` mechanism.
+
+### 3. Unknown type names — analyzer error, runtime empty
+
+`FhirPathAnalyzer.VisitInstanceSelector` reports an error for a type the schema
+cannot resolve. Runtime stays lenient (the creator declines, the expression
+yields empty), matching Firely's null-means-empty contract. The analyzer still
+contributes the unresolved name to the result type set so downstream navigation
+does not cascade a second wave of "empty context" errors from the same root
+cause.
+
+### 4. Duplicate assignments — schema-driven
+
+Assignments are grouped by element name instead of being written one at a time,
+so `HumanName { given: 'John', given: 'Jacob' }` keeps both values rather than
+the second silently overwriting the first. When the schema says the element does
+not repeat, this throws — cover for which is the spec's explicit "the engine MAY
+throw an error". Element names absent from the schema are passed through
+unchanged: this factory constructs, it does not validate.
+
 ## Verdict
 
-**Seam validated and production backing proven.** The delegate approach
-(option A) works with a small, reversible engine change plus a native
-`SourceNodeInstanceFactory` that returns first-class, round-trippable nodes — no
-Firely dependency. The earlier "node backing" risk is retired. Remaining work is
-integration, not feasibility: wire the factory into `EvaluationContext`
-construction, add analyzer type inference, and handle the special `value`
-element. The "round-trip consumer?" question now only affects *when* to wire the
-factory in by default (vs. leaving the fallback), not whether the approach is
-viable.
+**Implemented.** The delegate approach works with a small, reversible engine
+change plus a native `SourceNodeInstanceFactory` — no Firely dependency. The
+earlier "node backing" risk is retired: created instances are the same
+`SchemaAwareElement` kind the engine navigates everywhere else, backed by JSON
+that carries `resourceType` and canonical choice-element names.
+
+The claim in earlier revisions that created nodes are fully "round-trippable" was
+too strong and has been corrected. Two known gaps remain in the backing JSON:
+
+1. A single value assigned to a repeating element is emitted as a scalar rather
+   than a one-item array (see Decisions, #1).
+2. Primitive shadow content (`_value` extensions/id) is not emitted, because
+   that requires writing a sibling `_{name}` property and `ElementJsonConverter`
+   returns a single node. Documented on `ElementJsonConverter.ToJsonNode`.
+
+Remaining integration work is host wiring for `SqlOnFhir` and the mapping engine
+(see Decisions, #2), not feasibility.
+

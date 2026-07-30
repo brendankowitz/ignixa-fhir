@@ -13,11 +13,31 @@ namespace Ignixa.Serialization.SourceNodes;
 /// Wire <see cref="Create"/> as the <c>InstanceCreator</c> delegate on an evaluation context.
 /// Builds a JSON object for the requested type and returns it as a first-class
 /// <see cref="SchemaAwareElement"/> — the same node kind the FHIRPath engine
-/// navigates elsewhere — so created instances support full navigation and
-/// round-trip to JSON. Declines (returns null) for types unknown to the schema.
+/// navigates elsewhere — so created instances support full navigation.
+/// Declines (returns null) for types unknown to the schema.
 /// </summary>
+/// <remarks>
+/// The FHIRPath object-creation section is STU and is silent on choice-element naming,
+/// duplicate assignments, resource identification, and whether the result must be a valid
+/// standalone instance. This factory resolves those gaps as follows:
+/// <list type="bullet">
+/// <item>Resources emit <c>resourceType</c> so the backing JSON re-parses as a FHIR resource.</item>
+/// <item>An assignment naming a choice element by its base name (<c>value</c>) is emitted under the
+/// type-suffixed name (<c>valueQuantity</c>) when the assigned value matches one of the declared
+/// choice types. Names that already carry a suffix pass through untouched.</item>
+/// <item>Repeated assignments to the same name are aggregated rather than overwriting. Assigning
+/// more values than the element can hold throws, which the spec permits ("the engine MAY throw
+/// an error").</item>
+/// <item>Element names absent from the schema are emitted verbatim; this factory constructs, it
+/// does not validate.</item>
+/// </list>
+/// A single value assigned to a repeating element is still emitted as a JSON scalar rather than a
+/// one-item array, so the backing JSON is not always canonical FHIR.
+/// </remarks>
 public sealed class SourceNodeInstanceFactory(ISchema schema)
 {
+    private const string ResourceTypeProperty = "resourceType";
+
     private readonly ISchema _schema = schema ?? throw new ArgumentNullException(nameof(schema));
 
     public IElement? Create(InstanceCreationRequest request)
@@ -51,13 +71,29 @@ public sealed class SourceNodeInstanceFactory(ISchema schema)
             return new SchemaAwareElement(primitiveSource, _schema, definition, typeName);
         }
 
+        var obj = BuildObject(definition, typeName, elements);
+        var source = JsonNodeSourceNode.Create(obj, typeName);
+        return new SchemaAwareElement(source, _schema, definition, typeName);
+    }
+
+    private JsonObject BuildObject(IType definition, string typeName, IReadOnlyList<InstanceElement> elements)
+    {
         var obj = new JsonObject();
-        foreach (var element in elements)
+
+        // Without this a created resource serializes to an object with no type discriminator,
+        // which no FHIR parser can read back.
+        if (definition.Info.IsResource)
         {
-            var nodes = element.Values
+            obj[ResourceTypeProperty] = JsonValue.Create(typeName);
+        }
+
+        // Group so that repeated assignments to one name aggregate instead of overwriting.
+        foreach (var group in elements.GroupBy(e => e.Name, StringComparer.Ordinal))
+        {
+            var values = group.SelectMany(e => e.Values).ToList();
+            var nodes = values
                 .Select(ElementJsonConverter.ToJsonNode)
-                .Where(n => n is not null)
-                .Select(n => n!)
+                .OfType<JsonNode>()
                 .ToList();
 
             if (nodes.Count == 0)
@@ -65,10 +101,81 @@ public sealed class SourceNodeInstanceFactory(ISchema schema)
                 continue;
             }
 
-            obj[element.Name] = nodes.Count == 1 ? nodes[0] : new JsonArray([.. nodes]);
+            var childDefinition = FindChildDefinition(definition, group.Key);
+            if (nodes.Count > 1 && childDefinition is { IsCollection: false })
+            {
+                throw new InvalidOperationException(
+                    $"Element '{group.Key}' of type '{typeName}' does not repeat, but {nodes.Count} values were assigned.");
+            }
+
+            var propertyName = ResolvePropertyName(group.Key, childDefinition, values[0]);
+            obj[propertyName] = nodes.Count == 1 ? nodes[0] : new JsonArray([.. nodes]);
         }
 
-        var source = JsonNodeSourceNode.Create(obj, typeName);
-        return new SchemaAwareElement(source, _schema, definition, typeName);
+        return obj;
+    }
+
+    /// <summary>
+    /// Locates the schema child for an assignment name, accepting the base name of a choice element
+    /// (<c>value</c>) as well as an exact match. Returns null for names the schema does not declare.
+    /// </summary>
+    private static IType? FindChildDefinition(IType definition, string name)
+    {
+        var exact = definition.Children.FirstOrDefault(c => string.Equals(c.Info.Name, name, StringComparison.Ordinal));
+        if (exact is not null)
+        {
+            return exact;
+        }
+
+        return definition.Children.FirstOrDefault(c => IsChoice(c) && string.Equals(ChoiceBaseName(c), name, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Maps an assignment onto the JSON property name, expanding a choice element's base name into
+    /// its type-suffixed form when the assigned value matches one of the declared choice types.
+    /// </summary>
+    private static string ResolvePropertyName(string name, IType? childDefinition, IElement value)
+    {
+        // Only the bare base name is expanded; an already-suffixed name would otherwise be
+        // suffixed twice (valueQuantity -> valueQuantityQuantity).
+        if (childDefinition is null
+            || !IsChoice(childDefinition)
+            || !string.Equals(ChoiceBaseName(childDefinition), name, StringComparison.Ordinal))
+        {
+            return name;
+        }
+
+        if (childDefinition is not ITypeExtended { Types.Count: > 0 } extended)
+        {
+            return name;
+        }
+
+        var assignedType = LocalTypeName(value.InstanceType);
+        var declared = extended.Types.FirstOrDefault(t =>
+            string.Equals(t.Code, assignedType, StringComparison.OrdinalIgnoreCase));
+
+        // An unmatched type is left alone rather than rejected — validation is not this
+        // factory's job, and guessing a suffix would produce a silently wrong element name.
+        return declared?.Code is { Length: > 0 } code
+            ? name + char.ToUpperInvariant(code[0]) + code[1..]
+            : name;
+    }
+
+    private static bool IsChoice(IType type)
+        => type.Info.IsChoiceElement || type.Info.Name.EndsWith("[x]", StringComparison.Ordinal);
+
+    private static string ChoiceBaseName(IType type)
+        => type.Info.Name.EndsWith("[x]", StringComparison.Ordinal)
+            ? type.Info.Name[..^3]
+            : type.Info.Name;
+
+    /// <summary>
+    /// Strips a namespace qualifier so <c>System.String</c> and <c>FHIR.Quantity</c> can be compared
+    /// against the unqualified type codes the schema declares for a choice element.
+    /// </summary>
+    private static string LocalTypeName(string instanceType)
+    {
+        var separator = instanceType.LastIndexOf('.');
+        return separator >= 0 ? instanceType[(separator + 1)..] : instanceType;
     }
 }

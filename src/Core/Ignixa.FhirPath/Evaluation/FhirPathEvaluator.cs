@@ -1866,19 +1866,19 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             elements.Add(new InstanceElement(assignment.ElementName, values));
         }
 
-        // Preferred path: hand construction to the host's model/type system.
-        if (context.InstanceCreator is { } createInstance)
+        // Construction is delegated to the host's model/type system; there is no engine-local
+        // object model to fall back on. A transient stand-in node would look like it worked while
+        // producing something that carries no schema metadata and cannot be serialized, so an
+        // unconfigured engine fails loudly instead.
+        if (context.InstanceCreator is not { } createInstance)
         {
-            var created = createInstance(new InstanceCreationRequest(typeName, expression.NamespacePrefix, elements));
-            return created is null ? [] : [created];
+            throw new InvalidOperationException(
+                $"Cannot construct '{expression.FullTypeName}': no instance creator is configured on the evaluation context. " +
+                $"Set one via {nameof(EvaluationContext.WithInstanceCreator)} (for example, Ignixa.Serialization's SourceNodeInstanceFactory.Create).");
         }
 
-        // Fallback (no creator wired): transient, navigation-only node with no
-        // round-trip and no schema-driven type metadata. See investigation doc.
-        var children = elements
-            .SelectMany(e => e.Values.Select(v => (e.Name, v)))
-            .ToList();
-        return [new ComplexElement(typeName, typeName, children)];
+        var created = createInstance(new InstanceCreationRequest(typeName, expression.NamespacePrefix, elements));
+        return created is null ? [] : [created];
     }
 
     private IElement CreateBoolean(bool value) => new PrimitiveElement(value, "boolean");
@@ -1932,40 +1932,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name = null) => [];
-
-        public T? Meta<T>() where T : class => null;
-    }
-
-    /// <summary>
-    /// Implementation of IElement for complex FHIR objects with child elements.
-    /// Used by instance selector expressions.
-    /// </summary>
-    private class ComplexElement : IElement
-    {
-        private readonly List<(string name, IElement element)> _children;
-
-        public ComplexElement(string instanceType, string name, IEnumerable<(string name, IElement element)> children, IType? type = null)
-        {
-            InstanceType = instanceType;
-            Name = name;
-            _children = children.ToList();
-            Type = type;
-        }
-
-        public string Name { get; }
-        public string InstanceType { get; }
-        public object? Value => null;
-        public string Location => string.Empty;
-        public IType? Type { get; }
-        public bool HasPrimitiveValue => false;
-
-        public IReadOnlyList<IElement> Children(string? name = null)
-        {
-            if (name == null)
-                return _children.Select(c => c.element).ToList();
-
-            return _children.Where(c => c.name == name).Select(c => c.element).ToList();
-        }
 
         public T? Meta<T>() where T : class => null;
     }

@@ -713,6 +713,13 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
+            // The spec is silent on unknown construction types, but an expression naming a type this
+            // schema cannot construct always evaluates to empty, so surfacing it at analysis time is
+            // strictly more useful than a silent empty result at runtime.
+            context.AddError($"Unknown type '{expression.FullTypeName}' in instance selector", expression);
+
+            // Still contribute the name so downstream navigation reports its own problems rather
+            // than cascading "empty context" errors from this one.
             result.AddPrimitiveType(expression.TypeName);
         }
 

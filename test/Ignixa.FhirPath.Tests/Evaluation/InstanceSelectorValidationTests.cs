@@ -16,6 +16,10 @@ public class InstanceSelectorValidationTests
     private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
+    // The evaluator has no built-in object model, so every construction test needs a creator wired.
+    private List<IElement> EvaluateCreating(IElement focus, Ignixa.FhirPath.Expressions.Expression ast) =>
+        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus)).ToList();
+
     private static IElement CreateIntegerElement() => new PrimitiveElement(1, "integer");
 
     [Fact]
@@ -27,7 +31,7 @@ public class InstanceSelectorValidationTests
         // Act
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement();
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert - no schema validation, so it creates the object with these properties
         result.Count.ShouldBe(1);
@@ -37,9 +41,11 @@ public class InstanceSelectorValidationTests
         unknownField.ShouldNotBeNull();
         unknownField.Value.ShouldBe("value");
 
+        // Off-schema elements have no type definition to convert against, so their values surface
+        // as text — the same way an unrecognised property in a parsed resource does.
         var anotherField = result[0].Children("anotherInvalidOne").SingleOrDefault();
         anotherField.ShouldNotBeNull();
-        anotherField.Value.ShouldBe(123);
+        anotherField.Value.ShouldBe("123");
     }
 
     [Fact]
@@ -62,7 +68,7 @@ public class InstanceSelectorValidationTests
         // Act
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement();
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert - delimited identifiers allow any characters
         result.Count.ShouldBe(1);
@@ -93,18 +99,20 @@ public class InstanceSelectorValidationTests
         // Act
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement();
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         result.Count.ShouldBe(1);
         result[0].InstanceType.ShouldBe("Patient");
 
         result[0].Children("field@name").SingleOrDefault()?.Value.ShouldBe("value");
-        result[0].Children("field.with.dots").SingleOrDefault()?.Value.ShouldBe(123);
+
+        // Off-schema element, so no type conversion is applied and the value stays textual.
+        result[0].Children("field.with.dots").SingleOrDefault()?.Value.ShouldBe("123");
     }
 
     [Fact]
-    public void GivenUnknownTypeName_WhenInstanceSelector_ThenCreatesTypeAnyway()
+    public void GivenUnknownTypeName_WhenInstanceSelector_ThenReturnsEmpty()
     {
         // Arrange - using a completely made-up type name
         var expression = "CompletelyMadeUpType { field: 'value' }";
@@ -112,12 +120,11 @@ public class InstanceSelectorValidationTests
         // Act
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement();
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
-        // Assert - no type validation, creates the object anyway
-        result.Count.ShouldBe(1);
-        result[0].InstanceType.ShouldBe("CompletelyMadeUpType");
-        result[0].Children("field").SingleOrDefault()?.Value.ShouldBe("value");
+        // Assert - the creator cannot construct an unknown type, so evaluation yields empty.
+        // The analyzer reports this statically; see FhirPathAnalyzerTests.
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -129,7 +136,7 @@ public class InstanceSelectorValidationTests
         // Act
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement();
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         result.Count.ShouldBe(1);

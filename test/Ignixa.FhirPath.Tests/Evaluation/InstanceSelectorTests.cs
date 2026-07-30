@@ -16,6 +16,10 @@ public class InstanceSelectorTests
     private readonly FhirPathParser _parser = new();
     private readonly FhirPathEvaluator _evaluator = new();
 
+    // The evaluator has no built-in object model, so every construction test needs a creator wired.
+    private List<IElement> EvaluateCreating(IElement focus, Ignixa.FhirPath.Expressions.Expression ast) =>
+        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus)).ToList();
+
     #region Simple Instance Selector Tests
 
     [Fact]
@@ -27,7 +31,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -51,7 +55,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -86,7 +90,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -114,7 +118,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -146,7 +150,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -165,7 +169,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -188,7 +192,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -200,23 +204,18 @@ public class InstanceSelectorTests
     }
 
     [Fact]
-    public void GivenSystemNamespacePrefix_WhenInstanceSelector_ThenCreatesObject()
+    public void GivenSystemNamespacePrefix_WhenInstanceSelector_ThenReturnsEmpty()
     {
-        // Arrange
+        // Arrange - System-namespace primitives are outside the FHIR factory's remit
         var expression = "System.String { value: 'test' }";
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
-        // Assert
-        Assert.Single(result);
-        Assert.Equal("String", result[0].InstanceType);
-
-        var value = result[0].Children("value").SingleOrDefault();
-        Assert.NotNull(value);
-        Assert.Equal("test", value.Value);
+        // Assert - the creator declines, which the spec treats as an empty result
+        Assert.Empty(result);
     }
 
     #endregion
@@ -232,7 +231,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -262,7 +261,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -277,7 +276,7 @@ public class InstanceSelectorTests
     #region Multiple Input Items Error Tests
 
     [Fact]
-    public void GivenMultipleInputItems_WhenInstanceSelector_ThenThrowsException()
+    public void GivenMultipleInputItems_WhenInstanceSelector_ThenEvaluatesOncePerItem()
     {
         // Arrange
         var expression = "(1 | 2 | 3).select(Coding { code: $this.toString() })";
@@ -285,7 +284,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert - should work because select() evaluates instance selector for each item separately
         Assert.Equal(3, result.Count);
@@ -324,7 +323,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Empty(result);
@@ -350,22 +349,23 @@ public class InstanceSelectorTests
     #region Value Type Tests
 
     [Fact]
-    public void GivenIntegerValue_WhenInstanceSelector_ThenCreatesElementWithInteger()
+    public void GivenIntegerValue_WhenInstanceSelector_ThenConvertsToSchemaType()
     {
-        // Arrange
+        // Arrange - Quantity.value is a FHIR decimal, so the integer literal must be converted
         var expression = "Quantity { value: 42 }";
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
-        // Assert
+        // Assert - per spec the engine performs conversion into the target type system, so the
+        // created element is typed by the schema rather than by the FHIRPath literal.
         Assert.Single(result);
         var value = result[0].Children("value").SingleOrDefault();
         Assert.NotNull(value);
-        Assert.Equal(42, value.Value);
-        Assert.Equal("integer", value.InstanceType);
+        Assert.Equal(42m, value.Value);
+        Assert.Equal("decimal", value.InstanceType);
     }
 
     [Fact]
@@ -377,7 +377,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -390,13 +390,13 @@ public class InstanceSelectorTests
     [Fact]
     public void GivenBooleanValue_WhenInstanceSelector_ThenCreatesElementWithBoolean()
     {
-        // Arrange
-        var expression = "Flag { active: true }";
+        // Arrange - Patient.active is a FHIR boolean
+        var expression = "Patient { active: true }";
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -419,7 +419,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -437,13 +437,13 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
-        // Assert
+        // Assert - the sum is computed first, then converted to Quantity.value's decimal type
         Assert.Single(result);
         var value = result[0].Children("value").SingleOrDefault();
         Assert.NotNull(value);
-        Assert.Equal(15, value.Value);
+        Assert.Equal(15m, value.Value);
     }
 
     #endregion
@@ -459,7 +459,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(1);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert
         Assert.Single(result);
@@ -481,7 +481,7 @@ public class InstanceSelectorTests
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, ast).ToList();
+        var result = EvaluateCreating(root, ast);
 
         // Assert - Should have 2 Patient instances (one for each input)
         Assert.Equal(2, result.Count);
@@ -563,20 +563,62 @@ public class InstanceSelectorTests
     }
 
     [Fact]
-    public void GivenNoInstanceCreator_WhenInstanceSelector_ThenFallsBackToTransientNode()
+    public void GivenNoInstanceCreator_WhenInstanceSelector_ThenThrows()
     {
         // Arrange
         var expression = "Coding { system: 'http://example.org', code: 'c1' }";
         var ast = _parser.Parse(expression);
 
-        // Act - no creator wired
-        var result = _evaluator.Evaluate(CreateIntegerElement(1), ast).ToList();
+        // Act & Assert - an unconfigured engine cannot construct anything, and quietly returning a
+        // stand-in node would hide the misconfiguration behind a result that looks plausible.
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => _evaluator.Evaluate(CreateIntegerElement(1), ast).ToList());
+        Assert.Contains("Coding", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(EvaluationContext.WithInstanceCreator), ex.Message, StringComparison.Ordinal);
+    }
 
-        // Assert - fallback node is navigable but carries no schema-driven type metadata
+    [Fact]
+    public void GivenChoiceElementAssignedByBaseName_WhenInstanceSelector_ThenStoredUnderTypedName()
+    {
+        // Arrange - Observation.value[x] must be stored as valueQuantity in FHIR JSON
+        var ast = _parser.Parse("Observation { value: Quantity { value: 70 } }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert - navigation by the base name works, as FHIRPath requires...
         Assert.Single(result);
-        Assert.Equal("Coding", result[0].InstanceType);
-        Assert.Equal("http://example.org", result[0].Children("system").Single().Value);
-        Assert.Null(result[0].Type);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal("Quantity", value.InstanceType);
+
+        // ...and so does navigation by the typed name, because that is what was actually stored
+        Assert.Single(result[0].Children("valueQuantity"));
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToRepeatingElement_WhenInstanceSelector_ThenKeepsBothValues()
+    {
+        // Arrange - two assignments to one repeating element previously overwrote each other
+        var ast = _parser.Parse("HumanName { given: 'John', given: 'Jacob' }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert
+        Assert.Single(result);
+        var given = result[0].Children("given").Select(g => g.Value).ToArray();
+        Assert.Equal(new object?[] { "John", "Jacob" }, given);
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToSingletonElement_WhenInstanceSelector_ThenThrows()
+    {
+        // Arrange - HumanName.family is 0..1, so the second value has nowhere to go
+        var ast = _parser.Parse("HumanName { family: 'Smith', family: 'Jones' }");
+
+        // Act & Assert - the spec allows the engine to reject multiplicity it cannot represent
+        Assert.Throws<InvalidOperationException>(() => EvaluateCreating(CreateIntegerElement(1), ast));
     }
 
     private sealed class RecordingInstanceCreator
