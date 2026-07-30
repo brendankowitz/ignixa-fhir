@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
@@ -18,12 +19,13 @@ internal static class ResourceColumnLoweringRule
     /// never need a SearchParamId — callers that resolve or dispatch by SearchParamId must skip them.
     /// </summary>
     /// <remarks>
-    /// Delegates to the public <see cref="ResourceColumnParameters"/> so that a host outside this assembly
-    /// and this rule cannot disagree about the set. The alias is kept because it reads correctly at the
-    /// lowering call sites, which are about <em>this rule's</em> applicability.
+    /// Delegates to <see cref="IntrinsicSearchParameters"/> so that this rule, the indexer that skips these
+    /// codes, and any host outside this assembly cannot disagree about the set. The alias is kept because
+    /// "resource column" is the right word at the lowering call sites, which are about <em>this rule's</em>
+    /// applicability to dbo.Resource rather than about the storage-agnostic classification.
     /// </remarks>
     public static bool IsResourceColumnCode(string parameterCode)
-        => ResourceColumnParameters.IsResourceColumnCode(parameterCode);
+        => IntrinsicSearchParameters.IsIntrinsicCode(parameterCode);
 
     public static Predicate? TryLower(SearchParameterPredicateExpression predicate, LeafContext context) => predicate.Parameter.Code switch
     {

@@ -22,12 +22,23 @@ public class SearchOptionsCopyConstructorTests
         // Arrange: give every property a value distinguishable from its default, discovered by
         // reflection so a newly added property is populated here without this test being edited.
         var source = new SearchOptions();
+        var defaults = new SearchOptions();
         PropertyInfo[] properties = SettableProperties();
         Assert.NotEmpty(properties);
 
         foreach (PropertyInfo property in properties)
         {
-            property.SetValue(source, DistinctValueFor(property));
+            object distinct = DistinctValueFor(property);
+
+            // Without this, a property whose distinct value happens to equal its default (any struct
+            // DistinctValueFor has no case for -- bool, Guid, DateTimeOffset) would be reported as
+            // carried over even when the constructor never assigns it.
+            Assert.False(
+                Equals(distinct, property.GetValue(defaults)),
+                $"DistinctValueFor produced {property.Name}'s default value, so a dropped assignment " +
+                "would go undetected. Extend DistinctValueFor to cover this property's type.");
+
+            property.SetValue(source, distinct);
         }
 
         // Act
@@ -127,7 +138,8 @@ public class SearchOptionsCopyConstructorTests
 
         if (type.IsEnum)
         {
-            // The last declared member, so an enum whose default is its first member still differs.
+            // The highest-valued member, so an enum whose default is its first member still differs. The
+            // guard in the caller catches the case where the default is the highest-valued member.
             Array values = Enum.GetValues(type);
             return values.GetValue(values.Length - 1)!;
         }

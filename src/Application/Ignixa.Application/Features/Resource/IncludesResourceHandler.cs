@@ -70,19 +70,11 @@ public class IncludesResourceHandler(
             }
         }
 
-        var searchOptionsWithoutLimit = new SearchOptions
+        var searchOptionsWithoutLimit = new SearchOptions(request.SearchOptions)
         {
             MaxItemCount = Math.Min(request.SearchOptions.MaxItemCount * IncludesSearchMultiplier, MaxIncludesSearchLimit),
             ContinuationToken = null,
-            Expression = request.SearchOptions.Expression,
-            Sort = request.SearchOptions.Sort,
-            Include = request.SearchOptions.Include,
-            RevInclude = request.SearchOptions.RevInclude,
             Total = TotalType.None,
-            Summary = request.SearchOptions.Summary,
-            UnsupportedParams = request.SearchOptions.UnsupportedParams,
-            ResourceType = request.SearchOptions.ResourceType,
-            ResourceTypes = request.SearchOptions.ResourceTypes
         };
 
         logger.LogDebug(
