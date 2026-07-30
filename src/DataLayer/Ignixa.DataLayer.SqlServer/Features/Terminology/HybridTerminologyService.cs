@@ -3,34 +3,29 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using Ignixa.Abstractions;
 using Ignixa.Domain.Terminology;
 using Ignixa.Validation;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Logging;
 
-namespace Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
+namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 
 /// <summary>
 /// Hybrid terminology service that routes between SQL (fast) and JSON fallback implementations.
 /// Uses SQL terminology tables when available (imported), falls back to JSON parsing otherwise.
+/// <para>
+/// Pure routing: it holds no storage of its own, which is why the routing decision arrives as
+/// <see cref="ITerminologyImportStatusProvider"/> rather than a concrete SQL service. Both terminology
+/// dependencies are <see cref="ITerminologyService"/>, so which implementation sits on either side is a
+/// composition-root choice.
+/// </para>
 /// </summary>
-public class HybridTerminologyService : ITerminologyService
+public class HybridTerminologyService(
+    ITerminologyService sqlService,
+    ITerminologyImportStatusProvider importStatusProvider,
+    ITerminologyService fallbackService,
+    ILogger<HybridTerminologyService> logger) : ITerminologyService, ITerminologyImportStatusProvider
 {
-    private readonly SqlTerminologyService _sqlService;
-    private readonly ITerminologyService _fallbackService;
-    private readonly ILogger<HybridTerminologyService> _logger;
-
-    public HybridTerminologyService(
-        SqlTerminologyService sqlService,
-        ITerminologyService fallbackService,
-        ILogger<HybridTerminologyService> logger)
-    {
-        _sqlService = sqlService ?? throw new ArgumentNullException(nameof(sqlService));
-        _fallbackService = fallbackService ?? throw new ArgumentNullException(nameof(fallbackService));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-    }
-
     /// <summary>
     /// $lookup operation - Routes to SQL if CodeSystem is imported, otherwise uses fallback.
     /// </summary>
@@ -40,18 +35,17 @@ public class HybridTerminologyService : ITerminologyService
         string? version,
         CancellationToken cancellationToken)
     {
-        // Check if CodeSystem is imported
-        var status = await _sqlService.GetImportStatusAsync(system, cancellationToken);
+        var status = await importStatusProvider.GetImportStatusAsync(system, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
-            _logger.LogDebug("Using SQL service for lookup: {System}|{Code} (imported)", system, code);
-            return await _sqlService.LookupCodeAsync(system, code, version, cancellationToken);
+            logger.LogDebug("Using SQL service for lookup: {System}|{Code} (imported)", system, code);
+            return await sqlService.LookupCodeAsync(system, code, version, cancellationToken);
         }
         else
         {
-            _logger.LogDebug("Using fallback service for lookup: {System}|{Code} (not imported)", system, code);
-            return await _fallbackService.LookupCodeAsync(system, code, version, cancellationToken);
+            logger.LogDebug("Using fallback service for lookup: {System}|{Code} (not imported)", system, code);
+            return await fallbackService.LookupCodeAsync(system, code, version, cancellationToken);
         }
     }
 
@@ -62,18 +56,19 @@ public class HybridTerminologyService : ITerminologyService
         ExpansionParameters parameters,
         CancellationToken cancellationToken)
     {
-        // Check if ValueSet is imported
-        var status = await _sqlService.GetImportStatusAsync(parameters.Url, cancellationToken);
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        var status = await importStatusProvider.GetImportStatusAsync(parameters.Url, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
-            _logger.LogDebug("Using SQL service for expand: {Url} (imported)", parameters.Url);
-            return await _sqlService.ExpandValueSetAsync(parameters, cancellationToken);
+            logger.LogDebug("Using SQL service for expand: {Url} (imported)", parameters.Url);
+            return await sqlService.ExpandValueSetAsync(parameters, cancellationToken);
         }
         else
         {
-            _logger.LogDebug("Using fallback service for expand: {Url} (not imported)", parameters.Url);
-            return await _fallbackService.ExpandValueSetAsync(parameters, cancellationToken);
+            logger.LogDebug("Using fallback service for expand: {Url} (not imported)", parameters.Url);
+            return await fallbackService.ExpandValueSetAsync(parameters, cancellationToken);
         }
     }
 
@@ -95,18 +90,17 @@ public class HybridTerminologyService : ITerminologyService
                 Message: "ValueSet URL is required");
         }
 
-        // Check if ValueSet is imported
-        var status = await _sqlService.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        var status = await importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
-            _logger.LogDebug("Using SQL service for validate: {ValueSet}|{Code} (imported)", valueSetUrl, code);
-            return await _sqlService.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
+            logger.LogDebug("Using SQL service for validate: {ValueSet}|{Code} (imported)", valueSetUrl, code);
+            return await sqlService.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
         }
         else
         {
-            _logger.LogDebug("Using fallback service for validate: {ValueSet}|{Code} (not imported)", valueSetUrl, code);
-            return await _fallbackService.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
+            logger.LogDebug("Using fallback service for validate: {ValueSet}|{Code} (not imported)", valueSetUrl, code);
+            return await fallbackService.ValidateCodeAsync(system, code, display, valueSetUrl, cancellationToken);
         }
     }
 
@@ -123,16 +117,15 @@ public class HybridTerminologyService : ITerminologyService
         string? version,
         CancellationToken cancellationToken)
     {
-        // Check if ValueSet is imported
-        var status = await _sqlService.GetImportStatusAsync(valueSetUrl, cancellationToken);
+        var status = await importStatusProvider.GetImportStatusAsync(valueSetUrl, cancellationToken);
 
         if (status == TerminologyImportStatus.Completed)
         {
-            _logger.LogDebug(
+            logger.LogDebug(
                 "Using SQL service for binding validation: {ValueSet}|{Code} (imported)",
                 valueSetUrl,
                 code);
-            return await _sqlService.ValidateBindingAsync(
+            return await sqlService.ValidateBindingAsync(
                 valueSetUrl,
                 strength,
                 system,
@@ -143,11 +136,11 @@ public class HybridTerminologyService : ITerminologyService
         }
         else
         {
-            _logger.LogDebug(
+            logger.LogDebug(
                 "Using fallback service for binding validation: {ValueSet}|{Code} (not imported)",
                 valueSetUrl,
                 code);
-            return await _fallbackService.ValidateBindingAsync(
+            return await fallbackService.ValidateBindingAsync(
                 valueSetUrl,
                 strength,
                 system,
@@ -165,9 +158,11 @@ public class HybridTerminologyService : ITerminologyService
         TranslateParameters parameters,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(parameters);
+
         // Translation always uses SQL service (no in-memory ConceptMaps)
-        _logger.LogDebug("Using SQL service for translation: {System}|{Code}", parameters.System, parameters.Code);
-        return await _sqlService.TranslateCodeAsync(parameters, cancellationToken);
+        logger.LogDebug("Using SQL service for translation: {System}|{Code}", parameters.System, parameters.Code);
+        return await sqlService.TranslateCodeAsync(parameters, cancellationToken);
     }
 
     /// <summary>
@@ -177,19 +172,24 @@ public class HybridTerminologyService : ITerminologyService
         SubsumesParameters parameters,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(parameters);
+
         // Subsumption always uses SQL service (requires hierarchy data)
-        _logger.LogDebug("Using SQL service for subsumption: {System}|{CodeA} vs {CodeB}",
-            parameters.System, parameters.CodeA, parameters.CodeB);
-        return await _sqlService.SubsumesAsync(parameters, cancellationToken);
+        logger.LogDebug(
+            "Using SQL service for subsumption: {System}|{CodeA} vs {CodeB}",
+            parameters.System,
+            parameters.CodeA,
+            parameters.CodeB);
+        return await sqlService.SubsumesAsync(parameters, cancellationToken);
     }
 
     /// <summary>
-    /// Get import status - Delegates to SQL service.
+    /// Get import status - Delegates to the import status provider.
     /// </summary>
     public async Task<TerminologyImportStatus?> GetImportStatusAsync(
         string canonical,
         CancellationToken cancellationToken)
     {
-        return await _sqlService.GetImportStatusAsync(canonical, cancellationToken);
+        return await importStatusProvider.GetImportStatusAsync(canonical, cancellationToken);
     }
 }

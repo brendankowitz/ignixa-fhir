@@ -7,14 +7,18 @@ using Autofac;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
-using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
+using Ignixa.DataLayer.SqlServer;
+using Ignixa.DataLayer.SqlServer.Features.Terminology;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Domain.Constants;
+using Ignixa.Domain.Terminology;
 using Ignixa.FhirPath.Parser;
 using Ignixa.PackageManagement.Infrastructure;
 using Ignixa.Specification;
 using Ignixa.Validation.Abstractions;
 using Ignixa.Validation.Schema;
 using Ignixa.Validation.Services;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Ignixa.Api.Registrations;
 
@@ -107,19 +111,26 @@ public static class ValidationServicesRegistration
         .AsSelf()
         .InstancePerLifetimeScope();
 
-        // SqlTerminologyService (database-backed terminology)
-        builder.RegisterType<SqlTerminologyService>()
+        // SqlServerTerminologyService (database-backed terminology, raw ADO.NET).
+        // SystemPartitionId because terminology is server-wide rather than per-tenant: the tables it reads
+        // live in the system partition's database, not the caller's.
+        builder.Register(c => new SqlServerTerminologyService(
+                c.Resolve<ISqlExecutionService>(),
+                SystemConstants.SystemPartitionId,
+                c.Resolve<IMemoryCache>(),
+                c.Resolve<ILogger<SqlServerTerminologyService>>()))
             .AsSelf()
+            .As<ITerminologyImportStatusProvider>()
             .InstancePerLifetimeScope();
 
         // HybridTerminologyService (routes to SQL or fallback based on import status)
         builder.Register<ITerminologyService>(c =>
         {
-            var sqlService = c.Resolve<SqlTerminologyService>();
+            var sqlService = c.Resolve<SqlServerTerminologyService>();
             var fallbackService = c.Resolve<InMemoryTerminologyService>();
             var logger = c.Resolve<ILogger<HybridTerminologyService>>();
 
-            return new HybridTerminologyService(sqlService, fallbackService, logger);
+            return new HybridTerminologyService(sqlService, sqlService, fallbackService, logger);
         }).InstancePerLifetimeScope();
     }
 

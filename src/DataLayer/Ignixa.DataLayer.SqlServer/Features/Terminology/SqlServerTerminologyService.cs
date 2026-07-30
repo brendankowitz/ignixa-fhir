@@ -29,7 +29,7 @@ public sealed class SqlServerTerminologyService(
     ISqlExecutionService sqlExecutionService,
     int systemPartitionId,
     IMemoryCache cache,
-    ILogger<SqlServerTerminologyService> logger) : ITerminologyService
+    ILogger<SqlServerTerminologyService> logger) : ITerminologyService, ITerminologyImportStatusProvider
 {
     private static readonly TableDescriptor Systems = SqlCatalog.Default.Table("System");
     private static readonly TableDescriptor CodeSystems = SqlCatalog.Default.Table("TermCodeSystem");
