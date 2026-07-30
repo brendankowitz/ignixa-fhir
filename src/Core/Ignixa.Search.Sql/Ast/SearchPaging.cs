@@ -1,6 +1,4 @@
-using Ignixa.Search.Sql.Ast;
-
-namespace Ignixa.Search.Sql;
+namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// How a compile bounds and positions the rows it returns. Closed: keyset and offset paging are alternatives,
@@ -16,6 +14,7 @@ public abstract record SearchPaging
     // A record synthesizes a protected copy constructor that an external assembly could chain to,
     // adding a third paging mode this compiler would not recognise. An abstract private protected member
     // cannot be implemented outside this assembly, so the union is closed in fact and not by convention.
+    // See ResultShape for why InternalsVisibleTo does not weaken this.
     private protected abstract void ThisUnionIsClosed();
 
     /// <summary>

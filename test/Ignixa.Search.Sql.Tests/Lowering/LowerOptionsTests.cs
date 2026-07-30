@@ -172,7 +172,7 @@ public class LowerOptionsTests
         var context = CompilationContextFactory.For(
             predicate,
             "Patient",
-            options: new SearchPlanOptions { Paging = new SearchPaging.Offset(null!) });
+            options: new SearchPlanOptions { Shape = new ResultShape.Matches(new SearchPaging.Offset(null!)) });
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => Lower.Run(context, symbols));

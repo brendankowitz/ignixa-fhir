@@ -200,9 +200,11 @@ internal static class SqlBuilder
 
         // Ordered before the cross-stage agreement guard below: an includes page whose limits disagree AND
         // are out of range would otherwise be told to make them agree, which leaves the plan invalid.
-        // Guarded independently of Lower.Run because QueryPlan is a public construction surface, and every
-        // path that emits an include stage writes TOP (Limit + 1): int.MaxValue overflows that to a negative
-        // row count.
+        // Guarded independently of Lower.Run because QueryPlan is a public construction surface. Every stage
+        // is checked because a stage Limit reaches a TOP (Limit + 1) on the ordinary includes path, where
+        // int.MaxValue overflows it to a negative row count. The includes page budgets globally from stage 0
+        // instead, so its later stages carry a limit that is never emitted — still rejected, so a plan means
+        // the same thing under either shape.
         if (plan.Includes is { Count: > 0 } stages)
         {
             for (var i = 0; i < stages.Count; i++)
@@ -267,6 +269,16 @@ internal static class SqlBuilder
                 "absence of the primary key, so with no keys there is nothing to partition the match set on.");
         }
 
+        // Mirror of Lower.BuildSortSpec's cap. Guarded independently because QueryPlan is a public construction
+        // surface, and the documented `plan with { Query = … }` rewrite would otherwise emit a fourth sort join
+        // and a fourth SortValueN column, silently defeating a cap SortSpec and the README both advertise.
+        if (plan.Sort is { } sortKeyCap && sortKeyCap.Keys.Count > 3)
+        {
+            throw new NotSupportedException(
+                $"_sort supports at most 3 keys (got {sortKeyCap.Keys.Count}) -- a cap on per-request join cost, " +
+                "since each key adds a join and a projected sort value.");
+        }
+
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
         if (plan.OffsetPage is not null && (plan.Top is not null || plan.Page is not null))
         {
@@ -284,6 +296,22 @@ internal static class SqlBuilder
                 $"{offsetSpec.Offset} and Limit {offsetSpec.Limit}. OFFSET/FETCH rejects both at runtime.");
         }
 
+        // All three page guards below describe ways the emitted seek would disagree with the emitted ORDER BY.
+        // A count emits neither -- EmitCountOnlyShape never reads Page -- so one exemption covers all three
+        // rather than each restating it. Options-level callers cannot reach this at all: SearchPaging hangs off
+        // ResultShape.Matches, so only a hand-built QueryPlan can pair a boundary with a count.
+        if (!plan.CountOnly)
+        {
+            RejectUnsupportedPageCombinations(plan);
+        }
+    }
+
+    /// <summary>
+    /// Rejects keyset boundaries that would emit a seek disagreeing with the plan's ORDER BY. Only called for
+    /// plans that emit a seek; see the exemption in <see cref="RejectUnsupportedCombinations"/>.
+    /// </summary>
+    private static void RejectUnsupportedPageCombinations(QueryPlan plan)
+    {
         // A typeless seek is sound only against a type-free ORDER BY (sort keys…, Sid1), which EmitOrderBy
         // produces only for a custom sort; other sorts keep m.T1, so the seek would drop tied rows.
         if (IsTypelessPage(plan) && !HasCustomSortKey(plan.Sort))
@@ -312,9 +340,8 @@ internal static class SqlBuilder
 
         // A boundary decoded in one phase carries values for that phase's active keys, so reusing it across a
         // Valued/MissingPrimary transition would seek on the wrong key set. Checked here rather than in
-        // EmitSeekPredicate so the failure surfaces before any SQL is written, and skipped for counts, which
-        // emit no seek and are documented to ignore the boundary entirely.
-        if (!plan.CountOnly && plan.Page is { } boundaryPage && boundaryPage.Boundary.Count != (plan.Sort?.ActiveKeyCount ?? 0))
+        // EmitSeekPredicate so the failure surfaces before any SQL is written.
+        if (plan.Page is { } boundaryPage && boundaryPage.Boundary.Count != (plan.Sort?.ActiveKeyCount ?? 0))
         {
             throw new NotSupportedException(
                 $"PageSpec.Boundary has {boundaryPage.Boundary.Count} value(s) but the current SortSpec phase " +
@@ -1478,6 +1505,8 @@ internal static class SqlBuilder
     }
 
     /// <summary>Renders the EXISTS clause correlating an include row back to its seeds — the match page and/or earlier stages.</summary>
+    /// <param name="stage">The stage whose seeds are being correlated.</param>
+    /// <param name="correlationAlias">Alias of the include row being tested.</param>
     /// <param name="includesOnly">
     /// Which label an earlier stage is read through: the ordinary path seeds from the limit companion
     /// (<see cref="IncludeLimitLabel"/>); an IncludesOnly page seeds from the stage body (<see cref="IncludeLabel"/>),
@@ -1511,6 +1540,8 @@ internal static class SqlBuilder
            $"WHERE ac.T1 = {outputTypeColumn} AND ac.Sid1 = {outputSurrogateColumn}))";
 
     /// <summary>Renders a predicate tree to a WHERE fragment, fully parenthesizing And/Or so precedence never depends on context.</summary>
+    /// <param name="predicate">The predicate tree to render.</param>
+    /// <param name="parameters">Accumulates the bound parameters the fragment references.</param>
     /// <param name="qualifier">
     /// Alias prefix (including the dot) before every column, or empty for a single-table CTE body. The outer
     /// query must qualify with <c>r.</c> because the resource join and a ResourceId sort join (rid0) are both

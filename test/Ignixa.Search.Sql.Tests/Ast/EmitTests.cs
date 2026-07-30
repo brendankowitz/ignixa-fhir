@@ -1230,6 +1230,53 @@ public class EmitTests
     }
 
     [Fact]
+    public void GivenTheMissingPrimaryPhaseWithAMultiKeySort_WhenEmitted_ThenSortValuesAreProjectedContiguouslyFromZero()
+    {
+        // The caller reads the next page's boundary values positionally out of the SortValueN columns and feeds
+        // them back as KeysetPosition.BoundaryValues. That contract only holds if the projection is contiguous
+        // from zero over the keys that actually contribute a value. In the MissingPrimary phase key 0 contributes
+        // none -- it becomes the NOT EXISTS -- so the *second* key must still project as SortValue0, not
+        // SortValue1. Nothing else pins that renumbering: the other multi-key tests assert WHERE/ORDER BY text,
+        // which names the raw ISNULL expression rather than the alias, so an off-by-one in the alias index would
+        // emit valid SQL and silently shift every boundary value by one slot on the next page.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
+            ],
+            SortPhase.MissingPrimary);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') AS SortValue0");
+        emitted.Sql.ShouldNotContain("AS SortValue1");
+    }
+
+    [Fact]
+    public void GivenAPlanWithMoreSortKeysThanTheCap_WhenEmitted_ThenItIsRefusedRatherThanEmittingAFourthJoin()
+    {
+        // Lower caps _sort at 3 keys, but a plan rewritten through `plan with { Sort = ... }` bypasses Lower
+        // entirely. Without a mirror here the documented rewrite path silently defeats a cap that SortSpec's
+        // own docs and the README both advertise, emitting a fourth join and a fourth projected sort value.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Ascending),
+                new SortKey(404, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(505, SortKeyKind.Date, SortOrder.Ascending),
+            ],
+            SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new CteRef(0), Sort: sort);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
+            .Message.ShouldContain("at most 3 keys");
+    }
+
+    [Fact]
     public void GivenAParamSourceWithNoPredicate_WhenEmitted_ThenTheWhereClauseHasNoTrailingAndClause()
     {
         // Arrange -- the shape Task 3's LowerParameterPresence will produce: "any row exists for this parameter."

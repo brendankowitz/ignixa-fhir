@@ -14,16 +14,24 @@ public abstract record ResultShape
     // derive a fourth case: `record Rogue(ResultShape Seed) : ResultShape(Seed)`. That case would match the
     // abstract type but none of the concrete ones, reaching the same silent fall-through this union exists to
     // prevent. An abstract private protected member cannot be implemented outside this assembly, so it makes
-    // the hierarchy closed in fact and not merely by convention.
+    // the hierarchy closed in fact and not merely by convention. "Outside this assembly" is exact: private
+    // protected is FamANDAssem, which InternalsVisibleTo does not extend, so even the friend test assembly
+    // cannot add a case -- and by the same token closure can only be pinned by reflection, not by compiling.
     private protected abstract void ThisUnionIsClosed();
 
     /// <summary>The shape a plan takes when none is named: <see cref="Matches"/>.</summary>
     public static ResultShape Default { get; } = new Matches();
 
     /// <summary>
-    /// The match page, plus the rows of every include stage the plan defines. The ordinary search shape.
+    /// The match page, plus the rows of every include stage the plan defines. The ordinary search shape, and
+    /// the only one that pages — which is why <see cref="Paging"/> hangs off it rather than sitting beside the
+    /// shape. A count reads the whole match set, and an includes page carries its own resume boundary in
+    /// <see cref="IncludesPage.Resume"/>, so neither has a second paging coordinate to be inconsistent with.
     /// </summary>
-    public sealed record Matches : ResultShape
+    /// <param name="Paging">
+    /// How the match page is bounded and positioned. Null means no row cap, no offset and no keyset boundary.
+    /// </param>
+    public sealed record Matches(SearchPaging? Paging = null) : ResultShape
     {
         private protected override void ThisUnionIsClosed()
         {
@@ -59,8 +67,9 @@ public abstract record ResultShape
         /// only those. It answers "how many rows are in the segment I am paging right now", which is what a
         /// caller walking a two-phase sort needs to size each segment. Requires the plan to carry at least
         /// one sort key — a keyless sort names no segment, and is rejected rather than counted as the whole
-        /// set. A <c>_lastUpdated</c> or <c>_type</c> primary key is a non-nullable resource column with no
-        /// join and no missing segment, so this counts the same rows as <see cref="AllMatches"/>.
+        /// set. A <c>_lastUpdated</c>, <c>_type</c> or <c>_id</c> primary key reads a non-nullable resource
+        /// column, so it has no missing segment and nothing is dropped — this then counts the same rows as
+        /// <see cref="AllMatches"/>.
         /// </summary>
         public sealed record CurrentSortPhase : Count
         {

@@ -9,13 +9,11 @@ namespace Ignixa.Search.Sql;
 /// </summary>
 public sealed record SearchPlanOptions
 {
-    /// <summary>What the statement returns. Defaults to <see cref="ResultShape.Matches"/>.</summary>
-    public ResultShape Shape { get; init; } = ResultShape.Default;
-
     /// <summary>
-    /// How the statement is bounded and positioned. Null means no row cap, no offset and no keyset boundary.
+    /// What the statement returns, and — under <see cref="ResultShape.Matches"/> — how it is paged. Defaults
+    /// to an unpaged <see cref="ResultShape.Matches"/>.
     /// </summary>
-    public SearchPaging? Paging { get; init; }
+    public ResultShape Shape { get; init; } = ResultShape.Default;
 
     /// <summary>
     /// Which segment of a sorted result this compile reads. A sort on a nullable search parameter splits the

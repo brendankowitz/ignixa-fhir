@@ -10,7 +10,8 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>The compiler's Lower stage: turns a bound Expression tree into a <see cref="QueryPlan"/>, a pure
-/// value (all I/O already happened in Resolve). Handles predicate leaves, composites, chains at any depth,
+/// value (all I/O already happened in Resolve). Handles predicate leaves, composites, chains up to
+/// <c>StructuralContext.MaxChainDepth</c>,
 /// compartment searches, and _include/_revinclude/_sort/paging.</summary>
 internal static class Lower
 {
@@ -30,18 +31,22 @@ internal static class Lower
         var includeLimit = options.IncludeLimit;
         var sort = context.Sort;
 
-        // Paging is one closed choice, so the T-SQL restriction that TOP cannot combine with OFFSET/FETCH
-        // (error 10741) needs no guard here: only one of these two locals can be non-null.
-        var keyset = options.Paging as SearchPaging.Keyset;
-        var top = keyset?.Top;
-        var page = keyset?.Boundary;
         var sortPhase = options.SortPhase;
         var shape = options.Shape;
         var includesOnly = shape is ResultShape.IncludesPage;
 
+        // Paging hangs off Matches, so a count or an includes page cannot carry one at all — the combinations
+        // those shapes reject are unrepresentable here rather than guarded. Paging is itself one closed choice,
+        // so the T-SQL restriction that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard
+        // either: only one of these locals can be non-null.
+        var paging = (shape as ResultShape.Matches)?.Paging;
+        var keyset = paging as SearchPaging.Keyset;
+        var top = keyset?.Top;
+        var page = keyset?.Boundary;
+
         OffsetSpec? offsetPage = null;
 
-        if (options.Paging is SearchPaging.Offset offset)
+        if (paging is SearchPaging.Offset offset)
         {
             // A positional record parameter cannot enforce non-nullness against a caller who ignores the
             // annotation, and a null Spec would fall through to an unpaged statement returning every row.
@@ -231,30 +236,9 @@ internal static class Lower
 
         // A _sort is still allowed here: its ordering role drops (include rows page by (T1, Sid1), not the sort
         // key), but SortPhase (MissingPrimary/Valued) is a *filter* that partitions the match set seeding the
-        // include stages, so it rides into the match-page CTE independently of ORDER BY. A keyset boundary is the
-        // genuinely unsound combination and is refused below.
-        if (includesOnly && page is not null)
-        {
-            throw new NotSupportedException(
-                "IncludesPage was requested together with a keyset continuation boundary. An includes-only page " +
-                "bounds its match set by a surrogate-id range and pages its include rows by a resume boundary over " +
-                "(T1, Sid1); a keyset boundary instead seeks the match rows by the sort-key boundary, a second " +
-                "paging mechanism the includes-only page does not use. The combination is reported rather than " +
-                "silently applying a match-side seek that would change which resources are included.");
-        }
-
-        // Top truncates the seed match set and an offset page skips into it, so either silently changes which
-        // resources the include stages reach. Same reasoning as the keyset boundary above: the includes page
-        // bounds its match set by a surrogate-id range and pages its own rows by the resume boundary.
-        if (includesOnly && (top is not null || offsetPage is not null))
-        {
-            throw new NotSupportedException(
-                "IncludesPage was requested together with " + (top is not null ? "a Top cap" : "an offset page") +
-                ". An includes-only page bounds its match set by a surrogate-id range and pages its include rows " +
-                "by a resume boundary; a match-side row cap or offset instead changes which resources seed the " +
-                "include stages, dropping include rows with no indication that they are missing. Bound the match " +
-                "set with SurrogateRange and page the include rows with ResultShape.IncludesPage.Resume.");
-        }
+        // include stages, so it rides into the match-page CTE independently of ORDER BY. A keyset boundary, a
+        // Top cap and an offset page are the genuinely unsound combinations, and hanging SearchPaging off
+        // ResultShape.Matches makes all three unrepresentable rather than rejected.
 
         // BuildSortSpec validates the sort -- key count, key types, and MissingPrimary against a resource-column
         // primary key -- so it runs for every shape. A count reads it only when it asked to be restricted to the
@@ -288,10 +272,10 @@ internal static class Lower
         }
 
         // A boundary decoded under one phase carries values for that phase's active keys, so carrying it across
-        // a Valued/MissingPrimary transition seeks on the wrong key set. Counts are exempt: they emit no seek
-        // and ignore the boundary. Mirrored by SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan
-        // callers.
-        if (shape is not ResultShape.Count && page is not null && page.Boundary.Count != (sortSpec?.ActiveKeyCount ?? 0))
+        // a Valued/MissingPrimary transition seeks on the wrong key set. Only Matches can carry a boundary at
+        // all, so no shape exemption is needed here. Mirrored by SqlBuilder.RejectUnsupportedCombinations for
+        // direct QueryPlan callers, where the flat fields keep the combination representable.
+        if (page is not null && page.Boundary.Count != (sortSpec?.ActiveKeyCount ?? 0))
         {
             throw new NotSupportedException(
                 $"The keyset boundary carries {page.Boundary.Count} value(s) but {nameof(SortPhase)}." +
@@ -725,7 +709,7 @@ internal static class Lower
 
             if (seedStages.Count == 0 && !seedFromMatch)
             {
-                // Degenerate case (design doc §2): this stage's EXISTS would have zero branches --
+                // Degenerate case: this stage's EXISTS would have zero branches --
                 // unrenderable, and not a real shape any binder-produced Requires/Produces pair
                 // should reach in practice. Drop it: it can never produce any rows.
                 continue;
@@ -748,8 +732,9 @@ internal static class Lower
         }
 
         // Every entry can be dropped as degenerate (e.g. a single :iterate stage whose Requires never
-        // resolves) -- QueryPlan.Includes must stay null in that case, not an empty-but-non-null list,
-        // to preserve "no Includes byte-identical to before this field existed" (QueryPlan.cs remarks).
+        // resolves) -- QueryPlan.Includes must stay null in that case, not an empty-but-non-null list, so a
+        // plan with nothing to include emits exactly what it emitted before includes existed. SqlBuilder
+        // branches on null, not on Count, so an empty list would still open an includes CTE.
         return stages.Count == 0 ? null : stages;
     }
 
@@ -874,7 +859,7 @@ internal static class Lower
             {
                 if (x == y)
                 {
-                    continue; // A self-referential iterate is not a cycle for this purpose (design §4.4).
+                    continue; // A self-referential iterate is not a cycle for this purpose.
                 }
 
                 if (Overlaps(entries[x].Produces, entries[y].Requires))

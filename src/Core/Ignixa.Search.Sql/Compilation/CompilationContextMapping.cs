@@ -31,9 +31,9 @@ internal static class CompilationContextMapping
     public static FrozenDictionary<string, string> NotApplicable { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [nameof(SearchOptions.MaxItemCount)] =
-            "Callers transform it before a search runs — SearchResourcesHandler requests MaxItemCount + 1 to detect 'has more' — so forwarding it as a row cap would silently fight that transformation. Row capping is SearchPlanOptions.Paging.",
+            "Callers transform it before a search runs — SearchResourcesHandler requests MaxItemCount + 1 to detect 'has more' — so forwarding it as a row cap would silently fight that transformation. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
         [nameof(SearchOptions.ContinuationToken)] =
-            "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as SearchPlanOptions.Paging.",
+            "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as the SearchPaging on ResultShape.Matches.",
         [nameof(SearchOptions.Elements)] =
             "A serialization-time projection of the returned resource body, applied after the rows are read.",
         [nameof(SearchOptions.Total)] =

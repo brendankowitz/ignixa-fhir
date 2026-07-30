@@ -28,6 +28,17 @@ internal static class LowerHarness
     {
         options ??= new LowerOptions();
 
+        // Paging now hangs off ResultShape.Matches, so a count or an includes page has nowhere to carry one.
+        // Fail loudly rather than dropping the argument: a test that asks for the combination is asking for
+        // something the API no longer expresses, and a silent drop would let it pass while proving nothing.
+        if ((options.CountOnly || options.IncludesOnly)
+            && (page is not null || options.Top is not null || options.OffsetPage is not null))
+        {
+            throw new InvalidOperationException(
+                "A count or includes-page shape cannot carry paging: SearchPaging hangs off ResultShape.Matches. " +
+                "See ResultShapeUnionTests for the type-level pin that replaced the runtime guards.");
+        }
+
         // The harness takes each lowering input as a separate argument and maps them onto the option unions.
         var context = CompilationContextFactory.For(
             expression,
@@ -49,12 +60,11 @@ internal static class LowerHarness
                         : new ResultShape.Count.AllMatches()
                     : options.IncludesOnly
                         ? new ResultShape.IncludesPage(options.IncludeBoundary)
-                        : ResultShape.Default,
+                        : new ResultShape.Matches(options.OffsetPage is { } offset
+                            ? new SearchPaging.Offset(offset)
+                            : new SearchPaging.Keyset(options.Top, page)),
                 IncludeLimit = includeLimit,
                 SortPhase = sortPhase,
-                Paging = options.OffsetPage is { } offset
-                    ? new SearchPaging.Offset(offset)
-                    : new SearchPaging.Keyset(options.Top, page),
                 SearchParameterHash = options.SearchParameterHash?.Value as string,
             });
 
@@ -68,8 +78,8 @@ internal static class LowerHarness
     }
 
     /// <summary>
-    /// Lowers with <c>SearchPlanOptions.Paging</c> left null — the shape <see cref="Run"/> cannot produce,
-    /// since it always materialises a <c>Keyset</c> to carry its <c>top</c> and <c>page</c> arguments.
+    /// Lowers with no paging at all — the shape <see cref="Run"/> cannot produce for a match plan, since it
+    /// always materialises a <c>Keyset</c> to carry its <c>top</c> and <c>page</c> arguments.
     /// </summary>
     public static LoweredPlan RunWithoutPaging(
         Expression? expression,

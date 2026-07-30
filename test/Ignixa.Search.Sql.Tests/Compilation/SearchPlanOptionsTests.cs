@@ -13,8 +13,7 @@ public class SearchPlanOptionsTests
         var options = new SearchPlanOptions();
 
         options.Shape.ShouldBe(ResultShape.Default);
-        options.Shape.ShouldBeOfType<ResultShape.Matches>();
-        options.Paging.ShouldBeNull();
+        options.Shape.ShouldBeOfType<ResultShape.Matches>().Paging.ShouldBeNull();
         options.SortPhase.ShouldBe(SortPhase.Valued);
         options.IncludeLimit.ShouldBe(0);
         options.SurrogateRange.ShouldBeNull();
@@ -26,12 +25,12 @@ public class SearchPlanOptionsTests
     [Fact]
     public void GivenSearchPlanOptions_WhenCopyingWithAChangedProperty_ThenTheOriginalIsUnchanged()
     {
-        var original = new SearchPlanOptions { Paging = new SearchPaging.Keyset(10) };
+        var original = new SearchPlanOptions { Shape = new ResultShape.Matches(new SearchPaging.Keyset(10)) };
 
-        var copy = original with { Paging = new SearchPaging.Keyset(20) };
+        var copy = original with { Shape = new ResultShape.Matches(new SearchPaging.Keyset(20)) };
 
-        ((SearchPaging.Keyset)original.Paging!).Top.ShouldBe(10);
-        ((SearchPaging.Keyset)copy.Paging!).Top.ShouldBe(20);
+        ((SearchPaging.Keyset)((ResultShape.Matches)original.Shape).Paging!).Top.ShouldBe(10);
+        ((SearchPaging.Keyset)((ResultShape.Matches)copy.Shape).Paging!).Top.ShouldBe(20);
     }
 
     [Fact]
