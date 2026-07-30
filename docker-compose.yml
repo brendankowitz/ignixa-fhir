@@ -19,7 +19,7 @@ services:
     environment:
       # Configure Tenant 1 to use SQL Server
       # Note: Tenant 0 (System) inherits this connection string automatically
-      Tenants__Configurations__1__Storage__Type: SqlEntityFramework
+      Tenants__Configurations__1__Storage__Type: SqlServer
       Tenants__Configurations__1__Storage__ConnectionString: "Server=sqlserver;Database=IgnixaFhir;User Id=sa;Password=${SQL_SA_PASSWORD};TrustServerCertificate=True;"
       
       # Configure Logging

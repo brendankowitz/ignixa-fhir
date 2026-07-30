@@ -169,16 +169,33 @@ public static class DataLayerRegistration
             .Named<ISearchServiceFactory>("FileSystem")
             .SingleInstance();
 
+        // Per-tenant database initialization: schema deploy -> upgrade -> search-parameter catalog seed
+        // -> reference-data preload, in that order, before any repository is handed out.
+        builder.Register(c => new SqlServerTenantInitializer(
+                c.Resolve<ISchemaDeployer>(),
+                c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
+                c.Resolve<ILoggerFactory>().CreateLogger<SqlServerTenantInitializer>()))
+            .AsSelf()
+            .SingleInstance();
+
+        // The host's environment name, not ASPNETCORE_ENVIRONMENT off the process: a container that
+        // supplies its environment through configuration has no such variable, and reading it there
+        // silently disabled the Production credential guard.
+        builder.Register(c => new ManagedIdentityConnectionStringValidator(
+                environmentName,
+                c.Resolve<ILoggerFactory>().CreateLogger<ManagedIdentityConnectionStringValidator>()))
+            .AsSelf()
+            .SingleInstance();
+
         // SQL Entity Framework factory (implements both interfaces)
         builder.Register(c => new SqlEntityFrameworkRepositoryFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<RecyclableMemoryStreamManager>(),
                 c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
-                c.Resolve<ISchemaDeployer>(),
-                c.Resolve<ISqlExecutionService>(),
-                c.Resolve<Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry>(),
-                environmentName))
+                c.Resolve<SqlServerTenantInitializer>(),
+                c.Resolve<ManagedIdentityConnectionStringValidator>(),
+                c.Resolve<ISqlExecutionService>()))
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")
             .AsSelf()

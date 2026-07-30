@@ -87,7 +87,7 @@ var tenantConfigurations = [for i in range(1, tenantCount): [
   }
   {
     name: 'Tenants__Configurations__${i}__Storage__Type'
-    value: 'SqlEntityFramework'
+    value: 'SqlServer'
   }
   {
     name: 'Tenants__Configurations__${i}__Storage__ConnectionString'
@@ -248,7 +248,7 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'Tenants__Configurations__0__Storage__Type'
-          value: 'SqlEntityFramework'
+          value: 'SqlServer'
         }
         {
           name: 'Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant'

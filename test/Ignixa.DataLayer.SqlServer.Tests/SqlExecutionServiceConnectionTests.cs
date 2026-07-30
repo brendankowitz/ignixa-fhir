@@ -60,9 +60,9 @@ public class SqlExecutionServiceConnectionTests
     [Fact]
     public async Task GivenATenantConfiguredForSqlEntityFrameworkStorage_WhenResolvingConnectionString_ThenReturnsItWithoutThrowing()
     {
-        // Arrange -- "SqlEntityFramework" is the storage type value every real tenant config in this
-        // repo actually uses (see appsettings.json/appsettings.Development.json/launchSettings.json);
-        // it must resolve the same as "SqlServer", not be rejected as a foreign storage type.
+        // Arrange -- shipped configuration now emits "SqlServer", but "SqlEntityFramework" is the value
+        // every previously-deployed tenant config carries, so it must still resolve the same rather than
+        // be rejected as a foreign storage type.
         var store = new FakeTenantConfigurationStore();
         const string connectionString = "Server=test;Database=test;Trusted_Connection=True;";
         store.Tenants[1] = new TenantConfiguration
@@ -74,7 +74,7 @@ public class SqlExecutionServiceConnectionTests
         };
 
         // Act
-        var resolved = await SqlExecutionService.ResolveConnectionStringAsync(store, 1, CancellationToken.None);
+        var resolved = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(store, 1, CancellationToken.None);
 
         // Assert
         resolved.ShouldBe(connectionString);
@@ -84,9 +84,8 @@ public class SqlExecutionServiceConnectionTests
     public async Task GivenTheSystemPartitionWithNoConnectionString_WhenResolvingConnectionString_ThenInheritsFromTheConfiguredTenant()
     {
         // Arrange -- Tenant 0 (system partition) has no ConnectionString of its own; it inherits
-        // Tenant 1's, matching CLAUDE.md's multi-tenancy rules and
-        // SqlEntityFrameworkRepositoryFactory.GetOrCreateFactoryAsync's identical, already-established
-        // inheritance behavior.
+        // Tenant 1's, matching CLAUDE.md's multi-tenancy rules. SqlEntityFrameworkRepositoryFactory
+        // used to carry its own copy of this rule; it now calls the same resolver this asserts on.
         var store = new FakeTenantConfigurationStore();
         const string tenant1ConnectionString = "Server=test;Database=tenant1;Trusted_Connection=True;";
         store.Tenants[0] = new TenantConfiguration
@@ -106,7 +105,7 @@ public class SqlExecutionServiceConnectionTests
         };
 
         // Act
-        var resolved = await SqlExecutionService.ResolveConnectionStringAsync(store, 0, CancellationToken.None);
+        var resolved = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(store, 0, CancellationToken.None);
 
         // Assert
         resolved.ShouldBe(tenant1ConnectionString);

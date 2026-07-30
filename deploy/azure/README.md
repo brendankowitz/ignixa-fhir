@@ -425,7 +425,7 @@ After deployment, the FHIR server is configured with:
 
 - **Tenant 0** (System Partition) - FileSystem storage, used for transaction ID allocation
 - **Tenant 1** (Production) - **Azure SQL Database** (auto-configured)
-  - Storage Type: `SqlEntityFramework`
+  - Storage Type: `SqlServer`
   - FHIR Version: Configurable via `fhirVersion` parameter (default: 4.3/R4B)
   - Connection: Uses Managed Identity authentication
   - Database: Auto-initialized on first startup

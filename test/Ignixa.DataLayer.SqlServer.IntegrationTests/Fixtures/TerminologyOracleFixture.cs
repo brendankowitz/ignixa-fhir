@@ -90,22 +90,28 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
 
         var sqlExecutionService = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
 
-        // "Development" rather than the default "Production": the factory's
-        // ValidateManagedIdentityAuthentication rejects any connection string carrying a password when the
-        // environment is Production. The fixture uses integrated security so it would pass either way, but
-        // pinning it here keeps the fixture working if the connection string ever gains credentials.
         var cacheRegistry = new global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry(
             sqlExecutionService, NullLoggerFactory.Instance);
+
+        var tenantInitializer = new SqlServerTenantInitializer(
+            deployer, cacheRegistry, NullLogger<SqlServerTenantInitializer>.Instance);
+
+        // "Development" rather than "Production": the validator rejects any connection string carrying a
+        // password when the environment is Production. The fixture uses integrated security so it would pass
+        // either way, but pinning it here keeps the fixture working if the connection string ever gains
+        // credentials. Since the injected value is now the one actually honoured, this pin is load-bearing
+        // rather than decorative.
+        var managedIdentityValidator = new ManagedIdentityConnectionStringValidator(
+            "Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance);
 
         var factory = new SqlEntityFrameworkRepositoryFactory(
             store,
             NullLoggerFactory.Instance,
             new RecyclableMemoryStreamManager(),
             new MultiTenantSearchIndexCache(NullLoggerFactory.Instance),
-            deployer,
-            sqlExecutionService,
-            cacheRegistry,
-            environment: "Development");
+            tenantInitializer,
+            managedIdentityValidator,
+            sqlExecutionService);
 
         return new TerminologyOracleFixture(database, factory, sqlExecutionService, cacheRegistry);
     }

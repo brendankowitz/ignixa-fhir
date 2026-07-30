@@ -393,7 +393,7 @@
             },
             {
               "name": "Tenants__Configurations__0__Storage__Type",
-              "value": "SqlEntityFramework"
+              "value": "SqlServer"
             },
             {
               "name": "Tenants__Configurations__0__Storage__InheritConnectionStringFromTenant",
@@ -417,7 +417,7 @@
             },
             {
               "name": "Tenants__Configurations__1__Storage__Type",
-              "value": "SqlEntityFramework"
+              "value": "SqlServer"
             },
             {
               "name": "Tenants__Configurations__1__Storage__ConnectionString",

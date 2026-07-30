@@ -119,7 +119,7 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         {
             // Override configuration for tests
             // IMPORTANT: Use multi-tenant configuration pattern to override tenant storage
-            var storageType = UseSqlServer ? "SqlEntityFramework" : "FileSystem";
+            var storageType = UseSqlServer ? "SqlServer" : "FileSystem";
 
             var configValues = new Dictionary<string, string?>
             {
@@ -220,8 +220,8 @@ public class IgnixaApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         }
 
         // Create HTTP client and store for test access. In SQL Server mode, tenant 1's search
-        // parameter catalog is already seeded by the time this returns -- SqlEntityFrameworkRepositoryFactory.
-        // CreateServiceFactory does it during construction now (see
+        // parameter catalog is already seeded by the time this returns -- SqlServerTenantInitializer
+        // does it during tenant initialization now (see
         // docs/superpowers/specs/2026-07-21-search-param-seed-on-tenant-init-design.md), so this
         // fixture no longer needs its own separate seeding step.
         Client = CreateClient();

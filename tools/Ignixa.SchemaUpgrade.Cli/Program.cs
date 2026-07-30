@@ -59,7 +59,7 @@ internal static class Program
         ITenantConfigurationStore tenantConfigurationStore =
             new AppSettingsTenantConfigurationStore(configuration, NullLogger<AppSettingsTenantConfigurationStore>.Instance);
 
-        var connectionString = await SqlExecutionService.ResolveConnectionStringAsync(tenantConfigurationStore, tenantId, cancellationToken);
+        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(tenantConfigurationStore, tenantId, cancellationToken);
 
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream("Ignixa.DataLayer.SqlServer.Schema.dacpac")
             ?? throw new InvalidOperationException("Embedded schema dacpac not found.");

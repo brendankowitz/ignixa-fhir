@@ -10,10 +10,8 @@ using Microsoft.IO;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlServer;
-using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
-using Ignixa.Domain.Constants;
 using Ignixa.Search.Definition;
 using Ignixa.Serialization;
 using Ignixa.Specification;
@@ -34,10 +32,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly ILoggerFactory _loggerFactory;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
-    private readonly ISchemaDeployer _schemaDeployer;
+    private readonly SqlServerTenantInitializer _tenantInitializer;
+    private readonly ManagedIdentityConnectionStringValidator _managedIdentityValidator;
     private readonly ISqlExecutionService _sqlExecutionService;
-    private readonly SqlServerSearchIndexCacheRegistry _sqlServerCacheRegistry;
-    private readonly string _environment;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
@@ -61,27 +58,25 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// <param name="loggerFactory">The logger factory.</param>
     /// <param name="memoryStreamManager">The recyclable memory stream manager for efficient memory management.</param>
     /// <param name="multiTenantCache">Singleton multi-tenant cache for search index reference data.</param>
-    /// <param name="schemaDeployer">Deploys the SSDT-built schema to brand-new, empty tenant databases.</param>
+    /// <param name="tenantInitializer">Deploys/upgrades the tenant's schema, seeds its search-parameter catalog and preloads its reference data, in that order, before any repository is handed out.</param>
+    /// <param name="managedIdentityValidator">Rejects password-bearing connection strings in Production.</param>
     /// <param name="sqlExecutionService">Tenant-scoped raw ADO.NET execution service backing the SqlServer write path (<see cref="SqlServerFhirRepository"/>).</param>
-    /// <param name="environment">The environment name (e.g., Development, Production).</param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
         ILoggerFactory loggerFactory,
         RecyclableMemoryStreamManager memoryStreamManager,
         MultiTenantSearchIndexCache multiTenantCache,
-        ISchemaDeployer schemaDeployer,
-        ISqlExecutionService sqlExecutionService,
-        SqlServerSearchIndexCacheRegistry sqlServerCacheRegistry,
-        string environment = "Production")
+        SqlServerTenantInitializer tenantInitializer,
+        ManagedIdentityConnectionStringValidator managedIdentityValidator,
+        ISqlExecutionService sqlExecutionService)
     {
-        _sqlServerCacheRegistry = sqlServerCacheRegistry ?? throw new ArgumentNullException(nameof(sqlServerCacheRegistry));
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
-        _schemaDeployer = schemaDeployer ?? throw new ArgumentNullException(nameof(schemaDeployer));
+        _tenantInitializer = tenantInitializer ?? throw new ArgumentNullException(nameof(tenantInitializer));
+        _managedIdentityValidator = managedIdentityValidator ?? throw new ArgumentNullException(nameof(managedIdentityValidator));
         _sqlExecutionService = sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
-        _environment = environment;
         _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
         _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
@@ -156,100 +151,19 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             throw new InvalidOperationException($"Tenant {tenantId} is not active");
         }
 
-        // For non-system partitions: prevent direct access to system partition (Partition 0)
-        // For system partition: allow internal access
-        var isSystemPartitionAccess = tenantConfig.IsSystemPartition || tenantId == SystemConstants.SystemPartitionId;
-
-        // Validate storage configuration
-        if (tenantConfig.Storage.Type != "SqlEntityFramework" && tenantConfig.Storage.Type != "SqlServer")
-        {
-            throw new InvalidOperationException($"Tenant {tenantId} storage type '{tenantConfig.Storage.Type}' is not supported by SqlEntityFrameworkRepositoryFactory. Expected 'SqlEntityFramework' or 'SqlServer'");
-        }
-
-        // Handle connection string: system partition can inherit from another tenant (for single-tenant deployments)
-        var connectionString = tenantConfig.Storage.ConnectionString;
-
-        if (string.IsNullOrEmpty(connectionString))
-        {
-            if (!isSystemPartitionAccess)
-            {
-                // Regular tenants must have a connection string
-                throw new InvalidOperationException($"Tenant {tenantId} is missing a connection string in Storage.ConnectionString");
-            }
-
-            // System partition with null connection string: inherit from specified tenant
-            var inheritFromTenantId = tenantConfig.Storage.InheritConnectionStringFromTenant;
-            var inheritedConfig = await _tenantStore.GetTenantConfigurationAsync(inheritFromTenantId, ct);
-
-            if (inheritedConfig == null || string.IsNullOrEmpty(inheritedConfig.Storage.ConnectionString))
-            {
-                throw new InvalidOperationException(
-                    $"System partition (Tenant {tenantId}) has no ConnectionString and cannot inherit from Tenant {inheritFromTenantId} " +
-                    $"(tenant {(inheritedConfig == null ? "not found" : "has no ConnectionString")})");
-            }
-
-            connectionString = inheritedConfig.Storage.ConnectionString;
-        }
+        // Storage-type gate and the system partition's connection-string inheritance both live in
+        // Ignixa.DataLayer.SqlServer now -- SqlExecutionService already needed the identical rules, and
+        // two hand-synchronised copies of them is one copy too many.
+        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(
+            _tenantStore, tenantId, ct);
 
         // SECURITY: Validate that connection string uses Managed Identity (Azure AD) authentication
-        ValidateManagedIdentityAuthentication(connectionString, tenantId);
+        _managedIdentityValidator.Validate(connectionString, tenantId);
 
         // Create factory and cache it
         var factory = _factoryCache.GetOrAdd(tenantId, _ => CreateServiceFactory(tenantId, tenantConfig, connectionString));
 
         return factory;
-    }
-
-    /// <summary>
-    /// Validates that the connection string uses Managed Identity (Azure AD) authentication.
-    /// Throws an exception if local SQL authentication (username/password) is detected.
-    /// </summary>
-    /// <remarks>
-    /// Production deployments should ONLY use Managed Identity authentication for security.
-    /// Local SQL authentication (sa account, SQL logins with passwords) creates security risks:
-    /// - Passwords must be stored/rotated
-    /// - Cannot use Azure RBAC for access control
-    /// - Violates principle of least privilege
-    ///
-    /// Expected connection string format:
-    /// Server=tcp:servername.database.windows.net,1433;Database=FhirDatabase;Encrypt=true;TrustServerCertificate=false;Authentication=Active Directory Managed Identity;
-    ///
-    /// Validation is skipped in Development and Test environments to allow local SQL Server testing.
-    /// </remarks>
-    private void ValidateManagedIdentityAuthentication(string connectionString, int tenantId)
-    {
-        var logger = _loggerFactory.CreateLogger<SqlEntityFrameworkRepositoryFactory>();
-
-        // Only enforce Managed Identity validation in Production environments
-        var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        if (!string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase))
-        {
-            logger.LogWarning(
-                "Tenant {TenantId} Managed Identity validation skipped (Environment: {Environment}). " +
-                "SQL authentication allowed for non-production environments.",
-                tenantId,
-                environment ?? "Unknown");
-            return;
-        }
-
-        // Check if connection string contains password-based authentication indicators
-        bool hasPassword = connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase) ||
-                           connectionString.Contains("pwd=", StringComparison.OrdinalIgnoreCase);
-
-        if (hasPassword)
-        {
-            logger.LogError(
-                "Tenant {TenantId} connection string contains local SQL authentication (User ID/Password). " +
-                "Production deployments MUST use Managed Identity (Azure AD) authentication. " +
-                "Expected: Authentication=Active Directory Managed Identity;",
-                tenantId);
-            throw new InvalidOperationException(
-                $"Tenant {tenantId} connection string contains local SQL authentication (User ID/Password). " +
-                "Production deployments MUST use Managed Identity (Azure AD) authentication. " +
-                "Expected: Authentication=Active Directory Managed Identity;");
-        }
-
-        logger.LogInformation("Tenant {TenantId} validated for Managed Identity authentication", tenantId);
     }
 
     /// <summary>
@@ -295,74 +209,25 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Otherwise, the running process identity is used (Managed Identity of App Service)
         var managedIdentityName = ExtractManagedIdentityNameFromConnectionString(connectionString);
 
-        // CRITICAL: Deploy the SSDT-built schema (.dacpac) on first access, but only if the tenant's
-        // database is currently empty -- never touches an existing/populated database.
-        try
-        {
-            logger.LogInformation("Ensuring database schema is deployed for tenant {TenantId}...", tenantId);
-
-            _schemaDeployer.DeployIfEmptyAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
-            logger.LogInformation("Database schema deployment completed for tenant {TenantId}", tenantId);
-
-            _schemaDeployer.UpgradeIfNeededAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
-            logger.LogInformation("Database schema upgrade check completed for tenant {TenantId}", tenantId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "Failed to deploy database schema for tenant {TenantId}. Error: {Message}",
-                tenantId,
-                ex.Message);
-            throw;
-        }
-
         // Convert FhirVersion string to FhirVersion enum using extension method
         var fhirSpec = FhirSpecificationExtensions.FromVersionString(tenantConfig.FhirVersion);
 
         // Get appropriate IFhirSchemaProvider using extension method
         var schemaProvider = fhirSpec.GetSchemaProvider();
 
-        // Get or create cached definition managers (reused across tenants with same FHIR version)
+        // Get or create cached definition managers (reused across tenants with same FHIR version).
+        // Purely in-memory, so hoisting it above the database initialization below costs nothing and
+        // lets the initializer be handed the parameter manager it seeds the catalog from.
         var (compartmentManager, parameterManager) = GetOrCreateDefinitionManagers(fhirSpec, schemaProvider);
 
-        // Get tenant-specific cache instance (reused across all requests for this tenant)
-        var searchIndexCache = _multiTenantCache.GetOrCreateCacheForTenant(tenantId, dbContextOptions);
-
-        // Seed the search-parameter catalog for this tenant's FHIR version before either
-        // reference-data cache is trusted for reads. SyncSearchParametersToDatabase is idempotent
-        // per-URL (checks for an existing row before inserting) and updates searchIndexCache's own
-        // in-memory dictionary as it goes, so this both seeds the database AND leaves the read-side
-        // cache correctly warm -- one call covers both. Cheap on a restart of an already-seeded
-        // tenant (one SELECT, no writes). Without this, a freshly-deployed database's caches (this
-        // one and the SqlServer write-side cache constructed below) would warm to empty and never
-        // recover -- see docs/superpowers/specs/2026-07-21-search-param-seed-on-tenant-init-design.md.
-        var searchParamUrls = parameterManager.AllSearchParameters
-            .Where(sp => sp.Url is not null)
-            .Select(sp => sp.Url!.ToString())
-            .Distinct()
-            .ToList();
-        var syncedSearchParamCount = searchIndexCache.SyncSearchParametersToDatabase(searchParamUrls, parameterManager).GetAwaiter().GetResult();
-        logger.LogInformation(
-            "Search parameter catalog synced for tenant {TenantId}: {SyncedCount} of {TotalCount} URLs",
-            tenantId,
-            syncedSearchParamCount,
-            searchParamUrls.Count);
-
-        // Tenant-scoped raw-ADO.NET reference data cache backing the SqlServer write path
-        // (SqlServerFhirRepository). Distinct from the EF-based searchIndexCache above, which
-        // remains dedicated to the (still EF-based) read/search path. Preloaded once here, up front,
-        // synchronously -- mirroring the schema-deployment calls above -- rather than per-request.
-        // Construction and preloading are relocated to SqlServerRepositoryFactory
-        // (Ignixa.DataLayer.SqlServer), which preserves the same once-per-tenant scope: this call
-        // happens exactly once here, outside the createRepository closure below.
-        // Obtained from the registry rather than constructed here: row generators read the cache instance the
-        // write path was handed, so the package-load search-parameter sync has to be able to reach that same
-        // instance. While this was a local construction it was unreachable from outside this method, and a
-        // sync against any other instance left the write path still dropping index rows.
-        var sqlServerSearchIndexCache = _sqlServerCacheRegistry
-            .GetOrCreateAsync(tenantId, CancellationToken.None)
-            .GetAwaiter().GetResult();
+        // Schema deploy -> schema upgrade -> search-parameter catalog seed -> reference-data preload,
+        // in that order and exactly once per tenant, all of it now owned by
+        // SqlServerTenantInitializer (Ignixa.DataLayer.SqlServer) rather than inlined here. Returns
+        // the tenant's single shared reference-data cache -- the same instance the package-load sync
+        // reaches, which is what stops the write path silently dropping index rows.
+        var sqlServerSearchIndexCache = _tenantInitializer
+            .InitializeAsync(tenantId, parameterManager, CancellationToken.None)
+            .GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
 
         // Create factory delegate for Repository (accepts DbContext parameter, retained for
         // GetSearchServiceAsync's benefit -- see createSearchService below -- but unused here since
