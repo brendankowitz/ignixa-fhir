@@ -29,12 +29,13 @@ public sealed record SearchPlanOptions
     public SortPhase SortPhase { get; init; } = SortPhase.Valued;
 
     /// <summary>
-    /// The budget of included resources, applied as <c>TOP (IncludeLimit + 1)</c> — once per include stage
-    /// under <see cref="ResultShape.Matches"/>, once over the union of every stage under
-    /// <see cref="ResultShape.IncludesPage"/>. The extra row is a truncation probe, reported back as
-    /// <c>IsPartial</c> rather than returned. Zero — the default — therefore returns one sentinel row the
-    /// caller trims, which is how it detects that included resources exist without fetching them. There is no
-    /// uncapped setting. Rejected when negative, and at <see cref="int.MaxValue"/> because the probe overflows.
+    /// The budget of included resources, applied as <c>TOP (IncludeLimit + 1)</c> — per include stage under
+    /// <see cref="ResultShape.Matches"/>, once over the union of every stage under
+    /// <see cref="ResultShape.IncludesPage"/>. The extra row is over-fetched deliberately: it is returned,
+    /// flagged <c>IsPartial</c>, and the caller trims it. That is how truncation stays detectable, and why
+    /// zero — the default — reports whether included resources exist without fetching any of them. There is
+    /// no uncapped setting. Rejected when negative, and at <see cref="int.MaxValue"/> because the extra row
+    /// overflows the cap.
     /// </summary>
     public int IncludeLimit { get; init; }
 

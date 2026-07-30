@@ -161,7 +161,7 @@ public class EmitSqlGrammarTests
     {
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count());
+        return new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
     }
 
     private static QueryPlan LikePlan()
@@ -587,7 +587,7 @@ public class EmitSqlGrammarTests
         return new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             SearchParameterHash: StandardHash());
     }
 

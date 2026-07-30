@@ -186,8 +186,8 @@ have no meaning cannot be written down:
 
 ```csharp
 new ResultShape.Matches();                          // default -- the match set
-new ResultShape.Count();                            // one COUNT_BIG, no ORDER BY, no TOP
-new ResultShape.Count(CountScope.CurrentSortPhase); // ...restricted to the segment the sort names
+new ResultShape.Count.AllMatches();                 // one COUNT_BIG, no ORDER BY, no TOP
+new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segment the sort names
 new ResultShape.IncludesPage(Resume: null);         // $includes: the include stages only, as one stream
 
 new SearchPaging.Keyset(Top: 50);                   // TOP and/or a keyset seek -- the normal path
@@ -224,8 +224,8 @@ phased; secondary keys are always left-joined tie-breakers with a sentinel, so t
 `_lastUpdated`, `_type` and `_id` sort on non-nullable resource columns, so they have no `MissingPrimary`
 segment and need only one pass.
 
-Counting works the same way: `ResultShape.Count()` counts the whole match set and ignores any sort the plan
-carries, while `ResultShape.Count(CountScope.CurrentSortPhase)` counts only the rows the phase reaches -- which
+Counting works the same way: `ResultShape.Count.AllMatches` counts the whole match set and ignores any sort
+the plan carries, while `ResultShape.Count.CurrentSortPhase` counts only the rows the phase reaches -- which
 is what a caller totalling the two phases separately needs.
 
 ## What's supported

@@ -94,13 +94,11 @@ public class SearchPlanTests
     }
 
     [Fact]
-    public async Task GivenAPageBoundaryThatDoesNotMatchTheSortPhase_WhenTryCompilingIt_ThenItReturnsAFailureRatherThanThrowing()
+    public async Task GivenAPageBoundaryThatDoesNotMatchTheSortPhase_WhenTryCreatingThePlan_ThenItFailsAtLowering()
     {
-        // PageSpec.Boundary is client input decoded from a continuation token, and nothing between
-        // SearchPlanOptions.Page and emission compares its length against the sort phase. So plan creation
-        // succeeds and the mismatch only bites at Compile -- where TryCompile has to hand it back as data.
-        // A caller who picked the Try* API precisely to avoid exceptions would otherwise get an unhandled
-        // throw out of the one method whose contract says it never throws.
+        // PageSpec.Boundary is client input decoded from a continuation token, so its length has to be checked
+        // against the phase's active key count. Lowering owns that check: a caller gets the failure from plan
+        // creation, before it holds a SearchPlan it believes is emittable.
         var compiler = CompilerFixtures.ForPatient();
         var options = new SearchPlanOptions
         {
@@ -108,13 +106,12 @@ public class SearchPlanTests
                 [new SqlParameterRef("Smith")], new SqlParameterRef((short)103), new SqlParameterRef(9000L))),
         };
 
-        var plan = await compiler.CreatePlanAsync("Patient", [new QueryParameter("name", "smith")], options);
-
-        var result = plan.TryCompile();
+        var result = await compiler.TryCreatePlanAsync("Patient", [new QueryParameter("name", "smith")], options);
 
         result.Succeeded.ShouldBeFalse();
-        result.Failure!.Stage.ShouldBe(CompilationStage.Emit);
+        result.Failure!.Stage.ShouldBe(CompilationStage.Lower);
         result.Failure.Exception.ShouldBeOfType<NotSupportedException>();
+        result.Failure.Message.ShouldContain("1 value(s)");
     }
 
     [Fact]

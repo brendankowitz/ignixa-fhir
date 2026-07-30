@@ -55,10 +55,15 @@ public class SearchPlanOptionsTests
     }
 
     [Fact]
-    public void GivenACountShape_WhenReadingItsDefaults_ThenItCoversTheWholeMatchSet()
+    public void GivenTheTwoCountShapes_WhenMatchedAsCounts_ThenBothAreCountsAndNeitherIsTheOther()
     {
-        var count = new ResultShape.Count();
+        // QueryPlan.CountOnly matches the abstract Count, so both cases must reach it while staying distinct
+        // to the emitter's phase check.
+        ResultShape all = new ResultShape.Count.AllMatches();
+        ResultShape phase = new ResultShape.Count.CurrentSortPhase();
 
-        count.Scope.ShouldBe(CountScope.AllMatches);
+        all.ShouldBeAssignableTo<ResultShape.Count>();
+        phase.ShouldBeAssignableTo<ResultShape.Count>();
+        all.ShouldNotBe(phase);
     }
 }

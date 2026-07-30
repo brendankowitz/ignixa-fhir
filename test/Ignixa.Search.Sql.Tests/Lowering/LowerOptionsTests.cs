@@ -24,7 +24,7 @@ public class LowerOptionsTests
         var plan = new QueryPlan(
             ctes,
             match,
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             OffsetPage: new OffsetSpec(5, 10));
 
         // Assert
@@ -53,7 +53,7 @@ public class LowerOptionsTests
         // not ask to be restricted to the phase.
         plan.CountOnly.ShouldBeTrue();
         plan.Sort.ShouldNotBeNull();
-        plan.EffectiveShape.ShouldBe(new ResultShape.Count());
+        plan.EffectiveShape.ShouldBe(new ResultShape.Count.AllMatches());
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class LowerOptionsTests
         // Assert
         plan.Sort.ShouldNotBeNull();
         plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
-        plan.EffectiveShape.ShouldBe(new ResultShape.Count(CountScope.CurrentSortPhase));
+        plan.EffectiveShape.ShouldBe(new ResultShape.Count.CurrentSortPhase());
     }
 
     [Fact]
@@ -239,6 +239,19 @@ public class LowerOptionsTests
         // Assert
         plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
         plan.Top.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAnUndefinedSortPhase_WhenLowering_ThenThrowsNotSupportedException()
+    {
+        // Arrange -- SortPhase arrives from caller options, so a cast or a deserialised int reaches lowering.
+        // Anything but MissingPrimary reads the Valued segment, replaying rows the caller has already paged.
+        var (predicate, symbols) = NameQuery();
+
+        // Act / Assert
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: (SortPhase)7, page: null));
     }
 
     private static (Expression Predicate, SymbolTable Symbols) NameQuery()

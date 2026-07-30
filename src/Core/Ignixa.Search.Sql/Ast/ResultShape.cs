@@ -20,10 +20,33 @@ public abstract record ResultShape
 
     /// <summary>
     /// A single <c>COUNT_BIG(DISTINCT …)</c> over the match set. Row caps, offsets and keyset boundaries do
-    /// not bound it: a count is of the whole set, not of a page.
+    /// not bound it: a count is of the whole set, not of a page. Closed over which rows it covers, so an
+    /// unrecognised scope cannot be constructed and silently fall through to the whole set.
     /// </summary>
-    /// <param name="Scope">Which rows the count covers. Defaults to <see cref="CountScope.AllMatches"/>.</param>
-    public sealed record Count(CountScope Scope = CountScope.AllMatches) : ResultShape;
+    public abstract record Count : ResultShape
+    {
+        private Count()
+        {
+        }
+
+        /// <summary>
+        /// Every matching resource, ignoring any sort the plan carries. This is the FHIR <c>Bundle.total</c>.
+        /// </summary>
+        public sealed record AllMatches : Count;
+
+        /// <summary>
+        /// Counts only the rows the plan's current <see cref="SortPhase"/> reaches. The sort's ordering is
+        /// irrelevant to a count, so this applies just the phase's row filter: under
+        /// <see cref="SortPhase.Valued"/> the primary sort key's INNER join, which drops resources that have
+        /// no value for it; under <see cref="SortPhase.MissingPrimary"/> the <c>NOT EXISTS</c> that keeps
+        /// only those. It answers "how many rows are in the segment I am paging right now", which is what a
+        /// caller walking a two-phase sort needs to size each segment. Requires the plan to carry at least
+        /// one sort key — a keyless sort names no segment, and is rejected rather than counted as the whole
+        /// set. A <c>_lastUpdated</c> or <c>_type</c> primary key is a non-nullable resource column with no
+        /// join and no missing segment, so this counts the same rows as <see cref="AllMatches"/>.
+        /// </summary>
+        public sealed record CurrentSortPhase : Count;
+    }
 
     /// <summary>
     /// Include-stage rows only, omitting the match page from the result while still using it to seed the

@@ -198,29 +198,11 @@ internal static class SqlBuilder
                 "rows with ResultShape.IncludesPage.Resume.");
         }
 
-        if (plan.IncludesOnly && plan.Includes is { Count: > 0 } includeStages
-            && includeStages.Any(s => s.Limit != includeStages[0].Limit))
-        {
-            // One TOP is applied over the union of every stage (budget from includes[0].Limit), so differing
-            // per-stage limits would silently page on whichever limit is first.
-            throw new NotSupportedException(
-                "ResultShape.IncludesPage applies one page budget across the union of every include stage, so " +
-                "the stages must agree on a single Limit. A per-stage limit has no coherent meaning here, and " +
-                "the mismatch is reported rather than silently paged on whichever limit is first.");
-        }
-
-        // Keys.Count, not a null check: SortSpec is a positional record, so SortSpec([], Valued) is
-        // constructible and would emit no sort join and no MissingPrimary filter — a whole-set count
-        // silently contradicting the restriction.
-        if (plan.EffectiveShape is ResultShape.Count { Scope: CountScope.CurrentSortPhase } && plan.Sort is not { Keys.Count: > 0 })
-        {
-            throw new NotSupportedException(
-                "A count was asked to restrict itself to the sort phase but the plan carries no sort keys, so " +
-                "there is no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
-        }
-
+        // Ordered before the cross-stage agreement guard below: an includes page whose limits disagree AND
+        // are out of range would otherwise be told to make them agree, which leaves the plan invalid.
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface, and every
-        // emission path writes TOP (Limit + 1): int.MaxValue overflows that to a negative row count.
+        // path that emits an include stage writes TOP (Limit + 1): int.MaxValue overflows that to a negative
+        // row count.
         if (plan.Includes is { Count: > 0 } stages)
         {
             for (var i = 0; i < stages.Count; i++)
@@ -233,6 +215,39 @@ internal static class SqlBuilder
                         "so a negative value is a SQL Server runtime error and int.MaxValue overflows the probe.");
                 }
             }
+        }
+
+        if (plan.IncludesOnly && plan.Includes is { Count: > 0 } includeStages
+            && includeStages.Any(s => s.Limit != includeStages[0].Limit))
+        {
+            // One TOP is applied over the union of every stage (budget from includes[0].Limit), so differing
+            // per-stage limits would silently page on whichever limit is first.
+            throw new NotSupportedException(
+                "ResultShape.IncludesPage applies one page budget across the union of every include stage, so " +
+                "the stages must agree on a single Limit. A per-stage limit has no coherent meaning here, and " +
+                "the mismatch is reported rather than silently paged on whichever limit is first.");
+        }
+
+        // Any phase other than MissingPrimary falls through to the Valued segment, which hands back rows the
+        // caller driving the two-phase loop has already seen. An undefined enum value is representable — a
+        // cast, a deserialised int, or a case added later — so it is rejected rather than reinterpreted.
+        if (plan.Sort is { Phase: var sortPhase } && !Enum.IsDefined(sortPhase))
+        {
+            throw new NotSupportedException(
+                $"SortPhase '{(int)sortPhase}' is not a phase this compiler recognises. Use " +
+                $"{nameof(SortPhase)}.{nameof(SortPhase.Valued)} or " +
+                $"{nameof(SortPhase)}.{nameof(SortPhase.MissingPrimary)}.");
+        }
+
+        // Keys.Count, not a null check: SortSpec is a positional record, so SortSpec([], Valued) is
+        // constructible and would emit no sort join and no MissingPrimary filter — a whole-set count
+        // silently contradicting the restriction.
+        if (plan.EffectiveShape is ResultShape.Count.CurrentSortPhase && plan.Sort is not { Keys.Count: > 0 })
+        {
+            throw new NotSupportedException(
+                "A count was asked to restrict itself to the sort phase but the plan carries no sort keys, so " +
+                "there is no segment to restrict it to. Use ResultShape.Count.AllMatches to count the whole " +
+                "match set.");
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
@@ -293,6 +308,17 @@ internal static class SqlBuilder
                 "after the boundary yet is excluded by the seek, and is silently dropped at the page seam. " +
                 "Use a typeless Page (BoundaryResourceTypeId: null) for a custom sort; the type component is " +
                 "redundant because ResourceSurrogateId is globally unique.");
+        }
+
+        // A boundary decoded in one phase carries values for that phase's active keys, so reusing it across a
+        // Valued/MissingPrimary transition would seek on the wrong key set. Checked here rather than in
+        // EmitSeekPredicate so the failure surfaces before any SQL is written.
+        if (plan.Page is { } boundaryPage && boundaryPage.Boundary.Count != (plan.Sort?.ActiveKeyCount ?? 0))
+        {
+            throw new NotSupportedException(
+                $"PageSpec.Boundary has {boundaryPage.Boundary.Count} value(s) but the current SortSpec phase " +
+                $"has {plan.Sort?.ActiveKeyCount ?? 0} active key(s) -- boundary values must be freshly decoded " +
+                "for the current phase, never reused across a Valued/MissingPrimary transition.");
         }
     }
 
@@ -360,8 +386,8 @@ internal static class SqlBuilder
     /// <summary>
     /// Emits the Count shape: COUNT_BIG(DISTINCT m.Sid1) over the match CTE. Row caps, offsets and keyset
     /// boundaries are ignored, since a count is of the whole result set rather than a page of it. So is the
-    /// sort, unless <see cref="CountScope.CurrentSortPhase"/> asked the count to cover only the segment the
-    /// sort names, which applies the phase's key join and its MissingPrimary filter.
+    /// sort, unless the shape is <see cref="ResultShape.Count.CurrentSortPhase"/>, which applies the phase's
+    /// key join and its MissingPrimary filter.
     /// </summary>
     private static void EmitCountOnlyShape(
         QueryPlan plan,
@@ -372,7 +398,7 @@ internal static class SqlBuilder
         WriteCteHeader(writer, cteBlocks);
         writer.Append("\n");
 
-        var phaseSort = plan.EffectiveShape is ResultShape.Count { Scope: CountScope.CurrentSortPhase } ? plan.Sort : null;
+        var phaseSort = plan.EffectiveShape is ResultShape.Count.CurrentSortPhase ? plan.Sort : null;
 
         var countSortJoins = EmitSortJoins(phaseSort);
         writer.Append($"SELECT COUNT_BIG(DISTINCT m.Sid1) FROM {CteLabel(plan.Match.Index)} m{countSortJoins}");
@@ -1057,9 +1083,7 @@ internal static class SqlBuilder
     private static IReadOnlyList<int> ActiveKeyIndices(SortSpec? sort)
         => sort is null
             ? []
-            : sort.Phase == SortPhase.Valued
-                ? Enumerable.Range(0, sort.Keys.Count).ToList()
-                : Enumerable.Range(1, sort.Keys.Count - 1).ToList();
+            : Enumerable.Range(sort.Phase == SortPhase.Valued ? 0 : 1, sort.ActiveKeyCount).ToList();
 
     /// <summary>
     /// Renders a sort key's value expression — the raw column, or ISNULL(column, sentinel) where the value
@@ -1194,18 +1218,11 @@ internal static class SqlBuilder
     /// Renders the keyset-seek WHERE predicate that skips everything up to the page boundary: an OR of
     /// lexicographic branches over the active sort keys, then the surrogate-id tiebreak, in step with the
     /// ORDER BY. A typed <see cref="PageSpec"/> breaks the final tie on (T1, Sid1); a typeless one on Sid1 alone.
-    /// Throws <see cref="NotSupportedException"/> if the boundary value count does not match the phase's keys.
+    /// The boundary's value count is checked against the phase by <see cref="RejectUnsupportedCombinations"/>.
     /// </summary>
     private static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {
         var activeIndices = ActiveKeyIndices(sort);
-        if (page.Boundary.Count != activeIndices.Count)
-        {
-            throw new NotSupportedException(
-                $"PageSpec.Boundary has {page.Boundary.Count} value(s) but the current SortSpec phase has " +
-                $"{activeIndices.Count} active key(s) -- boundary values must be freshly decoded for the " +
-                "current phase, never reused across a Valued/MissingPrimary transition.");
-        }
 
         var boundaryParams = page.Boundary.Select(b => EmitParam(b, parameters)).ToList();
 

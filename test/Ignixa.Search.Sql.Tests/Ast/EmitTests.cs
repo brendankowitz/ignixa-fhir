@@ -1257,7 +1257,7 @@ public class EmitTests
         // Arrange -- Patient?name=Smith&_total=accurate, no resource-column predicate.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1282,7 +1282,7 @@ public class EmitTests
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            OuterPredicate: outerPredicate, Shape: new ResultShape.Count());
+            OuterPredicate: outerPredicate, Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1304,7 +1304,7 @@ public class EmitTests
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Top: 10, Includes: [includeStage], Shape: new ResultShape.Count());
+            Top: 10, Includes: [includeStage], Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1650,7 +1650,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             Projection: new ProjectionSpec(["RawResource"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -1750,7 +1750,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1773,7 +1773,7 @@ public class EmitTests
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
             OuterPredicate: outerPredicate,
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1920,7 +1920,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             SearchParameterHash: new SqlParameterRef("abc123"));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1937,7 +1937,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             SearchParameterHash: new SqlParameterRef("abc123"));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2667,7 +2667,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(),
+            Shape: new ResultShape.Count.AllMatches(),
             OffsetPage: new OffsetSpec(20, 10));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2689,7 +2689,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(CountScope.CurrentSortPhase),
+            Shape: new ResultShape.Count.CurrentSortPhase(),
             Sort: sort);
 
         // Act
@@ -2718,7 +2718,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(CountScope.CurrentSortPhase),
+            Shape: new ResultShape.Count.CurrentSortPhase(),
             Sort: sort);
 
         // Act
@@ -2738,7 +2738,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count());
+            Shape: new ResultShape.Count.AllMatches());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2764,7 +2764,7 @@ public class EmitTests
             new CteRef(0),
             Sort: sort);
 
-        var sql = SqlBuilder.Run(sorted with { Shape = new ResultShape.Count() }).Sql;
+        var sql = SqlBuilder.Run(sorted with { Shape = new ResultShape.Count.AllMatches() }).Sql;
 
         sql.ShouldNotContain("StringSearchParam sk0");
         sql.ShouldEndWith("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
@@ -2776,7 +2776,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Shape: new ResultShape.Count(CountScope.CurrentSortPhase));
+            Shape: new ResultShape.Count.CurrentSortPhase());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3108,7 +3108,40 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Sort: new SortSpec([], SortPhase.Valued),
-            Shape: new ResultShape.Count(CountScope.CurrentSortPhase));
+            Shape: new ResultShape.Count.CurrentSortPhase());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnUndefinedSortPhase_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // SortPhase is an enum, so a cast or a deserialised int can carry a value no emitter branch handles.
+        // Every such value falls through to the Valued segment, handing a caller driving the two-phase loop
+        // rows it has already paged.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], (SortPhase)7));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void GivenAPageBoundaryWhoseValueCountDisagreesWithThePhase_WhenEmitted_ThenThrowsNotSupportedException(int boundaryValues)
+    {
+        // One key, Valued phase: the boundary must carry exactly one value. Too few and the seek compares
+        // fewer columns than the ORDER BY; too many and it reads values for keys that are not in this phase.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued),
+            Page: new PageSpec(
+                Enumerable.Range(0, boundaryValues).Select(i => new SqlParameterRef((long)i)).ToList(),
+                new SqlParameterRef((short)103),
+                new SqlParameterRef(9000L)));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3118,8 +3151,8 @@ public class EmitTests
     [InlineData(int.MaxValue)]
     public void GivenAnIncludeStageWithAnOutOfRangeLimit_WhenEmitted_ThenThrowsNotSupportedException(int limit)
     {
-        // Every emission path writes TOP (Limit + 1): a negative limit is a SQL Server runtime error, and
-        // int.MaxValue overflows the truncation probe to a negative row count.
+        // Every path that emits an include stage writes TOP (Limit + 1): a negative limit is a SQL Server
+        // runtime error, and int.MaxValue overflows the over-fetched row to a negative row count.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),

@@ -74,13 +74,21 @@ internal static class Lower
                 "without fetching them.");
         }
 
+        if (!Enum.IsDefined(sortPhase))
+        {
+            throw new NotSupportedException(
+                $"SortPhase '{(int)sortPhase}' is not a phase this compiler recognises. Any value other than " +
+                $"{nameof(SortPhase)}.{nameof(SortPhase.MissingPrimary)} would read the Valued segment, " +
+                "handing back rows a caller driving the two-phase loop has already seen.");
+        }
+
         // The count guard runs first: for a phase-restricted count with no _sort, both guards apply, and the
         // generic one would advise switching to SortPhase.Valued, which leaves the count still unsatisfiable.
-        if (shape is ResultShape.Count { Scope: CountScope.CurrentSortPhase } && sort.Count == 0)
+        if (shape is ResultShape.Count.CurrentSortPhase && sort.Count == 0)
         {
             throw new NotSupportedException(
                 "A count was asked to restrict itself to the sort phase but the query has no _sort, so there is " +
-                "no segment to restrict it to. Use ResultShape.Count() to count the whole match set.");
+                "no segment to restrict it to. Use ResultShape.Count.AllMatches to count the whole match set.");
         }
 
         // The MissingPrimary segment is defined by the absence of the primary sort key, so with no _sort there
@@ -277,6 +285,18 @@ internal static class Lower
                 "while a typed boundary seeks type-major, so rows are silently dropped at the page seam. Decode " +
                 "the continuation token to a typeless Page (BoundaryResourceTypeId: null) for a custom sort; the " +
                 "type component is redundant because ResourceSurrogateId is globally unique.");
+        }
+
+        // A boundary decoded under one phase carries values for that phase's active keys, so carrying it across
+        // a Valued/MissingPrimary transition seeks on the wrong key set. Mirrored by
+        // SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
+        if (page is not null && page.Boundary.Count != (sortSpec?.ActiveKeyCount ?? 0))
+        {
+            throw new NotSupportedException(
+                $"The keyset boundary carries {page.Boundary.Count} value(s) but {nameof(SortPhase)}." +
+                $"{sortPhase} has {sortSpec?.ActiveKeyCount ?? 0} active sort key(s). Decode the continuation " +
+                "token for the phase you are reading; a boundary never survives a Valued/MissingPrimary " +
+                "transition.");
         }
 
         return new LoweredPlan(

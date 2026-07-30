@@ -9,9 +9,8 @@ using Ignixa.Search.Sql.Symbols;
 namespace Ignixa.Search.Sql.Tests.TestSupport;
 
 /// <summary>
-/// Reproduces the argument list <see cref="Lower.Run"/> had before it was collapsed onto
-/// <c>CompilationContext</c>. Every argument, including the <see cref="LowerOptions"/> initialiser, is
-/// unchanged, so migrating a test is a one-token rename.
+/// Flattens <see cref="Lower.Run"/>'s inputs into one positional argument list, mapping them onto the
+/// option unions so a test can state just the lowering inputs it cares about.
 /// </summary>
 internal static class LowerHarness
 {
@@ -29,8 +28,7 @@ internal static class LowerHarness
     {
         options ??= new LowerOptions();
 
-        // The harness takes each lowering input as a separate argument and maps them onto the option unions,
-        // so the ~100 call sites it exists to serve stay unchanged.
+        // The harness takes each lowering input as a separate argument and maps them onto the option unions.
         var context = CompilationContextFactory.For(
             expression,
             targetResourceType,
@@ -46,7 +44,9 @@ internal static class LowerHarness
             options: new SearchPlanOptions
             {
                 Shape = options.CountOnly
-                    ? new ResultShape.Count(options.CountPhaseScoped ? CountScope.CurrentSortPhase : CountScope.AllMatches)
+                    ? options.CountPhaseScoped
+                        ? new ResultShape.Count.CurrentSortPhase()
+                        : new ResultShape.Count.AllMatches()
                     : options.IncludesOnly
                         ? new ResultShape.IncludesPage(options.IncludeBoundary)
                         : ResultShape.Default,

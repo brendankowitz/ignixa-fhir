@@ -48,7 +48,15 @@ public enum SortPhase
 /// A compiled _sort, capped at 3 keys. Keys[0] is the primary key that <see cref="SortPhase"/> segments;
 /// Keys[1..] are always LEFT-JOIN tie-breakers.
 /// </summary>
-public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase);
+public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase)
+{
+    /// <summary>
+    /// How many keys carry a value in this phase: all of them when <see cref="SortPhase.Valued"/>, all but
+    /// the primary when <see cref="SortPhase.MissingPrimary"/>. A keyset boundary must supply exactly this
+    /// many values, which is why a boundary never survives a phase transition.
+    /// </summary>
+    public int ActiveKeyCount => Phase == SortPhase.Valued ? Keys.Count : Math.Max(Keys.Count - 1, 0);
+}
 
 /// <summary>
 /// The keyset boundary decoded from a continuation token (null = first page). Boundary carries one value per
