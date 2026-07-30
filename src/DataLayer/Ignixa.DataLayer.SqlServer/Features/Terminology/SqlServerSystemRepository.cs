@@ -11,9 +11,11 @@ namespace Ignixa.DataLayer.SqlServer.Features.Terminology;
 /// Delegating rather than issuing its own SQL keeps the cache coherent: a system created here lands in the
 /// same in-memory map the search index reads, so a subsequent lookup does not have to round-trip. The EF
 /// implementation could not do this — it wrote through its own DbContext and then had to call
-/// <c>ForgetMissingSystem</c> to invalidate a separate cache's negative entry. That call has no equivalent
-/// here and needs none: this cache resolves a miss on demand rather than remembering it (see
-/// <c>OnDemandResolvingDictionary</c> and the system/quantity-code self-heal work).
+/// <c>ForgetMissingSystem</c> to invalidate a separate cache's negative entry. The cache does record misses
+/// (see its <c>NegativeLookupCache</c> fields), but <see cref="SqlServerSearchIndexReferenceDataCache.GetOrCreateSystemIdAsync"/>
+/// invalidates its own entry, so this repository needs no explicit invalidation call — a property of
+/// delegating to the cache, not of the cache forgetting nothing. A future writer here that issued its own
+/// INSERT would have to call <see cref="SqlServerSearchIndexReferenceDataCache.ForgetMissingSystem"/>.
 /// </para>
 /// <para>
 /// Three behaviours of the EF repository are not in the cache method and are preserved here rather than

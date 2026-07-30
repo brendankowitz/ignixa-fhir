@@ -42,13 +42,17 @@ public class SqlServerSearchIndexReferenceDataCacheTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAnUnknownResourceTypeName_WhenGetResourceTypeIdAsyncCalledTwice_ThenReturnsNullBothTimesAndOnlyQueriesOnce()
+    public async Task GivenAnUnknownResourceTypeName_WhenGetResourceTypeIdAsyncCalledTwice_ThenReturnsNullBothTimesAndRemembersNothing()
     {
+        // Each call re-queries by design: dbo.ResourceType is populated as types are first encountered, so
+        // remembering "absent" would answer wrongly for every later lookup and write of that type once it
+        // exists. See GetResourceTypeIdAsync's miss branch.
         var first = await _cache.GetResourceTypeIdAsync("NotARealResourceType", CancellationToken.None);
         var second = await _cache.GetResourceTypeIdAsync("NotARealResourceType", CancellationToken.None);
         first.ShouldBeNull();
         second.ShouldBeNull();
         _cache.TryGetResourceTypeIdFromCache("NotARealResourceType").ShouldBeNull();
+        _cache.ResourceTypeMappings.ContainsKey("NotARealResourceType").ShouldBeFalse();
     }
 
     [Fact]

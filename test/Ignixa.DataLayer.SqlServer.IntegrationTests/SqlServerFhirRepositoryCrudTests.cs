@@ -170,10 +170,10 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
     [Fact]
     public async Task GivenANeverBeforeSeenResourceType_WhenGetOrCreateResourceTypeIdAsyncCalledTwice_ThenOnlyOneRowIsInsertedIntoDboResourceType()
     {
-        // Regression proof for the plan-review correction: the insert path used to route through
-        // the cache's read-only lookup (which caches a "confirmed missing" sentinel on a miss) and
-        // never updated the cache after inserting, so the second caller for the same never-before-
-        // seen type name would see the stale sentinel and attempt a duplicate INSERT.
+        // Regression proof for the plan-review correction: the insert path never updated the cache after
+        // inserting, so the second caller for the same never-before-seen type name would not see the new
+        // row and would attempt a duplicate INSERT. CacheResourceTypeId records the freshly-inserted id,
+        // which is what makes the second call a cache hit.
         var resource = new ResourceWrapper(
             "Observation", "obs-crud-1", "1", DateTimeOffset.UtcNow,
             ResourceJsonNode.Parse("""{"resourceType":"Observation","id":"obs-crud-1"}"""),

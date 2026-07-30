@@ -13,13 +13,28 @@ namespace Ignixa.DataLayer.SqlServer.Indexing;
 /// SearchParameterInfo overload of GetSearchParamIdAsync, GetValidResourceTypeMappings,
 /// GetValidSearchParameterMappings) are intentionally not ported (YAGNI); Phase E's read-path cache
 /// port will add those separately if it needs them.
+/// <para>
+/// The read-only lookups added since (TryGetSystemIdAsync, TryGetQuantityCodeIdAsync) record their misses
+/// in a separate <see cref="NegativeLookupCache"/> rather than as a sentinel in the positive caches, and
+/// so also port EF's ForgetMissingSystem as <see cref="ForgetMissingSystem"/> plus a quantity-code
+/// equivalent. What is NOT ported is EF's cross-tenant broadcast (MultiTenantSearchIndexCache): these
+/// hooks reach one cache instance only.
+/// </para>
 /// </summary>
 public sealed class SqlServerSearchIndexReferenceDataCache(
     ISqlExecutionService sqlExecutionService,
     int tenantId,
-    ILogger<SqlServerSearchIndexReferenceDataCache> logger) : IDisposable
+    ILogger<SqlServerSearchIndexReferenceDataCache> logger,
+    TimeProvider? timeProvider = null) : IDisposable
 {
     private const short MissingSentinel = -1;
+
+    /// <summary>
+    /// Value meaning "not a real surrogate id" for <see cref="OnDemandResolvingDictionary{TKey,TValue}"/>,
+    /// whose backing dictionary it cannot itself guarantee is sentinel-free. The system and quantity-code
+    /// caches this class owns never hold it -- their misses go to <see cref="_missingSystems"/> and
+    /// <see cref="_missingQuantityCodes"/>.
+    /// </summary>
     private const int SystemQuantityMissingSentinel = -1;
 
     private readonly ISqlExecutionService _sqlExecutionService =
@@ -37,6 +52,15 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     private readonly ConcurrentDictionary<string, short> _searchParamCache = new();
     private readonly ConcurrentDictionary<string, int> _systemCache = new();
     private readonly ConcurrentDictionary<string, int> _quantityCodeCache = new();
+
+    // Negative caches for the read-only lookups, matching the key kinds the reference EF implementation
+    // covers (_missingSystems and _missingQuantityCodes there too). Kept separate from the positive caches
+    // above because those are shared with the get-or-create write path, which reads every cached integer as
+    // a real surrogate id. Unlike a sentinel in the positive cache, these are TTL-bounded (so a row created
+    // by another process becomes visible without any in-process invalidation) and capacity-bounded (so a
+    // caller enumerating distinct systems cannot grow them without limit).
+    private readonly NegativeLookupCache _missingSystems = new(timeProvider);
+    private readonly NegativeLookupCache _missingQuantityCodes = new(timeProvider);
 
     // Completion signals for Ensure*PreloadedAsync's double-checked locking. Dictionary emptiness is
     // NOT a valid completion signal: ConcurrentDictionary is live-visible to readers DURING its own
@@ -57,7 +81,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     public IReadOnlyDictionary<string, short> SearchParameterMappings => new SentinelFilteringDictionary(_searchParamCache);
 
     // Self-healing: a miss resolves on demand via GetOrCreateSystemIdAsync/GetOrCreateQuantityCodeIdAsync
-    // and is cached back into _systemCache/_quantityCodeCache. Each property access allocates a new
+    // and is cached back into _systemCache/_quantityCodeCache -- which also forgets any miss the read path
+    // recorded for that key. Each property access allocates a new
     // wrapper, but it always wraps the SAME shared, live backing ConcurrentDictionary by reference --
     // not a snapshot -- so inserts from any wrapper instance are immediately visible everywhere,
     // matching SqlServerMergeRepository's expectation that these mappings stay live.
@@ -252,8 +277,13 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
             if (rows.Count == 0)
             {
+                // Deliberately NOT recorded, matching the reference EF implementation. dbo.ResourceType is
+                // populated as types are first encountered, so "absent" is a transient state, not a stable
+                // fact: remembering it poisons every later lookup and write of that type until something
+                // overwrites the entry, and the row may be created by another process that no in-process
+                // invalidation can observe. A repeated indexed singleton lookup on a rare miss is cheaper
+                // than a wrong answer. Resource types are eagerly preloaded, so misses are genuinely rare.
                 _logger.LogWarning("ResourceType not found: {ResourceTypeName}", resourceTypeName);
-                _resourceTypeCache[resourceTypeName] = MissingSentinel;
                 return null;
             }
 
@@ -316,7 +346,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     {
         ArgumentException.ThrowIfNullOrEmpty(systemUri);
 
-        if (_systemCache.TryGetValue(systemUri, out var cachedId) && cachedId != SystemQuantityMissingSentinel)
+        if (_systemCache.TryGetValue(systemUri, out var cachedId))
         {
             return cachedId;
         }
@@ -324,7 +354,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            if (_systemCache.TryGetValue(systemUri, out cachedId) && cachedId != SystemQuantityMissingSentinel)
+            if (_systemCache.TryGetValue(systemUri, out cachedId))
             {
                 return cachedId;
             }
@@ -338,6 +368,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             {
                 var existingId = existingRows[0];
                 _systemCache[systemUri] = existingId;
+                _missingSystems.Forget(systemUri);
                 return existingId;
             }
 
@@ -354,6 +385,10 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             var newId = insertedRows[0];
             _logger.LogDebug("Created new System entry: {SystemUri} -> {SystemId}", systemUri, newId);
             _systemCache[systemUri] = newId;
+
+            // Forgetting the recorded miss is what stops a search that already probed this system from
+            // continuing to report it missing now that it exists.
+            _missingSystems.Forget(systemUri);
             return newId;
         }
         finally
@@ -366,7 +401,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     {
         ArgumentException.ThrowIfNullOrEmpty(code);
 
-        if (_quantityCodeCache.TryGetValue(code, out var cachedId) && cachedId != SystemQuantityMissingSentinel)
+        if (_quantityCodeCache.TryGetValue(code, out var cachedId))
         {
             return cachedId;
         }
@@ -374,7 +409,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         await _dbLock.WaitAsync(cancellationToken);
         try
         {
-            if (_quantityCodeCache.TryGetValue(code, out cachedId) && cachedId != SystemQuantityMissingSentinel)
+            if (_quantityCodeCache.TryGetValue(code, out cachedId))
             {
                 return cachedId;
             }
@@ -388,6 +423,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             {
                 var existingId = existingRows[0];
                 _quantityCodeCache[code] = existingId;
+                _missingQuantityCodes.Forget(code);
                 return existingId;
             }
 
@@ -400,6 +436,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
             var newId = insertedRows[0];
             _logger.LogDebug("Created new QuantityCode entry: {Code} -> {QuantityCodeId}", code, newId);
             _quantityCodeCache[code] = newId;
+            _missingQuantityCodes.Forget(code);
             return newId;
         }
         finally
@@ -411,10 +448,12 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
     /// <summary>
     /// Read-only, miss-returns-null system lookup for the search path. Unlike
     /// <see cref="GetOrCreateSystemIdAsync"/>, never inserts a new <c>dbo.System</c> row as a side
-    /// effect -- an unresolved system just means "no match," not a silent database write. Shares
-    /// <see cref="_systemCache"/> with the write path; a genuine miss here is cached via
-    /// <see cref="SystemQuantityMissingSentinel"/>, which <see cref="GetOrCreateSystemIdAsync"/> is
-    /// itself sentinel-aware of so a later write for the same system still creates a real row.
+    /// effect -- an unresolved system just means "no match," not a silent database write.
+    /// Caches only positive results in <see cref="_systemCache"/>: that cache is shared with the write
+    /// path, which treats every cached integer as a real surrogate id, so a sentinel cannot live there
+    /// without corrupting writes. Misses go to <see cref="_missingSystems"/>, consulted before the lock so
+    /// a search naming unindexed terminology does not serialize behind ingest on every occurrence, and
+    /// bounded by that cache's TTL so a row created out of process becomes visible on its own.
     /// </summary>
     public async Task<int?> TryGetSystemIdAsync(string systemUri, CancellationToken cancellationToken)
     {
@@ -422,7 +461,12 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
         if (_systemCache.TryGetValue(systemUri, out var cachedId))
         {
-            return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+            return cachedId;
+        }
+
+        if (_missingSystems.IsKnownMissing(systemUri))
+        {
+            return null;
         }
 
         await _dbLock.WaitAsync(cancellationToken);
@@ -430,7 +474,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         {
             if (_systemCache.TryGetValue(systemUri, out cachedId))
             {
-                return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+                return cachedId;
             }
 
             using var command = new SqlCommand("SELECT SystemId FROM dbo.System WHERE Value = @Value");
@@ -440,7 +484,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
             if (rows.Count == 0)
             {
-                _systemCache[systemUri] = SystemQuantityMissingSentinel;
+                _missingSystems.RecordMiss(systemUri);
                 return null;
             }
 
@@ -456,8 +500,8 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
     /// <summary>
     /// Read-only, miss-returns-null quantity-code lookup for the search path -- see
-    /// <see cref="TryGetSystemIdAsync"/>'s remarks; same shape, same shared-cache sentinel contract
-    /// with <see cref="GetOrCreateQuantityCodeIdAsync"/>.
+    /// <see cref="TryGetSystemIdAsync"/>'s remarks; same shape, same split between the shared positive
+    /// cache and a separate bounded negative cache.
     /// </summary>
     public async Task<int?> TryGetQuantityCodeIdAsync(string code, CancellationToken cancellationToken)
     {
@@ -465,7 +509,12 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
         if (_quantityCodeCache.TryGetValue(code, out var cachedId))
         {
-            return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+            return cachedId;
+        }
+
+        if (_missingQuantityCodes.IsKnownMissing(code))
+        {
+            return null;
         }
 
         await _dbLock.WaitAsync(cancellationToken);
@@ -473,7 +522,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         {
             if (_quantityCodeCache.TryGetValue(code, out cachedId))
             {
-                return cachedId == SystemQuantityMissingSentinel ? null : cachedId;
+                return cachedId;
             }
 
             using var command = new SqlCommand("SELECT QuantityCodeId FROM dbo.QuantityCode WHERE Value = @Value");
@@ -483,7 +532,7 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
 
             if (rows.Count == 0)
             {
-                _quantityCodeCache[code] = SystemQuantityMissingSentinel;
+                _missingQuantityCodes.RecordMiss(code);
                 return null;
             }
 
@@ -494,6 +543,37 @@ public sealed class SqlServerSearchIndexReferenceDataCache(
         finally
         {
             _dbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Drops any recorded "this system is missing" answer for <paramref name="systemUri"/>, so a search
+    /// that probed it beforehand stops reporting it missing.
+    /// </summary>
+    /// <remarks>
+    /// The write path invalidates on its own (see <see cref="GetOrCreateSystemIdAsync"/>), so this exists
+    /// for a writer that creates <c>dbo.System</c> rows without going through this cache. No such writer
+    /// exists in this assembly today -- <c>SqlServerSystemRepository</c> delegates to the cache -- and this
+    /// is a per-instance hook: it cannot reach a cache held for another tenant or another process, which
+    /// remains the negative cache's TTL to bound.
+    /// </remarks>
+    public void ForgetMissingSystem(string? systemUri)
+    {
+        if (!string.IsNullOrEmpty(systemUri))
+        {
+            _missingSystems.Forget(systemUri);
+        }
+    }
+
+    /// <summary>
+    /// Drops any recorded "this quantity code is missing" answer for <paramref name="code"/> -- see
+    /// <see cref="ForgetMissingSystem"/> for the reasoning and the same per-instance limitation.
+    /// </summary>
+    public void ForgetMissingQuantityCode(string? code)
+    {
+        if (!string.IsNullOrEmpty(code))
+        {
+            _missingQuantityCodes.Forget(code);
         }
     }
 

@@ -617,12 +617,12 @@ public class SqlServerFhirRepository(
             resourceId);
     }
 
-    // Corrected during plan review: an earlier draft routed the insert path through
-    // _cache.GetResourceTypeIdAsync (the read-only lookup, which caches a "confirmed missing"
-    // sentinel on a miss) and never updated the cache after inserting -- every subsequent call for
-    // the same new type name would see the stale sentinel, conclude "still missing," and attempt to
-    // insert AGAIN (a duplicate row / unique-constraint violation on the second caller).
-    // CacheResourceTypeId records the freshly-inserted ID directly, bypassing the sentinel path.
+    // Corrected during plan review: an earlier draft never updated the cache after inserting, so every
+    // subsequent call for the same new type name would conclude "still missing" and attempt to insert
+    // AGAIN (a duplicate row / unique-constraint violation on the second caller). CacheResourceTypeId
+    // records the freshly-inserted ID directly, which is what makes the second call a cache hit.
+    // Note the cache deliberately does NOT remember a resource-type miss, so the GetResourceTypeIdAsync
+    // call below re-queries each time it is reached -- see that method's miss branch for why.
     private async Task<short> GetOrCreateResourceTypeIdAsync(string resourceType, CancellationToken cancellationToken)
     {
         var cached = _cache.TryGetResourceTypeIdFromCache(resourceType);
