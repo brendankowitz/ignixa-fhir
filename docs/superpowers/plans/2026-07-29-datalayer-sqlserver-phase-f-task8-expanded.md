@@ -37,6 +37,32 @@ process lifetime. Task 8.8 widens this from "terminology-only systems" to "any s
 since partition-0 terminology and per-tenant search hold different cache instances. **8.3 before 8.8 is a
 correctness constraint, not a preference.**
 
+**Task 8.2 closes a silent data-loss path, and must be read that way rather than as a tidiness port.**
+Found while fixing the sentinel bug in `d27780cd`, verified independently. `dbo.SearchParam` misses are still
+recorded permanently — the sentinel fix deliberately covered only the key kinds EF covers, so search params
+keep the unbounded `-1`. The consequence is not a stale read:
+
+```
+SqlServerSearchIndexReferenceDataCache.cs:81   SearchParameterMappings => new SentinelFilteringDictionary(_searchParamCache)
+SqlServerSearchIndexReferenceDataCache.cs:647  TryGetValue → false when the value is the sentinel
+RowGenerators/*.cs                            if (!SearchParameterIdLookupHelper.TryGetSearchParamId(...)) → skip the row
+```
+
+A search-parameter URI probed before its `dbo.SearchParam` row exists is remembered as missing, and from then
+on **every row generator silently drops all index rows for that parameter** — no exception, no foreign-key
+violation, nothing logged where the loss happens. Resources appear to write successfully and are unfindable
+by that parameter.
+
+The repair path barely exists: `PreloadSearchParamsAsync` runs once per tenant at factory creation,
+`EnsureSearchParametersPreloadedAsync` no-ops after the first load, and `UpsertSearchParams.sql` has **zero
+C# callers** (verified). EF avoids the whole situation with `SyncSearchParametersToDatabase`, which guarantees
+the rows exist — which is exactly the surface Task 8.2 ports. So 8.2 is the fix; it is not optional cleanup,
+and it should land before anything else depends on the SqlServer cache being authoritative.
+
+This is the same failure class as the TokenSearchParam collapse found earlier in this initiative: index rows
+disappearing quietly while writes report success. Worth stating because it is the third time in this phase
+that the observable symptom of a cache defect has been "search returns nothing" rather than an error.
+
 **`SqlReferenceDataPreloadHandler` has never run, settled by code.** Registered `AddSingleton<T>()` only;
 Autofac's `AutofacRegistration` registers `descriptor.ServiceType` alone with no interface discovery; Medino
 `PublishAsync` resolves `IEnumerable<INotificationHandler<T>>`, which is empty. Verified against the exact
