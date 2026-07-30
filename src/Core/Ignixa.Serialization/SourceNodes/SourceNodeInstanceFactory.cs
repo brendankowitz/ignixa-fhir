@@ -14,25 +14,39 @@ namespace Ignixa.Serialization.SourceNodes;
 /// Builds a JSON object for the requested type and returns it as a first-class
 /// <see cref="SchemaAwareElement"/> — the same node kind the FHIRPath engine
 /// navigates elsewhere — so created instances support full navigation.
-/// Declines (returns null) for types unknown to the schema.
+/// Declines (returns null) for types unknown to the schema, and for the <c>System</c>
+/// namespace, which has no FHIR construction path yet.
 /// </summary>
 /// <remarks>
 /// The FHIRPath object-creation section is STU and is silent on choice-element naming,
 /// duplicate assignments, resource identification, and whether the result must be a valid
 /// standalone instance. This factory resolves those gaps as follows:
 /// <list type="bullet">
-/// <item>Resources emit <c>resourceType</c> so the backing JSON re-parses as a FHIR resource.</item>
+/// <item>Resources emit <c>resourceType</c> so the backing JSON re-parses as a FHIR resource.
+/// It is written after the assignments so an assignment cannot forge it.</item>
 /// <item>An assignment naming a choice element by its base name (<c>value</c>) is emitted under the
 /// type-suffixed name (<c>valueQuantity</c>) when the assigned value matches one of the declared
 /// choice types. Names that already carry a suffix pass through untouched.</item>
-/// <item>Repeated assignments to the same name are aggregated rather than overwriting. Assigning
+/// <item>Several values for one element — whether from repeated assignments or from a single
+/// multi-item value expression — are aggregated rather than overwriting. Assigning
 /// more values than the element can hold throws, which the spec permits ("the engine MAY throw
-/// an error").</item>
+/// an error"). Cardinality is resolved through the choice base name and its suffixed forms
+/// alike.</item>
 /// <item>Element names absent from the schema are emitted verbatim; this factory constructs, it
 /// does not validate.</item>
+/// <item>When the target type is a FHIR primitive and the only assignment is the special
+/// <c>value</c> element, the result is a primitive node (scalar <c>Value</c>,
+/// <c>HasPrimitiveValue</c>) rather than an object carrying a <c>value</c> child.</item>
 /// </list>
 /// A single value assigned to a repeating element is still emitted as a JSON scalar rather than a
-/// one-item array, so the backing JSON is not always canonical FHIR.
+/// one-item array, and primitive shadow content (<c>_value</c> extensions/id) is not emitted, so
+/// the backing JSON is not always canonical FHIR.
+/// <para>
+/// Instances hold only the schema and are otherwise stateless, so one instance per
+/// <see cref="ISchema"/> can be shared across threads and evaluation contexts. There is
+/// deliberately no default instance: the schema is version-specific and this assembly does
+/// not depend on any concrete one.
+/// </para>
 /// </remarks>
 public sealed class SourceNodeInstanceFactory(ISchema schema)
 {
@@ -80,13 +94,6 @@ public sealed class SourceNodeInstanceFactory(ISchema schema)
     {
         var obj = new JsonObject();
 
-        // Without this a created resource serializes to an object with no type discriminator,
-        // which no FHIR parser can read back.
-        if (definition.Info.IsResource)
-        {
-            obj[ResourceTypeProperty] = JsonValue.Create(typeName);
-        }
-
         // Group so that repeated assignments to one name aggregate instead of overwriting.
         foreach (var group in elements.GroupBy(e => e.Name, StringComparer.Ordinal))
         {
@@ -112,12 +119,21 @@ public sealed class SourceNodeInstanceFactory(ISchema schema)
             obj[propertyName] = nodes.Count == 1 ? nodes[0] : new JsonArray([.. nodes]);
         }
 
+        // Written last so an assignment cannot forge the discriminator. Without it a created
+        // resource serializes to an object with no type discriminator, which no FHIR parser
+        // can read back.
+        if (definition.Info.IsResource)
+        {
+            obj[ResourceTypeProperty] = JsonValue.Create(typeName);
+        }
+
         return obj;
     }
 
     /// <summary>
     /// Locates the schema child for an assignment name, accepting the base name of a choice element
-    /// (<c>value</c>) as well as an exact match. Returns null for names the schema does not declare.
+    /// (<c>value</c>) and its type-suffixed forms (<c>valueString</c>) as well as an exact match.
+    /// Returns null for names the schema does not declare.
     /// </summary>
     private static IType? FindChildDefinition(IType definition, string name)
     {
@@ -127,7 +143,35 @@ public sealed class SourceNodeInstanceFactory(ISchema schema)
             return exact;
         }
 
-        return definition.Children.FirstOrDefault(c => IsChoice(c) && string.Equals(ChoiceBaseName(c), name, StringComparison.Ordinal));
+        var byBaseName = definition.Children.FirstOrDefault(c => IsChoice(c) && string.Equals(ChoiceBaseName(c), name, StringComparison.Ordinal));
+        if (byBaseName is not null)
+        {
+            return byBaseName;
+        }
+
+        // Without this, cardinality is not enforced for an already-suffixed assignment.
+        return definition.Children.FirstOrDefault(c => IsChoice(c) && MatchesChoiceSuffix(c, name));
+    }
+
+    /// <summary>
+    /// Determines whether an assignment name is the given choice element's base name followed by
+    /// one of its declared type codes (<c>valueString</c> for <c>value[x]</c> declaring <c>string</c>).
+    /// </summary>
+    private static bool MatchesChoiceSuffix(IType choice, string name)
+    {
+        var baseName = ChoiceBaseName(choice);
+        if (name.Length <= baseName.Length || !name.StartsWith(baseName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (choice is not ITypeExtended { Types.Count: > 0 } extended)
+        {
+            return false;
+        }
+
+        var suffix = name[baseName.Length..];
+        return extended.Types.Any(t => string.Equals(t.Code, suffix, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

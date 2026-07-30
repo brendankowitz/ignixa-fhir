@@ -150,8 +150,10 @@ public record EvaluationContext
     /// Optional host-provided delegate for instance-selector object creation
     /// (<c>Type { element: value, ... }</c>). Mirrors the <c>resolve()</c> hook
     /// (<see cref="FhirEvaluationContext.ElementResolver"/>): when set, the engine
-    /// delegates construction; otherwise it falls back to a transient, navigation-only node.
-    /// Return null to decline a type — the engine then yields an empty result.
+    /// delegates construction; when unset, evaluating an instance selector throws
+    /// <see cref="InvalidOperationException"/>, because the engine has no object model
+    /// of its own to fall back on. Return null to decline a type — the engine then
+    /// yields an empty result.
     /// </summary>
     public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
 

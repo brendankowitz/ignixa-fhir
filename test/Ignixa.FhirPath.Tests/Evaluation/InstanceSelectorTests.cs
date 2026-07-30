@@ -304,10 +304,12 @@ public class InstanceSelectorTests
         var expression = "Coding { code: 'test' }";
         var ast = _parser.Parse(expression);
 
-        // Act & Assert
-        var context = new EvaluationContext { Focus = multiItemCollection };
-        Assert.Throws<InvalidOperationException>(() =>
+        // Act & Assert - a creator is wired so this cannot pass via the no-creator throw,
+        // and the message is asserted so the singleton-input rule is what is actually covered.
+        var context = InstanceCreationTestContext.For(CreateIntegerElement(1)) with { Focus = multiItemCollection };
+        var ex = Assert.Throws<InvalidOperationException>(() =>
             ast.AcceptVisitor(_evaluator, context).ToList());
+        Assert.Contains("single input item", ex.Message, StringComparison.Ordinal);
     }
 
     #endregion
@@ -472,10 +474,9 @@ public class InstanceSelectorTests
     }
 
     [Fact]
-    public void GivenMultipleNestedElements_WhenEvaluated_ThenCreatesAll()
+    public void GivenSelectOverMultipleInputs_WhenEachBuildsAnInstance_ThenReturnsOnePerInput()
     {
-        // Arrange - Use select to create multiple instances explicitly
-        // This tests that when a value expression returns multiple items, all are added as children
+        // Arrange - select() evaluates the selector once per input item
         var expression = "(1 | 2).select(Patient { identifier: Identifier { value: $this.toString() } })";
         var ast = _parser.Parse(expression);
         var root = CreateIntegerElement(0);
@@ -618,7 +619,53 @@ public class InstanceSelectorTests
         var ast = _parser.Parse("HumanName { family: 'Smith', family: 'Jones' }");
 
         // Act & Assert - the spec allows the engine to reject multiplicity it cannot represent
+        var ex = Assert.Throws<InvalidOperationException>(() => EvaluateCreating(CreateIntegerElement(1), ast));
+        Assert.Contains("family", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenQuantityLiteralAssignment_WhenInstanceSelector_ThenStoresFhirShapedQuantity()
+    {
+        // Arrange - a quantity literal evaluates to the engine's complex Quantity wrapper,
+        // which exposes a CLR object on Value while reporting HasPrimitiveValue == false.
+        var ast = _parser.Parse("Observation { value: 70 'kg' }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert - it must be rebuilt from its children, not CLR-serialized
+        Assert.Single(result);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal(70m, value!.Children("value").Single().Value);
+        Assert.Equal("kg", value.Children("unit").Single().Value);
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToSuffixedChoiceName_WhenInstanceSelector_ThenThrows()
+    {
+        // Arrange - Observation.value[x] is 0..1 whether it is addressed by the base name or
+        // the type-suffixed one
+        var ast = _parser.Parse("Observation { valueString: 'a', valueString: 'b' }");
+
+        // Act & Assert
         Assert.Throws<InvalidOperationException>(() => EvaluateCreating(CreateIntegerElement(1), ast));
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToUnknownElement_WhenInstanceSelector_ThenAggregatesWithoutThrowing()
+    {
+        // Arrange - the factory constructs rather than validates, so an off-schema name has no
+        // cardinality to enforce and must not be treated as a singleton
+        var ast = _parser.Parse("Coding { madeUp: 'a', madeUp: 'b' }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert
+        Assert.Single(result);
+        var values = result[0].Children("madeUp").Select(v => v.Value).ToArray();
+        Assert.Equal(new object?[] { "a", "b" }, values);
     }
 
     private sealed class RecordingInstanceCreator

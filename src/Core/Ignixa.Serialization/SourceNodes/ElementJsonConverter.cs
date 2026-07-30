@@ -21,8 +21,14 @@ namespace Ignixa.Serialization.SourceNodes;
 /// rebuilds other complex values by element name; callers that need schema-driven
 /// cardinality (array wrapping via <c>Type.IsCollection</c>) keep their own
 /// complex-element walk and reuse only <see cref="ToJsonValue"/> for leaves.
+/// <para>
+/// Deliberately <c>internal</c>: this is an implementation-detail contract between
+/// <c>Ignixa.Serialization</c> and <c>Ignixa.FhirMappingLanguage</c> (an existing friend
+/// assembly), not a supported extension point. Its output is not guaranteed canonical FHIR
+/// — see the gaps documented on <see cref="ToJsonNode"/> and <see cref="ToJsonValue"/>.
+/// </para>
 /// </remarks>
-public static class ElementJsonConverter
+internal static class ElementJsonConverter
 {
     /// <summary>
     /// Converts an evaluated value element to a JSON node. Primitive values use their
@@ -36,12 +42,20 @@ public static class ElementJsonConverter
     /// extension object in place of the primitive and drop the value. Shadow content is not
     /// yet round-tripped; that requires emitting a sibling <c>_{name}</c> property, which a
     /// single-node return cannot express.
+    /// <para>
+    /// The check is gated on <see cref="IElement.HasPrimitiveValue"/> rather than on
+    /// <see cref="IElement.Value"/> alone, because complex wrappers such as the engine's
+    /// Quantity element expose a CLR object on <c>Value</c> while reporting
+    /// <c>HasPrimitiveValue == false</c>. Treating those as scalars would serialize the CLR
+    /// shape (<c>{"Value":70,"Unit":"kg"}</c>) instead of rebuilding the FHIR element from
+    /// its children.
+    /// </para>
     /// </remarks>
     public static JsonNode? ToJsonNode(IElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
 
-        if (element.Value is { } scalar)
+        if (element.HasPrimitiveValue && element.Value is { } scalar)
         {
             return ToJsonValue(scalar);
         }

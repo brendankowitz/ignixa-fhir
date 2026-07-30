@@ -7,13 +7,13 @@
 ## Problem
 
 The instance selector (`Type { element: value, ... }`, spec:
-<https://build.fhir.org/ig/HL7/FHIRPath/en/index.html#instance-selector>) is
-currently evaluated by having the engine construct a bespoke
-`FhirPathEvaluator.ComplexElement : IElement` in-memory tree
-(`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:1832`,
-`:1949`). This puts FHIR type-system materialization inside the FHIRPath
-engine — the wrong layer — and produces a second-class node that diverges from
-the canonical `SchemaAwareElement` the engine navigates everywhere else.
+<https://build.fhir.org/ig/HL7/FHIRPath/en/index.html#instance-selector>) was
+originally evaluated by having the engine construct a bespoke
+`FhirPathEvaluator.ComplexElement : IElement` in-memory tree. That put FHIR
+type-system materialization inside the FHIRPath engine — the wrong layer — and
+produced a second-class node that diverged from the canonical
+`SchemaAwareElement` the engine navigates everywhere else. That fallback has
+since been removed; construction is host-delegated only (see Decisions, #2).
 
 This investigation evaluates pivoting to the approach Firely's .NET SDK
 proposed: carry an **instance-creation delegate** on the evaluation context and
@@ -23,7 +23,7 @@ hand object construction off to the host's model/type system.
 
 Add an optional creation delegate to `EvaluationContext`, **replacing** the
 `ISchema? Schema` property (the only engine consumer of `Schema` is
-`VisitInstanceSelector` at `FhirPathEvaluator.cs:1857`, so the delegate subsumes
+`VisitInstanceSelector`, so the delegate subsumes
 it — see Evidence). The host-side implementation holds whatever schema/model it
 needs internally; the engine's context no longer references `ISchema` at all.
 The shape mirrors the existing `resolve()` hook
@@ -99,8 +99,8 @@ a standalone issue, and the pivot should address them:
 
 ## Evidence
 
-- **Current implementation**: `FhirPathEvaluator.VisitInstanceSelector`
-  (`:1832`) builds `ComplexElement` (`:1949`). `ComplexElement` is a private,
+- **Implementation at the time of this investigation**:
+  `FhirPathEvaluator.VisitInstanceSelector` built `ComplexElement`, a private,
   impoverished `IElement`: `Location => ""`, `Meta<T>() => null`, `Type` only if
   a `Schema.GetTypeDefinition` lookup succeeded, flat name/element child list, no
   `value[x]` choice-type naming, no primitive+shadow extension model.
@@ -108,12 +108,13 @@ a standalone issue, and the pivot should address them:
   wraps an `ISourceNavigator` + `ISchema` (schema-driven child resolution,
   instance-type derivation, choice types). This is what the engine navigates
   everywhere else — the divergence the pivot removes.
-- **No round-trip today**: nothing converts `ComplexElement` back to JSON/POCO
-  (`grep` for `ToJson|ToResource|ToPoco|MutableNode` in `Ignixa.FhirPath`
-  returns only `Expression.ToFhirPath`). Created instances are navigation-only.
-- **`Schema` exists only for this feature**: the sole engine consumer of
-  `EvaluationContext.Schema` is `VisitInstanceSelector` (`FhirPathEvaluator.cs:1857`,
-  `context.Schema?.GetTypeDefinition(typeName)`). It was added by the
+- **No round-trip at the time**: nothing converted `ComplexElement` back to
+  JSON/POCO (`grep` for `ToJson|ToResource|ToPoco|MutableNode` in
+  `Ignixa.FhirPath` returned only `Expression.ToFhirPath`). Created instances
+  were navigation-only.
+- **`Schema` existed only for this feature**: the sole engine consumer of
+  `EvaluationContext.Schema` was `VisitInstanceSelector`
+  (`context.Schema?.GetTypeDefinition(typeName)`). It was added by the
   "Ability to attach schema" commit purely to feed instance-selector
   construction. The factory subsumes it, so the pivot **removes** `Schema` /
   `WithSchema` from `EvaluationContext` rather than adding alongside it —
@@ -283,12 +284,14 @@ So the four decisions below are **Ignixa implementation choices in spec-silent
 territory**, not compliance requirements. They are recorded here so the reasoning
 survives, and because a future normative revision may contradict them.
 
-### 1. Factory contract — produce canonical FHIR JSON
+### 1. Factory contract — emit parser-friendly FHIR JSON (with known gaps)
 
-`SourceNodeInstanceFactory` now emits what a FHIR parser would accept:
+`SourceNodeInstanceFactory` emits the discriminators a FHIR parser needs, but
+does not yet produce fully canonical FHIR JSON:
 
 - `resourceType` is written when the target type is a resource. Without it the
-  backing JSON has no type discriminator and cannot be read back.
+  backing JSON has no type discriminator and cannot be read back. It is written
+  after the element assignments so an assignment cannot forge it.
 - A choice element assigned by its base name is stored under the type-suffixed
   name: `Observation { value: Quantity{...} }` → `valueQuantity`. The suffix is
   only applied when the assigned value's type matches one of the element's
@@ -300,7 +303,8 @@ survives, and because a future normative revision may contradict them.
 **Deliberately not done:** a single value assigned to a repeating element is
 still emitted as a JSON scalar, not a one-item array. Fixing that means
 consulting cardinality on every write and changes the shape of existing output;
-it is a separate change with its own blast radius.
+it is a separate change with its own blast radius. Primitive shadow content
+(`_value` extensions/id) is likewise not emitted.
 
 **Consequence worth knowing:** because created nodes are read back through the
 schema exactly like parsed ones, values are typed by the schema, not by the
@@ -338,10 +342,13 @@ cause.
 
 Assignments are grouped by element name instead of being written one at a time,
 so `HumanName { given: 'John', given: 'Jacob' }` keeps both values rather than
-the second silently overwriting the first. When the schema says the element does
-not repeat, this throws — cover for which is the spec's explicit "the engine MAY
-throw an error". Element names absent from the schema are passed through
-unchanged: this factory constructs, it does not validate.
+the second silently overwriting the first. The same applies to a single
+assignment whose expression yields several items. When the schema says the
+element does not repeat, this throws — cover for which is the spec's explicit
+"the engine MAY throw an error". Cardinality is resolved through the choice
+base name *and* its type-suffixed forms, so `valueString` is enforced exactly as
+`value` is. Element names absent from the schema are passed through unchanged
+and aggregate freely: this factory constructs, it does not validate.
 
 ## Verdict
 
