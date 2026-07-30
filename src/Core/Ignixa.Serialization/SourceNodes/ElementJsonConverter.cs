@@ -25,23 +25,31 @@ namespace Ignixa.Serialization.SourceNodes;
 public static class ElementJsonConverter
 {
     /// <summary>
-    /// Converts an evaluated value element to a JSON node. Source-node-backed values
-    /// are cloned from their underlying JSON; primitive literals use their scalar
-    /// value; other complex values are rebuilt from their children by element name.
+    /// Converts an evaluated value element to a JSON node. Primitive values use their
+    /// scalar value; remaining source-node-backed values are cloned from their underlying
+    /// JSON; other complex values are rebuilt from their children by element name.
     /// </summary>
+    /// <remarks>
+    /// The primitive check must precede the <see cref="IElement.Meta{T}"/> check: when a FHIR
+    /// primitive carries a <c>_value</c> shadow (extensions/id), <c>Meta&lt;JsonNode&gt;()</c>
+    /// returns the shadow object rather than the value, so checking it first would emit the
+    /// extension object in place of the primitive and drop the value. Shadow content is not
+    /// yet round-tripped; that requires emitting a sibling <c>_{name}</c> property, which a
+    /// single-node return cannot express.
+    /// </remarks>
     public static JsonNode? ToJsonNode(IElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
+
+        if (element.Value is { } scalar)
+        {
+            return ToJsonValue(scalar);
+        }
 
         var backing = element.Meta<JsonNode>();
         if (backing is not null)
         {
             return backing.DeepClone();
-        }
-
-        if (element.Value is { } scalar)
-        {
-            return ToJsonValue(scalar);
         }
 
         var obj = new JsonObject();

@@ -32,7 +32,7 @@ public class FhirPathInvariantCheck : IValidationCheck
     private readonly IReadOnlyList<string> _appliesTo;
     private readonly ILogger? _logger;
     private readonly Lazy<FhirPathEvaluator> _evaluator;
-    private readonly Lazy<EvaluationContext> _evaluationContext;
+    private readonly Lazy<Func<InstanceCreationRequest, IElement?>> _instanceCreator;
     private readonly Lazy<FhirPath.Expressions.Expression?> _compiledExpression;
 
     /// <summary>
@@ -78,8 +78,8 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         // Instance selectors (Type { ... }) delegate object construction to a
         // schema-backed creator so created instances are first-class nodes.
-        _evaluationContext = new Lazy<EvaluationContext>(() =>
-            new EvaluationContext().WithInstanceCreator(new SourceNodeInstanceFactory(_schema).Create));
+        _instanceCreator = new Lazy<Func<InstanceCreationRequest, IElement?>>(() =>
+            new SourceNodeInstanceFactory(_schema).Create);
         _compiledExpression = new Lazy<FhirPath.Expressions.Expression?>(() =>
         {
             try
@@ -269,14 +269,16 @@ public class FhirPathInvariantCheck : IValidationCheck
     /// Builds the FHIRPath evaluation context from the validation scope. Always carries the
     /// instance-creation delegate so instance selectors (<c>Type { ... }</c>) construct
     /// schema-backed nodes; resource scope (%resource / %rootResource / resolve()) is layered
-    /// on when seeded.
+    /// on when seeded. A fresh context is returned per evaluation because
+    /// <see cref="EvaluationContext.DefinedVariables"/> is mutated by <c>defineVariable()</c>;
+    /// sharing one instance would leak variables between constraints and race across threads.
     /// </summary>
     private EvaluationContext BuildEvaluationContext(ValidationState state)
     {
         var scope = state.Scope;
         if (scope.Resource is null)
         {
-            return _evaluationContext.Value;
+            return new EvaluationContext().WithInstanceCreator(_instanceCreator.Value);
         }
 
         return new FhirEvaluationContext
@@ -284,7 +286,7 @@ public class FhirPathInvariantCheck : IValidationCheck
             Resource = scope.Resource,
             RootResource = scope.RootResource,
             ElementResolver = scope.Resolver,
-            InstanceCreator = _evaluationContext.Value.InstanceCreator
+            InstanceCreator = _instanceCreator.Value
         };
     }
 
