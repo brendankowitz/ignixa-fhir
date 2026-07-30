@@ -184,12 +184,31 @@ one consumer that takes a `FhirDbContext` directly), and the storage-type rename
 live, unflagged read cutover with 31 documented search gaps still open. Before Task 10 touches anything:
 
 - [ ] `dotnet build All.sln` — 0/0.
-- [ ] Every unit and integration suite at the Task R baselines. **The integration baseline is 260/260, not
-      the 187/187 quoted earlier in this phase.** 187 was an artifact: the fixture's unserialised
-      `CREATE DATABASE` timed out under sixteen-way xUnit parallelism, so each run silently lost a random
-      subset, and `dotnet test` prints `Passed!` and can exit 0 even when the host aborts mid-run. Fixed in
-      `bbf2bc0e`. **Assert the reported total equals the discovered total** — a partial run is otherwise
-      indistinguishable from a clean one, and this gate is the last check before an irreversible deletion.
+- [ ] Every suite at the baselines below, **measured 2026-07-29 at tip `9e6ded2b`** rather than quoted from
+      memory:
+
+      | Suite | Baseline | Notes |
+      |---|---|---|
+      | `Ignixa.Application.Tests` | 1125 pass / 0 fail / 1 skip — 1126 total | |
+      | `Ignixa.Api.Tests` | 135 / 0 / 0 | |
+      | `Ignixa.Search.Sql.Tests` | 849 per TFM, net9.0 + net10.0 | multi-targeted; two result lines |
+      | `Ignixa.DataLayer.SqlServer.Tests` | 20 / 0 / 0 | |
+      | `Ignixa.DataLayer.SqlServer.IntegrationTests` | **260 / 0 / 0** | was quoted as 187; see below |
+      | `Ignixa.DataLayer.SqlEntityFramework.IntegrationTests` | 95 / 0 / 8 skip — 103 total | disappears at Task 10 |
+      | `Ignixa.Api.E2ETests` | **569 / 31 / 20 — 620 total** | confirmed real; 31 are the documented gaps |
+
+      The integration baseline was **187/187 and that number never existed**. The fixture's unserialised
+      `CREATE DATABASE` timed out under sixteen-way xUnit parallelism, so every run silently lost a random
+      subset. Fixed in `bbf2bc0e`. The E2E baseline, suspected of the same defect, was re-measured and is
+      genuine.
+
+- [ ] **How to read a suite result.** `dotnet test` prints `Passed!` on its summary line even when the run
+      aborts, and exits 0 if some tests passed first — the crash notice is on the *preceding* line. Grepping
+      for `Passed!`/`Failed!` therefore reports a clean suite for a run that died halfway; this happened
+      three times in this phase. Check for `aborted`/`crashed` anywhere in the output **and** check the exit
+      code. Do **not** compare the reported total against `--list-tests` output: that lists a `[Theory]` once
+      while the run counts each `[InlineData]` case, so it undercounts (801 vs 849 on `Search.Sql.Tests`) and
+      would fail every run on a theory-heavy suite.
 - [ ] **E2E at exactly the Task R baseline, matching on failing test names**, not just counts.
 - [ ] **A real application start** against a real tenant database, exercising terminology import and package
       load — the two areas whose ports have the least prior coverage. Phase B's ~10 missing tables were
