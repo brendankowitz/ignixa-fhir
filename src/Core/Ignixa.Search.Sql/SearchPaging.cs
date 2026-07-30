@@ -13,6 +13,11 @@ public abstract record SearchPaging
     {
     }
 
+    // A record synthesizes a protected copy constructor that an external assembly could chain to,
+    // adding a third paging mode this compiler would not recognise. An abstract private protected member
+    // cannot be implemented outside this assembly, so the union is closed in fact and not by convention.
+    private protected abstract void ThisUnionIsClosed();
+
     /// <summary>
     /// Keyset paging: a <c>TOP</c> cap, positioned by a seek predicate over the sort keys. The default and
     /// the only shape that stays stable while rows are inserted underneath a paging client.
@@ -26,12 +31,22 @@ public abstract record SearchPaging
     /// A boundary is representable only here, which is what keeps it out of <see cref="Offset"/>: a seek
     /// predicate and <c>OFFSET … FETCH</c> are two independent paging mechanisms.
     /// </param>
-    public sealed record Keyset(int? Top = null, PageSpec? Boundary = null) : SearchPaging;
+    public sealed record Keyset(int? Top = null, PageSpec? Boundary = null) : SearchPaging
+    {
+        private protected override void ThisUnionIsClosed()
+        {
+        }
+    }
 
     /// <summary>
     /// <c>OFFSET … FETCH</c> paging. Only for callers that need an absolute row offset — it re-reads and
     /// discards every preceding row, and it drifts when the underlying rows change between pages.
     /// </summary>
     /// <param name="Spec">The offset and page size. Required.</param>
-    public sealed record Offset(OffsetSpec Spec) : SearchPaging;
+    public sealed record Offset(OffsetSpec Spec) : SearchPaging
+    {
+        private protected override void ThisUnionIsClosed()
+        {
+        }
+    }
 }

@@ -312,8 +312,9 @@ internal static class SqlBuilder
 
         // A boundary decoded in one phase carries values for that phase's active keys, so reusing it across a
         // Valued/MissingPrimary transition would seek on the wrong key set. Checked here rather than in
-        // EmitSeekPredicate so the failure surfaces before any SQL is written.
-        if (plan.Page is { } boundaryPage && boundaryPage.Boundary.Count != (plan.Sort?.ActiveKeyCount ?? 0))
+        // EmitSeekPredicate so the failure surfaces before any SQL is written, and skipped for counts, which
+        // emit no seek and are documented to ignore the boundary entirely.
+        if (!plan.CountOnly && plan.Page is { } boundaryPage && boundaryPage.Boundary.Count != (plan.Sort?.ActiveKeyCount ?? 0))
         {
             throw new NotSupportedException(
                 $"PageSpec.Boundary has {boundaryPage.Boundary.Count} value(s) but the current SortSpec phase " +

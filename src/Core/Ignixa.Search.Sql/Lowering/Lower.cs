@@ -288,9 +288,10 @@ internal static class Lower
         }
 
         // A boundary decoded under one phase carries values for that phase's active keys, so carrying it across
-        // a Valued/MissingPrimary transition seeks on the wrong key set. Mirrored by
-        // SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
-        if (page is not null && page.Boundary.Count != (sortSpec?.ActiveKeyCount ?? 0))
+        // a Valued/MissingPrimary transition seeks on the wrong key set. Counts are exempt: they emit no seek
+        // and ignore the boundary. Mirrored by SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan
+        // callers.
+        if (shape is not ResultShape.Count && page is not null && page.Boundary.Count != (sortSpec?.ActiveKeyCount ?? 0))
         {
             throw new NotSupportedException(
                 $"The keyset boundary carries {page.Boundary.Count} value(s) but {nameof(SortPhase)}." +

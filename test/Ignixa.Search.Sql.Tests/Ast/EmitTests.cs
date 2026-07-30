@@ -3127,6 +3127,27 @@ public class EmitTests
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 
+    [Fact]
+    public void GivenACountPlanCarryingAMismatchedBoundary_WhenEmitted_ThenItIsAcceptedBecauseCountsEmitNoSeek()
+    {
+        // A caller reuses one options record and flips the shape to get Bundle.total. QueryPlan documents that
+        // a count ignores row caps, offsets and keyset boundaries, so rejecting it here would break a supported
+        // pattern over a value the emitted SQL never reads.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued),
+            Page: new PageSpec(
+                [new SqlParameterRef(1L), new SqlParameterRef(2L)],
+                new SqlParameterRef((short)103),
+                new SqlParameterRef(9000L)),
+            Shape: new ResultShape.Count.AllMatches());
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("COUNT_BIG");
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(2)]

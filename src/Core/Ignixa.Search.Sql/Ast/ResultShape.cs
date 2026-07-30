@@ -10,13 +10,25 @@ public abstract record ResultShape
     {
     }
 
+    // A record synthesizes a protected copy constructor, which an external assembly can chain to in order to
+    // derive a fourth case: `record Rogue(ResultShape Seed) : ResultShape(Seed)`. That case would match the
+    // abstract type but none of the concrete ones, reaching the same silent fall-through this union exists to
+    // prevent. An abstract private protected member cannot be implemented outside this assembly, so it makes
+    // the hierarchy closed in fact and not merely by convention.
+    private protected abstract void ThisUnionIsClosed();
+
     /// <summary>The shape a plan takes when none is named: <see cref="Matches"/>.</summary>
     public static ResultShape Default { get; } = new Matches();
 
     /// <summary>
     /// The match page, plus the rows of every include stage the plan defines. The ordinary search shape.
     /// </summary>
-    public sealed record Matches : ResultShape;
+    public sealed record Matches : ResultShape
+    {
+        private protected override void ThisUnionIsClosed()
+        {
+        }
+    }
 
     /// <summary>
     /// A single <c>COUNT_BIG(DISTINCT …)</c> over the match set. Row caps, offsets and keyset boundaries do
@@ -32,7 +44,12 @@ public abstract record ResultShape
         /// <summary>
         /// Every matching resource, ignoring any sort the plan carries. This is the FHIR <c>Bundle.total</c>.
         /// </summary>
-        public sealed record AllMatches : Count;
+        public sealed record AllMatches : Count
+        {
+            private protected override void ThisUnionIsClosed()
+            {
+            }
+        }
 
         /// <summary>
         /// Counts only the rows the plan's current <see cref="SortPhase"/> reaches. The sort's ordering is
@@ -45,7 +62,12 @@ public abstract record ResultShape
         /// set. A <c>_lastUpdated</c> or <c>_type</c> primary key is a non-nullable resource column with no
         /// join and no missing segment, so this counts the same rows as <see cref="AllMatches"/>.
         /// </summary>
-        public sealed record CurrentSortPhase : Count;
+        public sealed record CurrentSortPhase : Count
+        {
+            private protected override void ThisUnionIsClosed()
+            {
+            }
+        }
     }
 
     /// <summary>
@@ -54,5 +76,10 @@ public abstract record ResultShape
     /// boundary of the previous page, null on the first.
     /// </summary>
     /// <param name="Resume">The last include row of the previous page, or null to start at the first.</param>
-    public sealed record IncludesPage(IncludeBoundary? Resume = null) : ResultShape;
+    public sealed record IncludesPage(IncludeBoundary? Resume = null) : ResultShape
+    {
+        private protected override void ThisUnionIsClosed()
+        {
+        }
+    }
 }
