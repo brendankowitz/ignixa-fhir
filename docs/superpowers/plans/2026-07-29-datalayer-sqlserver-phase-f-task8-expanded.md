@@ -1,5 +1,48 @@
 # Phase F — Task 8 expanded: the composition root is not a relocation
 
+## ADJUDICATED PREMISES (2026-07-29, after this plan was drafted)
+
+Two investigations disagreed on three points. Each was settled from the code, and this plan is **wrong in two
+places** as a result. Read this section before executing any task below.
+
+**1. There are two reference-data caches per tenant, and they do not compete.** This plan says
+`SqlServerSearchIndexReferenceDataCache` is "already the sole cache on write and search paths." That holds
+only for the *request* path. `SqlEntityFrameworkRepositoryFactory.CreateServiceFactory` constructs both, per
+tenant: the SqlServer one backs `SqlServerFhirRepository`/`SqlServerCompiledSearchService`, the EF one serves
+package-load-time search-parameter catalog sync via `GetSearchIndexReferenceCacheAsync`. Disjoint duties, not
+rivals. Task 8.2 still has to port the catalog-sync surface; there is no conflict to resolve.
+
+**2. Revised-plan Task 5a was substantially executed — under a different filename.** This plan asserts no
+`SqlServerServiceFactory` exists and concludes 5a is open. The class exists as
+`Ignixa.DataLayer.SqlServer/SqlServerRepositoryFactory.cs`; its own doc calls itself the relocated
+composition root, and `SqlEntityFrameworkRepositoryFactory` now calls into it rather than constructing types
+inline — so what callers receive today is already `SqlServerFhirRepository` and
+`SqlServerCompiledSearchService`. **Task 8.4 must be rescoped against what that class already does.** What
+genuinely remains in the EF factory: the storage-type gate, the inline system-partition connection-string
+inheritance, `ValidateManagedIdentityAuthentication`, and the deploy→upgrade→sync→preload ordering.
+
+**3. Terminology never cut over, and that part stands.** `ValidationServicesRegistration.cs:110-123` still
+builds the EF `SqlTerminologyService` and `HybridTerminologyService`; `ImportTerminologyResourceActivity`
+still takes a `FhirDbContext`. `SqlServerTerminologyService` is referenced only by its own file, the csproj,
+a plan doc, and the oracle fixture — so the 31 oracle facts pinning it, and the importer's 34, protect
+nothing in production yet.
+
+**The negative-lookup sentinel bug is live today, with a narrower trigger than stated below.** Confirmed:
+`SqlServerSymbolResolver` → `TryGetSystemIdAsync` → `_systemCache[uri] = -1`, no TTL, no capacity bound, no
+`ForgetMissingSystem` equivalent (EF has a 5-minute TTL *and* a cross-tenant broadcast).
+`GetOrCreateSystemIdAsync` *is* sentinel-aware, so a later resource write for that system heals it. The
+unhealable path: a system arriving via terminology import — which today runs the EF repository and broadcasts
+only to the EF cache — that is never indexed by a resource write. Searches for it return nothing for the
+process lifetime. Task 8.8 widens this from "terminology-only systems" to "any system created by import",
+since partition-0 terminology and per-tenant search hold different cache instances. **8.3 before 8.8 is a
+correctness constraint, not a preference.**
+
+**`SqlReferenceDataPreloadHandler` has never run, settled by code.** Registered `AddSingleton<T>()` only;
+Autofac's `AutofacRegistration` registers `descriptor.ServiceType` alone with no interface discovery; Medino
+`PublishAsync` resolves `IEnumerable<INotificationHandler<T>>`, which is empty. Verified against the exact
+restored binaries (Medino 2.0.7, Autofac.Extensions.DependencyInjection 10.0.0). Task 8.9's container test is
+corroboration, not the load-bearing evidence.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for
 > tracking.
