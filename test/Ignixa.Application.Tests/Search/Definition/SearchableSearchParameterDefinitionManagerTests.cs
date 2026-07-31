@@ -10,6 +10,7 @@ using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
+using Shouldly;
 using Xunit;
 
 namespace Ignixa.Application.Tests.Search.Definition;
@@ -38,10 +39,14 @@ public class SearchableSearchParameterDefinitionManagerTests
 
         var searchable = new SearchableSearchParameterDefinitionManager(_inner);
 
-        Assert.False(searchable.TryGetSearchParameter("Patient", CustomCode, out _));
-        Assert.False(searchable.TryGetSearchParameter(new Uri(CustomUrl), out _));
-        Assert.Throws<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter("Patient", CustomCode));
-        Assert.DoesNotContain(searchable.GetSearchParameters("Patient"), p => p.Code == CustomCode);
+        searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeFalse();
+        searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeFalse();
+        Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter("Patient", CustomCode));
+        searchable.GetSearchParameters("Patient").ShouldNotContain(p => p.Code == CustomCode);
+        searchable.AllSearchParameters.ShouldNotContain(p => p.Code == CustomCode);
+
+        searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> byResourceType).ShouldBeTrue();
+        byResourceType.ShouldNotContain(p => p.Code == CustomCode);
     }
 
     [Fact]
@@ -51,9 +56,13 @@ public class SearchableSearchParameterDefinitionManagerTests
 
         var searchable = new SearchableSearchParameterDefinitionManager(_inner, () => true);
 
-        Assert.True(searchable.TryGetSearchParameter("Patient", CustomCode, out _));
-        Assert.True(searchable.TryGetSearchParameter(new Uri(CustomUrl), out _));
-        Assert.Contains(searchable.GetSearchParameters("Patient"), p => p.Code == CustomCode);
+        searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeTrue();
+        searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeTrue();
+        searchable.GetSearchParameters("Patient").ShouldContain(p => p.Code == CustomCode);
+        searchable.AllSearchParameters.ShouldContain(p => p.Code == CustomCode);
+
+        searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> byResourceType).ShouldBeTrue();
+        byResourceType.ShouldContain(p => p.Code == CustomCode);
     }
 
     [Fact]
@@ -63,9 +72,22 @@ public class SearchableSearchParameterDefinitionManagerTests
 
         var searchable = new SearchableSearchParameterDefinitionManager(_inner);
 
-        Assert.True(searchable.TryGetSearchParameter("Patient", CustomCode, out _));
-        Assert.True(searchable.TryGetSearchParameter(new Uri(CustomUrl), out _));
-        Assert.Contains(searchable.GetSearchParameters("Patient"), p => p.Code == CustomCode);
+        searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeTrue();
+        searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeTrue();
+        searchable.GetSearchParameters("Patient").ShouldContain(p => p.Code == CustomCode);
+        searchable.AllSearchParameters.ShouldContain(p => p.Code == CustomCode);
+
+        searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> byResourceType).ShouldBeTrue();
+        byResourceType.ShouldContain(p => p.Code == CustomCode);
+    }
+
+    [Fact]
+    public void GivenAnUnknownResourceType_WhenSearchParametersAreRequested_ThenItReportsMissing()
+    {
+        var searchable = new SearchableSearchParameterDefinitionManager(_inner);
+
+        searchable.TryGetSearchParameters("NotAResourceType", out IEnumerable<SearchParameterInfo> parameters).ShouldBeFalse();
+        parameters.ShouldBeNull();
     }
 
     [Fact]
@@ -73,13 +95,13 @@ public class SearchableSearchParameterDefinitionManagerTests
     {
         var searchable = new SearchableSearchParameterDefinitionManager(_inner);
 
-        Assert.False(searchable.TryGetSearchParameter(new Uri("http://example.org/fhir/SearchParameter/absent"), out SearchParameterInfo value));
-        Assert.Null(value);
+        searchable.TryGetSearchParameter(new Uri("http://example.org/fhir/SearchParameter/absent"), out SearchParameterInfo value).ShouldBeFalse();
+        value.ShouldBeNull();
     }
 
     private void SetStatus(bool isSearchable, bool isSupported)
     {
-        Assert.True(_inner.TryGetSearchParameter(new Uri(CustomUrl), out SearchParameterInfo parameter));
+        _inner.TryGetSearchParameter(new Uri(CustomUrl), out SearchParameterInfo parameter).ShouldBeTrue();
 
         parameter.IsSearchable = isSearchable;
         parameter.IsSupported = isSupported;

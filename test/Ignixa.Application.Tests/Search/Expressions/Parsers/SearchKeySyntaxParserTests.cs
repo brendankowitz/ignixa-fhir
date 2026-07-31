@@ -39,14 +39,36 @@ public class SearchKeySyntaxParserTests
         string expectedName,
         string? expectedModifier)
     {
-        // FHIR types SearchParameter.code as `code`, whose regex is [^\s]+, so a custom search
-        // parameter is free to start with a digit. Rejecting it as a syntax error turns a valid
-        // registered parameter into an unparseable key.
+        // FHIR types SearchParameter.code as `code`, whose regex ([^\s]+([\s]?[^\s]+)*) admits any
+        // non-whitespace first character, so a custom search parameter is free to start with a digit.
+        // Rejecting it as a syntax error turns a valid registered parameter into an unparseable key.
         var syntax = SearchKeySyntaxParser.ParseParameter(key);
 
         var parameter = syntax.ShouldBeOfType<ParameterKeySyntax>();
         parameter.Name.ShouldBe(expectedName);
         parameter.Modifier.ShouldBe(expectedModifier);
+    }
+
+    [Fact]
+    public void GivenADigitLeadingResourceTypeInAChain_WhenParsing_ThenItIsDeferredToTheBinder()
+    {
+        // A digit-leading token in a resource-type position is a name error, not a syntax error --
+        // the parser accepts it and the binder rejects it, which is what produces a usable diagnostic.
+        var syntax = SearchKeySyntaxParser.ParseParameter("subject:2Foo.name");
+
+        var chain = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
+        chain.ReferenceName.ShouldBe("subject");
+        chain.TargetResourceType.ShouldBe("2Foo");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingModifier_WhenParsing_ThenItIsAcceptedAsAnIdentifier()
+    {
+        var syntax = SearchKeySyntaxParser.ParseParameter("name:0exact");
+
+        var parameter = syntax.ShouldBeOfType<ParameterKeySyntax>();
+        parameter.Name.ShouldBe("name");
+        parameter.Modifier.ShouldBe("0exact");
     }
 
     [Fact]
@@ -91,6 +113,19 @@ public class SearchKeySyntaxParserTests
         var next = chain.Next.ShouldBeOfType<ParameterKeySyntax>();
         next.Name.ShouldBe("code");
         next.Modifier.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenADigitLeadingSegmentInAReverseChain_WhenParsing_ThenBothSegmentsAreAccepted()
+    {
+        // The _has: path parses its source type and reference name through the same identifier rules,
+        // so the loosened start character must apply there too rather than only to a terminal name.
+        var syntax = SearchKeySyntaxParser.ParseParameter("_has:2Observation:0subject:code");
+
+        var chain = syntax.ShouldBeOfType<ReverseChainKeySyntax>();
+        chain.SourceResourceType.ShouldBe("2Observation");
+        chain.ReferenceName.ShouldBe("0subject");
+        chain.Next.ShouldBeOfType<ParameterKeySyntax>().Name.ShouldBe("code");
     }
 
     [Fact]

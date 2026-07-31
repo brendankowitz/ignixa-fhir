@@ -331,8 +331,7 @@ internal static class Lower
         return context.Intersect(match, baseSet);
     }
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR,
-    /// union, chain, or compartment).
+    /// <summary>Dispatches one expression node to the lowering path for its kind.
     /// A null <paramref name="resourceType"/> reaches here only under system-level search. Chain carries its own
     /// resource types rather than consuming the ambient one — a reverse chain scopes its inner expression against
     /// its single referencing type and emits its target types, a forward chain the mirror image — so it needs no
@@ -343,14 +342,10 @@ internal static class Lower
     /// <para>
     /// <see cref="UnionExpression"/> and an OR both lower to the same set union. They are distinct nodes because
     /// they say different things about their operands - an OR combines alternative <em>values</em> of one
-    /// parameter, a union combines independent row-producing <em>legs</em> (the shape a SMART compartment expands
-    /// to, where one leg is a compartment traversal, another a type filter, another an orphan scan) - but once
-    /// each operand has become a CTE that distinction has no expression left in the plan. A union is lowered
-    /// leg-by-leg through <see cref="LowerScopedExpression"/>, which handles a null (system-level) scope as well
-    /// as a concrete one - the scope a SMART compartment search needs, where the whole union sits under no single
-    /// target type.
-    /// </para>
-    /// <para>
+    /// parameter, a union combines independent row-producing <em>legs</em> - but once each operand has become a
+    /// CTE that distinction has no expression left in the plan. A union is lowered leg-by-leg through
+    /// <see cref="LowerScopedExpression"/>, which handles a null (system-level) scope as well as a concrete one,
+    /// so the whole union may sit under no single target type.
     /// <see cref="UnionExpression.Operator"/> is deliberately not consulted. A CTE here yields a set of
     /// <c>(ResourceTypeId, ResourceSurrogateId)</c> identities, so a duplicate is the same row admitted by two
     /// legs, never two distinct results. UNION ALL would let such a row be counted twice by <c>_total</c> and

@@ -301,10 +301,11 @@ internal static class SearchKeySyntaxParser
         }
 
         /// <summary>
-        /// FHIR types <c>SearchParameter.code</c> as <c>code</c>, whose regex is <c>[^\s]+</c>, so a
-        /// custom search parameter is free to begin with a digit. The key grammar has no numeric
-        /// literals, so admitting a leading digit introduces no ambiguity — a resource-type position
-        /// that receives one still fails at binding with a name error rather than a syntax error.
+        /// FHIR types <c>SearchParameter.code</c> as <c>code</c>, whose regex
+        /// (<c>[^\s]+([\s]?[^\s]+)*</c>) admits any non-whitespace first character, so a custom search
+        /// parameter is free to begin with a digit. The key grammar has no numeric literals, so admitting
+        /// a leading digit introduces no ambiguity — a resource-type position that receives one still
+        /// fails at binding with a name error rather than a syntax error.
         /// </summary>
         private static bool IsIdentifierStart(char value)
         {
