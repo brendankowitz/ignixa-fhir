@@ -244,6 +244,48 @@ public class AccessConstraintTests
     }
 
     [Fact]
+    public void GivenASystemLevelSearchWhoseMatchIsAChain_WhenTheChainOutputTypeIsConstrained_ThenTheConstraintStillNarrowsThatType()
+    {
+        // Arrange -- GET /?_type=Observation,Patient&subject:Patient.category=vital-signs. A chain under a
+        // null target type only became reachable when the dispatch guard was removed, which makes the
+        // ApplyToTypes arm for a ChainJoin-derived match a newly live authorization path. The chain emits
+        // Observation identities, so the Observation constraint must narrow them; it cannot ride on the
+        // single-type Apply arm, because there is no single match type to key it on.
+        var f = Arrange();
+        var chain = new ChainedExpression(
+            resourceTypes: ["Observation"],
+            referenceSearchParameter: f.SubjectParam,
+            targetResourceTypes: ["Patient"],
+            reversed: false,
+            expression: TokenPredicate(f.CategoryParam, "vital-signs"));
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, AccessConstraints = [f.ObservationConstraint], ResourceTypes = ["Observation", "Patient"] }).Plan;
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert -- the subtract-then-union shape ApplyToTypes builds, over the chain-derived match. Both
+        // arms share the same left side, and that side is the chain, so neutralising ApplyToTypes (leaving
+        // the root as the chain's own Intersect) fails here.
+        var ctes = plan.Ctes;
+        var root = ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var subtract = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Except>().ShouldHaveSingleItem();
+        var admitted = root.Parts.Select(p => ctes[p.Index]).OfType<CteDefinition.Intersect>().ShouldHaveSingleItem();
+        ctes[subtract.Right.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe(ObservationTypeId);
+        ctes[admitted.Right.Index].ShouldBeOfType<CteDefinition.ParamSource>().SearchParamId.ShouldBe(StatusParamId);
+        subtract.Left.ShouldBe(admitted.Left);
+
+        var narrowedMatch = ctes[subtract.Left.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        ctes[narrowedMatch.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>()
+            .OutputResourceTypeIds.ShouldBe(new[] { ObservationTypeId });
+
+        sql.ShouldContain("SearchParamId = 220");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
     public void GivenNoConstraints_WhenLowered_ThenThePlanIsIdenticalToOneLoweredWithoutTheParameter()
     {
         // Arrange

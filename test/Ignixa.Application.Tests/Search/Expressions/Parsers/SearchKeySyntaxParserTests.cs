@@ -81,6 +81,37 @@ public class SearchKeySyntaxParserTests
         chain.Next.ShouldBeOfType<ParameterKeySyntax>().Name.ShouldBe("07code");
     }
 
+    [Fact]
+    public void GivenADigitLeadingReferencePathInNotReferenced_WhenParsing_ThenItIsAcceptedAsAnIdentifier()
+    {
+        // The reference path is an identifier position like any other; gating it on a leading letter made
+        // it the one place a digit-leading custom parameter was a syntax error rather than a name error.
+        var syntax = SearchKeySyntaxParser.ParseNotReferenced("Observation:0subject");
+
+        syntax.SourceResourceType.ShouldBe("Observation");
+        syntax.ReferencePath.ShouldBe("0subject");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingSourceTypeInNotReferenced_WhenParsing_ThenItIsDeferredToTheBinder()
+    {
+        var syntax = SearchKeySyntaxParser.ParseNotReferenced("2Observation:subject");
+
+        syntax.SourceResourceType.ShouldBe("2Observation");
+        syntax.ReferencePath.ShouldBe("subject");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingSourceTypeInAnInclude_WhenParsing_ThenItIsDeferredToTheBinder()
+    {
+        var syntax = SearchKeySyntaxParser.ParseInclude("2Observation:0subject:3Patient");
+
+        syntax.SourceResourceType.ShouldBe("2Observation");
+        syntax.SearchParameterName.ShouldBe("0subject");
+        syntax.TargetResourceType.ShouldBe("3Patient");
+        syntax.Wildcard.ShouldBeFalse();
+    }
+
     [Theory]
     [InlineData("subject.name", "subject", null, "name")]
     [InlineData("subject:Patient.name", "subject", "Patient", "name")]

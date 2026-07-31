@@ -28,6 +28,37 @@ public class SearchParameterInfoEqualityTests
     }
 
     [Fact]
+    public void GivenTwoParametersSharingAUrlButDifferingByCode_WhenCompared_ThenTheCodeIsNotConsulted()
+    {
+        // Intended semantics, not an accident: the canonical URL wins outright, so a set built from both
+        // keeps whichever arrived first and the other Code disappears without a diagnostic. Two definitions
+        // carrying the same canonical URL under different codes are a definition-authoring error, and this
+        // is where the collapse happens.
+        var first = new SearchParameterInfo("_type", "_type", SearchParamType.Token, CanonicalUrl);
+        var second = new SearchParameterInfo("resource-type", "resource-type", SearchParamType.Token, CanonicalUrl);
+
+        first.Equals(second).ShouldBeTrue();
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+
+        var set = new HashSet<SearchParameterInfo> { first, second };
+        set.Count.ShouldBe(1);
+        set.Single().Code.ShouldBe("_type");
+    }
+
+    [Fact]
+    public void GivenOneParameterWithAUrlAndOneWithout_WhenCompared_ThenTheyAreNotEqual()
+    {
+        // The boundary between the two GetHashCode branches: one side hashes on Url, the other on
+        // Code/Type/Expression. Equals must reject the pair in both directions or the branches disagree.
+        var withUrl = new SearchParameterInfo("_type", "_type", SearchParamType.Token, CanonicalUrl, expression: "Patient.name");
+        var withoutUrl = new SearchParameterInfo("_type", "_type", SearchParamType.Token, url: null, expression: "Patient.name");
+
+        withUrl.Equals(withoutUrl).ShouldBeFalse();
+        withoutUrl.Equals(withUrl).ShouldBeFalse();
+        new HashSet<SearchParameterInfo> { withUrl, withoutUrl }.Count.ShouldBe(2);
+    }
+
+    [Fact]
     public void GivenTwoParametersWithDifferentUrls_WhenCompared_ThenTheyAreNotEqual()
     {
         var baseParameter = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));

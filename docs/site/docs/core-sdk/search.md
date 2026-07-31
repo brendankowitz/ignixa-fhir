@@ -77,7 +77,20 @@ var supported = supportedManager.GetSearchParameters("Patient");
 // Only returns parameters marked as searchable
 var searchableManager = new SearchableSearchParameterDefinitionManager(manager);
 var searchable = searchableManager.GetSearchParameters("Patient");
+
+// Optionally admit parameters that are registered but not yet reindexed ("partially indexed").
+// The delegate is consulted per call; omitting it defaults to refusing them.
+var partial = new SearchableSearchParameterDefinitionManager(manager, () => true);
 ```
+
+:::warning Partially indexed parameters
+
+Opting in makes results **wrong in both directions**, not merely incomplete. A resource that has not been
+reindexed yet has no index rows for the parameter, so a positive filter omits it while a negated one
+(`:not`, `:missing=true`) returns it as a match. Nothing in the response bundle distinguishes such a
+result from a complete one, so only enable this when the caller has explicitly asked for partial results.
+
+:::
 
 ## SearchParameterInfo
 

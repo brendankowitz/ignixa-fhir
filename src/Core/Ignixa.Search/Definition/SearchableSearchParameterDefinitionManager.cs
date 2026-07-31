@@ -21,9 +21,18 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     /// <param name="inner">The definition manager holding every known parameter, searchable or not.</param>
     /// <param name="includePartiallyIndexedSearchParameters">
     /// Decides, per call, whether parameters that are merely <em>supported</em> - registered but not yet
-    /// reindexed - should be admitted alongside searchable ones. Applying such a parameter filters on an
-    /// index that is still being populated, so it returns too few resources; it is only correct when the
-    /// caller has explicitly asked for partially indexed results. Defaults to refusing them.
+    /// reindexed - are admitted alongside searchable ones. The index behind such a parameter is half
+    /// populated, which makes the result set wrong in both directions rather than merely short: a positive
+    /// filter misses resources whose rows do not exist yet, while a negated one (<c>:not</c>,
+    /// <c>:missing=true</c>) lowers to the negation of that same presence set and so returns those
+    /// not-yet-reindexed resources as matches. Nothing in the response distinguishes such a bundle from a
+    /// complete one. Defaults to refusing them.
+    /// <para>
+    /// No production code constructs this class today - the resolver registrations in
+    /// SearchServicesRegistration and SearchOptionsBuilderFactory hand back the raw
+    /// <see cref="SearchParameterDefinitionManager"/>, which applies no visibility filter at all - so this
+    /// switch currently reaches only tests and direct callers.
+    /// </para>
     /// </param>
     public SearchableSearchParameterDefinitionManager(
         SearchParameterDefinitionManager inner,
@@ -41,14 +50,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
     public IEnumerable<SearchParameterInfo> GetSearchParameters(string resourceType)
     {
-        if (_includePartiallyIndexedSearchParameters())
-        {
-            return _inner.GetSearchParameters(resourceType)
-                .Where(x => x.IsSupported);
-        }
-
-        return _inner.GetSearchParameters(resourceType)
-            .Where(x => x.IsSearchable);
+        return _inner.GetSearchParameters(resourceType).Where(IsVisible);
     }
 
     public bool TryGetSearchParameters(string resourceType, out IEnumerable<SearchParameterInfo> searchParameters)
@@ -57,9 +59,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
         if (_inner.TryGetSearchParameters(resourceType, out IEnumerable<SearchParameterInfo> innerSearchParameters))
         {
-            searchParameters = _includePartiallyIndexedSearchParameters()
-                ? innerSearchParameters.Where(x => x.IsSupported)
-                : innerSearchParameters.Where(x => x.IsSearchable);
+            searchParameters = innerSearchParameters.Where(IsVisible);
             return true;
         }
 
@@ -70,8 +70,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     {
         searchParameter = null;
 
-        if (_inner.TryGetSearchParameter(resourceType, code, out SearchParameterInfo parameter) &&
-            (parameter.IsSearchable || UsePartialSearchParams(parameter)))
+        if (_inner.TryGetSearchParameter(resourceType, code, out SearchParameterInfo parameter) && IsVisible(parameter))
         {
             searchParameter = parameter;
 
@@ -85,7 +84,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     {
         SearchParameterInfo parameter = _inner.GetSearchParameter(resourceType, code);
 
-        if (parameter.IsSearchable || UsePartialSearchParams(parameter))
+        if (IsVisible(parameter))
         {
             return parameter;
         }
@@ -97,7 +96,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     {
         SearchParameterInfo parameter = _inner.GetSearchParameter(definitionUri);
 
-        if (parameter.IsSearchable || UsePartialSearchParams(parameter)) return parameter;
+        if (IsVisible(parameter)) return parameter;
 
         throw new SearchParameterNotSupportedException(definitionUri);
     }
@@ -121,8 +120,7 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
     {
         value = null;
 
-        if (_inner.TryGetSearchParameter(definitionUri, out SearchParameterInfo parameter) &&
-            (parameter.IsSearchable || UsePartialSearchParams(parameter)))
+        if (_inner.TryGetSearchParameter(definitionUri, out SearchParameterInfo parameter) && IsVisible(parameter))
         {
             value = parameter;
             return true;
@@ -138,16 +136,14 @@ public class SearchableSearchParameterDefinitionManager : ISearchParameterDefini
 
     private IEnumerable<SearchParameterInfo> GetAllSearchParameters()
     {
-        if (_includePartiallyIndexedSearchParameters())
-        {
-            return _inner.AllSearchParameters.Where(x => x.IsSupported);
-        }
-
-        return _inner.AllSearchParameters.Where(x => x.IsSearchable);
+        return _inner.AllSearchParameters.Where(IsVisible);
     }
 
-    private bool UsePartialSearchParams(SearchParameterInfo parameter)
+    /// <summary>The single visibility rule behind every accessor. <see cref="SearchParameterInfo.IsSearchable"/>
+    /// and <see cref="SearchParameterInfo.IsSupported"/> are independent flags, so any accessor that tested one
+    /// without the other would disagree with the rest about the same parameter.</summary>
+    private bool IsVisible(SearchParameterInfo parameter)
     {
-        return _includePartiallyIndexedSearchParameters() && parameter.IsSupported;
+        return parameter.IsSearchable || (_includePartiallyIndexedSearchParameters() && parameter.IsSupported);
     }
 }

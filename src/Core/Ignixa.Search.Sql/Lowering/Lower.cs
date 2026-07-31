@@ -18,7 +18,8 @@ internal static class Lower
     /// <summary>Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source) into the CTE graph, then attaches includes,
     /// sort, and paging. A null target type is allowed only for a wildcard compartment or system-level search;
-    /// chain, :not/:missing=true, _not-referenced, :text, _include/_revinclude and _sort still require one and throw.</summary>
+    /// :not/:missing=true, _not-referenced, :text, _include/_revinclude and _sort still require one and throw. A
+    /// chain does not: it names its own types (see <see cref="LowerNode"/>).</summary>
     internal static LoweredPlan Run(CompilationContext context, SymbolTable symbols)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -331,26 +332,18 @@ internal static class Lower
         return context.Intersect(match, baseSet);
     }
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind.
-    /// A null <paramref name="resourceType"/> reaches here only under system-level search. Chain carries its own
-    /// resource types rather than consuming the ambient one — a reverse chain scopes its inner expression against
-    /// its single referencing type and emits its target types, a forward chain the mirror image — so it needs no
-    /// ambient scope and none is passed to <see cref="StructuralContext.LowerChain"/>. The identities a ChainJoin
-    /// yields are always over concrete types, so an enclosing cross-type intersection stays well-typed. The
-    /// ambiguity that would genuinely break a chain (more than one type on the side that must be single) is
-    /// guarded inside <c>LowerChain</c> itself, where both directions reach it.
-    /// <para>
-    /// <see cref="UnionExpression"/> and an OR both lower to the same set union. They are distinct nodes because
-    /// they say different things about their operands - an OR combines alternative <em>values</em> of one
-    /// parameter, a union combines independent row-producing <em>legs</em> - but once each operand has become a
-    /// CTE that distinction has no expression left in the plan. A union is lowered leg-by-leg through
-    /// <see cref="LowerScopedExpression"/>, which handles a null (system-level) scope as well as a concrete one,
-    /// so the whole union may sit under no single target type.
-    /// <see cref="UnionExpression.Operator"/> is deliberately not consulted. A CTE here yields a set of
-    /// <c>(ResourceTypeId, ResourceSurrogateId)</c> identities, so a duplicate is the same row admitted by two
-    /// legs, never two distinct results. UNION ALL would let such a row be counted twice by <c>_total</c> and
-    /// consume two slots of a page, so the distinct union is the only correct emission for either operator.
-    /// </para></summary>
+    /// <summary>Dispatches one expression node to the lowering path for its kind. A null
+    /// <paramref name="resourceType"/> reaches here only under system-level search, and a chain tolerates it: a
+    /// chain names its own types — a reverse chain scopes its inner expression against its single referencing
+    /// type and emits its target types, a forward chain the mirror image — so the ambient scope is unused and
+    /// none is passed on. The guard for a side that resolved to anything other than exactly one type therefore
+    /// lives in <see cref="StructuralContext.LowerChain"/>, where both directions reach it. Those type names come
+    /// from the IR and resolve to concrete ids (or <see cref="SymbolTable.UnmatchableResourceTypeId"/> for a name
+    /// the resolver could not find), never to an absent type filter, so an enclosing cross-type intersection
+    /// stays well-typed. <see cref="UnionExpression"/> documents why either union operator lowers to a distinct
+    /// union; note the OR and union arms below are not interchangeable — a union leg goes through
+    /// <see cref="LowerScopedExpression"/>, which can recover a per-leg type under a null scope, while an OR's
+    /// operands are alternative values of one parameter and lower with the ambient scope as-is.</summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(

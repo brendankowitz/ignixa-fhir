@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.Generated;
@@ -39,9 +40,8 @@ public class SearchParameterDefinitionManagerAddTests
     [Fact]
     public void GivenASearchParameterAddedAtRuntime_WhenAnotherIsAddedLater_ThenTheResourceTypeParameterKeepsItsIdentity()
     {
-        // _type is injected by the builder rather than read from the definition bundle. Re-running the
-        // build must reuse the instance already published: callers hold references to it, and status
-        // changes are applied by mutating that instance.
+        // Re-running the build must republish the _type instance already in the dictionary: callers hold
+        // references to it, and status changes are applied by mutating that instance.
         _manager.TryGetSearchParameter("Patient", "_type", out SearchParameterInfo before).ShouldBeTrue();
 
         _manager.AddNewSearchParameters(new[] { CustomPatientParameter("third", "third-code") });
@@ -51,15 +51,19 @@ public class SearchParameterDefinitionManagerAddTests
     }
 
     [Fact]
-    public void GivenASearchParameterAddedAtRuntime_WhenTheDefinitionsAreRebuilt_ThenResourceTypeIsRegisteredExactlyOnce()
+    public void GivenASearchParameterAddedAtRuntime_WhenTheDefinitionsAreRebuilt_ThenResourceTypeResolvesToOneInstanceEverywhere()
     {
-        // A second _type instance sharing the canonical Url compares equal but hashes differently, so a
-        // HashSet keeps both and the per-resource rebuild throws on the duplicate code. Assert the count
-        // directly so a duplicate that happens not to throw is still caught.
+        // Counting _type per accessor proves nothing: both are dictionary values keyed on the field being
+        // counted (per-type by Code, AllSearchParameters by Url), so a second instance is unrepresentable
+        // there. Reference identity across the URL lookup, the base type and two concrete types is the
+        // observable evidence that the rebuild published one instance rather than a fresh one per pass.
         _manager.AddNewSearchParameters(new[] { CustomPatientParameter("fourth", "fourth-code") });
 
-        _manager.GetSearchParameters("Patient").Count(p => p.Code == "_type").ShouldBe(1);
-        _manager.AllSearchParameters.Count(p => p.Code == "_type").ShouldBe(1);
+        _manager.TryGetSearchParameter(SearchParameterNames.ResourceTypeUri, out SearchParameterInfo byUrl).ShouldBeTrue();
+
+        _manager.GetSearchParameter(KnownResourceTypes.Resource, "_type").ShouldBeSameAs(byUrl);
+        _manager.GetSearchParameter("Patient", "_type").ShouldBeSameAs(byUrl);
+        _manager.GetSearchParameter("Observation", "_type").ShouldBeSameAs(byUrl);
     }
 
     private IElement CustomPatientParameter(string id, string code)

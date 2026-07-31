@@ -58,6 +58,8 @@ public class SearchableSearchParameterDefinitionManagerTests
 
         searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeTrue();
         searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeTrue();
+        searchable.GetSearchParameter("Patient", CustomCode).Code.ShouldBe(CustomCode);
+        searchable.GetSearchParameter(new Uri(CustomUrl)).Code.ShouldBe(CustomCode);
         searchable.GetSearchParameters("Patient").ShouldContain(p => p.Code == CustomCode);
         searchable.AllSearchParameters.ShouldContain(p => p.Code == CustomCode);
 
@@ -74,11 +76,50 @@ public class SearchableSearchParameterDefinitionManagerTests
 
         searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeTrue();
         searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeTrue();
+        searchable.GetSearchParameter("Patient", CustomCode).Code.ShouldBe(CustomCode);
         searchable.GetSearchParameters("Patient").ShouldContain(p => p.Code == CustomCode);
         searchable.AllSearchParameters.ShouldContain(p => p.Code == CustomCode);
 
         searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> byResourceType).ShouldBeTrue();
         byResourceType.ShouldContain(p => p.Code == CustomCode);
+    }
+
+    [Fact]
+    public void GivenASearchableParameterThatIsNotSupported_WhenPartialIndexingIsRequested_ThenEveryAccessorAgrees()
+    {
+        // IsSearchable and IsSupported are independent flags, so this combination is reachable. The
+        // collection accessors and the singular lookups must return the same answer about the same object.
+        SetStatus(isSearchable: true, isSupported: false);
+
+        var searchable = new SearchableSearchParameterDefinitionManager(_inner, () => true);
+
+        searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeTrue();
+        searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeTrue();
+        searchable.GetSearchParameter("Patient", CustomCode).Code.ShouldBe(CustomCode);
+        searchable.GetSearchParameter(new Uri(CustomUrl)).Code.ShouldBe(CustomCode);
+        searchable.GetSearchParameters("Patient").ShouldContain(p => p.Code == CustomCode);
+        searchable.AllSearchParameters.ShouldContain(p => p.Code == CustomCode);
+
+        searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> byResourceType).ShouldBeTrue();
+        byResourceType.ShouldContain(p => p.Code == CustomCode);
+    }
+
+    [Fact]
+    public void GivenAParameterThatIsNeitherSearchableNorSupported_WhenPartialIndexingIsRequested_ThenEveryAccessorRefusesIt()
+    {
+        SetStatus(isSearchable: false, isSupported: false);
+
+        var searchable = new SearchableSearchParameterDefinitionManager(_inner, () => true);
+
+        searchable.TryGetSearchParameter("Patient", CustomCode, out _).ShouldBeFalse();
+        searchable.TryGetSearchParameter(new Uri(CustomUrl), out _).ShouldBeFalse();
+        Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter("Patient", CustomCode));
+        Should.Throw<SearchParameterNotSupportedException>(() => searchable.GetSearchParameter(new Uri(CustomUrl)));
+        searchable.GetSearchParameters("Patient").ShouldNotContain(p => p.Code == CustomCode);
+        searchable.AllSearchParameters.ShouldNotContain(p => p.Code == CustomCode);
+
+        searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> byResourceType).ShouldBeTrue();
+        byResourceType.ShouldNotContain(p => p.Code == CustomCode);
     }
 
     [Fact]

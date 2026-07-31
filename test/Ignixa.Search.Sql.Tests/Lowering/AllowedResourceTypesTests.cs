@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
@@ -221,6 +222,40 @@ public class AllowedResourceTypesTests
         plan.Includes![0].OutputTypeIds!.ShouldNotBeEmpty();
         plan.Includes![0].OutputTypeIds.ShouldBe(new short[] { SymbolTable.UnmatchableResourceTypeId });
         sql.ShouldContain("r.ResourceTypeId = -1");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
+    public void GivenASystemLevelSearchWhoseMatchIsAChain_WhenTheChainOutputTypeIsNotAllowed_ThenTheMatchIsStillRestricted()
+    {
+        // Arrange -- GET /?subject:Patient.status=final under an allow-list of Patient only. A chain under a
+        // null target type only became reachable when the leaf-dispatch guard was removed, so RestrictMatch
+        // over a ChainJoin-derived match is a newly live authorization path with no coverage. The chain emits
+        // Observation, which the caller may not see.
+        var f = Arrange();
+        var chain = new ChainedExpression(
+            resourceTypes: ["Observation"],
+            referenceSearchParameter: f.SubjectParam,
+            targetResourceTypes: ["Patient"],
+            reversed: false,
+            expression: new SearchParameterExpression(
+                f.StatusParam,
+                new SearchParameterPredicateExpression(f.StatusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))));
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, f.Symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, AllowedResourceTypes = ["Patient"] }).Plan;
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Assert -- the match root is the chain intersected with the allowed base set, so the Observation
+        // rows the chain produces cannot survive. Neutralising RestrictMatch would leave the root as the
+        // bare ChainJoin and fail here.
+        var ctes = plan.Ctes;
+        var root = ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        ctes[root.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>().OutputResourceTypeIds.ShouldBe(new[] { ObservationTypeId });
+        ctes[root.Right.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>().ResourceTypeIds.ShouldBe(new[] { PatientTypeId });
         SqlGrammar.AssertValid(sql);
     }
 
