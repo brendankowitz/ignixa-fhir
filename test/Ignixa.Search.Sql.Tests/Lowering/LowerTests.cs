@@ -6,6 +6,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.Ast;
 using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
@@ -1263,6 +1264,319 @@ public class LowerTests
         var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
         or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
         or.Right.ShouldBeOfType<Predicate.False>().Reason.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenAReverseChainUnderASystemLevelSearch_WhenLowered_ThenItLowersAgainstItsOwnReferencingType()
+    {
+        // Arrange -- GET /?_type=Patient,Device&_has:Device:subject:code=4548-4. The chain sits under no
+        // ambient resource type, but it does not need one: a reverse chain names its own referencing type
+        // (Device, which its inner expression scopes against) and its own target types (Patient, which the
+        // join emits), so the ambient scope it would otherwise inherit is unused. LowerChain reads neither.
+        // The identities a ChainJoin yields are (ResourceTypeId, SurrogateId) pairs over concrete target
+        // types, so the enclosing cross-type intersection stays well-typed.
+        var chain = ReverseChain(["Device"], ["Patient"]);
+        var symbols = ChainSymbols();
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }).Plan;
+
+        // Assert -- the join reads Device rows and emits Patient identities, both taken from the chain.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var join = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        join.Direction.ShouldBe(ChainDirection.Reverse);
+        join.InnerResourceTypeId.ShouldBe((short)104);
+        join.OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[join.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)104);
+    }
+
+    [Fact]
+    public void GivenAForwardChainUnderASystemLevelSearch_WhenLowered_ThenItLowersAgainstItsOwnTargetType()
+    {
+        // Arrange -- GET /?_type=Observation,Device&subject:Patient.name=smith. The mirror of the reverse
+        // case: a forward chain scopes its inner expression against its single target type (Patient) and
+        // emits its referencing types (Observation), so the null ambient scope is again unused.
+        var chain = ForwardChain(["Observation"], ["Patient"]);
+        var symbols = ChainSymbols();
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }).Plan;
+
+        // Assert -- the join reads Patient rows and emits Observation identities, both taken from the chain.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var join = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        join.Direction.ShouldBe(ChainDirection.Forward);
+        join.InnerResourceTypeId.ShouldBe((short)103);
+        join.OutputResourceTypeIds.ShouldBe([(short)105]);
+        plan.Ctes[join.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)103);
+    }
+
+    [Fact]
+    public void GivenAChainNestedInAnAndUnderASystemLevelSearch_WhenLowered_ThenTheChainStillLowers()
+    {
+        // Arrange -- the shape the deleted dispatch guard claimed to cover "equally": the chain is not at
+        // the top level, so the null ambient scope reaches it through LowerAnd's recursion rather than
+        // directly. The sibling must be an ordinary search parameter, not _type: a resource-column leaf is
+        // peeled into the outer WHERE by ExtractResourceColumnPredicates, which would collapse the And back
+        // to a bare chain and never reach LowerAnd at all.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var codeLeaf = new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(
+            codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "1234", text: null)));
+        var chain = ForwardChain(["Observation"], ["Patient"]);
+        var and = Expression.And(chain, codeLeaf);
+        var symbols = ChainSymbols();
+
+        // Act
+        var plan = LowerHarness.Run(
+            and, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }).Plan;
+
+        // Assert -- the chain still self-typed under the null ambient scope.
+        var join = plan.Ctes.OfType<CteDefinition.ChainJoin>().ShouldHaveSingleItem();
+        join.Direction.ShouldBe(ChainDirection.Forward);
+        join.InnerResourceTypeId.ShouldBe((short)103);
+        join.OutputResourceTypeIds.ShouldBe([(short)105]);
+
+        // ...and it got there through LowerAnd: the sibling leg lowered cross-type into its own CTE and the
+        // two legs are joined by an Intersect. Neither exists if the And was peeled away before dispatch.
+        var indexed = plan.Ctes.Select((cte, index) => (cte, index)).ToList();
+        var siblingIndex = indexed.Single(x => x.cte is CteDefinition.ParamSource { SearchParamId: 202 }).index;
+        var joinIndex = indexed.Single(x => ReferenceEquals(x.cte, join)).index;
+        plan.Ctes.OfType<CteDefinition.Intersect>().ShouldContain(
+            intersect => (intersect.Left.Index == joinIndex && intersect.Right.Index == siblingIndex)
+                || (intersect.Left.Index == siblingIndex && intersect.Right.Index == joinIndex));
+    }
+
+    [Fact]
+    public void GivenAForwardChainWithMoreThanOneTargetTypeUnderSystemLevel_WhenLowered_ThenItThrows()
+    {
+        // The side that must be single is now reachable under a null ambient scope, where the deleted
+        // dispatch guard used to short-circuit first. LowerChain must still refuse the ambiguity rather
+        // than silently picking a type.
+        var chain = ForwardChain(["Observation"], ["Patient", "Device"]);
+
+        var exception = Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }));
+
+        // Assert on the ambiguity guard specifically -- the deleted dispatch guard also threw
+        // NotSupportedException, so only the message distinguishes the two.
+        exception.Message.ShouldContain("Forward chain resolved to 2 candidate target types");
+    }
+
+    [Fact]
+    public void GivenAReverseChainWithMoreThanOneReferencingTypeUnderSystemLevel_WhenLowered_ThenItThrows()
+    {
+        var chain = ReverseChain(["Device", "Observation"], ["Patient"]);
+
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }))
+            .Message.ShouldContain("Reverse chain's referencing side resolved to 2 types");
+    }
+
+    [Fact]
+    public void GivenAReverseChainWithNoTargetTypes_WhenLowered_ThenItThrowsRatherThanEmittingAnEmptyOutputFilter()
+    {
+        // The output side has no ambiguity to resolve, so it has no single-type guard -- but an empty list is
+        // worse than an ambiguous one: EmitChainJoin string.Joins the output equalities, and joining none of
+        // them interpolates an empty string straight into the WHERE clause, which does not parse. Refusing at
+        // lowering names the chain that produced it; SqlBuilder.RejectUnsupportedCombinations carries the same
+        // check as a backstop for a QueryPlan built without going through Lower.
+        var chain = ReverseChain(["Device"], []);
+
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }))
+            .Message.ShouldContain("Reverse chain's target side resolved to 0 resource types");
+    }
+
+    [Fact]
+    public void GivenAForwardChainWithNoReferencingTypes_WhenLowered_ThenItThrowsRatherThanEmittingAnEmptyOutputFilter()
+    {
+        // Mirror of the reverse case: forward chains emit their referencing types, so that is the side that
+        // must be non-empty.
+        var chain = ForwardChain([], ["Patient"]);
+
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }))
+            .Message.ShouldContain("Forward chain's referencing side resolved to 0 resource types");
+    }
+
+    [Fact]
+    public void GivenAReverseChainWithSeveralTargetTypes_WhenLoweredUnderSystemLevel_ThenEveryTargetTypeIsEmitted()
+    {
+        // Arrange -- GET /?_type=Patient,Device&_has:Observation:subject:code=4548-4, the production shape:
+        // SearchKeyBinder.BindReverse computes the targets as the reference parameter's own targets INTERSECT
+        // the requested types, which is routinely more than one. Only the referencing side is constrained to a
+        // single type, so a multi-target output is legal, and it reaches EmitChainJoin's parenthesisation
+        // branch, where an unparenthesised OR would bind loosely against the sibling AND terms and silently
+        // widen the join. The forward sibling below covers the same branch from the other direction.
+        var chain = ReverseChain(["Observation"], ["Patient", "Device"]);
+
+        // Act
+        var lowered = LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] });
+        var sql = SqlBuilder.Run(lowered.Plan).Sql;
+
+        // Assert
+        var join = lowered.Plan.Ctes.OfType<CteDefinition.ChainJoin>().ShouldHaveSingleItem();
+        join.InnerResourceTypeId.ShouldBe((short)105);
+        join.OutputResourceTypeIds.ShouldBe([(short)103, (short)104]);
+        sql.ShouldContain("(rsp.ReferenceResourceTypeId = 103 OR rsp.ReferenceResourceTypeId = 104)");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
+    public void GivenAForwardChainWithSeveralReferencingTypes_WhenLoweredUnderSystemLevel_ThenEveryReferencingTypeIsEmitted()
+    {
+        // Arrange -- GET /?_type=Observation,Device&subject:Patient.name=smith exactly as the binder produces
+        // it: SearchKeyBinder.BindForward binds the referencing side to the FULL requested type list, so the
+        // real shape is ForwardChain(["Observation", "Device"], ["Patient"]) -- not the single-output shape the
+        // sibling tests build. Only the target side is narrowed to one type.
+        var chain = ForwardChain(["Observation", "Device"], ["Patient"]);
+
+        // Act
+        var lowered = LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] });
+        var sql = SqlBuilder.Run(lowered.Plan).Sql;
+
+        // Assert
+        var join = lowered.Plan.Ctes.OfType<CteDefinition.ChainJoin>().ShouldHaveSingleItem();
+        join.InnerResourceTypeId.ShouldBe((short)103);
+        join.OutputResourceTypeIds.ShouldBe([(short)105, (short)104]);
+        sql.ShouldContain("(rsp.ResourceTypeId = 105 OR rsp.ResourceTypeId = 104)");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
+    public void GivenAChainWhoseOutputTypeIsOutsideTheRequestedTypes_WhenLowered_ThenTheRequestedTypesStillNarrowIt()
+    {
+        // Arrange -- GET /?_type=Device&_has:Device:subject:code=4548-4. The chain emits Patient identities
+        // while the caller asked only for Device, so the requested-type narrowing is the only thing that keeps
+        // the answer empty. The sibling chain tests all pick chain types inside ResourceTypes and assert only
+        // that an Intersect is there, never which types it narrows to; this one pins the narrowing set itself.
+        var chain = ReverseChain(["Device"], ["Patient"]);
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Device"] }).Plan;
+
+        // Assert -- the match root intersects the chain's Patient output against a Device-only base set.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>()
+            .OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>()
+            .ResourceTypeIds.ShouldBe([(short)104]);
+    }
+
+    [Fact]
+    public void GivenAChainUnderAWildcardCompartmentSearch_WhenLowered_ThenItStillThrows()
+    {
+        // Arrange -- the other null-target case the deleted dispatch guard used to cover. A wildcard
+        // compartment search has no single type to scope anything against and is NOT system-level, so it must
+        // still be refused. The refusal now comes from Lower.Run's residue arm rather than from leaf dispatch,
+        // which is correct but incidental: this pins it so a refactor that peels the compartment leaf
+        // differently cannot fail open into LowerChain with a null scope.
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var tree = Expression.And(compartment, ForwardChain(["Observation"], ["Patient"]));
+
+        // Act & Assert -- no SystemLevelSearch option, so this stays a genuine wildcard compartment search.
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            tree, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("wildcard compartment search");
+    }
+
+    [Fact]
+    public void GivenAChainNestedInAnotherChainUnderASystemLevelSearch_WhenLowered_ThenTheInnerChainSeesAConcreteScope()
+    {
+        // Arrange -- depth 2 under a null ambient scope. LowerChain passes a concrete type into lowerNode for
+        // its inner expression in both directions, so a chain reached inside another chain's scope never sees
+        // the null. EndToEndCompilationTests' GivenANestedChainTwoLevelsDeep covers depth 2 only under a typed
+        // target, where there is no null to leak; this is what lets the outer chain tolerate a null ambient
+        // scope without the tolerance leaking further down.
+        var inner = ReverseChain(["Device"], ["Patient"]);
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        var outer = new ChainedExpression(["Observation"], subjectParam, ["Patient"], reversed: false, inner);
+
+        // Act
+        var plan = LowerHarness.Run(
+            outer, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation"] }).Plan;
+
+        // Assert -- both joins lowered, and the inner one scoped against Device rather than nothing.
+        var joins = plan.Ctes.OfType<CteDefinition.ChainJoin>().ToList();
+        joins.Count.ShouldBe(2);
+
+        var innerJoin = joins.Single(j => j.Direction == ChainDirection.Reverse);
+        innerJoin.InnerResourceTypeId.ShouldBe((short)104);
+        innerJoin.OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[innerJoin.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)104);
+
+        var outerJoin = joins.Single(j => j.Direction == ChainDirection.Forward);
+        outerJoin.InnerResourceTypeId.ShouldBe((short)103);
+        outerJoin.OutputResourceTypeIds.ShouldBe([(short)105]);
+    }
+
+    /// <summary>A forward chain on <c>subject</c> whose inner expression is a name filter on the target type.</summary>
+    private static ChainedExpression ForwardChain(string[] referencingTypes, string[] targetTypes)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        return new ChainedExpression(
+            referencingTypes,
+            subjectParam,
+            targetTypes,
+            reversed: false,
+            new SearchParameterExpression(nameParam, new SearchParameterPredicateExpression(
+                nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("smith"))));
+    }
+
+    /// <summary>A reverse chain on <c>subject</c> whose inner expression is a code filter on the referencing type.</summary>
+    private static ChainedExpression ReverseChain(string[] referencingTypes, string[] targetTypes)
+    {
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        return new ChainedExpression(
+            referencingTypes,
+            subjectParam,
+            targetTypes,
+            reversed: true,
+            new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(
+                codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, "4548-4", text: null))));
+    }
+
+    /// <summary>Symbols covering both chain shapes: the code/name/subject parameters and the types they span.</summary>
+    private static SymbolTable ChainSymbols()
+    {
+        return new SymbolTable(
+            new Dictionary<string, short>
+            {
+                ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 202,
+                ["http://hl7.org/fhir/SearchParameter/Device-subject"] = 203,
+                ["http://hl7.org/fhir/SearchParameter/Patient-name"] = 204,
+            },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Device"] = 104, ["Observation"] = 105 });
     }
 
     /// <summary>The shape a bound <c>_type=a,b</c> takes: an Or of bare _type equalities under one wrapper.</summary>

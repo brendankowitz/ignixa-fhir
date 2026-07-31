@@ -17,8 +17,12 @@ internal static class Lower
 {
     /// <summary>Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source) into the CTE graph, then attaches includes,
-    /// sort, and paging. A null target type is allowed only for a wildcard compartment or system-level search;
-    /// chain, :not/:missing=true, _not-referenced, :text, _include/_revinclude and _sort still require one and throw.</summary>
+    /// sort, and paging. A null target type is allowed only for a wildcard compartment or system-level search,
+    /// and the two differ. A wildcard compartment search admits a CompartmentSearchExpression and
+    /// resource-column predicates only — every other residue throws, a chain included — and rejects _sort. A
+    /// system-level search lowers its leaves cross-type and accepts both _sort and a chain (which names its own
+    /// types, see <see cref="LowerNode"/>), but still rejects :not/:missing=true, _not-referenced, :text and
+    /// $everything. _include/_revinclude throws under either.</summary>
     internal static LoweredPlan Run(CompilationContext context, SymbolTable symbols)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -331,10 +335,14 @@ internal static class Lower
         return context.Intersect(match, baseSet);
     }
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind. A null <paramref name="resourceType"/>
-    /// reaches here only under system-level search; chain carries its own types, so it needs an explicit guard or
-    /// a type-less chain would slip past every null-type guard in <see cref="Run"/>. UnionExpression and OR both
-    /// lower to a distinct set union (UNION ALL would double-count a row admitted by two legs).</summary>
+    /// <summary>Dispatches one expression node to the lowering path for its kind. A null
+    /// <paramref name="resourceType"/> reaches here only under system-level search, and a chain tolerates it: a
+    /// chain names its own types (a reverse chain scopes its inner expression against its referencing type and
+    /// emits its target types, a forward chain the mirror image), so the ambient scope is unused and none is
+    /// passed on. Every guard on those types therefore lives in <see cref="StructuralContext.LowerChain"/>,
+    /// where both directions reach it. The OR and union arms below look mergeable and are not: a union leg goes
+    /// through <see cref="LowerScopedExpression"/>, which can recover a per-leg type under a null scope, while
+    /// an OR's operands are alternative values of one parameter and lower with the ambient scope as-is.</summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
@@ -350,11 +358,6 @@ internal static class Lower
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
         UnionExpression union => context.Union(
             union.Expressions.Select(leg => LowerScopedExpression(leg, context, resourceType)).ToList()),
-        ChainedExpression when resourceType is null => throw new NotSupportedException(
-            "Chain is not supported in system-level search in this phase -- a chain resolves and joins against " +
-            "a concrete referencing/target type, which a cross-type search has no single value for. Guarding at " +
-            "the chain dispatch choke point covers a top-level chain and one nested in an AND equally; a chain " +
-            "reached inside another chain's scope always has a concrete type and never trips this."),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),

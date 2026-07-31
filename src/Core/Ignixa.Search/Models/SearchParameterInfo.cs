@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -153,6 +153,10 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
     /// </summary>
     public Uri OverridesUrl { get; set; }
 
+    /// <summary>Equality is decided on <see cref="Url"/> alone when one is present: a canonical URL identifies a
+    /// search parameter, and two definitions carrying it are the same parameter however their other fields drift.
+    /// Code/Type/Expression are only consulted for the URL-less case. <see cref="GetHashCode"/> mirrors this
+    /// split exactly -- both must agree, or a HashSet keeps two entries it considers equal.</summary>
     public bool Equals([AllowNull] SearchParameterInfo other)
     {
         if (other == null) return false;
@@ -173,10 +177,15 @@ public class SearchParameterInfo : IEquatable<SearchParameterInfo>
         return Equals(obj as SearchParameterInfo);
     }
 
+    /// <summary>Mirrors <see cref="Equals(SearchParameterInfo)"/>: hashed on Url alone when one is present, on the
+    /// same three fields Equals falls back to when it is not. Combining all four unconditionally would break the
+    /// contract -- two instances sharing a Url but differing in Expression compare equal yet would land in
+    /// different buckets, so a HashSet would retain both and a later ToDictionary on Code would throw.</summary>
     public override int GetHashCode()
     {
+        if (Url != null) return Url.GetHashCode();
+
         return HashCode.Combine(
-            Url?.GetHashCode(),
             Code?.GetHashCode(StringComparison.OrdinalIgnoreCase),
             Type.GetHashCode(),
             Expression?.GetHashCode(StringComparison.OrdinalIgnoreCase));

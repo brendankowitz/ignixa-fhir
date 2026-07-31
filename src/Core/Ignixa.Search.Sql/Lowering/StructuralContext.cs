@@ -306,16 +306,21 @@ internal sealed class StructuralContext
                 {
                     [var single] => single,
                     _ => throw new NotSupportedException(
-                        $"Reverse chain's referencing side resolved to {chain.ResourceTypes.Length} types -- the real binder " +
-                        "always binds a reverse chain's target expression against a single referencing type " +
-                        "(SearchKeyBinder.BindReverse's syntax.SourceResourceType), so this is unexpected input."),
+                        $"Reverse chain's referencing side resolved to {chain.ResourceTypes.Length} types -- a reverse chain " +
+                        "scopes its inner expression against exactly one referencing type, and the real binder binds it " +
+                        "that way (SearchKeyBinder.BindReverse's syntax.SourceResourceType). This is the only guard on " +
+                        "that shape for IR built directly against the compiler API, so it refuses rather than guessing."),
                 };
 
                 var innerMatch = lowerNode(chain.Expression, this, referencingResourceType);
                 innerMatch = _accessConstraints.Apply(innerMatch, referencingResourceType, this, lowerNode);
                 var referenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
                 var innerResourceTypeId = _leafContext.ResourceTypeId(referencingResourceType);
-                var outputResourceTypeIds = chain.TargetResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+                var outputResourceTypeIds = chain.TargetResourceTypes switch
+                {
+                    { Length: > 0 } targets => targets.Select(_leafContext.ResourceTypeId).ToList(),
+                    _ => throw new NotSupportedException(EmptyOutputSideMessage("Reverse", "target", "SearchKeyBinder.BindReverse")),
+                };
 
                 _ctes.Add(new CteDefinition.ChainJoin(innerMatch, referenceSearchParamId, innerResourceTypeId, outputResourceTypeIds, ChainDirection.Reverse));
                 return new CteRef(_ctes.Count - 1);
@@ -325,16 +330,22 @@ internal sealed class StructuralContext
             {
                 [var single] => single,
                 _ => throw new NotSupportedException(
-                    $"Forward chain resolved to {chain.TargetResourceTypes.Length} candidate target types -- the real binder " +
-                    "always resolves forward chains to exactly one target type before this point (SearchKeyBinder.BindForward " +
-                    "throws ChainedParameterSpecifyType on genuine ambiguity), so this is unexpected input."),
+                    $"Forward chain resolved to {chain.TargetResourceTypes.Length} candidate target types -- a forward chain " +
+                    "scopes its inner expression against exactly one target type, and the real binder resolves it that way " +
+                    "before this point (SearchKeyBinder.BindForward throws ChainedParameterSpecifyType on genuine " +
+                    "ambiguity). This is the only guard on that shape for IR built directly against the compiler API, so " +
+                    "it refuses rather than guessing."),
             };
 
             var forwardInnerMatch = lowerNode(chain.Expression, this, targetResourceType);
             forwardInnerMatch = _accessConstraints.Apply(forwardInnerMatch, targetResourceType, this, lowerNode);
             var forwardReferenceSearchParamId = _leafContext.SearchParamId(chain.ReferenceSearchParameter);
             var forwardInnerResourceTypeId = _leafContext.ResourceTypeId(targetResourceType);
-            var forwardOutputResourceTypeIds = chain.ResourceTypes.Select(_leafContext.ResourceTypeId).ToList();
+            var forwardOutputResourceTypeIds = chain.ResourceTypes switch
+            {
+                { Length: > 0 } referencing => referencing.Select(_leafContext.ResourceTypeId).ToList(),
+                _ => throw new NotSupportedException(EmptyOutputSideMessage("Forward", "referencing", "SearchKeyBinder.BindForward")),
+            };
 
             _ctes.Add(new CteDefinition.ChainJoin(forwardInnerMatch, forwardReferenceSearchParamId, forwardInnerResourceTypeId, forwardOutputResourceTypeIds, ChainDirection.Forward));
             return new CteRef(_ctes.Count - 1);
@@ -344,6 +355,14 @@ internal sealed class StructuralContext
             _chainDepth--;
         }
     }
+
+    /// <summary>The refusal for a chain whose <em>output</em> side named no resource type — a malformation
+    /// rather than the ambiguity the must-be-single sides guard against.</summary>
+    private static string EmptyOutputSideMessage(string direction, string side, string binderMethod)
+        => $"{direction} chain's {side} side resolved to 0 resource types -- a chain join filters its output rows to " +
+           "those types by interpolating an OR of type-id equalities into its WHERE clause, so an empty list emits " +
+           "no filter text at all and the statement does not parse. The real binder never produces this shape " +
+           $"({binderMethod}), so this guard covers IR built directly against the compiler API.";
 
     public CteRef LowerCompartment(CompartmentSearchExpression expression)
         => LowerCompartmentCore(expression.CompartmentType, expression.CompartmentId, expression.FilteredResourceTypes);

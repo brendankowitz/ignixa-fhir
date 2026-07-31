@@ -296,6 +296,30 @@ internal static class SqlBuilder
                 $"{offsetSpec.Offset} and Limit {offsetSpec.Limit}. OFFSET/FETCH rejects both at runtime.");
         }
 
+        // Guarded independently of Lower.Run because QueryPlan is a public construction surface. Every node
+        // that carries a resource-type list renders it as an OR of equalities and interpolates the joined
+        // string straight into its WHERE clause, so joining zero of them leaves the clause empty and the
+        // statement does not parse -- an opaque SQL Server error rather than a diagnosis here.
+        for (var i = 0; i < plan.Ctes.Count; i++)
+        {
+            var emptyTypeList = plan.Ctes[i] switch
+            {
+                CteDefinition.ChainJoin { OutputResourceTypeIds.Count: 0 } => nameof(CteDefinition.ChainJoin.OutputResourceTypeIds),
+                CteDefinition.ReferencedTypeExpansion { OutputResourceTypeIds.Count: 0 } => nameof(CteDefinition.ReferencedTypeExpansion.OutputResourceTypeIds),
+                CteDefinition.CompartmentSource { ResourceTypeIds.Count: 0 } => nameof(CteDefinition.CompartmentSource.ResourceTypeIds),
+                _ => null,
+            };
+
+            if (emptyTypeList is not null)
+            {
+                throw new NotSupportedException(
+                    $"Ctes[{i}].{emptyTypeList} names no resource type. The list is rendered as an OR of type-id " +
+                    "equalities and interpolated unconditionally into the WHERE clause, so an empty one emits no " +
+                    "filter text and the statement does not parse. Name the types the node should match, or remove " +
+                    "the node -- a node that should match nothing is not expressible as an absent filter.");
+            }
+        }
+
         // All three page guards below describe ways the emitted seek would disagree with the emitted ORDER BY.
         // A count emits neither -- EmitCountOnlyShape never reads Page -- so one exemption covers all three
         // rather than each restating it. Options-level callers cannot reach this at all: SearchPaging hangs off
