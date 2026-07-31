@@ -19,19 +19,21 @@ internal static class ResourceColumnLoweringRule
     /// never need a SearchParamId — callers that resolve or dispatch by SearchParamId must skip them.
     /// </summary>
     /// <remarks>
-    /// Delegates to <see cref="IntrinsicSearchParameters"/> so that this rule, the indexer that skips these
-    /// codes, and any host outside this assembly cannot disagree about the set. The alias is kept because
+    /// Delegates to <see cref="IntrinsicSearchParameters"/> so this rule, the indexer that skips these codes
+    /// and any host outside this assembly share one definition of the set. The alias is kept because
     /// "resource column" is the right word at the lowering call sites, which are about <em>this rule's</em>
-    /// applicability to dbo.Resource rather than about the storage-agnostic classification.
+    /// applicability to dbo.Resource rather than about the storage-agnostic classification. Note that
+    /// <see cref="TryLower"/> still enumerates the codes it can actually lower, so a code added to
+    /// <see cref="IntrinsicSearchParameters"/> must be given an arm there too.
     /// </remarks>
     public static bool IsResourceColumnCode(string parameterCode)
         => IntrinsicSearchParameters.IsIntrinsicCode(parameterCode);
 
     public static Predicate? TryLower(SearchParameterPredicateExpression predicate, LeafContext context) => predicate.Parameter.Code switch
     {
-        "_id" => IdEquals(predicate, context),
-        "_type" => TypeEquals(predicate, context),
-        "_lastUpdated" => LastUpdatedCompare(predicate, context),
+        SearchParameterNames.Id => IdEquals(predicate, context),
+        SearchParameterNames.ResourceType => TypeEquals(predicate, context),
+        SearchParameterNames.LastUpdated => LastUpdatedCompare(predicate, context),
         _ => null,
     };
 

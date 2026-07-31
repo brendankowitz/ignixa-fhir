@@ -36,17 +36,15 @@ public class IntrinsicSearchParametersTests
         // Arrange, Act
         var isIntrinsic = IntrinsicSearchParameters.IsIntrinsicCode(code);
 
-        // Assert: the comparison is ordinal and case-sensitive, matching how codes are compared
-        // everywhere else in the compiler. _tag and _profile are resource metadata but are indexed,
-        // so they are not intrinsic.
+        // Assert: the comparison is ordinal and case-sensitive. _tag and _profile are resource metadata
+        // but are extracted into the search index, so they are not intrinsic.
         isIntrinsic.ShouldBeFalse();
     }
 
     [Fact]
-    public void GivenTheCodes_WhenComparedToThePredicate_ThenEveryMemberIsRecognised()
+    public void GivenTheCodes_WhenEnumerated_ThenTheyAreTheThreeIntrinsicParameters()
     {
-        // Arrange, Act, Assert: the set and the predicate are one definition, so a code added to Codes
-        // is classified without anyone remembering to update a second literal.
-        IntrinsicSearchParameters.Codes.ShouldAllBe(code => IntrinsicSearchParameters.IsIntrinsicCode(code));
+        // Arrange, Act, Assert
+        IntrinsicSearchParameters.Codes.ShouldBe(["_id", "_type", "_lastUpdated"], ignoreOrder: true);
     }
 }

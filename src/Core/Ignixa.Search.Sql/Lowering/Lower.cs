@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
@@ -774,21 +775,21 @@ internal static class Lower
     /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceType/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated, _type or _id).</summary>
     internal static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
-        if (sortExpression.Parameter.Code == "_lastUpdated")
+        if (sortExpression.Parameter.Code == SearchParameterNames.LastUpdated)
         {
             return new SortKey(null, SortKeyKind.LastUpdated, sortExpression.SortOrder);
         }
 
-        if (sortExpression.Parameter.Code == "_id")
+        if (sortExpression.Parameter.Code == SearchParameterNames.Id)
         {
             return new SortKey(null, SortKeyKind.ResourceId, sortExpression.SortOrder);
         }
 
         // _type orders by the resource's type id (T1) -- the storage layer's own type ordering, not an ordering
         // over type names, which is what makes "_sort=_type,_lastUpdated" the natural (T1, Sid1) clustered order.
-        // _lastUpdated/_id/_type are exactly the codes ResourceColumnLoweringRule.IsResourceColumnCode recognises,
-        // so any code reaching the SearchParamId lookup below is a real search parameter Resolve collected.
-        if (sortExpression.Parameter.Code == "_type")
+        // These three are IntrinsicSearchParameters.Codes, so any code reaching the SearchParamId lookup below
+        // is a real search parameter Resolve collected.
+        if (sortExpression.Parameter.Code == SearchParameterNames.ResourceType)
         {
             return new SortKey(null, SortKeyKind.ResourceType, sortExpression.SortOrder);
         }

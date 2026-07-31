@@ -70,8 +70,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
         foreach (SearchParameterInfo searchParameter in searchParameters)
         {
-            // Skip intrinsic parameters (those handled at database/query level)
-            // These are queried directly against the resource record, not indexed in search parameter tables
+            // Intrinsic parameters are read from the resource record itself, so no index entry is emitted.
             if (IntrinsicSearchParameters.IsIntrinsicCode(searchParameter.Code))
                 continue;
 

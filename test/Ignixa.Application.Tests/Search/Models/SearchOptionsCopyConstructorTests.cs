@@ -6,6 +6,7 @@
 using System.Reflection;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
+using Shouldly;
 
 namespace Ignixa.Application.Tests.Search.Models;
 
@@ -20,21 +21,20 @@ public class SearchOptionsCopyConstructorTests
     public void GivenAFullyPopulatedInstance_WhenCopied_ThenEveryPublicSettablePropertyIsCarriedOver()
     {
         // Arrange: give every property a value distinguishable from its default, discovered by
-        // reflection so a newly added property is populated here without this test being edited.
+        // reflection so a newly added property of an already-handled type is covered without editing
+        // this test. Anything else fails here rather than passing silently.
         var source = new SearchOptions();
         var defaults = new SearchOptions();
         PropertyInfo[] properties = SettableProperties();
-        Assert.NotEmpty(properties);
+        properties.ShouldNotBeEmpty();
 
-        foreach (PropertyInfo property in properties)
+        foreach ((PropertyInfo property, int ordinal) in properties.Select((p, i) => (p, i)))
         {
-            object distinct = DistinctValueFor(property);
+            object distinct = DistinctValueFor(property, ordinal);
 
-            // Without this, a property whose distinct value happens to equal its default (any struct
-            // DistinctValueFor has no case for -- bool, Guid, DateTimeOffset) would be reported as
-            // carried over even when the constructor never assigns it.
-            Assert.False(
-                Equals(distinct, property.GetValue(defaults)),
+            // Without this, a property whose distinct value happened to equal its default would be
+            // reported as carried over even when the constructor never assigns it.
+            Equals(distinct, property.GetValue(defaults)).ShouldBeFalse(
                 $"DistinctValueFor produced {property.Name}'s default value, so a dropped assignment " +
                 "would go undetected. Extend DistinctValueFor to cover this property's type.");
 
@@ -51,10 +51,7 @@ public class SearchOptionsCopyConstructorTests
             .Select(p => p.Name)
             .ToList();
 
-        Assert.True(
-            dropped.Count == 0,
-            $"SearchOptions' copy constructor did not carry over: {string.Join(", ", dropped)}. " +
-            "Add the assignment in SearchOptions(SearchOptions).");
+        dropped.ShouldBeEmpty("Add the missing assignment(s) in SearchOptions(SearchOptions).");
     }
 
     [Fact]
@@ -78,20 +75,20 @@ public class SearchOptionsCopyConstructorTests
         };
 
         // Assert
-        Assert.Equal(10, source.MaxItemCount);
-        Assert.Equal("Patient", source.ResourceType);
-        Assert.Single(source.Include);
+        source.MaxItemCount.ShouldBe(10);
+        source.ResourceType.ShouldBe("Patient");
+        source.Include.Count.ShouldBe(1);
 
-        Assert.Equal(500, copy.MaxItemCount);
-        Assert.Equal("Observation", copy.ResourceType);
-        Assert.Empty(copy.Include);
+        copy.MaxItemCount.ShouldBe(500);
+        copy.ResourceType.ShouldBe("Observation");
+        copy.Include.ShouldBeEmpty();
     }
 
     [Fact]
     public void GivenNull_WhenCopied_ThenArgumentNullExceptionIsThrown()
     {
         // Arrange, Act, Assert
-        Assert.Throws<ArgumentNullException>(() => new SearchOptions(null!));
+        Should.Throw<ArgumentNullException>(() => new SearchOptions(null!));
     }
 
     private static readonly string[] WildcardIncludeResourceTypes = ["Patient"];
@@ -114,10 +111,12 @@ public class SearchOptionsCopyConstructorTests
             .ToArray();
 
     /// <summary>
-    /// Produces a value for <paramref name="property"/> that differs from the property's default, so a
-    /// dropped assignment shows up as a mismatch rather than coincidentally matching.
+    /// Produces a value for <paramref name="property"/> that differs both from the property's default and
+    /// from every other property's value, so that a dropped assignment shows up as a mismatch and a
+    /// transposed one (<c>StartSurrogateId = other.EndSurrogateId</c>) does not slip through two properties
+    /// that share a type.
     /// </summary>
-    private static object DistinctValueFor(PropertyInfo property)
+    private static object DistinctValueFor(PropertyInfo property, int ordinal)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
@@ -128,12 +127,12 @@ public class SearchOptionsCopyConstructorTests
 
         if (type == typeof(int))
         {
-            return 4242;
+            return 4242 + ordinal;
         }
 
         if (type == typeof(long))
         {
-            return 424242L;
+            return 424242L + ordinal;
         }
 
         if (type.IsEnum)
@@ -149,17 +148,25 @@ public class SearchOptionsCopyConstructorTests
             return new StringExpression(StringOperator.Equals, FieldName.String, componentIndex: null, "copy-ctor", ignoreCase: false);
         }
 
-        // Every remaining property is a collection; a fresh empty instance is a different reference from
-        // the default, which is what reference equality compares.
-        return Activator.CreateInstance(ConcreteCollectionFor(type))
-            ?? throw new InvalidOperationException($"No distinct value strategy for {property.Name} ({type}).");
+        // The strategy below assumes every remaining property is a collection; a fresh empty instance is a
+        // different reference from the default, which is what reference equality compares.
+        Type concrete = ConcreteCollectionFor(type)
+            ?? throw new InvalidOperationException(
+                $"No distinct value strategy for {property.Name} ({type}). Add a case to DistinctValueFor.");
+
+        return Activator.CreateInstance(concrete)!;
     }
 
+    /// <summary>
+    /// The instantiable collection type to stand in for <paramref name="type"/>, or null when there is no
+    /// strategy — returning null rather than letting <see cref="Activator"/> throw keeps the failure
+    /// actionable for whoever adds the next property.
+    /// </summary>
     private static Type ConcreteCollectionFor(Type type)
     {
         if (!type.IsGenericType)
         {
-            return type;
+            return type.IsInterface || type.IsAbstract || type.GetConstructor(Type.EmptyTypes) is null ? null : type;
         }
 
         Type definition = type.GetGenericTypeDefinition();
@@ -175,6 +182,6 @@ public class SearchOptionsCopyConstructorTests
             return typeof(HashSet<>).MakeGenericType(arguments);
         }
 
-        return type;
+        return null;
     }
 }

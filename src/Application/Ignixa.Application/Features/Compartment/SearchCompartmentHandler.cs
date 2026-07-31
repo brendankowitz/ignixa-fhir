@@ -84,8 +84,11 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
             ? Expression.And(compartmentExpression, request.SearchOptions.Expression)
             : compartmentExpression;
 
-        // Update SearchOptions with the combined expression (SearchOptions is mutable class)
-        request.SearchOptions.Expression = finalExpression;
+        // Copied rather than mutated: the caller still holds request.SearchOptions.
+        var compartmentSearchOptions = new SearchOptions(request.SearchOptions)
+        {
+            Expression = finalExpression,
+        };
 
         // 4. Determine partition(s) using IPartitionStrategy
         var partitionContext = new PartitionResolutionContext
@@ -114,7 +117,7 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         // The compartment search expression will handle resource type filtering.
         if (request.ResourceType == "*")
         {
-            request.SearchOptions.ResourceType = null;
+            compartmentSearchOptions.ResourceType = null;
 
             _logger.LogDebug(
                 "Wildcard compartment search detected - cleared ResourceType from SearchOptions");
@@ -125,7 +128,7 @@ public class SearchCompartmentHandler : IRequestHandler<SearchCompartmentQuery, 
         // which delegates to CompartmentSearchQueryGenerator for optimized query generation
         var resourceStream = _executionStrategy.SearchStreamAsync(
             partition,
-            request.SearchOptions,
+            compartmentSearchOptions,
             cancellationToken);
 
         // TODO: Calculate total count if requested (Phase 1.2a)

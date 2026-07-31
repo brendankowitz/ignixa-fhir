@@ -1,12 +1,11 @@
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Sql.Ast;
-using Shouldly;
-using Xunit;
 
 namespace Ignixa.Search.Sql.Tests;
 
 /// <summary>
-/// Pins the compiler's post-lowering sort-key classification to the storage-agnostic intrinsic set.
+/// A hand-maintained <see cref="SortKeyKind"/> to parameter-code table, guarded so a new kind cannot be
+/// added without a decision, and cross-checked against <see cref="IntrinsicSearchParameters.Codes"/>.
 /// </summary>
 public class IntrinsicSortKeyAgreementTests
 {
@@ -37,12 +36,11 @@ public class IntrinsicSortKeyAgreementTests
     {
         // Arrange: SortKeyKind draws the same distinction after lowering — a key backed by an intrinsic
         // parameter carries no SearchParamId.
-        string[] kindCodes = CodeByKind.Values.OfType<string>().ToArray();
+        HashSet<string> kindCodes = CodeByKind.Values.OfType<string>().ToHashSet(StringComparer.Ordinal);
 
-        // Act, Assert: both directions, so a fourth code added to one side without the other fails.
-        kindCodes.ShouldAllBe(code => IntrinsicSearchParameters.IsIntrinsicCode(code));
-        IntrinsicSearchParameters.Codes.Count.ShouldBe(
-            kindCodes.Length,
+        // Act, Assert: set equality, so a code added to either side alone fails — and, unlike a count
+        // comparison, so does mapping two kinds to the same code.
+        kindCodes.SetEquals(IntrinsicSearchParameters.Codes).ShouldBeTrue(
             "A code was added to IntrinsicSearchParameters.Codes without a matching SortKeyKind, or vice versa.");
     }
 }

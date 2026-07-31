@@ -28,16 +28,17 @@ public class SearchOptions
     /// <remarks>
     /// <para>
     /// This type is a mutable configuration object that callers routinely need to vary by one or two
-    /// properties — a <c>_total=accurate</c> pass that reuses a page's options but drops its includes, or a
-    /// data layer that must hand a compiler a request scoped differently from the one its caller holds.
-    /// Without a copy constructor the only options are to mutate the caller's instance, which leaks across
-    /// every other holder of that reference, or to hand-copy the properties at the call site, which silently
-    /// drops any property added later. Both have caused real defects.
+    /// properties — a search that re-requests one extra row to detect a further page, or a <c>$includes</c>
+    /// pass that widens the page and drops the caller's page boundary. Without a copy constructor the only
+    /// options are to mutate the caller's instance, which leaks across every other holder of that reference,
+    /// or to hand-copy the properties at the call site, which silently drops any property added later. Both
+    /// in-repo call sites previously hand-copied, and both had fallen nine properties behind.
     /// </para>
     /// <para>
-    /// The copy is shallow: collection properties are shared with <paramref name="other"/>. That is sound
-    /// because every one is typed as a read-only interface and this class never mutates them in place —
-    /// varying a collection means assigning a new one.
+    /// The copy is shallow: collection properties are shared with <paramref name="other"/>. Every one is
+    /// typed as a read-only interface and this class never mutates one in place — varying a collection means
+    /// assigning a new one. A caller that retains a concrete reference to a collection it assigned can still
+    /// mutate it and be seen by every copy; don't.
     /// </para>
     /// <para>
     /// A derived type is <em>not</em> preserved: copying through this constructor produces a
