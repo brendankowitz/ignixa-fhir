@@ -137,10 +137,11 @@ public class SearchOptionsCopyConstructorTests
 
         if (type.IsEnum)
         {
-            // The highest-valued member, so an enum whose default is its first member still differs. The
-            // guard in the caller catches the case where the default is the highest-valued member.
+            // Rotated by ordinal so two properties sharing an enum type still get different members and a
+            // transposition between them is caught. The guard in the caller catches the case where the
+            // rotation lands on the property's default.
             Array values = Enum.GetValues(type);
-            return values.GetValue(values.Length - 1)!;
+            return values.GetValue((values.Length - 1 - ordinal % values.Length + values.Length) % values.Length)!;
         }
 
         if (type == typeof(Expression))

@@ -70,11 +70,16 @@ public class IncludesResourceHandler(
             }
         }
 
+        // Both includes cursors are consumed above and applied by this handler, so they must not travel
+        // downstream: a data layer that honoured either would apply the offset twice or cap away the
+        // extra row FilterIncludesWithPaginationAsync needs to detect a further page.
         var searchOptionsWithoutLimit = new SearchOptions(request.SearchOptions)
         {
             MaxItemCount = Math.Min(request.SearchOptions.MaxItemCount * IncludesSearchMultiplier, MaxIncludesSearchLimit),
             ContinuationToken = null,
             Total = TotalType.None,
+            IncludesContinuationToken = null,
+            IncludesMaxItemCount = null,
         };
 
         logger.LogDebug(

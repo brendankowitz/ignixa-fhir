@@ -111,10 +111,13 @@ public class SearchOptionsForwardingTests
         ShouldKeepConstraints(executed, options);
 
         // The properties this handler deliberately varies: it widens the page to reach the includes, so it
-        // must not inherit the caller's page boundary or ask for a total.
+        // must not inherit the caller's page boundary or ask for a total. Both includes cursors are
+        // consumed here, so they must not travel downstream either.
         executed.ContinuationToken.ShouldBeNull();
         executed.Total.ShouldBe(TotalType.None);
         executed.MaxItemCount.ShouldBe(options.MaxItemCount * 10);
+        executed.IncludesContinuationToken.ShouldBeNull();
+        executed.IncludesMaxItemCount.ShouldBeNull();
     }
 
     [Fact]
@@ -186,6 +189,8 @@ public class SearchOptionsForwardingTests
         EndSurrogateId = 200,
         Elements = new HashSet<string> { "id" },
         Summary = SummaryType.Text,
+        IncludesMaxItemCount = 25,
+        IncludesContinuationToken = IncludesContinuationToken.Encode(includesOffset: 5, pageSize: 25),
     };
 
     private static void ShouldKeepConstraints(SearchOptions executed, SearchOptions requested)

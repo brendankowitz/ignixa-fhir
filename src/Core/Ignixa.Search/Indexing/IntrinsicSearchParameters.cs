@@ -24,11 +24,13 @@ namespace Ignixa.Search.Indexing;
 /// and so are not intrinsic.
 /// </para>
 /// <para>
-/// This lives here, storage-agnostic, rather than in a data layer because the classification is a property
-/// of the search parameters themselves, and a caller often has to make the call before it has a compiled
-/// plan to inspect — while it still holds only parameter codes. A SQL data layer draws the same line again
-/// after lowering: <c>SortKeyKind.LastUpdated</c>, <c>SortKeyKind.ResourceType</c> and
-/// <c>SortKeyKind.ResourceId</c> are exactly these three.
+/// This is a contract of Ignixa's indexing pipeline rather than a claim about storage in general: these
+/// three are never assigned a SearchParamId and <c>ElementSearchIndexer</c> never emits an entry for them,
+/// so a data layer must resolve them from its own record whether or not its store could have indexed them.
+/// It lives here rather than in a data layer because that contract is set here, and because a caller often
+/// has to make the call before it has a compiled plan to inspect — while it still holds only parameter
+/// codes. A SQL data layer draws the same line again after lowering: <c>SortKeyKind.LastUpdated</c>,
+/// <c>SortKeyKind.ResourceType</c> and <c>SortKeyKind.ResourceId</c> are exactly these three.
 /// </para>
 /// </remarks>
 public static class IntrinsicSearchParameters

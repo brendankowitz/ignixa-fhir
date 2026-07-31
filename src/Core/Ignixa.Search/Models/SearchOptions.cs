@@ -10,7 +10,7 @@ namespace Ignixa.Search.Models;
 /// <summary>
 /// Represents the parsed search query configuration.
 /// </summary>
-public class SearchOptions
+public sealed class SearchOptions
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="SearchOptions"/> class with default values.
@@ -39,10 +39,6 @@ public class SearchOptions
     /// typed as a read-only interface and this class never mutates one in place — varying a collection means
     /// assigning a new one. A caller that retains a concrete reference to a collection it assigned can still
     /// mutate it and be seen by every copy; don't.
-    /// </para>
-    /// <para>
-    /// A derived type is <em>not</em> preserved: copying through this constructor produces a
-    /// <see cref="SearchOptions"/>. A subclass that adds state must supply its own copy constructor.
     /// </para>
     /// </remarks>
     public SearchOptions(SearchOptions other)
