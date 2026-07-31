@@ -356,16 +356,13 @@ internal sealed class StructuralContext
         }
     }
 
-    /// <summary>The refusal for a chain whose <em>output</em> side named no resource type. Unlike the
-    /// must-be-single sides, an empty output list is not an ambiguity but a silent malformation: the emitter
-    /// renders the output types as an OR of equalities, and joining zero of them yields an empty string
-    /// interpolated into the WHERE clause, so the query fails at SQL Server as an opaque 500 rather than here
-    /// with a diagnosis.</summary>
+    /// <summary>The refusal for a chain whose <em>output</em> side named no resource type — a malformation
+    /// rather than the ambiguity the must-be-single sides guard against.</summary>
     private static string EmptyOutputSideMessage(string direction, string side, string binderMethod)
         => $"{direction} chain's {side} side resolved to 0 resource types -- a chain join filters its output rows to " +
-           "those types, and an empty list emits no filter at all rather than matching nothing. The real binder " +
-           $"never produces this shape ({binderMethod}), so this guard covers IR built directly against the " +
-           "compiler API.";
+           "those types by interpolating an OR of type-id equalities into its WHERE clause, so an empty list emits " +
+           "no filter text at all and the statement does not parse. The real binder never produces this shape " +
+           $"({binderMethod}), so this guard covers IR built directly against the compiler API.";
 
     public CteRef LowerCompartment(CompartmentSearchExpression expression)
         => LowerCompartmentCore(expression.CompartmentType, expression.CompartmentId, expression.FilteredResourceTypes);

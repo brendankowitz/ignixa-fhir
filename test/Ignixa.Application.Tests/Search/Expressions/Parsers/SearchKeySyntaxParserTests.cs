@@ -213,6 +213,47 @@ public class SearchKeySyntaxParserTests
         terminal.Modifier.ShouldBeNull();
     }
 
+    [Fact]
+    public void GivenAWildcardReferencePathInNotReferenced_WhenParsing_ThenTheReferencePathIsNull()
+    {
+        var syntax = SearchKeySyntaxParser.ParseNotReferenced("Observation:*");
+
+        syntax.SourceResourceType.ShouldBe("Observation");
+        syntax.ReferencePath.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("Observation:")]
+    [InlineData("Observation")]
+    [InlineData(":subject")]
+    [InlineData("Observation:subject:extra")]
+    public void GivenMalformedNotReferencedValue_WhenParsing_ThenThrowsPositionedSyntaxError(string value)
+    {
+        // "Observation:" is the at-end case: the reference path delegates to ParseIdentifier, which is what
+        // reports the missing identifier now that ParseNotReferencedPath does not test for the end itself.
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchKeySyntaxParser.ParseNotReferenced(value));
+
+        exception.Message.ShouldContain("_not-referenced value");
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain("column");
+    }
+
+    [Theory]
+    [InlineData("Observation")]
+    [InlineData("Observation:")]
+    [InlineData("Observation:subject:")]
+    [InlineData(":subject")]
+    public void GivenMalformedIncludeKey_WhenParsing_ThenThrowsPositionedSyntaxError(string key)
+    {
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchKeySyntaxParser.ParseInclude(key));
+
+        exception.Message.ShouldContain("include key");
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain("column");
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(".name")]

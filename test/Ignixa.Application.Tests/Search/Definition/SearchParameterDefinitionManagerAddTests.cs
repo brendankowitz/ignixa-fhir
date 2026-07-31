@@ -15,6 +15,12 @@ using Xunit;
 
 namespace Ignixa.Application.Tests.Search.Definition;
 
+/// <summary>Regression coverage for the <see cref="SearchParameterInfo.GetHashCode"/> / Equals consistency fix.
+/// Every rebuild injects a fresh <c>_type</c> definition carrying an expression, while the generated bundle
+/// already published one under the same canonical URL with a null expression. Equals calls them the same
+/// parameter on the URL alone; the old hash combined the expression too, so the two landed in different buckets,
+/// both survived the builder's HashSet union, and the following <c>ToDictionary</c> on Code threw on the
+/// duplicate key. Hashing on Url alone collapses them onto the entry already in the dictionary.</summary>
 public class SearchParameterDefinitionManagerAddTests
 {
     private readonly R4CoreSchemaProvider _schema = new();
@@ -28,8 +34,9 @@ public class SearchParameterDefinitionManagerAddTests
     [Fact]
     public void GivenASearchParameterAddedAtRuntime_WhenAnotherIsAddedLater_ThenBothAreRegistered()
     {
-        // A host that registers SearchParameters as they are created calls this once per definition.
-        // The second call must not disturb the definitions the first one produced.
+        // A host that registers SearchParameters as they are created calls this once per definition, and every
+        // call rebuilds. Each rebuild re-injects _type, so the duplicate-key throw fires on the first call
+        // already; asserting on two proves the second rebuild does not disturb what the first produced either.
         _manager.AddNewSearchParameters(new[] { CustomPatientParameter("first", "first-code") });
         _manager.AddNewSearchParameters(new[] { CustomPatientParameter("second", "second-code") });
 
@@ -40,8 +47,9 @@ public class SearchParameterDefinitionManagerAddTests
     [Fact]
     public void GivenASearchParameterAddedAtRuntime_WhenAnotherIsAddedLater_ThenTheResourceTypeParameterKeepsItsIdentity()
     {
-        // Re-running the build must republish the _type instance already in the dictionary: callers hold
-        // references to it, and status changes are applied by mutating that instance.
+        // Deduplicating on Url keeps the incumbent and drops the newly injected _type, so a caller that took a
+        // reference before the rebuild still holds the live instance. That matters because status flags
+        // (IsSearchable, IsSupported) are applied by mutating the instance, not by replacing the entry.
         _manager.TryGetSearchParameter("Patient", "_type", out SearchParameterInfo before).ShouldBeTrue();
 
         _manager.AddNewSearchParameters(new[] { CustomPatientParameter("third", "third-code") });
@@ -54,9 +62,11 @@ public class SearchParameterDefinitionManagerAddTests
     public void GivenASearchParameterAddedAtRuntime_WhenTheDefinitionsAreRebuilt_ThenResourceTypeResolvesToOneInstanceEverywhere()
     {
         // Counting _type per accessor proves nothing: both are dictionary values keyed on the field being
-        // counted (per-type by Code, AllSearchParameters by Url), so a second instance is unrepresentable
-        // there. Reference identity across the URL lookup, the base type and two concrete types is the
-        // observable evidence that the rebuild published one instance rather than a fresh one per pass.
+        // counted (per-type by Code, AllSearchParameters by Url), so a second entry is unrepresentable there.
+        // Reference identity across the URL lookup, the base type and two concrete types is the observable
+        // evidence that the two colliding definitions collapsed onto one object rather than being split
+        // across the two lookups, which would let a status mutation applied through one path go unseen by
+        // the other.
         _manager.AddNewSearchParameters(new[] { CustomPatientParameter("fourth", "fourth-code") });
 
         _manager.TryGetSearchParameter(SearchParameterNames.ResourceTypeUri, out SearchParameterInfo byUrl).ShouldBeTrue();

@@ -79,16 +79,18 @@ var searchableManager = new SearchableSearchParameterDefinitionManager(manager);
 var searchable = searchableManager.GetSearchParameters("Patient");
 
 // Optionally admit parameters that are registered but not yet reindexed ("partially indexed").
-// The delegate is consulted per call; omitting it defaults to refusing them.
+// Each accessor invokes the delegate exactly once and applies that answer to every result it
+// returns; omitting the delegate defaults to refusing them.
 var partial = new SearchableSearchParameterDefinitionManager(manager, () => true);
 ```
 
 :::warning Partially indexed parameters
 
 Opting in makes results **wrong in both directions**, not merely incomplete. A resource that has not been
-reindexed yet has no index rows for the parameter, so a positive filter omits it while a negated one
-(`:not`, `:missing=true`) returns it as a match. Nothing in the response bundle distinguishes such a
-result from a complete one, so only enable this when the caller has explicitly asked for partial results.
+reindexed yet has no index rows for the parameter, so a positive filter omits it, while a negation
+(`:not`, `:missing=true`) lowers to `Except(every resource of the type, the inner match)` and hands that
+same resource back as a match. Nothing in the response bundle distinguishes such a result from a complete
+one, so only enable this when the caller has explicitly asked for partial results.
 
 :::
 
@@ -124,11 +126,11 @@ public class SearchParameterInfo
     // Components (for composite parameters)
     public IReadOnlyList<SearchParameterComponentInfo> Component { get; }
 
-    // Whether this parameter is searchable
-    public bool IsSearchable { get; }
+    // Whether this parameter is searchable (mutated in place as reindexing progresses)
+    public bool IsSearchable { get; set; }
 
-    // Whether this parameter is supported
-    public bool IsSupported { get; }
+    // Whether this parameter is supported (mutated in place as reindexing progresses)
+    public bool IsSupported { get; set; }
 }
 ```
 

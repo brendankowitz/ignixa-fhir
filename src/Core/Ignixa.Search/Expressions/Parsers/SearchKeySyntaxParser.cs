@@ -300,23 +300,12 @@ internal static class SearchKeySyntaxParser
         /// </summary>
         private static bool IsIdentifierStart(char value)
         {
-            return IsAsciiLetter(value) || IsAsciiDigit(value) || value == '_';
+            return char.IsAsciiLetterOrDigit(value) || value == '_';
         }
 
         private static bool IsIdentifierPart(char value)
         {
             return IsIdentifierStart(value) || value == '-';
-        }
-
-        private static bool IsAsciiLetter(char value)
-        {
-            return (value >= 'A' && value <= 'Z')
-                || (value >= 'a' && value <= 'z');
-        }
-
-        private static bool IsAsciiDigit(char value)
-        {
-            return value >= '0' && value <= '9';
         }
     }
 }

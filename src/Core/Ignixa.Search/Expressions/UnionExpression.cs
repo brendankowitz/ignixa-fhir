@@ -9,22 +9,13 @@ namespace Ignixa.Search.Expressions;
 
 /// <summary>
 /// Represents a union expression that combines multiple independent row-producing legs. Intended for
-/// compartment searches; instances are created only through
-/// <see cref="Expression.Union(UnionOperator, IReadOnlyList{Expression})"/>, so that factory's call sites
-/// are the authoritative answer to which binders, if any, produce one.
+/// compartment searches.
 /// <para>
-/// Every consumer emits a <em>deduplicated</em> union regardless of <see cref="Operator"/>: the SQL lowering,
-/// the Entity Framework query builder and the in-memory interpreter all dedupe. That is not a shortcut —
-/// a leg yields <c>(ResourceTypeId, ResourceSurrogateId)</c> identities, so a duplicate is the same row
-/// admitted by two legs and never two distinct results. <c>UNION ALL</c> would therefore double-count that
-/// row in <c>_total</c> and let it consume two slots of a page, which makes the distinct union the only
-/// correct emission for either operator.
-/// </para>
-/// <para>
-/// <see cref="Operator"/> is nonetheless load-bearing outside lowering: it participates in
-/// <see cref="ValueInsensitiveEquals"/> and <see cref="AddValueInsensitiveHashCode"/>, so it is part of the
-/// node's structural identity, and it is rendered by <c>IrProjector</c> and <see cref="ToString"/>. Removing
-/// it would collapse two structurally distinct nodes and drop a field from the diagnostics.
+/// No consumer honours <see cref="Operator"/>: every one of them emits a <em>deduplicated</em> union. That is
+/// not a shortcut — a leg yields <c>(ResourceTypeId, ResourceSurrogateId)</c> identities, so a duplicate is one
+/// row admitted by two legs and never two distinct results. <c>UNION ALL</c> would double-count that row in
+/// <c>_total</c> and let it consume two slots of a page, which makes the distinct union the only correct
+/// emission for either operator.
 /// </para>
 /// </summary>
 public class UnionExpression : Expression

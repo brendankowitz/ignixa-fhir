@@ -3441,6 +3441,30 @@ public class EmitTests
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 
+    public static TheoryData<string, CteDefinition> EmptyResourceTypeListNodes() => new()
+    {
+        { "ChainJoin/Forward", new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [], ChainDirection.Forward) },
+        { "ChainJoin/Reverse", new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [], ChainDirection.Reverse) },
+        { "ReferencedTypeExpansion", new CteDefinition.ReferencedTypeExpansion(new CteRef(0), OutputResourceTypeIds: []) },
+        { "CompartmentSource", new CteDefinition.CompartmentSource([], 77, new Predicate.Equal(new SqlColumnRef("ReferenceSearchParam", "ReferenceResourceId"), new SqlParameterRef("123"))) },
+    };
+
+    [Theory]
+    [MemberData(nameof(EmptyResourceTypeListNodes))]
+    public void GivenACteWhoseResourceTypeListIsEmpty_WhenEmitted_ThenItIsRefusedRatherThanEmittingAnEmptyFilter(
+        string scenario, CteDefinition node)
+    {
+        // Each of these renders its type list as an OR of equalities and interpolates the joined string
+        // straight into its WHERE clause, so an empty list emits nothing where a filter belongs and the
+        // statement does not parse. Lower refuses the chain shape at LowerChain, but QueryPlan is a public
+        // construction surface and `plan with { Query = … }` is a documented rewrite, so the emitter mirrors
+        // it -- otherwise the failure reaches SQL Server as a syntax error with no diagnosis.
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103), node], new CteRef(1));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan), $"{scenario} emitted SQL instead of refusing")
+            .Message.ShouldContain("names no resource type");
+    }
+
     [Fact]
     public void GivenAnIncludesOnlyPageWhoseStagesHaveDifferingLimits_WhenEmitted_ThenItIsRefusedRatherThanPagingOnAnArbitraryBudget()
     {

@@ -17,9 +17,12 @@ internal static class Lower
 {
     /// <summary>Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
     /// lowers the remaining expression (or a bare resource source) into the CTE graph, then attaches includes,
-    /// sort, and paging. A null target type is allowed only for a wildcard compartment or system-level search;
-    /// :not/:missing=true, _not-referenced, :text, _include/_revinclude and _sort still require one and throw. A
-    /// chain does not: it names its own types (see <see cref="LowerNode"/>).</summary>
+    /// sort, and paging. A null target type is allowed only for a wildcard compartment or system-level search,
+    /// and the two differ. A wildcard compartment search admits a CompartmentSearchExpression and
+    /// resource-column predicates only — every other residue throws, a chain included — and rejects _sort. A
+    /// system-level search lowers its leaves cross-type and accepts both _sort and a chain (which names its own
+    /// types, see <see cref="LowerNode"/>), but still rejects :not/:missing=true, _not-referenced, :text and
+    /// $everything. _include/_revinclude throws under either.</summary>
     internal static LoweredPlan Run(CompilationContext context, SymbolTable symbols)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -334,16 +337,12 @@ internal static class Lower
 
     /// <summary>Dispatches one expression node to the lowering path for its kind. A null
     /// <paramref name="resourceType"/> reaches here only under system-level search, and a chain tolerates it: a
-    /// chain names its own types — a reverse chain scopes its inner expression against its single referencing
-    /// type and emits its target types, a forward chain the mirror image — so the ambient scope is unused and
-    /// none is passed on. The guard for a side that resolved to anything other than exactly one type therefore
-    /// lives in <see cref="StructuralContext.LowerChain"/>, where both directions reach it. Those type names come
-    /// from the IR and resolve to concrete ids (or <see cref="SymbolTable.UnmatchableResourceTypeId"/> for a name
-    /// the resolver could not find), never to an absent type filter, so an enclosing cross-type intersection
-    /// stays well-typed. <see cref="UnionExpression"/> documents why either union operator lowers to a distinct
-    /// union; note the OR and union arms below are not interchangeable — a union leg goes through
-    /// <see cref="LowerScopedExpression"/>, which can recover a per-leg type under a null scope, while an OR's
-    /// operands are alternative values of one parameter and lower with the ambient scope as-is.</summary>
+    /// chain names its own types (a reverse chain scopes its inner expression against its referencing type and
+    /// emits its target types, a forward chain the mirror image), so the ambient scope is unused and none is
+    /// passed on. Every guard on those types therefore lives in <see cref="StructuralContext.LowerChain"/>,
+    /// where both directions reach it. The OR and union arms below look mergeable and are not: a union leg goes
+    /// through <see cref="LowerScopedExpression"/>, which can recover a per-leg type under a null scope, while
+    /// an OR's operands are alternative values of one parameter and lower with the ambient scope as-is.</summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(

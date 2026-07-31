@@ -1389,8 +1389,9 @@ public class LowerTests
     {
         // The output side has no ambiguity to resolve, so it has no single-type guard -- but an empty list is
         // worse than an ambiguous one: EmitChainJoin string.Joins the output equalities, and joining none of
-        // them interpolates an empty string straight into the WHERE clause. Without this guard the failure
-        // surfaces as a SQL Server syntax error at query time instead of a diagnosis at compile time.
+        // them interpolates an empty string straight into the WHERE clause, which does not parse. Refusing at
+        // lowering names the chain that produced it; SqlBuilder.RejectUnsupportedCombinations carries the same
+        // check as a backstop for a QueryPlan built without going through Lower.
         var chain = ReverseChain(["Device"], []);
 
         Should.Throw<NotSupportedException>(() => LowerHarness.Run(
@@ -1419,10 +1420,10 @@ public class LowerTests
     {
         // Arrange -- GET /?_type=Patient,Device&_has:Observation:subject:code=4548-4, the production shape:
         // SearchKeyBinder.BindReverse computes the targets as the reference parameter's own targets INTERSECT
-        // the requested types, which is routinely more than one. Only the referencing side is constrained to
-        // a single type, so a multi-target output is legal -- and it is the only path that reaches
-        // EmitChainJoin's parenthesisation branch, where an unparenthesised OR would bind loosely against the
-        // sibling AND terms and silently widen the join.
+        // the requested types, which is routinely more than one. Only the referencing side is constrained to a
+        // single type, so a multi-target output is legal, and it reaches EmitChainJoin's parenthesisation
+        // branch, where an unparenthesised OR would bind loosely against the sibling AND terms and silently
+        // widen the join. The forward sibling below covers the same branch from the other direction.
         var chain = ReverseChain(["Observation"], ["Patient", "Device"]);
 
         // Act
@@ -1469,8 +1470,8 @@ public class LowerTests
     {
         // Arrange -- GET /?_type=Device&_has:Device:subject:code=4548-4. The chain emits Patient identities
         // while the caller asked only for Device, so the requested-type narrowing is the only thing that keeps
-        // the answer empty. The sibling chain tests all pick chain types inside ResourceTypes and never assert
-        // the narrowing set, so an implementation that skipped NarrowToRequestedTypes would still pass them.
+        // the answer empty. The sibling chain tests all pick chain types inside ResourceTypes and assert only
+        // that an Intersect is there, never which types it narrows to; this one pins the narrowing set itself.
         var chain = ReverseChain(["Device"], ["Patient"]);
 
         // Act
@@ -1510,8 +1511,9 @@ public class LowerTests
     {
         // Arrange -- depth 2 under a null ambient scope. LowerChain passes a concrete type into lowerNode for
         // its inner expression in both directions, so a chain reached inside another chain's scope never sees
-        // the null. The invariant is real but nothing asserted it, and it is what lets the outer chain tolerate
-        // a null ambient scope without the tolerance leaking further down.
+        // the null. EndToEndCompilationTests' GivenANestedChainTwoLevelsDeep covers depth 2 only under a typed
+        // target, where there is no null to leak; this is what lets the outer chain tolerate a null ambient
+        // scope without the tolerance leaking further down.
         var inner = ReverseChain(["Device"], ["Patient"]);
         var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
         var outer = new ChainedExpression(["Observation"], subjectParam, ["Patient"], reversed: false, inner);

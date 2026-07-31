@@ -123,6 +123,39 @@ public class SearchableSearchParameterDefinitionManagerTests
     }
 
     [Fact]
+    public void GivenADelegateWhoseAnswerChanges_WhenTheSameSequenceIsEnumeratedTwice_ThenBothPassesAgree()
+    {
+        // The delegate is consulted once when the accessor is called, not once per element, so the sequence it
+        // hands back is a snapshot: re-enumerating it cannot pick up an answer the caller never asked for.
+        SetStatus(isSearchable: false, isSupported: true);
+
+        var calls = 0;
+        var searchable = new SearchableSearchParameterDefinitionManager(_inner, () => calls++ == 0);
+
+        IEnumerable<SearchParameterInfo> parameters = searchable.GetSearchParameters("Patient");
+
+        parameters.ShouldContain(p => p.Code == CustomCode);
+        parameters.ShouldContain(p => p.Code == CustomCode);
+        calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenADelegateThatThrows_WhenAnAccessorIsCalled_ThenItFaultsAtTheCallRatherThanAtEnumeration()
+    {
+        // AllSearchParameters is a property and GetSearchParameters returns a deferred sequence, so a
+        // per-element delegate would surface the host's failure at the consumer's first MoveNext with no
+        // frame naming this class. Snapshotting at entry keeps the fault on the caller's own stack.
+        var searchable = new SearchableSearchParameterDefinitionManager(
+            _inner,
+            () => throw new InvalidOperationException("host refused"));
+
+        Should.Throw<InvalidOperationException>(() => searchable.GetSearchParameters("Patient"));
+        Should.Throw<InvalidOperationException>(() => _ = searchable.AllSearchParameters);
+        Should.Throw<InvalidOperationException>(
+            () => searchable.TryGetSearchParameters("Patient", out IEnumerable<SearchParameterInfo> _));
+    }
+
+    [Fact]
     public void GivenAnUnknownResourceType_WhenSearchParametersAreRequested_ThenItReportsMissing()
     {
         var searchable = new SearchableSearchParameterDefinitionManager(_inner);
