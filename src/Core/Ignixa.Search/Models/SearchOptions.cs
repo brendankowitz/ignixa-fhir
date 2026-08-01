@@ -10,8 +10,63 @@ namespace Ignixa.Search.Models;
 /// <summary>
 /// Represents the parsed search query configuration.
 /// </summary>
-public class SearchOptions
+public sealed class SearchOptions
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptions"/> class with default values.
+    /// </summary>
+    public SearchOptions()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptions"/> class as a shallow copy of
+    /// <paramref name="other"/>.
+    /// </summary>
+    /// <param name="other">The instance to copy every property from.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This type is a mutable configuration object that callers routinely need to vary by one or two
+    /// properties — a search that re-requests one extra row to detect a further page, or a <c>$includes</c>
+    /// pass that widens the page and drops the caller's page boundary. Without a copy constructor the only
+    /// options are to mutate the caller's instance, which leaks across every other holder of that reference,
+    /// or to hand-copy the properties at the call site, which silently drops any property added later. Both
+    /// in-repo call sites previously hand-copied, and both had fallen nine properties behind.
+    /// </para>
+    /// <para>
+    /// The copy is shallow: collection properties are shared with <paramref name="other"/>. Every one is
+    /// typed as a read-only interface and this class never mutates one in place — varying a collection means
+    /// assigning a new one. A caller that retains a concrete reference to a collection it assigned can still
+    /// mutate it and be seen by every copy; don't.
+    /// </para>
+    /// </remarks>
+    public SearchOptions(SearchOptions other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        MaxItemCount = other.MaxItemCount;
+        ContinuationToken = other.ContinuationToken;
+        Expression = other.Expression;
+        Sort = other.Sort;
+        Include = other.Include;
+        RevInclude = other.RevInclude;
+        Elements = other.Elements;
+        Total = other.Total;
+        Summary = other.Summary;
+        UnsupportedParams = other.UnsupportedParams;
+        BundleIssues = other.BundleIssues;
+        ResourceType = other.ResourceType;
+        ResourceTypes = other.ResourceTypes;
+        StartSurrogateId = other.StartSurrogateId;
+        EndSurrogateId = other.EndSurrogateId;
+        IncludesMaxItemCount = other.IncludesMaxItemCount;
+        IncludesContinuationToken = other.IncludesContinuationToken;
+        ResourceVersionTypes = other.ResourceVersionTypes;
+        AccessConstraints = other.AccessConstraints;
+        AllowedResourceTypes = other.AllowedResourceTypes;
+    }
+
     /// <summary>
     /// Gets or sets the maximum number of items to return per page.
     /// </summary>
