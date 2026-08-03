@@ -71,7 +71,7 @@ public class ResourceColumnLoweringRuleTests
     public void GivenATypeParameterNamingATypeTheResolverCouldNotFind_WhenTried_ThenLowersToADiagnosablePredicateFalse()
     {
         // Arrange — Resolve records an unfound type as UnmatchableResourceTypeId (-1). Equal(col, -1) is
-        // already unsatisfiable, but only Predicate.False carries the reason SearchCompiler reports as a
+        // already unsatisfiable, but only Predicate.False carries the reason SearchSqlCompiler reports as a
         // KnownMiss; anything else leaves the miss discoverable only by spotting a magic -1 in the SQL.
         var predicate = new SearchParameterPredicateExpression(TypeParameter(), SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "Nonexistent", text: null));
         var context = ContextResolving("Nonexistent", SymbolTable.UnmatchableResourceTypeId);
@@ -125,15 +125,53 @@ public class ResourceColumnLoweringRuleTests
     }
 
     [Fact]
-    public void GivenAPartialPrecisionLastUpdatedParameter_WhenTried_ThenThrows()
+    public void GivenAPartialPrecisionLastUpdatedParameter_WhenTried_ThenBoundsTheWholeNamedRange()
     {
         // Arrange -- "_lastUpdated=2023" (year-only precision). DateTimeSearchValue.Parse("2023") runs
         // it through PartialDateTime.Parse (only Year is set) and widens it to a non-degenerate range
-        // ([2023-01-01T00:00:00.0000000Z, 2023-12-31T23:59:59.9999999Z]), not a single instant.
+        // ([2023-01-01T00:00:00.0000000Z, 2023-12-31T23:59:59.9999999Z]), not a single instant. The
+        // resource side is still a point, so eq is a containment of that point in the named range.
         var value = DateTimeSearchValue.Parse("2023");
         var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Eq, modifier: null, value);
 
-        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+        // Act
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        // Assert -- the bounds come from BOTH endpoints of the range, not from Start twice. Pinning the
+        // upper bound to December is what distinguishes a real range from a degenerate one collapsed
+        // onto its start.
+        var and = result.ShouldBeOfType<Predicate.And>();
+        var lower = and.Left.ShouldBeOfType<Predicate.GreaterThanOrEqual>();
+        var upper = and.Right.ShouldBeOfType<Predicate.LessThanOrEqual>();
+
+        var januaryFloor = new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks << 3;
+        var decemberFloor = new DateTime(2023, 12, 31, 23, 59, 59, 999, DateTimeKind.Utc).Ticks << 3;
+
+        lower.Value.Value.ShouldBe(januaryFloor);
+        upper.Value.Value.ShouldBe(decemberFloor + 79999);
+    }
+
+    [Fact]
+    public void GivenAPartialPrecisionLastUpdatedRange_WhenLoweredWithGeAndLe_ThenEachUsesTheEndpointTheSpecNames()
+    {
+        // Arrange -- the asymmetry is the point: ge relates the resource point to the START of the named
+        // range and le to its END. Collapsing either onto the other endpoint silently shifts the window by
+        // a whole year here, which no single-comparator assertion would catch.
+        var value = DateTimeSearchValue.Parse("2023");
+        var januaryFloor = new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks << 3;
+        var decemberFloor = new DateTime(2023, 12, 31, 23, 59, 59, 999, DateTimeKind.Utc).Ticks << 3;
+
+        // Act
+        var ge = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, null, value),
+            ContextResolving("Patient", 103));
+        var le = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Le, null, value),
+            ContextResolving("Patient", 103));
+
+        // Assert
+        ge.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Value.Value.ShouldBe(januaryFloor);
+        le.ShouldBeOfType<Predicate.LessThanOrEqual>().Value.Value.ShouldBe(decemberFloor + 79999);
     }
 
     [Fact]
@@ -206,7 +244,7 @@ public class ResourceColumnLoweringRuleTests
     }
 
     [Fact]
-    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingLowerRun()
+    public void GivenAnApComparatorLastUpdatedParameterWithNoReferenceTime_WhenTried_ThenThrowsInvalidOperationExceptionNamingSearchSqlCompiler()
     {
         // Arrange -- ApproximateDateRange.Widen (the shared helper Task 3 already covers directly)
         // requires an explicit reference instant; this proves this rule's :ap call site surfaces that
@@ -216,19 +254,45 @@ public class ResourceColumnLoweringRuleTests
 
         var exception = Should.Throw<InvalidOperationException>(
             () => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
-        exception.Message.ShouldContain("Lower.Run");
+        exception.Message.ShouldContain("SearchSqlCompiler");
     }
 
     [Fact]
-    public void GivenANonApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenStillThrows()
+    public void GivenANonApComparatorPartialPrecisionLastUpdatedParameter_WhenTried_ThenUsesTheNamedRangeRatherThanWidening()
     {
-        // Arrange -- proves the partial-precision guard remains in force for every comparator except
-        // :ap (e.g. :ge here, distinct from the :eq case already covered above), so :ap's new
-        // Widen-based handling can't have accidentally loosened it for the others.
+        // Arrange -- :ap widens the named range using the approximation reference time; every other
+        // comparator must use the range exactly as parsed. Without this the two paths could silently
+        // converge and :ge would inherit :ap's widening.
         var value = DateTimeSearchValue.Parse("2023");
         var predicate = new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, modifier: null, value);
 
-        Should.Throw<NotSupportedException>(() => ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103)));
+        // Act -- note the context supplies no approximation reference time, which :ap would require.
+        var result = ResourceColumnLoweringRule.TryLower(predicate, ContextResolving("Patient", 103));
+
+        // Assert
+        var januaryFloor = new DateTime(2023, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks << 3;
+        result.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Value.Value.ShouldBe(januaryFloor);
+    }
+
+    [Fact]
+    public void GivenAnExactInstantLastUpdated_WhenLoweredWithEveryComparator_ThenTheRangeFormulaReducesToTheSingleBucket()
+    {
+        // A degenerate range (Start == End) must still address exactly the millisecond bucket the instant
+        // names -- the generalisation to partial-precision ranges must not have moved the exact-instant
+        // case, which is the shape every existing caller relies on.
+        var instant = new DateTimeOffset(2023, 6, 15, 12, 30, 0, TimeSpan.Zero);
+        var value = new DateTimeSearchValue(instant);
+        var floor = new DateTime(2023, 6, 15, 12, 30, 0, DateTimeKind.Utc).Ticks << 3;
+
+        var ge = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Ge, null, value),
+            ContextResolving("Patient", 103));
+        var le = ResourceColumnLoweringRule.TryLower(
+            new SearchParameterPredicateExpression(LastUpdatedParameter(), SearchComparator.Le, null, value),
+            ContextResolving("Patient", 103));
+
+        ge.ShouldBeOfType<Predicate.GreaterThanOrEqual>().Value.Value.ShouldBe(floor);
+        le.ShouldBeOfType<Predicate.LessThanOrEqual>().Value.Value.ShouldBe(floor + 79999);
     }
 
     /// <summary>

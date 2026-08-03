@@ -1,84 +1,141 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
+using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Catalog;
+using Ignixa.Search.Sql.Compilation;
 using Ignixa.Search.Sql.Symbols;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Lowering;
 
-/// <summary>
-/// The compiler's Lower stage: turns a bound Expression tree into a <see cref="QueryPlan"/>. It handles
-/// ANDed/ORed predicate leaves, wrapped composites, forward and reverse chains at any nesting depth,
-/// compartment searches, and _include/_revinclude/_sort/paging. The resulting plan is a pure value; all
-/// I/O already happened in Resolve. CountOnly is the only "count instead of rows" concept the compiler
-/// exposes — there is no _total vocabulary here.
-/// </summary>
-public static class Lower
+/// <summary>The compiler's Lower stage: turns a bound Expression tree into a <see cref="QueryPlan"/>, a pure
+/// value (all I/O already happened in Resolve). Handles predicate leaves, composites, chains up to
+/// <c>StructuralContext.MaxChainDepth</c>,
+/// compartment searches, and _include/_revinclude/_sort/paging.</summary>
+internal static class Lower
 {
-    /// <summary>
-    /// Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
-    /// lowers the remaining expression (or a bare resource source when there is none) into the CTE graph,
-    /// then attaches include stages, a sort spec, and paging. A null target resource type is allowed for a
-    /// wildcard compartment search, or -- when <see cref="LowerOptions.SystemLevelSearch"/> is set -- for a
-    /// system-level (cross-type) search of ordinary leaf/composite/AND/OR predicates. Even under system-level
-    /// search, chain, :not/:missing=true, _not-referenced, :text, _include/_revinclude, and _sort still
-    /// require a single target type and throw. The optional inputs -- paging caps, visibility, surrogate
-    /// range, hash gating, the base-set types, and the access constraints -- are grouped on
-    /// <see cref="LowerOptions"/> so each is passed by name.
-    /// </summary>
-    public static LoweredPlan Run(
-        Expression? expression,
-        SymbolTable symbols,
-        string? targetResourceType,
-        IReadOnlyList<IncludeExpression> includes,
-        IReadOnlyList<IncludeExpression> revIncludes,
-        int includeLimit,
-        IReadOnlyList<SortExpression> sort,
-        SortPhase sortPhase,
-        PageSpec? page,
-        LowerOptions? options = null)
+    /// <summary>Lowers a whole search into a QueryPlan: extracts resource-column predicates into an outer WHERE,
+    /// lowers the remaining expression (or a bare resource source) into the CTE graph, then attaches includes,
+    /// sort, and paging. A null target type is allowed only for a wildcard compartment or system-level search,
+    /// and the two differ. A wildcard compartment search admits a CompartmentSearchExpression and
+    /// resource-column predicates only — every other residue throws, a chain included — and rejects _sort. A
+    /// system-level search lowers its leaves cross-type and accepts both _sort and a chain (which names its own
+    /// types, see <see cref="LowerNode"/>), but still rejects :not/:missing=true, _not-referenced, :text and
+    /// $everything. _include/_revinclude throws under either.</summary>
+    internal static LoweredPlan Run(CompilationContext context, SymbolTable symbols)
     {
-        options ??= new LowerOptions();
+        ArgumentNullException.ThrowIfNull(context);
 
-        if (options.OffsetPage is not null && (page is not null || options.Top is not null))
+        var options = context.Options;
+        var expression = context.Expression;
+        var targetResourceType = context.TargetResourceType;
+        var includes = context.Includes;
+        var revIncludes = context.RevIncludes;
+        var includeLimit = options.IncludeLimit;
+        var sort = context.Sort;
+
+        var sortPhase = options.SortPhase;
+        var shape = options.Shape;
+        var includesOnly = shape is ResultShape.IncludesPage;
+
+        // Paging hangs off Matches, so a count or an includes page cannot carry one at all — the combinations
+        // those shapes reject are unrepresentable here rather than guarded. Paging is itself one closed choice,
+        // so the T-SQL restriction that TOP cannot combine with OFFSET/FETCH (error 10741) needs no guard
+        // either: only one of these locals can be non-null.
+        var paging = (shape as ResultShape.Matches)?.Paging;
+        var keyset = paging as SearchPaging.Keyset;
+        var top = keyset?.Top;
+        var page = keyset?.Boundary;
+
+        OffsetSpec? offsetPage = null;
+
+        if (paging is SearchPaging.Offset offset)
         {
-            throw new NotSupportedException(
-                "OffsetPage cannot combine with keyset paging or Top: OFFSET/FETCH and TOP are mutually exclusive in T-SQL (error 10741).");
+            // A positional record parameter cannot enforce non-nullness against a caller who ignores the
+            // annotation, and a null Spec would fall through to an unpaged statement returning every row.
+            offsetPage = offset.Spec
+                ?? throw new NotSupportedException(
+                    "SearchPaging.Offset requires an OffsetSpec. Use SearchPaging.Keyset, or leave Paging null, " +
+                    "to compile without an OFFSET/FETCH page.");
+
+            if (offsetPage.Offset < 0 || offsetPage.Limit <= 0)
+            {
+                throw new NotSupportedException(
+                    $"OffsetSpec must skip a non-negative row count and fetch a positive one; got Offset " +
+                    $"{offsetPage.Offset} and Limit {offsetPage.Limit}. OFFSET/FETCH rejects both at runtime.");
+            }
         }
 
-        if (options.CountPhaseScoped && (!options.CountOnly || sort.Count == 0))
+        if (top is < 0)
         {
             throw new NotSupportedException(
-                "CountPhaseScoped requires CountOnly with at least one sort key: there is no sort phase to scope the count to otherwise.");
+                $"Top must not be negative; got {top}. A negative TOP is not a smaller page, it is a SQL Server " +
+                "runtime error, so it is reported at compile time instead.");
         }
 
-        var accessConstraintApplier = new AccessConstraintApplier(options.AccessConstraints);
-        var context = new StructuralContext(symbols, options.ApproximationReferenceTime, accessConstraintApplier);
+        if (includeLimit is < 0 or int.MaxValue)
+        {
+            throw new NotSupportedException(
+                $"IncludeLimit must be between 0 and {int.MaxValue - 1}; got {includeLimit}. The budget is " +
+                "emitted as TOP (IncludeLimit + 1) — a negative value is a SQL Server runtime error, and " +
+                "int.MaxValue overflows the probe to a negative TOP. Use 0 to detect included resources " +
+                "without fetching them.");
+        }
+
+        if (!Enum.IsDefined(sortPhase))
+        {
+            throw new NotSupportedException(
+                $"SortPhase '{(int)sortPhase}' is not a phase this compiler recognises. Any value other than " +
+                $"{nameof(SortPhase)}.{nameof(SortPhase.MissingPrimary)} would read the Valued segment, " +
+                "handing back rows a caller driving the two-phase loop has already seen.");
+        }
+
+        // The count guard runs first: for a phase-restricted count with no _sort, both guards apply, and the
+        // generic one would advise switching to SortPhase.Valued, which leaves the count still unsatisfiable.
+        if (shape is ResultShape.Count.CurrentSortPhase && sort.Count == 0)
+        {
+            throw new NotSupportedException(
+                "A count was asked to restrict itself to the sort phase but the query has no _sort, so there is " +
+                "no segment to restrict it to. Use ResultShape.Count.AllMatches to count the whole match set.");
+        }
+
+        // The MissingPrimary segment is defined by the absence of the primary sort key, so with no _sort there
+        // is no such segment. Emitting the phase-free statement instead hands back an ordinary first page, and a
+        // caller driving the two-phase loop would re-read every row it already saw.
+        if (sortPhase is SortPhase.MissingPrimary && sort.Count == 0)
+        {
+            throw new NotSupportedException(
+                "SortPhase.MissingPrimary was requested but the query has no _sort, so there is no primary sort " +
+                "key to be missing and no second segment to read. Use SortPhase.Valued for an unsorted query.");
+        }
+
+        var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);
+        var allowedResourceTypeFilter = new AllowedResourceTypeFilter(context.AllowedResourceTypes, symbols);
+        var lowerContext = new StructuralContext(symbols, context.ApproximationReferenceTime, accessConstraintApplier);
         CteRef match;
         Predicate? outerPredicate = null;
 
-        // The node the match set was actually lowered from. Not always `expression`: the resource-column
-        // extraction below peels _id/_type/_lastUpdated off an And and leaves the residue, so the two
-        // diverge for a query like `$everything AND _lastUpdated ge X`. The access-constraint dispatch
-        // downstream has to read this one -- picking its enforcement method from `expression` would see a
-        // MultiaryExpression where the match set is a multi-type union, and choose the single-type Apply.
+        // The node the match set was actually lowered from, not `expression`: resource-column extraction below
+        // peels _id/_type/_lastUpdated off an And and leaves the residue. The access-constraint dispatch must
+        // read this one -- reading `expression` would misclassify a multi-type union as single-type.
         Expression? matchSource = expression;
 
         if (expression is null)
         {
-            match = LowerBaseSet(context, targetResourceType, options.ResourceTypes);
+            match = LowerBaseSet(lowerContext, targetResourceType, context.ResourceTypes);
         }
         else
         {
-            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
+            var (remaining, extractedPredicate) = ExtractResourceColumnPredicates(expression, lowerContext.LeafContext);
             outerPredicate = extractedPredicate;
             matchSource = remaining;
             match = remaining switch
             {
-                null => LowerBaseSet(context, targetResourceType, options.ResourceTypes),
-                CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
-                _ when targetResourceType is null && !options.SystemLevelSearch => throw new NotSupportedException(
+                null => LowerBaseSet(lowerContext, targetResourceType, context.ResourceTypes),
+                CompartmentSearchExpression compartment => lowerContext.LowerCompartment(compartment),
+                _ when targetResourceType is null && !context.SystemLevelSearch => throw new NotSupportedException(
                     "A search with no single target resource type (a wildcard compartment search) can only " +
                     "combine with a CompartmentSearchExpression and resource-column predicates -- an ordinary " +
                     "typed search parameter alongside it has no single resource type to scope it against, " +
@@ -86,10 +143,10 @@ public static class Lower
                 // targetResourceType may be null here, but only under SystemLevelSearch: the leaves lower
                 // with no type scope and the requested types narrow the result set instead.
                 _ => NarrowToRequestedTypes(
-                    LowerNode(remaining, context, targetResourceType),
-                    context,
+                    LowerNode(remaining, lowerContext, targetResourceType),
+                    lowerContext,
                     targetResourceType,
-                    options.ResourceTypes),
+                    context.ResourceTypes),
             };
         }
 
@@ -99,38 +156,35 @@ public static class Lower
         // caller cannot reach a hidden resource by navigating a reference rather than searching for it.
         if (!accessConstraintApplier.IsEmpty)
         {
-            // $everything's match set spans several types (the patient row unioned with its compartment
-            // members) even though its target type is "Patient". A single-type Apply would intersect the
-            // whole union down to Patient-admitted rows -- dropping every compartment member and, worse,
-            // never enforcing a constraint on a member type (an authorization bypass). ApplyToTypes narrows
-            // each constrained type in place, exactly as it does for a multi-_type or wildcard match.
+            // $everything's match set spans several types (patient row unioned with compartment members) even
+            // though its target type is "Patient". A single-type Apply would intersect the union down to
+            // Patient-admitted rows -- dropping members and never constraining member types (an auth bypass).
+            // ApplyToTypes narrows each constrained type in place, as for a multi-_type or wildcard match.
             match = (targetResourceType, matchSource) switch
             {
-                (_, PatientEverythingExpression) => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
-                ({ } matchType, _) => accessConstraintApplier.Apply(match, matchType, context, LowerScopedExpression),
-                _ => accessConstraintApplier.ApplyToTypes(match, context, LowerScopedExpression),
+                (_, PatientEverythingExpression) => accessConstraintApplier.ApplyToTypes(match, lowerContext, LowerScopedExpression),
+                ({ } matchType, _) => accessConstraintApplier.Apply(match, matchType, lowerContext, LowerScopedExpression),
+                _ => accessConstraintApplier.ApplyToTypes(match, lowerContext, LowerScopedExpression),
             };
+        }
+
+        // The allow-list is the other authorization control: everything not permitted is removed (a plain
+        // intersect with the allowed types' base set), so dropping it here fails open and widens the query.
+        // Applied after the access constraints; order is irrelevant since both only remove rows.
+        if (!allowedResourceTypeFilter.IsEmpty)
+        {
+            match = allowedResourceTypeFilter.RestrictMatch(match, lowerContext);
         }
 
         // System-level search is deliberately excluded: the sort joins correlate on the match set's own
         // m.T1 rather than on a literal ResourceTypeId, so they never needed a single target type. A
         // wildcard compartment search is a different null-type case and keeps the original refusal.
-        if (targetResourceType is null && !options.SystemLevelSearch && sort.Count > 0)
+        if (targetResourceType is null && !context.SystemLevelSearch && sort.Count > 0)
         {
             throw new NotSupportedException(
                 "_sort combined with a wildcard compartment search (no single target resource type) is not " +
                 "supported -- a SortSpec needs a single ResourceTypeId scope for its joins, the same reasoning " +
                 "already established for typed leaves and _include/_revinclude under a null scope.");
-        }
-
-        // Reject the self-contradictory combination up front, before doing the work of building
-        // include stages — IncludesOnly requests include rows; CountOnly requests a count of match
-        // rows; the two are mutually exclusive regardless of what includes are present.
-        if (options.IncludesOnly && options.CountOnly)
-        {
-            throw new NotSupportedException(
-                "IncludesOnly and CountOnly cannot both be true: IncludesOnly requests include-stage rows " +
-                "while CountOnly requests a count of match rows; the combination is self-contradictory.");
         }
 
         IReadOnlyList<IncludeStage>? includeStages;
@@ -139,7 +193,7 @@ public static class Lower
             if (includes.Count > 0 || revIncludes.Count > 0)
             {
                 throw new NotSupportedException(
-                    $"_include/_revinclude combined with {NoTargetTypeReason(options.SystemLevelSearch)} (no single " +
+                    $"_include/_revinclude combined with {NoTargetTypeReason(context.SystemLevelSearch)} (no single " +
                     "target resource type) is not supported -- BuildIncludeStages needs a concrete match resource " +
                     "type to compute SeedFromMatch.");
             }
@@ -152,7 +206,7 @@ public static class Lower
         }
 
         // Bind constraints to each include/:iterate stage. This lowers the constraint predicates into
-        // context.Ctes (emitted before any include CTE, so no forward reference) and records per-stage
+        // lowerContext.Ctes (emitted before any include CTE, so no forward reference) and records per-stage
         // bindings the emitter turns into type-guarded EXISTS filters. A wildcard stage whose output types
         // are unknown is constrained conservatively; see AccessConstraintApplier.BindIncludeStage.
         if (includeStages is { Count: > 0 } && !accessConstraintApplier.IsEmpty)
@@ -160,39 +214,92 @@ public static class Lower
             includeStages = includeStages
                 .Select(stage =>
                 {
-                    var bindings = accessConstraintApplier.BindIncludeStage(stage.OutputTypeIds, symbols, context, LowerScopedExpression);
+                    var bindings = accessConstraintApplier.BindIncludeStage(stage.OutputTypeIds, symbols, lowerContext, LowerScopedExpression);
                     return bindings is null ? stage : stage with { Constraints = bindings };
                 })
                 .ToList();
         }
 
-        if (options.IncludesOnly && includeStages is not { Count: > 0 })
+        // Enforce the allow-list on each include/:iterate stage: RestrictStage intersects OutputTypeIds with the
+        // allowed ids (a wildcard's null output types -- the fail-open case -- become the full allowed set), and
+        // substitutes the unmatchable sentinel when empty so the stage renders "= -1" rather than no filter. Run
+        // after the access-constraint binding. Chain targets are deliberately not filtered, matching legacy parity.
+        if (includeStages is { Count: > 0 } && !allowedResourceTypeFilter.IsEmpty)
+        {
+            includeStages = includeStages
+                .Select(allowedResourceTypeFilter.RestrictStage)
+                .ToList();
+        }
+
+        if (includesOnly && includeStages is not { Count: > 0 })
         {
             throw new NotSupportedException(
-                "IncludesOnly was requested with no _include or _revinclude stages, which can only ever " +
+                "IncludesPage was requested with no _include or _revinclude stages, which can only ever " +
                 "return an empty result. This is a caller error rather than a query that legitimately " +
                 "matches nothing, so it is reported rather than silently emitted.");
         }
 
-        // _sort orders the match rows; an IncludesOnly page returns include-stage rows only and drops the
-        // match arm, so there is no match row for the sort key to order and the remaining include rows are
-        // ordered by (T1, Sid1) for keyset paging, not by the sort key. The combination is therefore
-        // meaningless -- and silently dropping the sort would be worse than refusing it -- so it is
-        // reported rather than silently emitted.
-        if (options.IncludesOnly && sort.Count > 0)
-        {
-            throw new NotSupportedException(
-                "IncludesOnly was requested together with _sort, but an includes-only page returns no match " +
-                "rows for the sort key to order and its include rows are paged by (T1, Sid1) rather than the " +
-                "sort key. The combination is meaningless, so it is reported rather than silently emitted.");
-        }
+        // A _sort is still allowed here: its ordering role drops (include rows page by (T1, Sid1), not the sort
+        // key), but SortPhase (MissingPrimary/Valued) is a *filter* that partitions the match set seeding the
+        // include stages, so it rides into the match-page CTE independently of ORDER BY. A keyset boundary, a
+        // Top cap and an offset page are the genuinely unsound combinations, and hanging SearchPaging off
+        // ResultShape.Matches makes all three unrepresentable rather than rejected.
 
+        // BuildSortSpec validates the sort -- key count, key types, and MissingPrimary against a resource-column
+        // primary key -- so it runs for every shape. A count reads it only when it asked to be restricted to the
+        // phase; otherwise SqlBuilder ignores it and counts the whole match set.
         var sortSpec = BuildSortSpec(sort, sortPhase, symbols);
 
+        // A typeless boundary breaks its final tie on Sid1 alone and omits the type column, which agrees with the
+        // ORDER BY only for a custom sort (every other sort keeps m.T1 as a tiebreak). Mirror of the guard below,
+        // also enforced by SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
+        if (page is { BoundaryResourceTypeId: null } && !HasCustomSortKey(sortSpec))
+        {
+            throw new NotSupportedException(
+                "A typeless keyset Page (BoundaryResourceTypeId is null) requires a custom (search-parameter) " +
+                "_sort such as name or birthdate. The sort here is " +
+                (sortSpec is null ? "absent" : "a resource-column sort (_lastUpdated / _type / _id)") +
+                ", whose keyset order includes the resource type, so a type-free seek would disagree with the " +
+                "ORDER BY and paging would be unsound. Use a typed Page here, or a custom sort for a typeless Page.");
+        }
+
+        // A custom sort orders by (sort keys…, Sid1) with no type component, so a typed boundary would seek
+        // type-major and drop rows within a run of tied sort values at the page seam. Mirrored by
+        // SqlBuilder.RejectUnsupportedCombinations for direct QueryPlan callers.
+        if (page is { BoundaryResourceTypeId: not null } && HasCustomSortKey(sortSpec))
+        {
+            throw new NotSupportedException(
+                "A typed keyset Page (BoundaryResourceTypeId is non-null) cannot be combined with a custom " +
+                "(search-parameter) _sort such as name or birthdate: the emitted ORDER BY is (sort keys…, Sid1) " +
+                "while a typed boundary seeks type-major, so rows are silently dropped at the page seam. Decode " +
+                "the continuation token to a typeless Page (BoundaryResourceTypeId: null) for a custom sort; the " +
+                "type component is redundant because ResourceSurrogateId is globally unique.");
+        }
+
+        // A boundary decoded under one phase carries values for that phase's active keys, so carrying it across
+        // a Valued/MissingPrimary transition seeks on the wrong key set. Only Matches can carry a boundary at
+        // all, so no shape exemption is needed here. Mirrored by SqlBuilder.RejectUnsupportedCombinations for
+        // direct QueryPlan callers, where the flat fields keep the combination representable.
+        if (page is not null && page.Boundary.Count != (sortSpec?.ActiveKeyCount ?? 0))
+        {
+            throw new NotSupportedException(
+                $"The keyset boundary carries {page.Boundary.Count} value(s) but {nameof(SortPhase)}." +
+                $"{sortPhase} has {sortSpec?.ActiveKeyCount ?? 0} active sort key(s). Decode the continuation " +
+                "token for the phase you are reading; a boundary never survives a Valued/MissingPrimary " +
+                "transition.");
+        }
+
         return new LoweredPlan(
-            new QueryPlan(context.Ctes, match, options.Top, outerPredicate, includeStages, sortSpec, page, options.CountOnly, options.Visibility, SurrogateRange: options.SurrogateRange, SearchParameterHash: options.SearchParameterHash, IncludesOnly: options.IncludesOnly, OffsetPage: options.OffsetPage, CountPhaseScoped: options.CountPhaseScoped),
-            new PlanProvenance(context.Origins));
+            new QueryPlan(lowerContext.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, shape, context.Visibility, SurrogateRange: context.SurrogateRange, SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null, OffsetPage: offsetPage),
+            new PlanProvenance(lowerContext.Origins));
     }
+
+    /// <summary>True when the sort has any search-parameter-backed key (String/Date or an Aggregated leaf) rather
+    /// than only resource-column keys (_lastUpdated/_type/_id). Duplicated from SqlBuilder deliberately: each
+    /// layer guards its own construction surface, since a QueryPlan can be built without going through Lower.</summary>
+    private static bool HasCustomSortKey(SortSpec? sort)
+        => sort is not null
+           && sort.Keys.Any(k => k.Kind is SortKeyKind.String or SortKeyKind.Date or SortKeyKind.Aggregated);
 
     /// <summary>Names why there is no single target resource type, so a guard's message diagnoses the caller's
     /// actual situation rather than always blaming a wildcard compartment search.</summary>
@@ -211,13 +318,9 @@ public static class Lower
             ? context.LowerResourceSource(single)
             : context.LowerMultiTypeResourceSource(resourceTypes ?? []);
 
-    /// <summary>
-    /// Intersects a system-level match with the requested types' base set. A cross-type leaf carries no
-    /// ResourceTypeId of its own, so without this the requested <c>_type</c> list would be silently
-    /// dropped and <c>GET /?_type=A,B&amp;name=foo</c> would return every type that has a matching name.
-    /// A named target type needs no narrowing (its leaves are already scoped), and an empty type list is
-    /// the deliberate "every type" contract, which an AllTypes intersect would only make more expensive.
-    /// </summary>
+    /// <summary>Intersects a system-level match with the requested types' base set. A cross-type leaf carries no
+    /// ResourceTypeId, so without this <c>GET /?_type=A,B&amp;name=foo</c> would silently return every type with
+    /// a matching name. A named target type needs no narrowing; an empty list is the "every type" contract.</summary>
     private static CteRef NarrowToRequestedTypes(
         CteRef match,
         StructuralContext context,
@@ -233,10 +336,14 @@ public static class Lower
         return context.Intersect(match, baseSet);
     }
 
-    /// <summary>Dispatches one expression node to the lowering path for its kind (leaf, missing, composite, AND, OR, chain, or compartment).
-    /// A null <paramref name="resourceType"/> reaches here only under system-level search. Chain carries its own
-    /// resource types rather than consuming the ambient one, so it needs an explicit guard here: without it a
-    /// type-less chain would fall through every null-type guard in <see cref="Run"/> and appear to work.</summary>
+    /// <summary>Dispatches one expression node to the lowering path for its kind. A null
+    /// <paramref name="resourceType"/> reaches here only under system-level search, and a chain tolerates it: a
+    /// chain names its own types (a reverse chain scopes its inner expression against its referencing type and
+    /// emits its target types, a forward chain the mirror image), so the ambient scope is unused and none is
+    /// passed on. Every guard on those types therefore lives in <see cref="StructuralContext.LowerChain"/>,
+    /// where both directions reach it. The OR and union arms below look mergeable and are not: a union leg goes
+    /// through <see cref="LowerScopedExpression"/>, which can recover a per-leg type under a null scope, while
+    /// an OR's operands are alternative values of one parameter and lower with the ambient scope as-is.</summary>
     private static CteRef LowerNode(Expression expression, StructuralContext context, string? resourceType) => expression switch
     {
         SearchParameterPredicateExpression { Modifier.SearchModifierCode: SearchModifierCode.Not } => throw new NotSupportedException(
@@ -250,11 +357,8 @@ public static class Lower
         MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and => LowerAnd(and, context, resourceType),
         MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or => context.Union(
             or.Expressions.Select(e => LowerNode(e, context, resourceType)).ToList()),
-        ChainedExpression when resourceType is null => throw new NotSupportedException(
-            "Chain is not supported in system-level search in this phase -- a chain resolves and joins against " +
-            "a concrete referencing/target type, which a cross-type search has no single value for. Guarding at " +
-            "the chain dispatch choke point covers a top-level chain and one nested in an AND equally; a chain " +
-            "reached inside another chain's scope always has a concrete type and never trips this."),
+        UnionExpression union => context.Union(
+            union.Expressions.Select(leg => LowerScopedExpression(leg, context, resourceType)).ToList()),
         ChainedExpression chain => context.LowerChain(chain, LowerScopedExpression),
         CompartmentSearchExpression compartment => context.LowerCompartment(compartment),
         NotReferencedExpression notReferenced => context.LowerNotReferenced(notReferenced, resourceType),
@@ -267,11 +371,9 @@ public static class Lower
             $"Lower does not support {expression.GetType().Name} yet -- see this plan's scope notes."),
     };
 
-    /// <summary>
-    /// Lowers a wrapped search parameter, unwrapping the wrapper's own semantics first: a NotExpression or
+    /// <summary>Lowers a wrapped search parameter, unwrapping the wrapper's own semantics first: a NotExpression or
     /// a :not-modified predicate becomes a negation, a single composite or an OR of composite alternatives
-    /// becomes composite lowering, and anything else falls through to <see cref="LowerNode"/>.
-    /// </summary>
+    /// becomes composite lowering, and anything else falls through to <see cref="LowerNode"/>.</summary>
     private static CteRef LowerSearchParameter(SearchParameterExpression sp, StructuralContext context, string? resourceType)
     {
         if (sp.Expression is NotExpression not)
@@ -318,7 +420,7 @@ public static class Lower
     /// <summary>Lowers a :missing search to the parameter's presence set, negated when :missing=true.</summary>
     private static CteRef LowerMissing(MissingSearchParameterExpression missing, StructuralContext context, string? resourceType)
     {
-        var presence = context.LowerParameterPresence(missing.Parameter, resourceType);
+        var presence = context.LowerParameterPresence(missing.Parameter, resourceType, provenanceNode: missing);
         return missing.IsMissing ? context.LowerNot(presence, resourceType) : presence;
     }
 
@@ -337,13 +439,9 @@ public static class Lower
         return false;
     }
 
-    /// <summary>
-    /// Lowers an AND by intersecting its positive children, then subtracting each negated child from that
-    /// intersection. Lowering a negation on its own has to anchor it on every resource of the type just to
-    /// subtract from something (see <see cref="StructuralContext.LowerNot"/>); inside an AND the positive
-    /// siblings are already a smaller anchor, and `A AND NOT B` is `A EXCEPT B`. With no positive sibling
-    /// there is nothing smaller to subtract from, so the ResourceSource anchor is still the only option.
-    /// </summary>
+    /// <summary>Lowers an AND by intersecting its positive children, then subtracting each negated child (<c>A AND NOT B</c>
+    /// is <c>A EXCEPT B</c>). Positive siblings form a smaller anchor than a bare negation would need; with no
+    /// positive sibling the ResourceSource anchor is the only option (see <see cref="StructuralContext.LowerNot"/>).</summary>
     private static CteRef LowerAnd(MultiaryExpression and, StructuralContext context, string? resourceType)
     {
         var positives = new List<Expression>();
@@ -384,12 +482,9 @@ public static class Lower
         return result;
     }
 
-    /// <summary>
-    /// Returns the expression whose match set a negated child subtracts -- its positive inner match -- or
-    /// null when the child is not a negation. The three shapes a binder produces (an explicit
-    /// NotExpression, a :not-modified predicate, and :missing=true) all reduce to an expression
-    /// <see cref="LowerNode"/> already knows how to lower positively.
-    /// </summary>
+    /// <summary>Returns the positive inner match a negated child subtracts, or null when the child is not a negation.
+    /// The three negation shapes (NotExpression, :not-modified predicate, :missing=true) all reduce to an
+    /// expression <see cref="LowerNode"/> already lowers positively.</summary>
     private static Expression? TryGetNegatedInner(Expression child) => child switch
     {
         SearchParameterExpression { Expression: NotExpression not } => not.Expression,
@@ -400,11 +495,8 @@ public static class Lower
         _ => null,
     };
 
-    /// <summary>
-    /// Splits an expression into the resource-column predicates (_id/_type/_lastUpdated, ANDed together
-    /// into an outer WHERE) and the remaining expression that still needs CTE lowering. Either half may be
-    /// null.
-    /// </summary>
+    /// <summary>Splits an expression into the resource-column predicates (_id/_type/_lastUpdated, ANDed together
+    /// into an outer WHERE) and the remaining expression that still needs CTE lowering. Either half may be null.</summary>
     private static (Expression? Remaining, Predicate? OuterPredicate) ExtractResourceColumnPredicates(Expression expression, LeafContext leafContext)
     {
         if (expression is MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and)
@@ -442,18 +534,14 @@ public static class Lower
             ? TryLowerResourceColumn(wrapped.Expression, leafContext)
             : null;
 
-    /// <summary>
-    /// Lowers a resource-column leaf, or a comma list of them (`_id=a,b,c` binds to an Or of predicates
-    /// under one SearchParameterExpression). The Or is all-or-nothing: a branch that is not a resource
-    /// column leaves the whole expression to CTE lowering, because half an Or in the outer WHERE would
-    /// widen the match rather than narrow it.
-    /// </summary>
+    /// <summary>Lowers a resource-column leaf, or a comma list of them (<c>_id=a,b,c</c> binds to an Or). The Or is
+    /// all-or-nothing: a non-resource-column branch leaves the whole expression to CTE lowering, because half
+    /// an Or in the outer WHERE would widen the match rather than narrow it.</summary>
     private static Predicate? TryLowerResourceColumn(Expression expression, LeafContext leafContext)
     {
         // A negated resource column (_id:not, _type:not) arrives as a NotExpression wrapping the positive
-        // alternatives, each stripped of its own modifier by the binder. Lower the positive form, then wrap
-        // it in Predicate.Not so the negation reaches the outer WHERE as NOT (...) rather than being
-        // silently dropped -- the failure the leaf rule's modifier guard exists to prevent.
+        // alternatives. Lower the positive form, then wrap it in Predicate.Not so the negation reaches the
+        // outer WHERE as NOT (...) rather than being silently dropped.
         if (expression is NotExpression not)
         {
             var inner = TryLowerResourceColumn(not.Expression, leafContext);
@@ -485,14 +573,19 @@ public static class Lower
         return combined;
     }
 
-    /// <summary>
-    /// Lowers a chain's target expression within its own scope, folding any resource-column predicates into
-    /// the scope's ResourceSource (a nested scope has no outer WHERE to attach them to) and intersecting
-    /// with the ordinary match when both are present.
-    /// </summary>
-    private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string resourceType)
+    /// <summary>Lowers a chain's target expression or a union leg within its own scope, folding any resource-column
+    /// predicates into the scope's ResourceSource and intersecting with the ordinary match. <paramref name="resourceType"/>
+    /// is null only for a union leg under a system-level search; that case routes to
+    /// <see cref="LowerSystemLevelUnionLeg"/> so the typed path every other caller uses stays unchanged.</summary>
+    private static CteRef LowerScopedExpression(Expression expression, StructuralContext context, string? resourceType)
     {
         var (remaining, nestedPredicate) = ExtractResourceColumnPredicates(expression, context.LeafContext);
+
+        if (resourceType is null)
+        {
+            return LowerSystemLevelUnionLeg(expression, remaining, nestedPredicate, context);
+        }
+
         if (remaining is null)
         {
             return context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate);
@@ -504,6 +597,73 @@ public static class Lower
             : context.Intersect(context.LowerResourceSourceWithPredicate(resourceType, nestedPredicate), ordinaryMatch);
     }
 
+    /// <summary>Lowers one union leg under a system-level (null) scope -- the SMART compartment expansion. A pure
+    /// resource-column leg folds into an AllTypes source; a leg with a residue derives its type from its own
+    /// single <c>_type Eq X</c> (see <see cref="TryDeriveSingleTypeScope"/>) then lowers as a typed leg; a leg
+    /// with no derivable type lowers under null scope and lets the per-node guards decide.</summary>
+    private static CteRef LowerSystemLevelUnionLeg(
+        Expression leg,
+        Expression? remaining,
+        Predicate? nestedPredicate,
+        StructuralContext context)
+    {
+        if (remaining is null)
+        {
+            return context.LowerMultiTypeResourceSourceWithPredicate(nestedPredicate);
+        }
+
+        if (TryDeriveSingleTypeScope(leg) is { } derivedType)
+        {
+            // With a concrete type recovered, the leg is indistinguishable from a natively typed one: scope the
+            // residue to that type and intersect with the resource-column predicate, emitting the same single-type
+            // ResourceSource a typed leg would. The predicate's redundant ResourceTypeId equality is harmless.
+            var scopedMatch = LowerNode(remaining, context, derivedType);
+            return nestedPredicate is null
+                ? scopedMatch
+                : context.Intersect(context.LowerResourceSourceWithPredicate(derivedType, nestedPredicate), scopedMatch);
+        }
+
+        var match = LowerNode(remaining, context, resourceType: null);
+        return nestedPredicate is null
+            ? match
+            : context.Intersect(context.LowerMultiTypeResourceSourceWithPredicate(nestedPredicate), match);
+    }
+
+    /// <summary>Returns the type name a union leg scopes itself to via a <em>single</em> plain <c>_type Eq X</c> among its
+    /// ANDed children, or null otherwise. Confined to one equality: a <c>_type=A,B</c> Or, two distinct
+    /// equalities, or a modified/system-qualified <c>_type</c> all yield null rather than a guess that could drop
+    /// rows -- a null result lowers the residue under a null type, where its own per-node guard decides.</summary>
+    private static string? TryDeriveSingleTypeScope(Expression leg)
+    {
+        var children = leg is MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and
+            ? and.Expressions
+            : [leg];
+
+        string? found = null;
+        foreach (var child in children)
+        {
+            if (child is not SearchParameterExpression { Expression: SearchParameterPredicateExpression predicate }
+                || predicate.Parameter.Code != "_type"
+                || predicate.Modifier is not null
+                || predicate.Comparator != SearchComparator.Eq
+                || predicate.Value is not TokenSearchValue { System: null, Code: { Length: > 0 } code })
+            {
+                continue;
+            }
+
+            if (found is not null)
+            {
+                // A second single-valued _type equality makes the scope ambiguous. Refuse to guess: null lowers
+                // the residue under a null type rather than scoping to whichever equality came first.
+                return null;
+            }
+
+            found = code;
+        }
+
+        return found;
+    }
+
     /// <summary>An include with its direction and its resolved seed (Requires) and output (Produces) type ids; null means wildcard.</summary>
     private readonly record struct ResolvedInclude(
         IncludeExpression Expression,
@@ -511,11 +671,9 @@ public static class Lower
         IReadOnlyList<short>? Requires,
         IReadOnlyList<short>? Produces);
 
-    /// <summary>
-    /// Builds the ordered include stages for a plan. Non-iterate includes run first, iterate includes are
+    /// <summary>Builds the ordered include stages for a plan. Non-iterate includes run first, iterate includes are
     /// topologically sorted after them, and each stage records which earlier stages (and whether the match
-    /// page) seed it. Returns null when there are no includes or every stage is degenerate.
-    /// </summary>
+    /// page) seed it. Returns null when there are no includes or every stage is degenerate.</summary>
     private static IReadOnlyList<IncludeStage>? BuildIncludeStages(
         IReadOnlyList<IncludeExpression> includes,
         IReadOnlyList<IncludeExpression> revIncludes,
@@ -555,7 +713,7 @@ public static class Lower
 
             if (seedStages.Count == 0 && !seedFromMatch)
             {
-                // Degenerate case (design doc §2): this stage's EXISTS would have zero branches --
+                // Degenerate case: this stage's EXISTS would have zero branches --
                 // unrenderable, and not a real shape any binder-produced Requires/Produces pair
                 // should reach in practice. Drop it: it can never produce any rows.
                 continue;
@@ -578,8 +736,9 @@ public static class Lower
         }
 
         // Every entry can be dropped as degenerate (e.g. a single :iterate stage whose Requires never
-        // resolves) -- QueryPlan.Includes must stay null in that case, not an empty-but-non-null list,
-        // to preserve "no Includes byte-identical to before this field existed" (QueryPlan.cs remarks).
+        // resolves) -- QueryPlan.Includes must stay null in that case, not an empty-but-non-null list, so a
+        // plan with nothing to include emits exactly what it emitted before includes existed. SqlBuilder
+        // branches on null, not on Count, so an empty list would still open an includes CTE.
         return stages.Count == 0 ? null : stages;
     }
 
@@ -603,39 +762,39 @@ public static class Lower
 
         var keys = sort.Select(s => BuildSortKey(s, symbols)).ToList();
 
-        if (phase == SortPhase.MissingPrimary && keys[0].Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceId)
+        if (phase == SortPhase.MissingPrimary && keys[0].Kind is SortKeyKind.LastUpdated or SortKeyKind.ResourceType or SortKeyKind.ResourceId)
         {
             throw new NotSupportedException(
-                "_lastUpdated and _id are resource-column sort keys derived directly from ResourceSurrogateId " +
-                "and ResourceId -- both are non-nullable resource columns, so a value is never missing for " +
-                "either, and neither has a MissingPrimary segment. Only a search-parameter-table primary key " +
-                "(String, Date, or an aggregated leaf type) has a MissingPrimary phase.");
+                "_lastUpdated, _type and _id are resource-column sort keys derived directly from " +
+                "ResourceSurrogateId, ResourceTypeId and ResourceId -- all are non-nullable resource columns, " +
+                "so a value is never missing for any of them, and none has a MissingPrimary segment. Only a " +
+                "search-parameter-table primary key (String, Date, or an aggregated leaf type) has a " +
+                "MissingPrimary phase.");
         }
 
         return new SortSpec(keys, phase);
     }
 
-    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated or _id).</summary>
+    /// <summary>Builds one <see cref="SortKey"/>, mapping the parameter to a String/Date/LastUpdated/ResourceType/ResourceId/Aggregated kind and resolving its id (none for _lastUpdated, _type or _id).</summary>
     internal static SortKey BuildSortKey(SortExpression sortExpression, SymbolTable symbols)
     {
-        if (sortExpression.Parameter.Code == "_lastUpdated")
+        if (sortExpression.Parameter.Code == SearchParameterNames.LastUpdated)
         {
             return new SortKey(null, SortKeyKind.LastUpdated, sortExpression.SortOrder);
         }
 
-        if (sortExpression.Parameter.Code == "_id")
+        if (sortExpression.Parameter.Code == SearchParameterNames.Id)
         {
             return new SortKey(null, SortKeyKind.ResourceId, sortExpression.SortOrder);
         }
 
-        // _type is the third resource-column code, and the only one with no sort meaning. Resolve never
-        // collects a resource-column parameter, so without this it would reach the SearchParamId lookup
-        // below and surface as a KeyNotFoundException blaming Resolve for skipping a node kind.
-        if (ResourceColumnLoweringRule.IsResourceColumnCode(sortExpression.Parameter.Code))
+        // _type orders by the resource's type id (T1) -- the storage layer's own type ordering, not an ordering
+        // over type names, which is what makes "_sort=_type,_lastUpdated" the natural (T1, Sid1) clustered order.
+        // These three are IntrinsicSearchParameters.Codes, so any code reaching the SearchParamId lookup below
+        // is a real search parameter Resolve collected.
+        if (sortExpression.Parameter.Code == SearchParameterNames.ResourceType)
         {
-            throw new NotSupportedException(
-                $"Sorting by '{sortExpression.Parameter.Code}' is not supported -- it names a resource type, " +
-                "not a value with an ordering. _lastUpdated and _id are the only sortable resource columns.");
+            return new SortKey(null, SortKeyKind.ResourceType, sortExpression.SortOrder);
         }
 
         var searchParamId = symbols.SearchParamId(sortExpression.Parameter);
@@ -704,7 +863,7 @@ public static class Lower
             {
                 if (x == y)
                 {
-                    continue; // A self-referential iterate is not a cycle for this purpose (design §4.4).
+                    continue; // A self-referential iterate is not a cycle for this purpose.
                 }
 
                 if (Overlaps(entries[x].Produces, entries[y].Requires))

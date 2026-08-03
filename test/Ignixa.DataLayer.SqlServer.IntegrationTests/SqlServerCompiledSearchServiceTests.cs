@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
@@ -121,12 +122,21 @@ public class SqlServerCompiledSearchServiceTests : IAsyncLifetime
     [Fact]
     public async Task GivenAQueryThatFailsToCompile_WhenSearchStreamAsyncCalled_ThenThrowsRequestNotValidException()
     {
-        // Arrange -- a _lastUpdated partial-precision predicate (Start != End), per the design doc's
-        // confirmed NotSupportedException-at-Lower-time failure mode (ResourceColumnLoweringRule.cs).
-        var partialPrecisionValue = new DateTimeSearchValue(PartialDateTime.Parse("2023"));
+        // Arrange -- a search parameter this tenant's catalog has no id for, so Resolve reports it
+        // unresolved and the plan never reaches Lower. This replaced a partial-precision _lastUpdated
+        // predicate, which used to be the confirmed Lower-time failure and is now a supported range: an
+        // unresolvable parameter is the durable choice here because this test is about the SERVICE's
+        // failure mapping (any compile failure surfaces as RequestNotValidException, not as a leaked
+        // NotSupportedException or a silent empty result), not about which constructs the compiler
+        // happens not to support yet. Closing another gap must not silently un-test that mapping again.
+        var unknownParameter = new SearchParameterInfo(
+            "not-a-real-parameter",
+            "not-a-real-parameter",
+            SearchParamType.String,
+            new Uri("http://example.org/fhir/SearchParameter/not-a-real-parameter"));
         var predicate = new SearchParameterExpression(
-            LastUpdatedParameter,
-            new SearchParameterPredicateExpression(LastUpdatedParameter, SearchComparator.Eq, modifier: null, partialPrecisionValue));
+            unknownParameter,
+            new SearchParameterPredicateExpression(unknownParameter, SearchComparator.Eq, modifier: null, new StringSearchValue("anything")));
         var options = new SearchOptions { ResourceType = "Patient", Expression = predicate };
 
         // Act & Assert
@@ -136,6 +146,38 @@ public class SqlServerCompiledSearchServiceTests : IAsyncLifetime
             {
             }
         });
+    }
+
+    [Fact]
+    public async Task GivenAPartialPrecisionLastUpdatedSearch_WhenSearchStreamAsyncCalled_ThenTheWholeYearMatches()
+    {
+        // Arrange -- a year-precision _lastUpdated. This used to be the compiler's documented
+        // NotSupportedException (Start != End had no point-vs-range formula); it now lowers to a real
+        // closed range over the surrogate-id bucket, which is the FHIR semantics: a year-precision
+        // instant matches any resource written anywhere in that year. Asserted through the live search
+        // path rather than at the lowering unit level, because the surrogate-id encoding of the range
+        // bounds is exactly the part a unit test on the plan cannot check.
+        var resourceId = $"search-svc-lastupdated-{Guid.NewGuid():N}";
+        await CreatePatientAsync(resourceId);
+        var currentYear = DateTimeOffset.UtcNow.Year.ToString(CultureInfo.InvariantCulture);
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Expression = new SearchParameterExpression(
+                LastUpdatedParameter,
+                new SearchParameterPredicateExpression(
+                    LastUpdatedParameter, SearchComparator.Eq, modifier: null, DateTimeSearchValue.Parse(currentYear))),
+        };
+
+        // Act
+        var results = new List<SearchEntryResult>();
+        await foreach (var result in _service.SearchStreamAsync(options, CancellationToken.None))
+        {
+            results.Add(result);
+        }
+
+        // Assert
+        results.ShouldContain(r => r.ResourceId == resourceId);
     }
 
     [Fact]

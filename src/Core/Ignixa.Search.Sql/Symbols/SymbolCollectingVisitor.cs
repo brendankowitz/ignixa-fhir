@@ -6,27 +6,10 @@ using Ignixa.Search.Sql.Lowering;
 namespace Ignixa.Search.Sql.Symbols;
 
 /// <summary>
-/// Walks a typed predicate tree collecting every search parameter it references, doing no I/O —
-/// <see cref="Resolve"/> batches the results into <see cref="ISymbolResolver"/> calls afterward. This
-/// keeps tree traversal separate from symbol lookup.
+/// Walks a typed predicate tree collecting every search parameter and resource type it references, doing no
+/// I/O — <see cref="Resolve"/> batches the results into <see cref="ISymbolResolver"/> calls afterward.
+/// Includes and sort keys live outside the tree; Resolve feeds them via <see cref="CollectInclude"/>/<see cref="CollectSort"/>.
 /// </summary>
-/// <remarks>
-/// Collects the parameter off every non-resource-column <see cref="SearchParameterPredicateExpression"/>,
-/// <see cref="CompositeComponentExpression"/>, <see cref="SearchParameterExpression"/>, and
-/// <see cref="MissingSearchParameterExpression"/>. The <c>VisitSearchParameter</c> override captures a
-/// composite's own identity, which lives only on the wrapper, then recurses to reach the leaves beneath.
-/// <para>
-/// Resource-type identity is generally not collected here — Lower synthesizes the nodes that need it from
-/// its own context (notably the query's target resource type). The exceptions collect a resource type
-/// directly off a leaf this visitor already walks: a <see cref="ReferenceSearchValue"/>'s type, a
-/// <c>_type</c> predicate's own value (the resource type it names), and a <see cref="ChainedExpression"/>'s
-/// reference parameter plus both its type arrays. Includes and sort keys never appear in the Expression
-/// tree — they live on their own <see cref="Search.Models.SearchOptions"/> lists — so Resolve feeds them in
-/// through the direct <see cref="CollectInclude"/> and <see cref="CollectSort"/> entry points instead.
-/// A compartment search, by contrast, is an ordinary tree node: <see cref="VisitCompartment"/> is a normal
-/// visitor override reached by the same walk as every other <c>Visit*</c>.
-/// </para>
-/// </remarks>
 internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 {
     public HashSet<SearchParameterInfo> Parameters { get; } = [];
@@ -53,11 +36,8 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
             }
             else
             {
-                // Untyped reference: the value carries no type, so collect the parameter's declared
-                // target types. Lower uses them to narrow to the declared types, matching the shipping
-                // engine. If the value has an explicit type the declared-target narrowing is skipped, so
-                // collecting them here for that case is harmless — a few extra resolver round-trips at
-                // most.
+                // Untyped reference: collect the parameter's declared target types so Lower can narrow to
+                // them (matching the shipping engine). Harmless if the value later carries an explicit type.
                 foreach (var targetType in expression.Parameter.TargetResourceTypes)
                 {
                     AddResourceType(targetType);
@@ -128,9 +108,8 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     public List<(string CompartmentType, ISet<string> FilteredResourceTypes)> Compartments { get; } = [];
 
     /// <summary>
-    /// Records a compartment search's type and filter for Resolve to expand. Does no further recursion
-    /// (a CompartmentSearchExpression has no child expression) and no I/O — Resolve, not this visitor,
-    /// runs the definition-manager expansion, keeping this class's no-I/O contract intact.
+    /// Records a compartment search's type and filter for Resolve to expand; does no recursion or I/O
+    /// (Resolve runs the definition-manager expansion).
     /// </summary>
     public override Expression VisitCompartment(CompartmentSearchExpression expression, object? context)
     {
@@ -140,21 +119,9 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// Records the symbols a Patient/Group <c>$everything</c> references so Resolve can resolve them: the
-    /// Patient resource type (for the Patient-itself branch), the Patient compartment -- expanded into
-    /// membership through the identical ICompartmentDefinitionManager path an ordinary
-    /// <c>Patient/{id}/*</c> compartment search uses, not a second mechanism, with the <c>_type</c> filter
-    /// (<see cref="PatientEverythingExpression.FilteredResourceTypes"/>) riding along as the compartment's
-    /// filter -- and, when referenced-resource expansion is requested, the referenced resource types.
-    /// Like <see cref="VisitCompartment"/>, it does no I/O and no further recursion (a
-    /// PatientEverythingExpression has no child expression).
-    /// <para>
-    /// All four referenced types are collected even when <c>_type</c> excludes some of them, where
-    /// <c>StructuralContext.ResolveReferencedTypeIds</c> intersects. The asymmetry is deliberate: a symbol
-    /// table that is a superset of what lowering asks for costs one resolved type id, whereas a subset is
-    /// a missing-symbol failure at lowering time, and keeping the two intersections identical is exactly
-    /// the kind of duplicated rule that drifts.
-    /// </para>
+    /// Records the symbols a Patient/Group <c>$everything</c> references — the Patient type, its compartment
+    /// (expanded like an ordinary compartment search with the <c>_type</c> filter), and referenced types when
+    /// requested. Over-collects referenced types (superset costs one id; subset fails at lowering). No I/O.
     /// </summary>
     public override Expression VisitPatientEverything(PatientEverythingExpression expression, object? context)
     {
@@ -174,18 +141,12 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// The (source resource type, reference path) pairs of every <c>_not-referenced=Type:path</c> in the
-    /// tree, for Resolve to resolve to a reference search parameter. The wildcard forms (<c>*:*</c>,
-    /// <c>Type:*</c>) contribute no pair — they need no parameter lookup — but a named source type is
-    /// still collected as a resource type below.
+    /// The (source resource type, reference path) pairs of every <c>_not-referenced=Type:path</c>, for
+    /// Resolve to resolve to a reference parameter. Wildcard forms contribute no pair.
     /// </summary>
     public List<(string SourceResourceType, string ReferencePath)> NotReferencedPaths { get; } = [];
 
-    /// <summary>
-    /// Records a <c>_not-referenced</c> search's source type and reference path. Like
-    /// <see cref="VisitCompartment"/>, it does no definition-manager I/O of its own — Resolve resolves the
-    /// path — keeping this class's no-I/O contract intact.
-    /// </summary>
+    /// <summary>Records a <c>_not-referenced</c> search's source type and reference path; no I/O (Resolve resolves the path).</summary>
     public override Expression VisitNotReferenced(NotReferencedExpression expression, object? context)
     {
         ArgumentNullException.ThrowIfNull(expression);
@@ -205,10 +166,8 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
 
     /// <summary>
     /// Collects the symbols an <see cref="IncludeExpression"/> references — its reference parameter (unless
-    /// a wildcard) and every resource type on its source/target/referenced-type fields. Deliberately
-    /// over-collects a superset rather than re-deriving which field a given include direction actually
-    /// uses; resolving extra types is harmless. Called directly by Resolve per include, since an
-    /// IncludeExpression is never part of the Expression tree. The wildcard sentinel "*" is skipped.
+    /// wildcard) and every source/target/referenced type. Over-collects a superset rather than deriving which
+    /// field each include direction uses. Called by Resolve per include, since includes are not in the tree.
     /// </summary>
     public void CollectInclude(IncludeExpression include)
     {
@@ -230,10 +189,8 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// Collects a sort key's search parameter for resolution, skipping the resource-column codes:
-    /// _lastUpdated orders directly by ResourceSurrogateId, and _id/_type are rejected by BuildSortKey
-    /// before any lookup. Called directly by Resolve per sort key, since a SortExpression is never part of
-    /// the Expression tree.
+    /// Collects a sort key's search parameter, skipping resource-column codes (_lastUpdated/_id/_type never
+    /// reach a lookup). Called by Resolve per sort key, since sorts are not in the tree.
     /// </summary>
     public void CollectSort(SortExpression sort)
     {
@@ -241,18 +198,11 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// Collects an access constraint's governed resource type and every symbol its predicate references.
-    /// Called directly by Resolve per constraint, since an <see cref="AccessConstraint"/> lives on
-    /// <see cref="Search.Models.SearchOptions"/> rather than in the Expression tree.
+    /// Collects an access constraint's resource type and the symbols its predicate references (constraints
+    /// live on SearchOptions, not the tree). AccessConstraintApplier lowers the predicate through the same
+    /// dispatcher, so it needs the same symbols — without this a constraint only resolved when the user's
+    /// query happened to name the same parameter.
     /// </summary>
-    /// <remarks>
-    /// The predicate is walked by the same visitor as the user's own search because
-    /// <c>AccessConstraintApplier</c> lowers it through the same leaf dispatcher — so it needs the same
-    /// symbols. Without this the constraint's parameters reach <see cref="SymbolTable.SearchParamId"/>
-    /// uncollected and it throws, meaning a constraint only ever compiled when the user's query happened to
-    /// name the same parameter. That made the authorization mechanism silently dependent on the shape of
-    /// the query it was meant to restrict.
-    /// </remarks>
     public void CollectConstraint(AccessConstraint constraint)
     {
         ArgumentNullException.ThrowIfNull(constraint);
@@ -262,11 +212,9 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
     }
 
     /// <summary>
-    /// Records a parameter for resolution, skipping the resource-column codes. Those target dbo.Resource's
-    /// own columns and never reach a SearchParamId lookup -- Lower extracts them into the outer predicate,
-    /// BuildSortKey resolves _lastUpdated and _id straight to their own sort kinds and rejects _type
-    /// outright, and the dispatchers reject them too. Collecting them
-    /// would make a resolver with no row for _id report the query unresolvable when it compiles fine.
+    /// Records a parameter, skipping resource-column codes — those target dbo.Resource's own columns and
+    /// never reach a SearchParamId lookup, so collecting them would make a resolver with no _id row report
+    /// the query unresolvable when it compiles fine.
     /// </summary>
     private void AddParameter(SearchParameterInfo parameter)
     {

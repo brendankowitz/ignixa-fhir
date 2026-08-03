@@ -148,17 +148,7 @@ internal static class SearchKeySyntaxParser
 
         private string? ParseNotReferencedPath()
         {
-            if (ConsumeIf('*'))
-            {
-                return null;
-            }
-
-            if (AtEnd || !IsAsciiLetter(_source[_offset]))
-            {
-                throw CreateError(_offset, "identifier");
-            }
-
-            return ParseIdentifier("identifier");
+            return ConsumeIf('*') ? null : ParseIdentifier("identifier");
         }
 
         private string ParseIdentifier(string expectation)
@@ -300,25 +290,22 @@ internal static class SearchKeySyntaxParser
                 $"expected {expectation}");
         }
 
+        /// <summary>
+        /// FHIR types <c>SearchParameter.code</c> as <c>code</c>, whose regex
+        /// (<c>[^\s]+(\s[^\s]+)*</c> in R4/R4B/R5, <c>[^\s]+([\s]?[^\s]+)*</c> in DSTU2/STU3 — both admitting
+        /// a leading digit) accepts any non-whitespace first character, so a custom search
+        /// parameter is free to begin with a digit. The key grammar has no numeric literals, so admitting
+        /// a leading digit introduces no ambiguity — a resource-type position that receives one still
+        /// fails at binding with a name error rather than a syntax error.
+        /// </summary>
         private static bool IsIdentifierStart(char value)
         {
-            return IsAsciiLetter(value) || value == '_';
+            return char.IsAsciiLetterOrDigit(value) || value == '_';
         }
 
         private static bool IsIdentifierPart(char value)
         {
-            return IsIdentifierStart(value) || IsAsciiDigit(value) || value == '-';
-        }
-
-        private static bool IsAsciiLetter(char value)
-        {
-            return (value >= 'A' && value <= 'Z')
-                || (value >= 'a' && value <= 'z');
-        }
-
-        private static bool IsAsciiDigit(char value)
-        {
-            return value >= '0' && value <= '9';
+            return IsIdentifierStart(value) || value == '-';
         }
     }
 }

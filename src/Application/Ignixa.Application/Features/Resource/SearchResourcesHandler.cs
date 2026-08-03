@@ -91,19 +91,9 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
 
         // 2. Request pageSize + 1 results to detect if there are more (count-as-render pattern)
         //    The serializer will render only pageSize items and use the +1 to detect hasMore
-        var searchOptionsWithExtra = new SearchOptions
+        var searchOptionsWithExtra = new SearchOptions(request.SearchOptions)
         {
             MaxItemCount = request.SearchOptions.MaxItemCount + 1,
-            ContinuationToken = request.SearchOptions.ContinuationToken,
-            Expression = request.SearchOptions.Expression,
-            Sort = request.SearchOptions.Sort,
-            Include = request.SearchOptions.Include,
-            RevInclude = request.SearchOptions.RevInclude,
-            Total = request.SearchOptions.Total,
-            Summary = request.SearchOptions.Summary,
-            UnsupportedParams = request.SearchOptions.UnsupportedParams,
-            ResourceType = request.SearchOptions.ResourceType,
-            ResourceTypes = request.SearchOptions.ResourceTypes
         };
 
         _logger.LogDebug(

@@ -1,4 +1,4 @@
-using Ignixa.Search.Definition;
+﻿using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -7,6 +7,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using SortOrder = Ignixa.Search.Expressions.SortOrder;
 
@@ -51,8 +52,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the plan-shape golden test
@@ -79,8 +80,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["ValueSet"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -107,8 +108,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -136,8 +137,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["ValueSet"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- identical plan shape to the bare-predicate case above (same table, same SearchParamId)
@@ -171,8 +172,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -210,8 +211,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -249,8 +250,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- two ParamSource CTEs (one per alternative), unioned at the root
         plan.Explain().ShouldBe(
@@ -284,8 +285,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -319,8 +320,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge (not Eq) so the raw value is used directly, no precision-widening bounds to compute
@@ -355,8 +356,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -391,8 +392,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["DocumentReference"] = 55;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "DocumentReference", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "DocumentReference", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "DocumentReference", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "DocumentReference", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -419,8 +420,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert
@@ -458,8 +459,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- one CTE for `active`, a Union of the two Smith/Jones alternatives, then a single
@@ -490,8 +491,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource's own ResourceTypeId consumes @p0 (it's a real bound parameter in
@@ -518,8 +519,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource seeds from the query's own target (Patient, 103); the outer WHERE
@@ -546,8 +547,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- only `active` becomes a CTE; `_id` becomes the outer WHERE
@@ -578,8 +579,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- a single ResourceSource, negation lifted into the outer WHERE, values never inlined
@@ -605,8 +606,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource's own ResourceTypeId consumes @p0, so the outer predicate is @p1
@@ -635,8 +636,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the :not's ResourceSource+Except becomes the match CTE; _id becomes the outer WHERE.
@@ -668,8 +669,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the target-side match (Organization.name=Acme) becomes cte0, the ChainJoin is root.
@@ -702,8 +703,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the referencing-side match (Observation.code=1234-5) becomes cte0, the ChainJoin is root
@@ -734,8 +735,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(outerChain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(outerChain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(outerChain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(outerChain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the innermost match (Organization.name=Acme) becomes cte0, the inner ChainJoin
@@ -772,7 +773,7 @@ public class EndToEndCompilationTests
             new Dictionary<string, short> { [refParam.Url!.ToString()] = 60, [nameParam.Url!.ToString()] = 202 },
             new Dictionary<string, short> { ["Organization"] = 105 });
 
-        Should.Throw<NotSupportedException>(() => Lower.Run(current, symbolTable, targetResourceType: "Organization", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(current, symbolTable, targetResourceType: "Organization", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("10");
     }
 
@@ -806,8 +807,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- both target predicates intersect into one InnerMatch before the ChainJoin.
@@ -837,8 +838,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the target scope's _id predicate becomes a filtered ResourceSource (not OuterPredicate,
@@ -865,8 +866,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- identical mechanism to the forward case, just on the referencing (inner) side this time
@@ -900,8 +901,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(chain, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the ordinary predicate (name) lowers first as an ordinary ParamSource, then the
@@ -941,8 +942,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- _id is extracted to the outer WHERE (top-level mechanism, unchanged); active and
@@ -983,8 +984,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
+        var symbols = (await ResolveHarness.RunAsync(predicate, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
         // Assert -- structure via Explain(), full SQL text via Emit for the whole shape. No modifier on
         // `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI), same as every other
@@ -1018,8 +1019,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbols = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- same StringLoweringRule default-arm shape as the forward-include test above.
         plan.Explain().ShouldBe(
@@ -1046,8 +1047,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = (await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
+        var symbols = (await ResolveHarness.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
         // Assert
         plan.Explain().ShouldBe(
@@ -1072,8 +1073,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Practitioner"] = 107;
 
         // Act
-        var symbols = (await Resolve.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbols = (await ResolveHarness.RunAsync(expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
@@ -1096,8 +1097,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Condition"] = 106;
 
         // Act
-        var symbols = (await Resolve.RunAsync(expression: null, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbols = (await ResolveHarness.RunAsync(expression: null, includes: [], revIncludes: [revInclude], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [revInclude], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes![0].ReferenceSearchParamId.ShouldBeNull();
@@ -1131,8 +1132,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = (await Resolve.RunAsync(expression: null, includes: [iterate, nonIterate], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbols = (await ResolveHarness.RunAsync(expression: null, includes: [iterate, nonIterate], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- non-iterate always sorts first regardless of its position in the input list.
         plan.Explain().ShouldBe(
@@ -1171,10 +1172,10 @@ public class EndToEndCompilationTests
         searchParamManager.Parameters[("Condition", "asserter")] = asserterParam;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- inc-free, two grouped CompartmentSource CTEs (one per distinct SearchParamId), Unioned.
         plan.Ctes.Count.ShouldBe(3);
@@ -1216,10 +1217,10 @@ public class EndToEndCompilationTests
         searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(2);
@@ -1259,10 +1260,10 @@ public class EndToEndCompilationTests
         searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             tree, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(4);
@@ -1292,11 +1293,11 @@ public class EndToEndCompilationTests
         var searchParamManager = new FakeSearchParameterDefinitionManager();
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
 
-        var plan = Lower.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- a single ResourceSource on the compartment's own type carrying the unsatisfiable
         // predicate (WHERE ResourceTypeId = @p AND 1 = 0), so the query is valid, well-typed SQL that
@@ -1316,10 +1317,10 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             predicate, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
 
@@ -1327,7 +1328,7 @@ public class EndToEndCompilationTests
         plan.Explain().ShouldContain("sort = SortSpec([String:202 ASC], Valued)");
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1348,10 +1349,10 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             expression: null, includes: [include], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000,
             sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
@@ -1366,7 +1367,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
         emitted.Sql.ShouldContain("SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -1388,9 +1389,9 @@ public class EndToEndCompilationTests
         };
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             expression: null, includes: [], revIncludes: [], sort: sortExpressions, resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: sortExpressions, sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -1405,7 +1406,7 @@ public class EndToEndCompilationTests
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
         emitted.Sql.ShouldContain("LEFT JOIN dbo.DateTimeSearchParam sk1");
         emitted.Sql.ShouldContain("sk1.IsMax = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1432,10 +1433,10 @@ public class EndToEndCompilationTests
         searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
             resolver, targetResourceType: "Observation", CancellationToken.None, compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -1443,7 +1444,7 @@ public class EndToEndCompilationTests
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1457,26 +1458,27 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             expression: null, includes: [], revIncludes: [], sort: [new SortExpression(nameParam, SortOrder.Ascending)],
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(7000L));
-        var plan = Lower.Run(
+        var page = new PageSpec([], BoundaryResourceTypeId: null, new SqlParameterRef(7000L));
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, SortOrder.Ascending)], sortPhase: SortPhase.MissingPrimary, page: page, new LowerOptions { Top = 10 }).Plan;
 
         // Assert -- ResourceSource's own ResourceTypeId is itself a bound parameter (@p0, same accounting
-        // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's own two
-        // boundary parameters are @p1/@p2, not @p0/@p1. The NOT EXISTS filter and the 2-branch seek
-        // predicate must be ANDed together with the OR chain parenthesized as a single unit -- otherwise
-        // NOT EXISTS binds only to the first branch (T-SQL's AND-over-OR precedence) and the second
-        // branch silently bypasses the missing-name filter on page 2+.
+        // already established by GivenAPatientIdOnlyQuery above), so the seek predicate's single boundary
+        // parameter is @p1, not @p0. A custom sort's missing-value segment orders by m.Sid1 alone, so the
+        // seek is Sid-only too -- a type-major seek here would exclude a lower-type/higher-surrogate row
+        // that the type-free ORDER BY places after the boundary, dropping it at the page seam. The NOT
+        // EXISTS filter and the seek must still be ANDed together with the seek parenthesized as a single
+        // unit -- otherwise NOT EXISTS could bind to only part of it under T-SQL's AND-over-OR precedence
+        // and the rest would silently bypass the missing-name filter on page 2+.
         var emitted = SqlBuilder.Run(plan);
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain(
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
-            "AND ((m.T1 = @p1 AND m.Sid1 > @p2)\n" +
-            "       OR (m.T1 > @p1))");
+            "AND (m.Sid1 > @p1)");
     }
 
     [Fact]
@@ -1500,10 +1502,10 @@ public class EndToEndCompilationTests
         searchParamManager.Parameters[("Observation", "subject")] = subjectParam;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation",
             CancellationToken.None, compartmentManager, searchParamManager)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             compartment, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
@@ -1533,9 +1535,9 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             chain, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -1578,9 +1580,9 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             missingName, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missingName, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 50 }).Plan;
 
@@ -1623,10 +1625,10 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             missingName, includes: [], revIncludes: [], sort: [new SortExpression(lastUpdatedParam, SortOrder.Ascending)],
             resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missingName, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(lastUpdatedParam, SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -1658,8 +1660,8 @@ public class EndToEndCompilationTests
         var sort = new List<SortExpression> { new(nameParam, SortOrder.Ascending) };
 
         // Act
-        var symbols = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var symbols = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: sort, resolver, targetResourceType: null, CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: sort, sortPhase: SortPhase.Valued, page: null,
             new LowerOptions { SystemLevelSearch = true, Top = 10 }).Plan;
@@ -1672,7 +1674,7 @@ public class EndToEndCompilationTests
             "sort = SortSpec([String:77 ASC], Valued)");
         emitted.Sql.ShouldContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain("sk0.IsMin = 1");
-        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+        emitted.Sql.ShouldContain("ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -1689,9 +1691,9 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbols = (await Resolve.RunAsync(
+        var symbols = (await ResolveHarness.RunAsync(
             missingName, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missingName, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
@@ -1720,8 +1722,8 @@ public class EndToEndCompilationTests
         resolver.SystemIds["http://loinc.org"] = 7;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- system resolves to surrogate id 7; code remains a string parameter; parameter order is SystemId then Code
@@ -1751,8 +1753,8 @@ public class EndToEndCompilationTests
         // No system ID configured: empty string is never looked up
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- IS NULL guard with no system-id parameter; code is the sole bound parameter
@@ -1783,8 +1785,8 @@ public class EndToEndCompilationTests
         resolver.QuantityCodeIds["mg"] = 22;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- Ge: raw value used (no precision-widening bounds); SystemId and QuantityCodeId appended in that order
@@ -1828,8 +1830,8 @@ public class EndToEndCompilationTests
         resolver.SystemIds["http://loinc.org"] = 7;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- slot 1 carries SystemId1 (integer) then Code1; slot 2 carries Code2 only (null system → no constraint)
@@ -1859,8 +1861,8 @@ public class EndToEndCompilationTests
         // resolver.SystemIds intentionally has no entry for "http://unknown.org" — GetSystemIdAsync returns null
 
         // Act -- Resolve must not throw; the known-miss is stored; Lower lowers to Predicate.False; Emit must not throw
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the plan and the SQL spell the unsatisfiable predicate identically, so a reader
@@ -1896,8 +1898,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the unsatisfiable CTE is the SUBTRAHEND of the Except (emitted as a NOT EXISTS
@@ -1955,8 +1957,8 @@ public class EndToEndCompilationTests
         resolver.SystemIds["http://loinc.org"] = 7;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- the union keeps both branches; the satisfiable one is untouched and still binds its
@@ -2004,8 +2006,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["ValueSet"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: self OR descendants-at-a-segment-boundary
@@ -2043,8 +2045,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["ValueSet"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "ValueSet", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "ValueSet", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: PrefixOfParameter, binary collation
@@ -2083,8 +2085,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: IS NULL for local BaseUri, TypeId before ResourceId
@@ -2129,12 +2131,12 @@ public class EndToEndCompilationTests
             new ReferenceSearchValue(ReferenceKind.External, new Uri("http://server-b.org/fhir/"), "Patient", "456"));
 
         // Act
-        var symbolsA = (await Resolve.RunAsync(predicateA, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var planA = Lower.Run(predicateA, symbolsA, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolsA = (await ResolveHarness.RunAsync(predicateA, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var planA = LowerHarness.Run(predicateA, symbolsA, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emittedA = SqlBuilder.Run(planA);
 
-        var symbolsB = (await Resolve.RunAsync(predicateB, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var planB = Lower.Run(predicateB, symbolsB, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolsB = (await ResolveHarness.RunAsync(predicateB, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var planB = LowerHarness.Run(predicateB, symbolsB, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emittedB = SqlBuilder.Run(planB);
 
         // Assert -- both plans have identical explain shape; only the @p0 runtime value differs
@@ -2184,8 +2186,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: And(IsNull(TextOverflow), Equal(Text, @p0, CS_AS))
@@ -2226,8 +2228,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: Or(And(IsNull(TextOverflow), Like(Text, @p0, Contains, CI_AI)), Like(TextOverflow, @p1, Contains, CI_AI))
@@ -2286,8 +2288,8 @@ public class EndToEndCompilationTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: overlap against the widened range, upper bound first then lower bound
@@ -2328,8 +2330,8 @@ public class EndToEndCompilationTests
         resolver.QuantityCodeIds["mg"] = 22;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- plan shape: widened numeric overlap first, then SystemId, then QuantityCodeId
@@ -2381,11 +2383,11 @@ public class EndToEndCompilationTests
         var secondWidenedEnd = new DateTimeOffset(2020, 1, 1, 4, 48, 0, TimeSpan.Zero);
 
         // Act -- compile the identical search twice, each compile reading the clock exactly once, the way
-        // SearchCompiler.CompileWithTimeProviderAsync captures one instant per compile
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
-        var plan1 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
+        // SearchSqlCompiler captures one instant per compile from its constructor-supplied TimeProvider
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var plan1 = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted1 = SqlBuilder.Run(plan1);
-        var plan2 = Lower.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
+        var plan2 = LowerHarness.Run(predicate, symbolTable, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted2 = SqlBuilder.Run(plan2);
 
         // Assert -- plan shape: widened end compared to StartDateTime, widened start compared to EndDateTime
@@ -2441,8 +2443,8 @@ public class EndToEndCompilationTests
         var widenedEnd = new DateTimeOffset(2023, 6, 15, 14, 54, 0, TimeSpan.Zero);
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
-        var plan = Lower.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var plan = LowerHarness.Run(tree, symbolTable, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = timeProvider.GetUtcNow() }).Plan;
         var emitted = SqlBuilder.Run(plan);
 
         // Assert -- ResourceSource's own ResourceTypeId consumes @p0, so the outer predicate's widened

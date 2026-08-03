@@ -336,7 +336,7 @@ public class EmitTests
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "    SELECT TOP (1001) T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
@@ -347,6 +347,52 @@ public class EmitTests
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
             "ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
         emitted.Parameters.Count.ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenAZeroLimitIncludeStage_WhenEmitted_ThenTheLimitCompanionOverFetchesOneSentinelRowSoTruncationStaysDetectable()
+    {
+        // Arrange -- a zero-budget include probe. FHIR Server's SqlServerSearchService runs phase 2 of a sorted
+        // search with IncludeCount = 0 (IncludeContinuationTokenSearch) meaning "return no included resources,
+        // but tell me whether any exist so I can mint a nested-includes continuation token". The companion must
+        // still forward the one-row truncation sentinel the body over-fetches: TOP (0) would return nothing,
+        // discard the IsPartial the CASE computed, and make the probe silently answer "no", dropping every
+        // overflowing include. This mirrors the legacy generator, whose include limit CTE is TOP (includeCount + 1)
+        // even when includeCount is 0.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var stage = new IncludeStage(
+            IncludeDirection.Forward,
+            ReferenceSearchParamId: 55,
+            SeedTypeIds: [103],
+            OutputTypeIds: [105],
+            SeedStages: [],
+            SeedFromMatch: true,
+            Iterate: false,
+            Limit: 0);
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Top: 50,
+            Includes: [stage]);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the body over-fetches one row (TOP (1)); the companion forwards that sentinel (TOP (1), never
+        // TOP (0)) and flags partiality when the body held more than the zero budget (COUNT_BIG(*) OVER() > 0), so
+        // a caller can still detect that included resources exist.
+        emitted.Sql.ShouldContain(
+            "inc0 AS (\n" +
+            "    SELECT DISTINCT TOP (1) r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n");
+        emitted.Sql.ShouldContain(
+            "inc0lim AS (\n" +
+            "    SELECT TOP (1) T1, Sid1,\n" +
+            "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 0 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
+            "    FROM inc0\n" +
+            "    ORDER BY T1 ASC, Sid1 ASC\n" +
+            ")");
+        emitted.Sql.ShouldNotContain("TOP (0)");
     }
 
     [Fact]
@@ -400,7 +446,7 @@ public class EmitTests
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "    SELECT TOP (1001) T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
@@ -567,17 +613,18 @@ public class EmitTests
             "INNER JOIN dbo.StringSearchParam sk0\n" +
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
-            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
     }
 
     [Fact]
     public void GivenASortWithAPageBoundary_WhenEmitted_ThenTheSeekPredicateAppearsInTheWhereClause()
     {
-        // Arrange -- Patient?_sort=name, second page.
+        // Arrange -- Patient?_sort=name, second page. A custom sort pages on a typeless boundary: its
+        // ORDER BY is (Text, Sid1), so the seek must break its final tie on Sid1 alone.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act
@@ -586,14 +633,146 @@ public class EmitTests
         // Assert
         emitted.Sql.ShouldContain(
             "WHERE (sk0.Text > @p1\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
-            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
-        emitted.Parameters.Count.ShouldBe(4);
+            "       OR (sk0.Text = @p1 AND m.Sid1 > @p2))\n" +
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(3);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
-        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", (short)103));
-        emitted.Parameters[3].ShouldBe(new EmittedSqlParameter("@p3", 5000L));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 5000L));
     }
+
+    [Fact]
+    public void GivenATypelessPageWithASingleCustomSortKey_WhenEmitted_ThenTheSeekOmitsTheTypeColumnAndTheOrderByOmitsTheTypeTiebreak()
+    {
+        // Arrange -- a multi-type _sort=name continuation page. The boundary carries no resource type
+        // (BoundaryResourceTypeId null), mirroring the legacy custom-sort token [sortValue, surrogateId].
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the seek's final branch compares only m.Sid1, never m.T1, and the ORDER BY tiebreak is
+        // Sid1 alone so it agrees with that type-free seek.
+        emitted.Sql.ShouldContain(
+            "WHERE (sk0.Text > @p1\n" +
+            "       OR (sk0.Text = @p1 AND m.Sid1 > @p2))\n" +
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        // The identity SELECT still projects m.T1 (the router needs the type back); what must be absent is
+        // any reference to the type column in the seek or the ORDER BY.
+        emitted.Sql.ShouldNotContain("m.T1 =");
+        emitted.Sql.ShouldNotContain("m.T1 >");
+        emitted.Sql.ShouldNotContain("m.T1 ASC");
+        emitted.Parameters.Count.ShouldBe(3);
+        emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "Adams"));
+        emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", 5000L));
+    }
+
+    [Fact]
+    public void GivenATypelessPageWithNoSortKeys_WhenEmitted_ThenItIsRejected()
+    {
+        // Arrange -- a typeless boundary with no sort at all. A sortless search orders by (T1, Sid1), so a
+        // Sid1-only seek would disagree with that type-major ORDER BY and page unsoundly. Only a custom sort
+        // makes the ORDER BY type-free, so a typeless page without one must be refused, not emitted.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var page = new PageSpec([], BoundaryResourceTypeId: null, new SqlParameterRef(7000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Page: page);
+
+        // Act / Assert
+        var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        ex.Message.ShouldContain("typeless");
+        ex.Message.ShouldContain("custom");
+    }
+
+    [Fact]
+    public void GivenATypelessPageWithAResourceTypeSortKey_WhenEmitted_ThenItIsRejected()
+    {
+        // Arrange -- a _type sort orders by the very column a typeless seek omits, so the two disagree on
+        // row order; the combination must be refused rather than emitted as unsound SQL.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceType, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef((short)103)], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act / Assert
+        var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        ex.Message.ShouldContain("typeless");
+        ex.Message.ShouldContain("ResourceType");
+    }
+
+    [Fact]
+    public void GivenATypedPageWithACustomSortKey_WhenEmitted_ThenItIsRejected()
+    {
+        // Arrange -- the mirror of the typeless guard, and unsound for the mirrored reason. A custom sort
+        // makes EmitOrderBy drop the m.T1 tiebreak (ordering by (Text, Sid1)) whatever the boundary looks
+        // like, while a type on the boundary still makes EmitSeekPredicate emit a type-major seek. In a
+        // multi-type search a row of a lower type id but higher surrogate id then sorts after the boundary
+        // yet is excluded by "m.T1 > @t", and vanishes at the page seam. Only a single-type search hid this,
+        // because m.T1 is constant there.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+
+        // Act / Assert
+        var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+        ex.Message.ShouldContain("typed keyset Page");
+        ex.Message.ShouldContain("custom");
+        ex.Message.ShouldContain("silently dropped at the page seam");
+    }
+
+    [Fact]
+    public void GivenACustomSortQueryShape_WhenPageOneAndATypelessPageTwoAreEmitted_ThenTheirOrderByClausesAreIdentical()
+    {
+        // A keyset walk is sound only if every page shares one ordering. Page 1 carries no PageSpec while a
+        // later page carries a typeless boundary, so were the ORDER BY decided by the boundary's presence the
+        // two would order differently -- page 1 keeping m.T1, page 2 dropping it -- and rows could be skipped
+        // or repeated across the page-1/page-2 seam. Because the sort is custom, both order by (Text, Sid1).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+
+        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var typelessPage = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: typelessPage);
+
+        var pageOneOrderBy = LastOrderBy(SqlBuilder.Run(pageOnePlan).Sql);
+        var pageTwoOrderBy = LastOrderBy(SqlBuilder.Run(pageTwoPlan).Sql);
+
+        pageOneOrderBy.ShouldBe("ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        pageTwoOrderBy.ShouldBe(pageOneOrderBy);
+    }
+
+    [Fact]
+    public void GivenACustomSortIncludeShape_WhenPageOneAndATypelessPageTwoAreEmitted_ThenTheOuterIncludeOrderByClausesAreIdentical()
+    {
+        // The include path's outer ORDER BY (EmitOuterOrderByForIncludes) must honour the same invariant: the
+        // match/include union has to be ordered identically on page 1 (no boundary) and on a typeless page 2,
+        // or the walk skips rows at the page seam. A custom sort drops the T1 tiebreak on both.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+
+        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Includes: [includeStage]);
+        var typelessPage = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: typelessPage, Includes: [includeStage]);
+
+        var pageOneOrderBy = LastOrderBy(SqlBuilder.Run(pageOnePlan).Sql);
+        var pageTwoOrderBy = LastOrderBy(SqlBuilder.Run(pageTwoPlan).Sql);
+
+        pageOneOrderBy.ShouldBe("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
+        pageTwoOrderBy.ShouldBe(pageOneOrderBy);
+    }
+
+    // The final (outer) ORDER BY of an emitted statement -- the one a keyset walk pages against.
+    private static string LastOrderBy(string sql) =>
+        sql[sql.LastIndexOf("ORDER BY", StringComparison.Ordinal)..].TrimEnd();
 
     [Fact]
     public void GivenTheMissingPrimaryPhase_WhenEmitted_ThenTheJoinIsReplacedByNotExistsAndTheOrderByOmitsTheMissingKey()
@@ -607,12 +786,13 @@ public class EmitTests
         // Act
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert
+        // Assert -- the missing-name segment of a custom sort is type-free too: its ORDER BY is m.Sid1 alone,
+        // never m.T1, so a multi-type search (which has no single type to substitute into a seek) can page it.
         emitted.Sql.ShouldNotContain("INNER JOIN dbo.StringSearchParam sk0");
         emitted.Sql.ShouldContain(
             "SELECT TOP (10) m.T1, m.Sid1 FROM cte0 m\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)\n" +
-            "ORDER BY m.T1 ASC, m.Sid1 ASC");
+            "ORDER BY m.Sid1 ASC");
     }
 
     [Fact]
@@ -630,7 +810,7 @@ public class EmitTests
             SortPhase.Valued);
         var page = new PageSpec(
             [new SqlParameterRef("Zorro"), new SqlParameterRef("2000-01-01T00:00:00.0000000")],
-            new SqlParameterRef((short)103),
+            BoundaryResourceTypeId: null,
             new SqlParameterRef(9000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
@@ -648,9 +828,8 @@ public class EmitTests
         emitted.Sql.ShouldContain(
             "WHERE (sk0.Text > @p1\n" +
             "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p2)\n" +
-            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
-            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.T1 > @p3))\n" +
-            "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+            "       OR (sk0.Text = @p1 AND ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p2 AND m.Sid1 > @p3))\n" +
+            "ORDER BY sk0.Text ASC, ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
     }
 
     [Fact]
@@ -694,6 +873,65 @@ public class EmitTests
         var orderBy = emitted.Sql[emitted.Sql.LastIndexOf("ORDER BY", StringComparison.Ordinal)..];
         orderBy.Split("m.Sid1", StringSplitOptions.None).Length.ShouldBe(2);
         orderBy.ShouldBe("ORDER BY m.Sid1 ASC, m.T1 ASC");
+    }
+
+    [Fact]
+    public void GivenATypeAndLastUpdatedSort_WhenEmitted_ThenTheOrderByNamesBothColumnsExactlyOnceAndKeepsTheirDirections()
+    {
+        // Arrange -- Patient?_sort=-_type,-_lastUpdated. Both keys' value expressions are themselves the
+        // trailing keyset tiebreak columns ("m.T1" and "m.Sid1"), so appending the tiebreak unconditionally
+        // would name each twice, which SQL Server rejects with Msg 145. Worse than illegal, the appended
+        // terms are hard-coded ASC, so a descending sort would silently be contradicted. Only executing the
+        // SQL surfaces either problem, so both are pinned here as text-level invariants.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(null, SortKeyKind.ResourceType, SortOrder.Descending),
+                new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending),
+            ],
+            SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- neither key contributes a join: the match set already projects both columns.
+        emitted.Sql.ShouldNotContain("JOIN dbo.");
+        var orderBy = emitted.Sql[emitted.Sql.LastIndexOf("ORDER BY", StringComparison.Ordinal)..];
+        orderBy.Split("m.T1", StringSplitOptions.None).Length.ShouldBe(2);
+        orderBy.Split("m.Sid1", StringSplitOptions.None).Length.ShouldBe(2);
+        orderBy.ShouldBe("ORDER BY m.T1 DESC, m.Sid1 DESC");
+    }
+
+    [Fact]
+    public void GivenATypeAndLastUpdatedSortWithAPageBoundary_WhenEmitted_ThenTheSeekPredicateStepsThroughBothKeys()
+    {
+        // Arrange -- page two of Patient?_sort=_type,_lastUpdated. The boundary must carry one value per
+        // active key, and those values are the same (ResourceTypeId, ResourceSurrogateId) pair the
+        // continuation token already holds -- which is exactly what makes this sort keyset-pageable.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(null, SortKeyKind.ResourceType, SortOrder.Ascending),
+                new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending),
+            ],
+            SortPhase.Valued);
+        var page = new PageSpec(
+            [new SqlParameterRef((short)103), new SqlParameterRef(5000L)],
+            new SqlParameterRef((short)103),
+            new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+
+        // Assert -- the lexicographic branches over the two keys, then the (T1, Sid1) tiebreak branches.
+        // The tiebreak branches are logically dead here (their all-equal prefix already pins both columns),
+        // but EmitSeekPredicate appends them uniformly rather than special-casing resource-column keys.
+        emitted.Sql.ShouldContain("m.T1 > @p1");
+        emitted.Sql.ShouldContain("(m.T1 = @p1 AND m.Sid1 > @p2)");
     }
 
     [Fact]
@@ -745,14 +983,14 @@ public class EmitTests
             "INNER JOIN dbo.StringSearchParam sk0\n" +
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
-            "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
+            "    ORDER BY sk0.Text ASC, m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage\n" +
             "UNION ALL\n" +
             "SELECT i.T1, i.Sid1, CAST(0 AS bit), i.IsPartial, NULL FROM inc0lim i\n" +
             "WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)\n" +
-            "ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+            "ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -784,28 +1022,31 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenTheMissingPrimaryPhaseWithALastUpdatedPrimaryKey_WhenEmitted_ThenThrowsInvalidOperationException()
+    public void GivenTheMissingPrimaryPhaseWithALastUpdatedPrimaryKey_WhenEmitted_ThenThrowsNotSupportedException()
     {
         // Arrange -- hand-constructed QueryPlan bypassing Lower.BuildSortSpec's own guard (Lower rejects
         // this combination at construction time -- see LowerTests' equivalent throw test). QueryPlan is
         // a public construction surface, so Emit defends against this shape too rather than trusting
         // every caller to route through Lower: _lastUpdated is never "missing," so EmitMissingPrimaryFilter
         // must never be asked to render a NOT EXISTS for it (its SearchParamId is null by construction).
+        // NotSupportedException specifically, so TryCompile reports it as data rather than letting it escape.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.MissingPrimary);
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan));
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 
     [Fact]
-    public void GivenAPageBoundaryWithFewerValuesThanActiveSortKeys_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
+    public void GivenAPageBoundaryWithFewerValuesThanActiveSortKeys_WhenEmitted_ThenThrowsNotSupportedExceptionMentioningTheMismatch()
     {
         // Arrange -- a 2-key Valued sort needs a 2-value boundary; this one only carries 1. Silently
         // pairing boundaryParams[0] against the wrong key's expression is exactly the silent-wrong-
-        // pagination failure class this guard exists to prevent.
+        // pagination failure class this guard exists to prevent. NotSupportedException rather than
+        // InvalidOperationException because the boundary is caller input, so the facade has to be able
+        // to record it as a SearchCompilationFailure instead of letting it escape TryCompile.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec(
@@ -814,27 +1055,31 @@ public class EmitTests
                 new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
             ],
             SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Zorro")], new SqlParameterRef((short)103), new SqlParameterRef(9000L));
+        // The boundary is typeless because the sort is custom; a typed one would be refused by
+        // RejectUnsupportedCombinations first and this test would stop exercising the count guard at all.
+        var page = new PageSpec([new SqlParameterRef("Zorro")], BoundaryResourceTypeId: null, new SqlParameterRef(9000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("1 value(s)");
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("1 value(s)");
     }
 
     [Fact]
-    public void GivenAMissingPrimaryPhaseBoundaryReusedFromTheValuedPhaseShape_WhenEmitted_ThenThrowsInvalidOperationExceptionMentioningTheMismatch()
+    public void GivenAMissingPrimaryPhaseBoundaryReusedFromTheValuedPhaseShape_WhenEmitted_ThenThrowsNotSupportedExceptionMentioningTheMismatch()
     {
         // Arrange -- MissingPrimary excludes Keys[0] from ActiveKeyIndices, so its boundary should carry
         // Keys.Count - 1 values. Handing it a full Keys.Count-sized boundary (the Valued-phase shape) must
         // throw rather than silently misalign boundaryParams against the wrong keys.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        // The boundary is typeless because the sort is custom; a typed one would be refused by
+        // RejectUnsupportedCombinations first and this test would stop exercising the count guard at all.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act & Assert
-        Should.Throw<InvalidOperationException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("active key(s)");
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("active key(s)");
     }
 
     [Fact]
@@ -845,7 +1090,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
@@ -867,13 +1112,12 @@ public class EmitTests
             "    ON sk0.ResourceTypeId = m.T1 AND sk0.ResourceSurrogateId = m.Sid1\n" +
             "   AND sk0.SearchParamId = 202 AND sk0.IsMin = 1\n" +
             "    WHERE (sk0.Text > @p1\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (sk0.Text = @p1 AND m.T1 > @p2))\n" +
-            "    ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC\n" +
+            "       OR (sk0.Text = @p1 AND m.Sid1 > @p2))\n" +
+            "    ORDER BY sk0.Text ASC, m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
             "SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial, SortValue0 FROM cteMatchPage");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, SortValue0 ASC, Sid1 ASC");
     }
 
     [Fact]
@@ -903,14 +1147,14 @@ public class EmitTests
             "    SELECT TOP (10) m.T1, m.Sid1\n" +
             "    FROM cte0 m\n" +
             "    WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202)\n" +
-            "    ORDER BY m.T1 ASC, m.Sid1 ASC\n" +
+            "    ORDER BY m.Sid1 ASC\n" +
             ")");
         emitted.Sql.ShouldContain(
             "      AND EXISTS (\n" +
             "        SELECT 1 FROM cteMatchPage m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
             "    )");
         emitted.Sql.ShouldContain("SELECT T1, Sid1, CAST(1 AS bit) AS IsMatch, CAST(0 AS bit) AS IsPartial FROM cteMatchPage");
-        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, T1 ASC, Sid1 ASC");
+        emitted.Sql.ShouldEndWith("ORDER BY IsMatch DESC, Sid1 ASC");
     }
 
     [Fact]
@@ -925,7 +1169,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
@@ -939,14 +1183,13 @@ public class EmitTests
 
         // Assert -- the outer filter is ANDed against the whole parenthesized OR chain as a single
         // unit, not just its first branch. If the seek predicate's OR chain were unparenthesized, this
-        // exact "WHERE {outer} AND (...)" text would not appear -- the second/third OR branches would
+        // exact "WHERE {outer} AND (...)" text would not appear -- the trailing OR branch would
         // instead sit at the top level, bypassing r.ResourceId = @p1 entirely.
         emitted.Sql.ShouldContain(
             "WHERE r.ResourceId = @p1 AND (sk0.Text > @p2\n" +
-            "       OR (sk0.Text = @p2 AND m.T1 = @p3 AND m.Sid1 > @p4)\n" +
-            "       OR (sk0.Text = @p2 AND m.T1 > @p3))\n" +
-            "ORDER BY sk0.Text ASC, m.T1 ASC, m.Sid1 ASC");
-        emitted.Parameters.Count.ShouldBe(5);
+            "       OR (sk0.Text = @p2 AND m.Sid1 > @p3))\n" +
+            "ORDER BY sk0.Text ASC, m.Sid1 ASC");
+        emitted.Parameters.Count.ShouldBe(4);
         emitted.Parameters[1].ShouldBe(new EmittedSqlParameter("@p1", "123"));
         emitted.Parameters[2].ShouldBe(new EmittedSqlParameter("@p2", "Adams"));
     }
@@ -955,8 +1198,8 @@ public class EmitTests
     public void GivenTheMissingPrimaryPhaseWithAMultiBranchPageBoundary_WhenEmitted_ThenTheNotExistsFilterAppliesToEveryBranchOfTheParenthesizedSeekPredicate()
     {
         // Arrange -- Patient?_sort=name,-birthdate, missing-name phase, second page: a two-key sort so
-        // the MissingPrimary phase's seek predicate has 3 branches (one active-key level plus the two
-        // type/sid tie-break branches), not just the 2-branch degenerate case -- proving NOT EXISTS
+        // the MissingPrimary phase's seek predicate is a multi-branch OR chain (one active-key level plus
+        // the surrogate-id tie-break branch), not the single-branch degenerate case -- proving NOT EXISTS
         // combines correctly with EVERY branch, not merely the first one it happens to sit beside.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
@@ -968,23 +1211,69 @@ public class EmitTests
             SortPhase.MissingPrimary);
         var page = new PageSpec(
             [new SqlParameterRef("2000-01-01T00:00:00.0000000")],
-            new SqlParameterRef((short)103),
+            BoundaryResourceTypeId: null,
             new SqlParameterRef(9000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
 
-        // Assert -- before the fix, this "NOT EXISTS(...) AND (branch0 OR branch1 OR branch2)" text
-        // would not exist: NOT EXISTS would only bind to branch0 via AND, and branch1/branch2 would sit
-        // at the top level unfiltered, letting rows WITH a name value (that NOT EXISTS was meant to
-        // exclude) leak into the missing-name phase's page 2+ results.
+        // Assert -- before the fix, this "NOT EXISTS(...) AND (branch0 OR branch1)" text would not exist:
+        // NOT EXISTS would only bind to branch0 via AND, and branch1 would sit at the top level
+        // unfiltered, letting rows WITH a name value (that NOT EXISTS was meant to exclude) leak into the
+        // missing-name phase's page 2+ results.
         emitted.Sql.ShouldContain(
             "WHERE NOT EXISTS (SELECT 1 FROM dbo.StringSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 202) " +
             "AND (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') < @p1\n" +
-            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 = @p2 AND m.Sid1 > @p3)\n" +
-            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.T1 > @p2))\n" +
-            "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.T1 ASC, m.Sid1 ASC");
+            "       OR (ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') = @p1 AND m.Sid1 > @p2))\n" +
+            "ORDER BY ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') DESC, m.Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenTheMissingPrimaryPhaseWithAMultiKeySort_WhenEmitted_ThenSortValuesAreProjectedContiguouslyFromZero()
+    {
+        // The caller reads the next page's boundary values positionally out of the SortValueN columns and feeds
+        // them back as KeysetPosition.BoundaryValues. That contract only holds if the projection is contiguous
+        // from zero over the keys that actually contribute a value. In the MissingPrimary phase key 0 contributes
+        // none -- it becomes the NOT EXISTS -- so the *second* key must still project as SortValue0, not
+        // SortValue1. Nothing else pins that renumbering: the other multi-key tests assert WHERE/ORDER BY text,
+        // which names the raw ISNULL expression rather than the alias, so an off-by-one in the alias index would
+        // emit valid SQL and silently shift every boundary value by one slot on the next page.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
+            ],
+            SortPhase.MissingPrimary);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("ISNULL(sk1.StartDateTime, '0001-01-01T00:00:00.0000000') AS SortValue0");
+        emitted.Sql.ShouldNotContain("AS SortValue1");
+    }
+
+    [Fact]
+    public void GivenAPlanWithMoreSortKeysThanTheCap_WhenEmitted_ThenItIsRefusedRatherThanEmittingAFourthJoin()
+    {
+        // Lower caps _sort at 3 keys, but a plan rewritten through `plan with { Sort = ... }` bypasses Lower
+        // entirely. Without a mirror here the documented rewrite path silently defeats a cap that SortSpec's
+        // own docs and the README both advertise, emitting a fourth join and a fourth projected sort value.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var sort = new SortSpec(
+            [
+                new SortKey(202, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(303, SortKeyKind.Date, SortOrder.Ascending),
+                new SortKey(404, SortKeyKind.String, SortOrder.Ascending),
+                new SortKey(505, SortKeyKind.Date, SortOrder.Ascending),
+            ],
+            SortPhase.Valued);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new CteRef(0), Sort: sort);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
+            .Message.ShouldContain("at most 3 keys");
     }
 
     [Fact]
@@ -1015,7 +1304,7 @@ public class EmitTests
         // Arrange -- Patient?name=Smith&_total=accurate, no resource-column predicate.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1040,7 +1329,7 @@ public class EmitTests
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            OuterPredicate: outerPredicate, CountOnly: true);
+            OuterPredicate: outerPredicate, Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1052,17 +1341,17 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountOnlyPlanWithSortAndTopAndIncludesAllSet_WhenEmitted_ThenTheyAreAllIgnored()
+    public void GivenACountPlanWithTopAndIncludesSet_WhenEmitted_ThenTheyAreAllIgnored()
     {
-        // Arrange -- proves CountOnly wins unconditionally, regardless of what else is set on the plan
-        // (a caller should never populate these for a count request, but Emit must not depend on that).
+        // Arrange -- proves the Count shape wins unconditionally over the paging and include slots (a caller
+        // should never populate these for a count request, but Emit must not depend on that). Sort is the one
+        // exception and is covered by the phase-scoped count tests, so it is absent here.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Top: 10, Sort: sort, Includes: [includeStage], CountOnly: true);
+            Top: 10, Includes: [includeStage], Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1322,7 +1611,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: false));
+            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: false));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1350,7 +1639,7 @@ public class EmitTests
                 new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
             ],
             new CteRef(1),
-            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true));
+            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1367,7 +1656,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.NotReferencedSource(103, 96, 969)],
             new CteRef(0),
-            Visibility: new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true));
+            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1408,7 +1697,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             Projection: new ProjectionSpec(["RawResource"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -1508,7 +1797,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1531,7 +1820,7 @@ public class EmitTests
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
             OuterPredicate: outerPredicate,
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1551,7 +1840,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)],
             new CteRef(0),
@@ -1562,7 +1851,7 @@ public class EmitTests
 
         var emitted = SqlBuilder.Run(plan);
 
-        // Range params must be bound *after* the seek params. The seek predicate allocates @p1-@p3;
+        // Range params must be bound *after* the seek params. The seek predicate allocates @p1-@p2;
         // the range must follow, not precede, them — verified by comparing value indices rather than
         // relying on absolute ordinals (which would break if seek param count ever changes).
         var allValues = emitted.Parameters.Select(p => p.Value).ToList();
@@ -1678,7 +1967,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             SearchParameterHash: new SqlParameterRef("abc123"));
 
         var emitted = SqlBuilder.Run(plan);
@@ -1695,7 +1984,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             SearchParameterHash: new SqlParameterRef("abc123"));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2135,7 +2424,7 @@ public class EmitTests
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
             "),\n" +
             "inc0lim AS (\n" +
-            "    SELECT TOP (1000) T1, Sid1,\n" +
+            "    SELECT TOP (1001) T1, Sid1,\n" +
             "           CAST(CASE WHEN COUNT_BIG(*) OVER() > 1000 THEN 1 ELSE 0 END AS bit) AS IsPartial\n" +
             "    FROM inc0\n" +
             "    ORDER BY T1 ASC, Sid1 ASC\n" +
@@ -2425,7 +2714,7 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
+            Shape: new ResultShape.Count.AllMatches(),
             OffsetPage: new OffsetSpec(20, 10));
 
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2436,10 +2725,10 @@ public class EmitTests
 
     // ─── End OffsetPage tests ───────────────────────────────────────────────────────────────────────
 
-    // ─── CountPhaseScoped tests ─────────────────────────────────────────────────────────────────────
+    // ─── Phase-scoped count tests ───────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void GivenACountOnlyPlanWithCountPhaseScoped_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
+    public void GivenACountRestrictedToItsSortPhase_WhenEmitted_ThenCountJoinsThePhasesOwnSortKey()
     {
         // Arrange -- Valued phase: Keys[0]'s join is present and the count must scope to it, not the
         // whole match set, or a two-phase executor would double count rows present in both phases.
@@ -2447,9 +2736,8 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
-            Sort: sort,
-            CountPhaseScoped: true);
+            Shape: new ResultShape.Count.CurrentSortPhase(),
+            Sort: sort);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2468,7 +2756,7 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountOnlyPlanWithCountPhaseScopedAndMissingPrimaryPhase_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
+    public void GivenACountRestrictedToAMissingPrimaryPhase_WhenEmitted_ThenWhereExcludesRowsCarryingTheKey()
     {
         // Arrange -- MissingPrimary phase: Keys[0] is excluded from the joins (EmitSortJoins' own
         // MissingPrimary continue) and instead the count must apply the NOT EXISTS filter, the same
@@ -2477,9 +2765,8 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
-            Sort: sort,
-            CountPhaseScoped: true);
+            Shape: new ResultShape.Count.CurrentSortPhase(),
+            Sort: sort);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2493,16 +2780,12 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenACountOnlyPlanWithoutCountPhaseScoped_WhenEmitted_ThenSortIsIgnoredAsBefore()
+    public void GivenACountPlanWithNoSort_WhenEmitted_ThenTheCountCoversTheWholeMatchSet()
     {
-        // Regression guard: CountOnly without CountPhaseScoped must keep ignoring Sort entirely -- no
-        // join, no MissingPrimary filter -- exactly as EmitCountOnlyShape's remarks already document.
-        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            CountOnly: true,
-            Sort: sort);
+            Shape: new ResultShape.Count.AllMatches());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2516,7 +2799,36 @@ public class EmitTests
             "SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
     }
 
-    // ─── End CountPhaseScoped tests ─────────────────────────────────────────────────────────────────
+    [Fact]
+    public void GivenASortedPlanRewrittenToACount_WhenEmitted_ThenTheCountStillCoversTheWholeMatchSet()
+    {
+        // `plan with { Shape = ... }` is the reason QueryPlan is public, so an unrestricted count must ignore a
+        // Sort the plan already carried. Scoping off the Sort's presence instead would make this rewrite emit an
+        // INNER JOIN to the sort table, silently excluding every resource missing the sort key from the total.
+        var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
+        var sorted = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: sort);
+
+        var sql = SqlBuilder.Run(sorted with { Shape = new ResultShape.Count.AllMatches() }).Sql;
+
+        sql.ShouldNotContain("StringSearchParam sk0");
+        sql.ShouldEndWith("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
+    }
+
+    [Fact]
+    public void GivenACountRestrictedToASortPhaseWithNoSort_WhenEmitted_ThenThrowsNotSupported()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Shape: new ResultShape.Count.CurrentSortPhase());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    // ─── End phase-scoped count tests ───────────────────────────────────────────────────────────────
 
     [Fact]
     public void GivenAnIncludesPlanWithASurrogateIdRange_WhenEmitted_ThenTheRangeAppliesOnlyToTheMatchArm()
@@ -2602,7 +2914,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2622,7 +2934,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2641,7 +2953,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2654,14 +2966,14 @@ public class EmitTests
     [Fact]
     public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenOnlyFirstIncludeArmNamesIsMatch()
     {
-        // In a UNION ALL, column names come from the first SELECT.  The first include arm must name
+        // In a UNION, column names come from the first SELECT.  The first include arm must name
         // IsMatch explicitly; subsequent arms must not double-alias it (which SQL Server would accept
         // but which would make the assertion below brittle rather than structural).
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2671,9 +2983,9 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenIsMatchAliasIsOnTheFirstUnionAllArm()
+    public void GivenAnIncludesOnlyPlanWithTwoStages_WhenEmitted_ThenIsMatchAliasIsOnTheFirstUnionArm()
     {
-        // SQL Server takes a UNION ALL's column names from its first SELECT. Keying the alias off
+        // SQL Server takes a UNION's column names from its first SELECT. Keying the alias off
         // unionBlocks.Count == 0 (first arm appended overall) rather than i == 0 (first include-stage
         // index) ensures that any future arm inserted before the loop cannot silently break the ordinal
         // contract that callers rely on. This test verifies the alias is on the structurally-first arm,
@@ -2682,15 +2994,18 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
         // Split the entire SQL on the assembly separator — no CTE emits "AS IsMatch", so any match
         // in arms[0] must come from the first assembly arm (which is at the end of that element).
-        // This is the structural check: the alias must be in the first UNION ALL arm overall,
-        // not on a subsequent arm that happens to be the first *include-stage* index.
-        var arms = sql.Split("\nUNION ALL\n");
+        // This is the structural check: the alias must be in the first UNION arm overall (the
+        // IncludesOnly global page joins its stage arms with plain UNION, not UNION ALL, so that
+        // COUNT_BIG(*) OVER() sees the same deduplicated rows as the outer DISTINCT — see
+        // SqlBuilder.EmitGlobalIncludesPage), not on a subsequent arm that happens to be the first
+        // *include-stage* index.
+        var arms = sql.Split("\nUNION\n");
 
         // The alias must be on the first arm — not on a later arm, and not merely in the SQL overall.
         arms[0].ShouldContain(" AS IsMatch");
@@ -2702,22 +3017,6 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanWithCountOnly_WhenEmitted_ThenThrowsNotSupportedException()
-    {
-        // IncludesOnly requests include rows; CountOnly requests a count of match rows.
-        // The two are self-contradictory and the emitter must refuse rather than emitting
-        // something arbitrary (which would silently return the wrong answer).
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            IncludesOnly: true,
-            CountOnly: true);
-
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
-    }
-
-    [Fact]
     public void GivenAnIncludesOnlyPlanWithNoIncludeStages_WhenEmitted_ThenThrowsNotSupportedException()
     {
         // IncludesOnly with no include stages can only ever return empty, which is a caller error
@@ -2725,25 +3024,207 @@ public class EmitTests
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
 
     [Fact]
-    public void GivenAnIncludesOnlyPlanWithASort_WhenEmitted_ThenThrowsNotSupportedException()
+    public void GivenAnIncludesOnlyPlanWithAMissingPrimarySort_WhenEmitted_ThenTheMatchSourceCarriesTheMissingValuePredicateButNothingOrdersOrSeeksOnTheSortKey()
     {
-        // Dropping the match arm leaves the include arm's projected sort columns unaliased (bare ", NULL")
-        // while the outer ORDER BY still references SortValueN, so the emitted SQL would bind SortValueN to
-        // a nonexistent column. A sort orders match rows; an includes-only page returns none and pages its
-        // include rows by (T1, Sid1), so the sort key is meaningless here. The emitter refuses the
-        // combination rather than emitting SQL that fails only at execution time.
+        // The measured $includes scenario: Patient?_sort=date, first (missing-date) phase. The SortPhase is a
+        // filter, not an order: it bounds the match set that seeds the includes to rows with NO date value, so
+        // an engine that ignored it would return the includes of the dated rows too (the very over-return the
+        // FHIR Server measurement caught). The predicate must therefore appear against the match source (m.*),
+        // while the include rows must still page by (T1, Sid1) -- the sort key must never reach an ORDER BY or
+        // a seek.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
-            Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
-            IncludesOnly: true);
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.MissingPrimary),
+            Shape: new ResultShape.IncludesPage());
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The phase predicate bounds the match set the includes seed from -- the filtering role, preserved.
+        sql.ShouldContain("cteMatchPage AS (");
+        sql.ShouldContain(
+            "NOT EXISTS (SELECT 1 FROM dbo.DateTimeSearchParam s WHERE s.ResourceTypeId = m.T1 AND s.ResourceSurrogateId = m.Sid1 AND s.SearchParamId = 203)");
+        // The ordering role is dropped: the include rows page by (T1, Sid1), and no SortValueN column, no
+        // sort-key join, and no keyset seek on the date column is emitted anywhere.
+        sql.ShouldContain("ORDER BY T1 ASC, Sid1 ASC");
+        sql.ShouldNotContain("SortValue");
+        sql.ShouldNotContain("StartDateTime");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAValuedSort_WhenEmitted_ThenTheMatchSourceGatesOnTheSortValueButProjectsNoSortColumns()
+    {
+        // The second (valued) phase of the same sort. Here the phase filter is the primary-key INNER join --
+        // it bounds the match set that seeds the includes to rows that HAVE a date value. The join must stay
+        // (it is the filter), but the SortValueN columns it exists to project on an ordinary page must not:
+        // an includes-only page never orders by them, so projecting them would be dead weight that implies an
+        // ordering role the page does not have.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
+            Shape: new ResultShape.IncludesPage());
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // The has-value gate that bounds the match set -- the filtering role, preserved.
+        sql.ShouldContain("INNER JOIN dbo.DateTimeSearchParam sk0");
+        // No ordering role: no projected sort columns, and the include rows still page by (T1, Sid1).
+        sql.ShouldNotContain("SortValue");
+        sql.ShouldContain("ORDER BY T1 ASC, Sid1 ASC");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAKeysetPage_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // A sort is allowed on an includes-only page (its phase filters the match set), but a keyset Page is
+        // not: EmitSeekPredicate would seek the match rows by the sort-key boundary, a second paging mechanism
+        // the includes-only page does not use -- its match window is the surrogate range and its include rows
+        // page from a cursor. Letting it through would let the sort key decide which resources are included, so
+        // the emitter refuses it.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
+            Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
+            Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithATopCap_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // Top bounds the match set that seeds the include stages, so it drops include rows without marking
+        // the result partial. An includes-only page bounds its match set with SurrogateRange instead.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Top: 25,
+            Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAnOffsetPage_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            OffsetPage: new OffsetSpec(100, 50),
+            Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Theory]
+    [InlineData(-1, 50)]
+    [InlineData(0, 0)]
+    [InlineData(0, -50)]
+    public void GivenAPlanWithAnOutOfRangeOffsetPage_WhenEmitted_ThenThrowsNotSupportedException(int offset, int limit)
+    {
+        // OFFSET/FETCH rejects a negative skip and a non-positive fetch at runtime. QueryPlan is a public
+        // construction surface, so the emitter reports it rather than relying on every caller routing
+        // through Lower.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            OffsetPage: new OffsetSpec(offset, limit));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAPhaseRestrictedCountWithAnEmptySortSpec_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // SortSpec is a positional record, so a keyless one is constructible. It emits no sort join and no
+        // MissingPrimary filter, which would silently produce the whole-set count the restriction excludes.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([], SortPhase.Valued),
+            Shape: new ResultShape.Count.CurrentSortPhase());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnUndefinedSortPhase_WhenEmitted_ThenThrowsNotSupportedException()
+    {
+        // SortPhase is an enum, so a cast or a deserialised int can carry a value no emitter branch handles.
+        // Every such value falls through to the Valued segment, handing a caller driving the two-phase loop
+        // rows it has already paged.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], (SortPhase)7));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenACountPlanCarryingAMismatchedBoundary_WhenEmitted_ThenItIsAcceptedBecauseCountsEmitNoSeek()
+    {
+        // A caller reuses one options record and flips the shape to get Bundle.total. QueryPlan documents that
+        // a count ignores row caps, offsets and keyset boundaries, so rejecting it here would break a supported
+        // pattern over a value the emitted SQL never reads.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued),
+            Page: new PageSpec(
+                [new SqlParameterRef(1L), new SqlParameterRef(2L)],
+                new SqlParameterRef((short)103),
+                new SqlParameterRef(9000L)),
+            Shape: new ResultShape.Count.AllMatches());
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("COUNT_BIG");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void GivenAPageBoundaryWhoseValueCountDisagreesWithThePhase_WhenEmitted_ThenThrowsNotSupportedException(int boundaryValues)
+    {
+        // One key, Valued phase: the boundary must carry exactly one value. Too few and the seek compares
+        // fewer columns than the ORDER BY; too many and it reads values for keys that are not in this phase.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued),
+            Page: new PageSpec(
+                Enumerable.Range(0, boundaryValues).Select(i => new SqlParameterRef((long)i)).ToList(),
+                new SqlParameterRef((short)103),
+                new SqlParameterRef(9000L)));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(int.MaxValue)]
+    public void GivenAnIncludeStageWithAnOutOfRangeLimit_WhenEmitted_ThenThrowsNotSupportedException(int limit)
+    {
+        // Every path that emits an include stage writes TOP (Limit + 1): a negative limit is a SQL Server
+        // runtime error, and int.MaxValue overflows the over-fetched row to a negative row count.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, limit)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -2758,7 +3239,7 @@ public class EmitTests
             new CteRef(0),
             Includes: [ForwardIncludeStage(103, 111, 10)],
             Projection: new ProjectionSpec(["RawResource", "IsDeleted"]),
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2788,7 +3269,7 @@ public class EmitTests
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
             Includes: [stage],
-            IncludesOnly: true);
+            Shape: new ResultShape.IncludesPage());
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2796,6 +3277,243 @@ public class EmitTests
         sql.ShouldContain($"r.ResourceTypeId <> {constraint.ConstraintTypeId} OR EXISTS (SELECT 1 FROM cte0 ac");
         // The match arm must still be absent.
         sql.ShouldNotContain("CAST(1 AS bit) AS IsMatch");
+    }
+
+    // ─── IncludesOnly global-page (cursor) tests ─────────────────────────────────────────────────────
+
+    private static IncludeStage ReverseIncludeStage(short seedType, short outputType, int limit)
+        => new(IncludeDirection.Reverse, ReferenceSearchParamId: 211, SeedTypeIds: [seedType], OutputTypeIds: [outputType],
+               SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: limit);
+
+    private static QueryPlan TwoStageIncludesOnlyPageWithBoundary()
+        => new(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 10)],
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithABoundaryAndTwoStages_WhenEmitted_ThenTheBudgetIsAppliedOnceGloballyOrderedByT1Sid1()
+    {
+        // The $includes second page applies the row budget once across the union of every stage -- not once
+        // per stage -- and resumes under (T1, Sid1). So the whole statement must carry exactly one TOP (the
+        // outer global page), no per-stage limit companions, and the IsPartial window computed over the
+        // union. This is the shape the FHIR Server legacy $includes page emits.
+        var plan = TwoStageIncludesOnlyPageWithBoundary();
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        // Exactly one TOP in the whole statement: the global page. No per-stage TOP, no incNlim companions.
+        System.Text.RegularExpressions.Regex.Matches(sql, @"TOP \(").Count.ShouldBe(1);
+        sql.ShouldContain("SELECT DISTINCT TOP (11) T1, Sid1, IsMatch,");
+        sql.ShouldContain("CAST(CASE WHEN COUNT_BIG(*) OVER() > 10 THEN 1 ELSE 0 END AS bit) AS IsPartial");
+        sql.ShouldNotContain("inc0lim");
+        sql.ShouldNotContain("inc1lim");
+
+        // Ordered by (T1, Sid1) so the resume predicate pages the union deterministically -- not the
+        // matches-first order the ordinary includes shape uses.
+        sql.TrimEnd().ShouldEndWith("ORDER BY T1 ASC, Sid1 ASC");
+        sql.ShouldNotContain("IsMatch DESC");
+    }
+
+    /// <summary>The text of the "incN AS ( ... )" CTE block, from its opening label to its own closing paren.</summary>
+    private static string IncludeStageBody(string sql, int index)
+    {
+        var start = sql.IndexOf($"inc{index} AS (", StringComparison.Ordinal);
+        start.ShouldBeGreaterThanOrEqualTo(0);
+
+        // A CTE closes with ")" in the first column; every paren inside the body is indented.
+        var end = sql.IndexOf("\n)", start, StringComparison.Ordinal);
+        end.ShouldBeGreaterThanOrEqualTo(0);
+        return sql[start..(end + 2)];
+    }
+
+    private const string GlobalResumePredicate = "(T1 > @p1 OR (T1 = @p1 AND Sid1 > @p2))";
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithAForwardStage_WhenEmittedWithABoundary_ThenTheResumePredicateFiltersTheUnionRatherThanTheStageBody()
+    {
+        // The cursor is a position in the global paged output stream, not a property of any one stage's row
+        // set, so it filters the union derived table on its own (T1, Sid1) -- the exact columns the outer
+        // ORDER BY sees. Keeping it out of the stage body is what lets a downstream :iterate stage seed from
+        // the complete body. The two cursor values still bind as parameters rather than inlining.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+        IncludeStageBody(emitted.Sql, 0).ShouldNotContain("@p");
+        emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)111));
+        emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 5000L));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithAReverseStage_WhenEmittedWithABoundary_ThenTheResumePredicateStillFiltersTheUnionRatherThanTheStageBody()
+    {
+        // A reverse stage projects rsp.* where a forward one projects r.*, but the union derived table
+        // exposes both as (T1, Sid1), so the direction no longer changes the predicate at all -- which is
+        // the point: one predicate over the union cannot key on the wrong resource for one of the stages.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ReverseIncludeStage(103, 112, 10)],
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(112, 7000)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+        IncludeStageBody(emitted.Sql, 0).ShouldNotContain("@p");
+        emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)112));
+        emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 7000L));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithMixedStages_WhenEmittedWithABoundary_ThenTheSharedCursorIsAppliedExactlyOnceOverTheUnion()
+    {
+        // One cursor pages the union of all stages as a single ordered stream. Applying it once, after the
+        // union, is what makes that literal: no stage can overtake another between pages, and no stage body
+        // is narrowed to the rows this page happens to return.
+        var plan = TwoStageIncludesOnlyPageWithBoundary();
+
+        var emitted = SqlBuilder.Run(plan);
+
+        System.Text.RegularExpressions.Regex
+            .Matches(emitted.Sql, System.Text.RegularExpressions.Regex.Escape(GlobalResumePredicate))
+            .Count.ShouldBe(1);
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+        IncludeStageBody(emitted.Sql, 0).ShouldNotContain("@p");
+        IncludeStageBody(emitted.Sql, 1).ShouldNotContain("@p");
+        emitted.Parameters.ShouldContain(p => p.Name == "@p1" && Equals(p.Value, (short)111));
+        emitted.Parameters.ShouldContain(p => p.Name == "@p2" && Equals(p.Value, 5000L));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWithABoundaryAndAnIterateStage_WhenEmitted_ThenTheSeedReadsTheUnfilteredStageBodyNotTheAbsentLimitCompanion()
+    {
+        // An IncludesOnly page emits no limit companion -- the budget is global -- so an :iterate stage
+        // seeding from inc0lim would reference a CTE that was never defined (SQL Server Msg 207). It seeds
+        // from inc0 instead, and inc0 must stay uncursored: filtering the seed set by the page cursor would
+        // make page 2 blind to iterate targets reachable only through resources page 1 already returned.
+        var stage1 = new IncludeStage(
+            IncludeDirection.Forward, ReferenceSearchParamId: 211, SeedTypeIds: [(short)111], OutputTypeIds: [(short)111],
+            SeedStages: [0], SeedFromMatch: false, Iterate: true, Limit: 10);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), stage1],
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("SELECT 1 FROM inc0 m WHERE m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId");
+        emitted.Sql.ShouldNotContain("inc0lim");
+        IncludeStageBody(emitted.Sql, 1).ShouldNotContain("@p");
+
+        System.Text.RegularExpressions.Regex
+            .Matches(emitted.Sql, System.Text.RegularExpressions.Regex.Escape(GlobalResumePredicate))
+            .Count.ShouldBe(1);
+        emitted.Sql.ShouldContain($") includeUnion\nWHERE {GlobalResumePredicate}");
+    }
+
+    [Fact]
+    public void GivenAMissingPrimarySortWithNoKeys_WhenEmitted_ThenItIsRefusedRatherThanIndexingPastTheKeyList()
+    {
+        // QueryPlan is a public construction surface, so a rewritten plan can reach the emitter with a phased
+        // sort and no keys. EmitMissingPrimaryFilter and EmitSeekPredicate both index Keys[0]; refuse it as an
+        // unsupported plan rather than letting an IndexOutOfRangeException escape TryCompile.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Sort: new SortSpec([], SortPhase.MissingPrimary));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenANegativeTop_WhenEmitted_ThenItIsRefusedRatherThanDeferredToSqlServer()
+    {
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), Top: -1);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    public static TheoryData<string, CteDefinition> EmptyResourceTypeListNodes() => new()
+    {
+        { "ChainJoin/Forward", new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [], ChainDirection.Forward) },
+        { "ChainJoin/Reverse", new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [], ChainDirection.Reverse) },
+        { "ReferencedTypeExpansion", new CteDefinition.ReferencedTypeExpansion(new CteRef(0), OutputResourceTypeIds: []) },
+        { "CompartmentSource", new CteDefinition.CompartmentSource([], 77, new Predicate.Equal(new SqlColumnRef("ReferenceSearchParam", "ReferenceResourceId"), new SqlParameterRef("123"))) },
+    };
+
+    [Theory]
+    [MemberData(nameof(EmptyResourceTypeListNodes))]
+    public void GivenACteWhoseResourceTypeListIsEmpty_WhenEmitted_ThenItIsRefusedRatherThanEmittingAnEmptyFilter(
+        string scenario, CteDefinition node)
+    {
+        // Each of these renders its type list as an OR of equalities and interpolates the joined string
+        // straight into its WHERE clause, so an empty list emits nothing where a filter belongs and the
+        // statement does not parse. Lower refuses the chain shape at LowerChain, but QueryPlan is a public
+        // construction surface and `plan with { Query = … }` is a documented rewrite, so the emitter mirrors
+        // it -- otherwise the failure reaches SQL Server as a syntax error with no diagnosis.
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103), node], new CteRef(1));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan), $"{scenario} emitted SQL instead of refusing")
+            .Message.ShouldContain("names no resource type");
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPageWhoseStagesHaveDifferingLimits_WhenEmitted_ThenItIsRefusedRatherThanPagingOnAnArbitraryBudget()
+    {
+        // The global page applies one TOP over the union of every stage, so the budget is a property of the
+        // whole ordered stream, not of any single stage. Differing per-stage limits have no single coherent
+        // meaning: the emitter would silently page on includes[0].Limit and return a wrong-sized page with
+        // no error. Refuse it rather than pick a budget arbitrarily.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 20)],
+            Shape: new ResultShape.IncludesPage());
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithTwoStagesThatCanReachTheSameResource_WhenEmitted_ThenTheDerivedTableArmsAreJoinedByPlainUnion()
+    {
+        // Stands in for: a resource reachable via two different reference paths (e.g. a forward
+        // Patient:organization include and a reverse Observation:subject include that both land on the
+        // same (T1, Sid1) row). T-SQL evaluates COUNT_BIG(*) OVER() in the SELECT phase, before the outer
+        // DISTINCT dedups its input, so if the two stage arms were joined with UNION ALL that shared row
+        // would be counted twice and could wrongly flag an exactly-`budget`-sized page of distinct rows as
+        // IsPartial = 1. Joining the arms with plain UNION dedups them before the window function runs, so
+        // the two stages contribute exactly one row for that resource and a full page of distinct rows
+        // correctly reports IsPartial = 0.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 111, 10)],
+            Shape: new ResultShape.IncludesPage());
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        var unionStart = sql.IndexOf("FROM (\n", StringComparison.Ordinal);
+        var unionEnd = sql.IndexOf(") includeUnion", StringComparison.Ordinal);
+        unionStart.ShouldBeGreaterThanOrEqualTo(0);
+        unionEnd.ShouldBeGreaterThan(unionStart);
+        var derivedTable = sql[unionStart..unionEnd];
+
+        derivedTable.ShouldContain("\nUNION\n");
+        derivedTable.ShouldNotContain("UNION ALL");
+
+        var fragment = SqlGrammar.Parse(sql);
+        var unions = SqlGrammar.FindAll<Microsoft.SqlServer.TransactSql.ScriptDom.BinaryQueryExpression>(fragment);
+        var derivedTableUnion = unions.ShouldHaveSingleItem();
+        derivedTableUnion.BinaryQueryExpressionType.ShouldBe(Microsoft.SqlServer.TransactSql.ScriptDom.BinaryQueryExpressionType.Union);
+        derivedTableUnion.All.ShouldBeFalse();
     }
 }
 

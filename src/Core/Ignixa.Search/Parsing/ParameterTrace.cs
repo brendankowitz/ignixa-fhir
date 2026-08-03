@@ -31,7 +31,7 @@ namespace Ignixa.Search.Parsing;
 /// <para>
 /// Construction validates <see cref="Ordinal"/>, <see cref="Key"/>, <see cref="Value"/> and
 /// <see cref="Outcome"/>. <see cref="Ordinal"/> earns its guard by being what
-/// <see cref="Sql.Tracing.CteProvenance.ParameterOrdinal"/> is built from — an unchecked value here
+/// <see cref="Sql.CteProvenance.ParameterOrdinal"/> is built from — an unchecked value here
 /// surfaces as a failure several stages downstream, naming a parameter the producer never touched.
 /// <see cref="Outcome"/> is the only <c>init</c> property, because later stages legitimately restamp it
 /// when lowering or emission fails; every other property is get-only so a <c>with</c> cannot copy around
@@ -89,7 +89,7 @@ public sealed record ParameterTrace
     public Expression? Ir { get; }
 
     /// <summary>
-    /// How this parameter fared. The only settable property: <see cref="Sql.Tracing.SearchCompiler"/>
+    /// How this parameter fared. The only settable property: <c>SearchSqlCompiler</c>
     /// restamps it with a <see cref="ParameterOutcome.Failed"/> when a later stage attributes a failure
     /// back to this parameter.
     /// </summary>

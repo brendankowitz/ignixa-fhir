@@ -6,16 +6,11 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a <c>:text</c> search to a ParamSource over dbo.TokenText. The token tables index a token's
-/// system and code; its human-readable text lives in its own table, so <c>:text</c> is the one token
-/// modifier that changes which table is read rather than which column is compared.
-/// <para>
-/// No COLLATE is emitted: TokenText.Text is declared Latin1_General_CI_AI in the DDL, so the column's own
-/// collation already gives <c>:text</c> its specified case- and accent-insensitive matching, and forcing a
-/// collation would make the predicate non-sargable against that table's index.
-/// </para>
+/// Lowers a <c>:text</c> search to a ParamSource over dbo.TokenText. A token's human-readable text lives
+/// in its own table, so <c>:text</c> is the one token modifier that changes which table is read rather than
+/// which column is compared. No COLLATE is emitted — TokenText.Text is already CI_AI, and forcing one would be non-sargable.
 /// </summary>
-public static class TokenTextLoweringRule
+internal static class TokenTextLoweringRule
 {
     public static CteDefinition.ParamSource Lower(
         SearchParameterInfo parameter,

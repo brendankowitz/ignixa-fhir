@@ -1,0 +1,741 @@
+/*
+ * Copyright (c) 2025, Ignixa Contributors
+ *
+ * Unit tests for FhirPath instance selector expressions.
+ * Tests creation of FHIR objects using the syntax: TypeName { element: value, ... }
+ */
+
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Abstractions;
+using Ignixa.FhirPath.Parser;
+
+namespace Ignixa.FhirPath.Tests.Evaluation;
+
+public class InstanceSelectorTests
+{
+    private readonly FhirPathParser _parser = new();
+    private readonly FhirPathEvaluator _evaluator = new();
+
+    // The evaluator has no built-in object model, so every construction test needs a creator wired.
+    private List<IElement> EvaluateCreating(IElement focus, Ignixa.FhirPath.Expressions.Expression ast) =>
+        ast.AcceptVisitor(_evaluator, InstanceCreationTestContext.For(focus)).ToList();
+
+    #region Simple Instance Selector Tests
+
+    [Fact]
+    public void GivenSimpleCoding_WhenInstanceSelector_ThenCreatesObject()
+    {
+        // Arrange
+        var expression = "Coding { system: 'http://example.org', code: 'c1' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+
+        var system = result[0].Children("system").SingleOrDefault();
+        Assert.NotNull(system);
+        Assert.Equal("http://example.org", system.Value);
+
+        var code = result[0].Children("code").SingleOrDefault();
+        Assert.NotNull(code);
+        Assert.Equal("c1", code.Value);
+    }
+
+    [Fact]
+    public void GivenMultipleProperties_WhenInstanceSelector_ThenCreatesObjectWithAllProperties()
+    {
+        // Arrange
+        var expression = "Identifier { system: 'http://hl7.org', value: 'N0001', use: 'official' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Identifier", result[0].InstanceType);
+
+        var children = result[0].Children().ToList();
+        Assert.Equal(3, children.Count);
+
+        var system = result[0].Children("system").SingleOrDefault();
+        Assert.NotNull(system);
+        Assert.Equal("http://hl7.org", system.Value);
+
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal("N0001", value.Value);
+
+        var use = result[0].Children("use").SingleOrDefault();
+        Assert.NotNull(use);
+        Assert.Equal("official", use.Value);
+    }
+
+    #endregion
+
+    #region Nested Instance Selector Tests
+
+    [Fact]
+    public void GivenNestedInstanceSelector_WhenEvaluated_ThenCreatesNestedStructure()
+    {
+        // Arrange
+        var expression = "Identifier { type: CodeableConcept { coding: Coding { code: 'MR' } } }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Identifier", result[0].InstanceType);
+
+        var type = result[0].Children("type").SingleOrDefault();
+        Assert.NotNull(type);
+        Assert.Equal("CodeableConcept", type.InstanceType);
+
+        var coding = type.Children("coding").SingleOrDefault();
+        Assert.NotNull(coding);
+        Assert.Equal("Coding", coding.InstanceType);
+
+        var code = coding.Children("code").SingleOrDefault();
+        Assert.NotNull(code);
+        Assert.Equal("MR", code.Value);
+    }
+
+    [Fact]
+    public void GivenDeeplyNestedInstanceSelector_WhenEvaluated_ThenCreatesCompleteHierarchy()
+    {
+        // Arrange
+        var expression = "Patient { name: HumanName { given: 'John', family: 'Doe' } }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Patient", result[0].InstanceType);
+
+        var name = result[0].Children("name").SingleOrDefault();
+        Assert.NotNull(name);
+        Assert.Equal("HumanName", name.InstanceType);
+
+        var given = name.Children("given").SingleOrDefault();
+        Assert.NotNull(given);
+        Assert.Equal("John", given.Value);
+
+        var family = name.Children("family").SingleOrDefault();
+        Assert.NotNull(family);
+        Assert.Equal("Doe", family.Value);
+    }
+
+    #endregion
+
+    #region Empty Object Initializer Tests
+
+    [Fact]
+    public void GivenEmptyObjectInitializer_WhenEvaluated_ThenCreatesEmptyObject()
+    {
+        // Arrange
+        var expression = "Period {:}";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Period", result[0].InstanceType);
+
+        var children = result[0].Children().ToList();
+        Assert.Empty(children);
+    }
+
+    [Fact]
+    public void GivenEmptyBraces_WhenEvaluated_ThenCreatesEmptyObject()
+    {
+        // Arrange
+        var expression = "Coding {}";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+
+        var children = result[0].Children().ToList();
+        Assert.Empty(children);
+    }
+
+    #endregion
+
+    #region Namespace Prefix Tests
+
+    [Fact]
+    public void GivenFHIRNamespacePrefix_WhenInstanceSelector_ThenCreatesObject()
+    {
+        // Arrange
+        var expression = "FHIR.Identifier { value: 'N0001' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Identifier", result[0].InstanceType);
+
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal("N0001", value.Value);
+    }
+
+    [Fact]
+    public void GivenSystemNamespacePrefix_WhenInstanceSelector_ThenReturnsEmpty()
+    {
+        // Arrange - System-namespace primitives are outside the FHIR factory's remit
+        var expression = "System.String { value: 'test' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert - the creator declines, which the spec treats as an empty result
+        Assert.Empty(result);
+    }
+
+    #endregion
+
+    #region Empty Value Filtering Tests
+
+    [Fact]
+    public void GivenEmptyValueExpression_WhenEvaluated_ThenElementIsOmitted()
+    {
+        // Arrange - use where(false) to produce empty collection
+        var expression = "Coding { system: 'http://example.org', code: (1 | 2).where(false), display: 'Test' }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+
+        var children = result[0].Children().ToList();
+        Assert.Equal(2, children.Count);
+
+        var system = result[0].Children("system").SingleOrDefault();
+        Assert.NotNull(system);
+        Assert.Equal("http://example.org", system.Value);
+
+        var code = result[0].Children("code").SingleOrDefault();
+        Assert.Null(code);
+
+        var display = result[0].Children("display").SingleOrDefault();
+        Assert.NotNull(display);
+        Assert.Equal("Test", display.Value);
+    }
+
+    [Fact]
+    public void GivenAllEmptyValues_WhenEvaluated_ThenCreatesEmptyObject()
+    {
+        // Arrange - use where(false) to produce empty collections
+        var expression = "Period { start: (1).where(false), end: (2).where(false) }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Period", result[0].InstanceType);
+
+        var children = result[0].Children().ToList();
+        Assert.Empty(children);
+    }
+
+    #endregion
+
+    #region Multiple Input Items Error Tests
+
+    [Fact]
+    public void GivenMultipleInputItems_WhenInstanceSelector_ThenEvaluatesOncePerItem()
+    {
+        // Arrange
+        var expression = "(1 | 2 | 3).select(Coding { code: $this.toString() })";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert - should work because select() evaluates instance selector for each item separately
+        Assert.Equal(3, result.Count);
+        Assert.All(result, r => Assert.Equal("Coding", r.InstanceType));
+    }
+
+    [Fact]
+    public void GivenMultipleItemsDirectly_WhenInstanceSelector_ThenThrowsException()
+    {
+        // Arrange
+        var multiItemCollection = System.Collections.Immutable.ImmutableList.Create(
+            CreateIntegerElement(1),
+            CreateIntegerElement(2),
+            CreateIntegerElement(3)
+        );
+
+        var expression = "Coding { code: 'test' }";
+        var ast = _parser.Parse(expression);
+
+        // Act & Assert - a creator is wired so this cannot pass via the no-creator throw,
+        // and the message is asserted so the singleton-input rule is what is actually covered.
+        var context = InstanceCreationTestContext.For(CreateIntegerElement(1)) with { Focus = multiItemCollection };
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            ast.AcceptVisitor(_evaluator, context).ToList());
+        Assert.Contains("single input item", ex.Message, StringComparison.Ordinal);
+    }
+
+    #endregion
+
+    #region Empty Input Collection Tests
+
+    [Fact]
+    public void GivenEmptyInputCollection_WhenInstanceSelector_ThenReturnsEmpty()
+    {
+        // Arrange - use where(false) to create empty collection, then select on it
+        var expression = "(1 | 2).where(false).select(Coding { code: 'test' })";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenEmptyCollectionDirectly_WhenInstanceSelector_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expression = "Coding { code: 'test' }";
+        var ast = _parser.Parse(expression);
+        var emptyContext = new EvaluationContext { Focus = System.Collections.Immutable.ImmutableList<IElement>.Empty };
+
+        // Act
+        var result = ast.AcceptVisitor(_evaluator, emptyContext).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    #endregion
+
+    #region Value Type Tests
+
+    [Fact]
+    public void GivenIntegerValue_WhenInstanceSelector_ThenConvertsToSchemaType()
+    {
+        // Arrange - Quantity.value is a FHIR decimal, so the integer literal must be converted
+        var expression = "Quantity { value: 42 }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert - per spec the engine performs conversion into the target type system, so the
+        // created element is typed by the schema rather than by the FHIRPath literal.
+        Assert.Single(result);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal(42m, value.Value);
+        Assert.Equal("decimal", value.InstanceType);
+    }
+
+    [Fact]
+    public void GivenDecimalValue_WhenInstanceSelector_ThenCreatesElementWithDecimal()
+    {
+        // Arrange
+        var expression = "Quantity { value: 3.14 }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal(3.14m, value.Value);
+        Assert.Equal("decimal", value.InstanceType);
+    }
+
+    [Fact]
+    public void GivenBooleanValue_WhenInstanceSelector_ThenCreatesElementWithBoolean()
+    {
+        // Arrange - Patient.active is a FHIR boolean
+        var expression = "Patient { active: true }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        var active = result[0].Children("active").SingleOrDefault();
+        Assert.NotNull(active);
+        Assert.Equal(true, active.Value);
+        Assert.Equal("boolean", active.InstanceType);
+    }
+
+    #endregion
+
+    #region Expression Value Tests
+
+    [Fact]
+    public void GivenExpressionAsValue_WhenEvaluated_ThenEvaluatesExpressionFirst()
+    {
+        // Arrange
+        var expression = "Coding { code: 'TEST'.lower() }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        var code = result[0].Children("code").SingleOrDefault();
+        Assert.NotNull(code);
+        Assert.Equal("test", code.Value);
+    }
+
+    [Fact]
+    public void GivenArithmeticExpression_WhenEvaluated_ThenComputesValue()
+    {
+        // Arrange
+        var expression = "Quantity { value: 10 + 5 }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert - the sum is computed first, then converted to Quantity.value's decimal type
+        Assert.Single(result);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal(15m, value.Value);
+    }
+
+    #endregion
+
+    #region Multiple Cardinality Tests
+
+    [Fact]
+    public void GivenMultipleValueExpression_WhenEvaluated_ThenCreatesMultipleChildren()
+    {
+        // Arrange
+        var expression = "HumanName { given: ('John' | 'Jacob') }";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(1);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("HumanName", result[0].InstanceType);
+
+        var given = result[0].Children("given").ToList();
+        Assert.Equal(2, given.Count);
+        Assert.Equal("John", given[0].Value);
+        Assert.Equal("Jacob", given[1].Value);
+    }
+
+    [Fact]
+    public void GivenSelectOverMultipleInputs_WhenEachBuildsAnInstance_ThenReturnsOnePerInput()
+    {
+        // Arrange - select() evaluates the selector once per input item
+        var expression = "(1 | 2).select(Patient { identifier: Identifier { value: $this.toString() } })";
+        var ast = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = EvaluateCreating(root, ast);
+
+        // Assert - Should have 2 Patient instances (one for each input)
+        Assert.Equal(2, result.Count);
+        Assert.All(result, r => Assert.Equal("Patient", r.InstanceType));
+
+        var firstPatientIdentifiers = result[0].Children("identifier").ToList();
+        Assert.Single(firstPatientIdentifiers);
+        Assert.Equal("1", firstPatientIdentifiers[0].Children("value").Single().Value);
+
+        var secondPatientIdentifiers = result[1].Children("identifier").ToList();
+        Assert.Single(secondPatientIdentifiers);
+        Assert.Equal("2", secondPatientIdentifiers[0].Children("value").Single().Value);
+    }
+
+    #endregion
+
+    #region Instance Creation Delegate Seam (spike)
+
+    [Fact]
+    public void GivenInstanceCreator_WhenInstanceSelector_ThenDelegatesConstruction()
+    {
+        // Arrange
+        var expression = "Coding { system: 'http://example.org', code: 'c1' }";
+        var ast = _parser.Parse(expression);
+        var recorder = new RecordingInstanceCreator();
+        var context = new EvaluationContext()
+            .WithFocus(CreateIntegerElement(1))
+            .WithInstanceCreator(recorder.Create);
+
+        // Act
+        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert - the engine handed construction to the delegate with the right inputs
+        Assert.Equal(1, recorder.CallCount);
+        Assert.Equal("Coding", recorder.LastRequest?.TypeName);
+        Assert.Null(recorder.LastRequest?.NamespacePrefix);
+        var expectedNames = new[] { "system", "code" };
+        Assert.Equal(expectedNames, recorder.LastRequest!.Elements.Select(e => e.Name).ToArray());
+
+        // ...and returned the delegate's node, which the engine navigates normally
+        Assert.Single(result);
+        Assert.Equal("Coding", result[0].InstanceType);
+        Assert.Equal("http://example.org", result[0].Children("system").Single().Value);
+        Assert.Equal("c1", result[0].Children("code").Single().Value);
+    }
+
+    [Fact]
+    public void GivenInstanceCreatorReturningNull_WhenInstanceSelector_ThenResultIsEmpty()
+    {
+        // Arrange - host cannot construct the type
+        var ast = _parser.Parse("Coding { code: 'c1' }");
+        var context = new EvaluationContext()
+            .WithFocus(CreateIntegerElement(1))
+            .WithInstanceCreator(_ => null);
+
+        // Act
+        var result = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void GivenNamespacePrefix_WhenInstanceSelector_ThenCreatorReceivesPrefix()
+    {
+        // Arrange - namespace prefix is now flowed to the creator (was dropped before)
+        var ast = _parser.Parse("FHIR.Coding { code: 'c1' }");
+        var recorder = new RecordingInstanceCreator();
+        var context = new EvaluationContext()
+            .WithFocus(CreateIntegerElement(1))
+            .WithInstanceCreator(recorder.Create);
+
+        // Act
+        _ = ast.AcceptVisitor(_evaluator, context).ToList();
+
+        // Assert
+        Assert.Equal("Coding", recorder.LastRequest?.TypeName);
+        Assert.Equal("FHIR", recorder.LastRequest?.NamespacePrefix);
+    }
+
+    [Fact]
+    public void GivenNoInstanceCreator_WhenInstanceSelector_ThenThrows()
+    {
+        // Arrange
+        var expression = "Coding { system: 'http://example.org', code: 'c1' }";
+        var ast = _parser.Parse(expression);
+
+        // Act & Assert - an unconfigured engine cannot construct anything, and quietly returning a
+        // stand-in node would hide the misconfiguration behind a result that looks plausible.
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => _evaluator.Evaluate(CreateIntegerElement(1), ast).ToList());
+        Assert.Contains("Coding", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(EvaluationContext.WithInstanceCreator), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenChoiceElementAssignedByBaseName_WhenInstanceSelector_ThenStoredUnderTypedName()
+    {
+        // Arrange - Observation.value[x] must be stored as valueQuantity in FHIR JSON
+        var ast = _parser.Parse("Observation { value: Quantity { value: 70 } }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert - navigation by the base name works, as FHIRPath requires...
+        Assert.Single(result);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal("Quantity", value.InstanceType);
+
+        // ...and so does navigation by the typed name, because that is what was actually stored
+        Assert.Single(result[0].Children("valueQuantity"));
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToRepeatingElement_WhenInstanceSelector_ThenKeepsBothValues()
+    {
+        // Arrange - two assignments to one repeating element previously overwrote each other
+        var ast = _parser.Parse("HumanName { given: 'John', given: 'Jacob' }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert
+        Assert.Single(result);
+        var given = result[0].Children("given").Select(g => g.Value).ToArray();
+        Assert.Equal(new object?[] { "John", "Jacob" }, given);
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToSingletonElement_WhenInstanceSelector_ThenThrows()
+    {
+        // Arrange - HumanName.family is 0..1, so the second value has nowhere to go
+        var ast = _parser.Parse("HumanName { family: 'Smith', family: 'Jones' }");
+
+        // Act & Assert - the spec allows the engine to reject multiplicity it cannot represent
+        var ex = Assert.Throws<InvalidOperationException>(() => EvaluateCreating(CreateIntegerElement(1), ast));
+        Assert.Contains("family", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenQuantityLiteralAssignment_WhenInstanceSelector_ThenStoresFhirShapedQuantity()
+    {
+        // Arrange - a quantity literal evaluates to the engine's complex Quantity wrapper,
+        // which exposes a CLR object on Value while reporting HasPrimitiveValue == false.
+        var ast = _parser.Parse("Observation { value: 70 'kg' }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert - it must be rebuilt from its children, not CLR-serialized
+        Assert.Single(result);
+        var value = result[0].Children("value").SingleOrDefault();
+        Assert.NotNull(value);
+        Assert.Equal(70m, value!.Children("value").Single().Value);
+        Assert.Equal("kg", value.Children("unit").Single().Value);
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToSuffixedChoiceName_WhenInstanceSelector_ThenThrows()
+    {
+        // Arrange - Observation.value[x] is 0..1 whether it is addressed by the base name or
+        // the type-suffixed one
+        var ast = _parser.Parse("Observation { valueString: 'a', valueString: 'b' }");
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => EvaluateCreating(CreateIntegerElement(1), ast));
+    }
+
+    [Fact]
+    public void GivenDuplicateAssignmentsToUnknownElement_WhenInstanceSelector_ThenAggregatesWithoutThrowing()
+    {
+        // Arrange - the factory constructs rather than validates, so an off-schema name has no
+        // cardinality to enforce and must not be treated as a singleton
+        var ast = _parser.Parse("Coding { madeUp: 'a', madeUp: 'b' }");
+
+        // Act
+        var result = EvaluateCreating(CreateIntegerElement(1), ast);
+
+        // Assert
+        Assert.Single(result);
+        var values = result[0].Children("madeUp").Select(v => v.Value).ToArray();
+        Assert.Equal(new object?[] { "a", "b" }, values);
+    }
+
+    private sealed class RecordingInstanceCreator
+    {
+        public int CallCount { get; private set; }
+        public InstanceCreationRequest? LastRequest { get; private set; }
+
+        public IElement? Create(InstanceCreationRequest request)
+        {
+            CallCount++;
+            LastRequest = request;
+
+            var children = request.Elements.SelectMany(e => e.Values.Select(v => (e.Name, v))).ToList();
+            return new FactoryNode(request.TypeName, children);
+        }
+    }
+
+    private sealed class FactoryNode : IElement
+    {
+        private readonly List<(string name, IElement element)> _children;
+
+        public FactoryNode(string instanceType, List<(string name, IElement element)> children)
+        {
+            InstanceType = instanceType;
+            _children = children;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType { get; }
+        public object? Value => null;
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public bool HasPrimitiveValue => false;
+
+        public IReadOnlyList<IElement> Children(string? name = null) =>
+            name == null
+                ? _children.Select(c => c.element).ToList()
+                : _children.Where(c => c.name == name).Select(c => c.element).ToList();
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private IElement CreateIntegerElement(int value)
+    {
+        return new PrimitiveElement(value, "integer");
+    }
+
+    private class PrimitiveElement : IElement
+    {
+        public PrimitiveElement(object value, string type)
+        {
+            Value = value;
+            InstanceType = type;
+        }
+
+        public string Name => string.Empty;
+        public string InstanceType { get; }
+        public object? Value { get; }
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public bool HasPrimitiveValue => true;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    #endregion
+}

@@ -6,17 +6,18 @@ using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Models;
+using Ignixa.Search.Sql;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
-using Ignixa.Search.Sql.Tracing;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Ignixa.DataLayer.SqlServer.Search;
 
 /// <summary>
-/// ISearchService implementation driving Ignixa.Search.Sql's compiler (Resolve->Lower->Emit) directly
-/// against the SqlServer-native schema. Mirrors SqlEntityFrameworkSearchService's public contract exactly
+/// ISearchService implementation driving Ignixa.Search.Sql's two-phase compiler (CreatePlanFromOptionsAsync
+/// then SearchPlan.Compile) directly against the SqlServer-native schema. Mirrors
+/// SqlEntityFrameworkSearchService's public contract exactly
 /// (both cast TSearchOptions to Ignixa.Search.Models.SearchOptions), but executes the compiled T-SQL via
 /// ISqlExecutionService instead of EF Core LINQ. GetExportRangesAsync does not go through the compiler at
 /// all -- it is a direct MIN/MAX/COUNT aggregation over dbo.Resource.
@@ -34,10 +35,16 @@ public sealed class SqlServerCompiledSearchService(
         sqlExecutionService ?? throw new ArgumentNullException(nameof(sqlExecutionService));
     private readonly SqlServerSymbolResolver _symbolResolver =
         symbolResolver ?? throw new ArgumentNullException(nameof(symbolResolver));
-    private readonly ICompartmentDefinitionManager _compartmentDefinitionManager =
-        compartmentDefinitionManager ?? throw new ArgumentNullException(nameof(compartmentDefinitionManager));
-    private readonly ISearchParameterDefinitionManager _searchParameterDefinitionManager =
-        searchParameterDefinitionManager ?? throw new ArgumentNullException(nameof(searchParameterDefinitionManager));
+
+    // Built once and reused: the compiler is stateless past construction, and this service only ever enters
+    // it through the SearchOptions path -- the caller upstream has already built a SearchOptions, so no
+    // ISearchOptionsBuilder is needed and none is supplied.
+    private readonly ISearchSqlCompiler _compiler = new SearchSqlCompiler(
+        symbolResolver ?? throw new ArgumentNullException(nameof(symbolResolver)),
+        optionsBuilder: null,
+        compartmentDefinitionManager ?? throw new ArgumentNullException(nameof(compartmentDefinitionManager)),
+        searchParameterDefinitionManager ?? throw new ArgumentNullException(nameof(searchParameterDefinitionManager)));
+
     private readonly GzipResourceCompressor _compressor =
         compressor ?? throw new ArgumentNullException(nameof(compressor));
     private readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -69,19 +76,15 @@ public sealed class SqlServerCompiledSearchService(
             throw new ArgumentException($"Search options must be of type {nameof(SearchOptions)}", nameof(searchOptions));
         }
 
-        var trace = await CompileAsync(options, cancellationToken, countOnly: true);
-        if (trace.Sql is not { } sql)
-        {
-            throw new RequestNotValidException(trace.Failure?.Message ?? "The search could not be compiled.");
-        }
+        var compiled = await CompileAsync(options, cancellationToken, countOnly: true);
 
-        // CA2100 suppressed: sql.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
-        // value in it is already a named @pN parameter (sql.Parameters, bound below via BindParameters),
+        // CA2100 suppressed: compiled.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
+        // value in it is already a named @pN parameter (compiled.Parameters, bound below via BindParameters),
         // never string-concatenated. Same rationale as ExecuteAndMaterializeAsync's identical suppression.
 #pragma warning disable CA2100
-        using var command = new SqlCommand(sql.Sql);
+        using var command = new SqlCommand(compiled.Sql);
 #pragma warning restore CA2100
-        BindParameters(command, sql.Parameters);
+        BindParameters(command, compiled.Parameters);
         var rows = await _sqlExecutionService.ExecuteReaderAsync(_tenantId, command, reader => reader.GetInt64(0), cancellationToken);
         var count = rows.Count > 0 ? rows[0] : 0L;
         return checked((int)count);
@@ -155,13 +158,9 @@ public sealed class SqlServerCompiledSearchService(
     {
         if (options.Sort.Count == 0)
         {
-            var trace = await CompileAsync(options, cancellationToken);
-            if (trace.Sql is not { } sql)
-            {
-                throw new RequestNotValidException(trace.Failure?.Message ?? "The search could not be compiled.");
-            }
+            var compiled = await CompileAsync(options, cancellationToken);
 
-            await foreach (var result in ExecuteAndMaterializeAsync(sql, trace.CompiledPlan!, cancellationToken))
+            await foreach (var result in ExecuteAndMaterializeAsync(compiled, cancellationToken))
             {
                 yield return result;
             }
@@ -183,13 +182,9 @@ public sealed class SqlServerCompiledSearchService(
             requestedCount = options.MaxItemCount;
         }
 
-        var valuedTrace = await CompileAsync(
+        var valuedCompiled = await CompileAsync(
             options, cancellationToken, sortPhase: SortPhase.Valued,
             offsetPageOverride: new OffsetSpec(requestedOffset, requestedCount));
-        if (valuedTrace.Sql is not { } valuedSql)
-        {
-            throw new RequestNotValidException(valuedTrace.Failure?.Message ?? "The search could not be compiled.");
-        }
 
         // Buffered, not streamed straight out: both phase compiles share the SAME options.Include/RevInclude
         // list, so each phase's own include stage is seeded ONLY from that phase's own match page (SqlBuilder's
@@ -208,7 +203,7 @@ public sealed class SqlServerCompiledSearchService(
         // combined with _include/_revinclude, silently dropping MissingPrimary match rows that should have
         // been returned.
         var valuedCount = 0;
-        await foreach (var result in ExecuteAndMaterializeAsync(valuedSql, valuedTrace.CompiledPlan!, cancellationToken))
+        await foreach (var result in ExecuteAndMaterializeAsync(valuedCompiled, cancellationToken))
         {
             if (result.SearchMode == SearchEntryMode.Match)
             {
@@ -264,21 +259,17 @@ public sealed class SqlServerCompiledSearchService(
             // Valued returned ZERO rows: the offset landed at-or-past the Valued total, and the boundary's
             // exact location is ambiguous without asking -- learn it via a countPhaseScoped CountOnly compile
             // (Task 4/§3's mechanism, purpose-built for exactly this disambiguation).
-            var valuedCountTrace = await CompileAsync(
+            var valuedCountCompiled = await CompileAsync(
                 options, cancellationToken, countOnly: true, countPhaseScoped: true, sortPhase: SortPhase.Valued);
-            if (valuedCountTrace.Sql is not { } valuedCountSql)
-            {
-                throw new RequestNotValidException(valuedCountTrace.Failure?.Message ?? "The search could not be compiled.");
-            }
 
-            // CA2100 suppressed: valuedCountSql.Sql is Ignixa.Search.Sql's own compiler output -- every
-            // user-controlled value in it is already a named @pN parameter (valuedCountSql.Parameters,
+            // CA2100 suppressed: valuedCountCompiled.Sql is Ignixa.Search.Sql's own compiler output -- every
+            // user-controlled value in it is already a named @pN parameter (valuedCountCompiled.Parameters,
             // bound below via BindParameters), never string-concatenated. Same rationale as CountAsync's
             // identical suppression.
 #pragma warning disable CA2100
-            using var countCommand = new SqlCommand(valuedCountSql.Sql);
+            using var countCommand = new SqlCommand(valuedCountCompiled.Sql);
 #pragma warning restore CA2100
-            BindParameters(countCommand, valuedCountSql.Parameters);
+            BindParameters(countCommand, valuedCountCompiled.Parameters);
             var countRows = await _sqlExecutionService.ExecuteReaderAsync(
                 _tenantId, countCommand, reader => reader.GetInt64(0), cancellationToken);
             var valuedTotal = checked((int)(countRows.Count > 0 ? countRows[0] : 0L));
@@ -287,16 +278,12 @@ public sealed class SqlServerCompiledSearchService(
         }
 
         var missingPrimaryLimit = requestedCount - valuedCount;
-        var missingTrace = await CompileAsync(
+        var missingCompiled = await CompileAsync(
             options, cancellationToken, sortPhase: SortPhase.MissingPrimary,
             offsetPageOverride: new OffsetSpec(missingPrimaryOffset, missingPrimaryLimit));
-        if (missingTrace.Sql is not { } missingSql)
-        {
-            throw new RequestNotValidException(missingTrace.Failure?.Message ?? "The search could not be compiled.");
-        }
 
         var missingResults = new List<SearchEntryResult>();
-        await foreach (var result in ExecuteAndMaterializeAsync(missingSql, missingTrace.CompiledPlan!, cancellationToken))
+        await foreach (var result in ExecuteAndMaterializeAsync(missingCompiled, cancellationToken))
         {
             missingResults.Add(result);
         }
@@ -381,7 +368,13 @@ public sealed class SqlServerCompiledSearchService(
         return merged;
     }
 
-    private async Task<SearchTrace> CompileAsync(
+    /// <summary>
+    /// Runs both compiler phases for one execution shape and hands back the emitted statement. Plan creation
+    /// is the async half (it reads storage symbols); <see cref="SearchPlan.Compile"/> is pure. Both halves
+    /// report failure as data, and both are turned into the same <see cref="RequestNotValidException"/> the
+    /// old single-call trace produced -- the caller sees one compile step, not two.
+    /// </summary>
+    private async Task<CompiledSearch> CompileAsync(
         SearchOptions options,
         CancellationToken cancellationToken,
         bool countOnly = false,
@@ -390,33 +383,8 @@ public sealed class SqlServerCompiledSearchService(
         OffsetSpec? offsetPageOverride = null)
     {
         // resourceType may legitimately be null/empty (a multi-type/system-level search) -- both
-        // CompileFromOptionsAsync and the underlying Lower.Run already support this via systemLevelSearch.
+        // CreatePlanFromOptionsAsync and the underlying Lower.Run already support this via systemLevelSearch.
         var resourceType = options.ResourceType;
-
-        OffsetSpec? offsetPage = offsetPageOverride;
-        if (offsetPage is null && !countOnly)
-        {
-            // Must match SqlEntityFrameworkSearchService.BuildQueryAsync's exact pagination convention:
-            // options.MaxItemCount arrives from the caller ALREADY "+1'd" for hasMore detection when there is
-            // no continuation token (the handler layer adds that +1 before building SearchOptions at all) --
-            // so the no-token branch uses it as-is. A decoded continuation token, by contrast, stores the
-            // caller's ORIGINAL (non-+1'd) count, so THIS branch must add the +1 back explicitly, or every
-            // page after the first would come back one row short and the Application layer's hasMore
-            // detection would misfire.
-            if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
-                && ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount))
-            {
-                offsetPage = new OffsetSpec(tokenOffset, tokenCount + 1);
-            }
-            else
-            {
-                offsetPage = new OffsetSpec(0, options.MaxItemCount);
-            }
-        }
-        // else: countOnly (CountAsync) never pages -- SqlEntityFrameworkSearchService.CountAsync ignores
-        // ContinuationToken/MaxItemCount entirely (every code path ends in a bare .CountAsync() call with no
-        // Skip/Take), so this adapter matches that by leaving offsetPage null whenever countOnly is true and
-        // no offsetPageOverride (the two-phase loop's own explicit-offset bypass) was supplied.
 
         (long Start, long End)? surrogateIdRange = options.StartSurrogateId.HasValue && options.EndSurrogateId.HasValue
             ? (options.StartSurrogateId.Value, options.EndSurrogateId.Value)
@@ -427,36 +395,86 @@ public sealed class SqlServerCompiledSearchService(
         // caller didn't specify one explicitly, rather than inventing an unrelated magic number.
         var includeLimit = options.IncludesMaxItemCount ?? options.MaxItemCount;
 
-        return await SearchCompiler.CompileFromOptionsAsync(
-            options,
-            resourceType,
-            _symbolResolver,
-            _compartmentDefinitionManager,
-            _searchParameterDefinitionManager,
-            timeProvider: null,
-            offsetPage,
-            surrogateIdRange,
-            countOnly,
-            includeLimit,
-            countPhaseScoped,
-            sortPhase,
-            cancellationToken);
+        var planOptions = new SearchPlanOptions
+        {
+            Shape = BuildResultShape(options, countOnly, countPhaseScoped, offsetPageOverride),
+            SortPhase = sortPhase,
+            IncludeLimit = includeLimit,
+            SurrogateRange = surrogateIdRange,
+
+            // Left at the default None. This is the live search path and nothing here reads a parameter
+            // trace, a plan explain or a SQL text range, so paying for them on every request would be pure
+            // overhead -- the old tracing entry point had no way to opt out and always ran the explainer and
+            // emitted with IncludeTextRanges: true.
+            DiagnosticsLevel = SearchDiagnosticsLevel.None,
+        };
+
+        var planResult = await _compiler.TryCreatePlanFromOptionsAsync(
+            options, resourceType, planOptions, cancellationToken);
+        if (!planResult.Succeeded)
+        {
+            throw new RequestNotValidException(planResult.Failure.Message);
+        }
+
+        var compilation = planResult.Plan.TryCompile();
+        return compilation.Succeeded
+            ? compilation.Compiled
+            : throw new RequestNotValidException(compilation.Failure.Message);
     }
 
+    /// <summary>
+    /// Picks the terminal shape this compile emits. Count and paging are alternatives in the AST rather than
+    /// independent flags, so "a count never pages" -- SqlEntityFrameworkSearchService.CountAsync ignores
+    /// ContinuationToken/MaxItemCount entirely, every code path ending in a bare .CountAsync() with no
+    /// Skip/Take -- is now structural instead of a conditional this adapter has to remember to honour.
+    /// </summary>
+    private static ResultShape BuildResultShape(
+        SearchOptions options,
+        bool countOnly,
+        bool countPhaseScoped,
+        OffsetSpec? offsetPageOverride)
+    {
+        if (countOnly)
+        {
+            return countPhaseScoped
+                ? new ResultShape.Count.CurrentSortPhase()
+                : new ResultShape.Count.AllMatches();
+        }
+
+        return new ResultShape.Matches(new SearchPaging.Offset(offsetPageOverride ?? DefaultOffsetPage(options)));
+    }
+
+    /// <summary>
+    /// The page a search takes when the two-phase sort loop has not dictated one. Must match
+    /// SqlEntityFrameworkSearchService.BuildQueryAsync's exact pagination convention:
+    /// options.MaxItemCount arrives from the caller ALREADY "+1'd" for hasMore detection when there is no
+    /// continuation token (the handler layer adds that +1 before building SearchOptions at all) -- so the
+    /// no-token branch uses it as-is. A decoded continuation token, by contrast, stores the caller's
+    /// ORIGINAL (non-+1'd) count, so THIS branch must add the +1 back explicitly, or every page after the
+    /// first would come back one row short and the Application layer's hasMore detection would misfire.
+    /// </summary>
+    private static OffsetSpec DefaultOffsetPage(SearchOptions options)
+        => !string.IsNullOrWhiteSpace(options.ContinuationToken)
+            && ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount)
+                ? new OffsetSpec(tokenOffset, tokenCount + 1)
+                : new OffsetSpec(0, options.MaxItemCount);
+
     private async IAsyncEnumerable<SearchEntryResult> ExecuteAndMaterializeAsync(
-        EmittedSqlTrace sql,
-        QueryPlan plan,
+        CompiledSearch compiled,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // CA2100 suppressed: sql.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
-        // value in it is already a named @pN parameter (sql.Parameters, bound below via BindParameters),
+        // CA2100 suppressed: compiled.Sql is Ignixa.Search.Sql's own compiler output -- every user-controlled
+        // value in it is already a named @pN parameter (compiled.Parameters, bound below via BindParameters),
         // never string-concatenated. Same rationale as CountAsync's identical suppression.
 #pragma warning disable CA2100
-        using var command = new SqlCommand(sql.Sql);
+        using var command = new SqlCommand(compiled.Sql);
 #pragma warning restore CA2100
-        BindParameters(command, sql.Parameters);
+        BindParameters(command, compiled.Parameters);
 
-        var hasIncludes = plan.Includes is { Count: > 0 };
+        // The plan the SQL was emitted from, read straight off the compiled result rather than re-derived
+        // from the caller's SearchOptions: Lower can drop a degenerate include stage, so options.Include
+        // being non-empty does not imply the emitted statement carries an IsMatch column.
+        var hasIncludes = compiled.Query.Includes is { Count: > 0 };
 
         var rows = await _sqlExecutionService.ExecuteReaderAsync(
             _tenantId,

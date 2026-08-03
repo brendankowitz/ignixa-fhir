@@ -6,6 +6,8 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.Ast;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -26,7 +28,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -50,7 +52,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { Top = 10 }).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(3);
@@ -73,7 +75,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -95,7 +97,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(notExpression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("does not support");
     }
 
@@ -114,7 +116,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
     [Fact]
@@ -132,7 +134,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldContain(c => c is CteDefinition.ParamSource);
@@ -151,7 +153,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldContain(c => c is CteDefinition.Except);
@@ -168,7 +170,7 @@ public class LowerTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url.ToString()] = 202 }, new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act & Assert
-        Should.Throw<NotSupportedException>(() => Lower.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(predicate, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
     }
 
     [Fact]
@@ -185,7 +187,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.Count.ShouldBe(1);
@@ -218,7 +220,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act -- iterate entry listed FIRST in the includes list, to prove ordering is by the sort, not input order.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate, nonIterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- non-iterate stage always sorts first (design §4.1); inc0 is Organization:organization, inc1 is the iterate.
         plan.Includes!.Count.ShouldBe(2);
@@ -250,7 +252,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110, ["Encounter"] = 111 });
 
         // Act -- Encounter listed first in the input list.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [encounterIterate, conditionIterate], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- inc0 is the Encounter stage (ref=22), matching its position in the input list.
         plan.Includes!.Count.ShouldBe(2);
@@ -274,7 +276,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
+            LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("cycle");
     }
 
@@ -293,7 +295,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [iterate], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- the degenerate stage was dropped, not emitted with an empty EXISTS.
         plan.Includes.ShouldBeNull();
@@ -309,7 +311,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [include], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -335,7 +337,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Condition"] = 110 });
 
         // Act -- note: misplacedRevInclude is passed as `includes` (forward), not `revIncludes`.
-        var plan = Lower.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [misplacedRevInclude], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Includes!.Count.ShouldBe(1);
@@ -361,7 +363,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
+            LowerHarness.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("no single resource type");
     }
 
@@ -390,7 +392,7 @@ public class LowerTests
             });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
@@ -417,7 +419,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
+            LowerHarness.Run(compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("SeedFromMatch");
     }
 
@@ -432,7 +434,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -455,7 +457,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(lastUpdatedParam, Ignixa.Search.Expressions.SortOrder.Descending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -478,7 +480,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [
                     new SortExpression(p1, Ignixa.Search.Expressions.SortOrder.Ascending),
@@ -502,7 +504,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(statusParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -530,7 +532,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("wildcard compartment search");
@@ -558,7 +560,7 @@ public class LowerTests
 
         // Act & Assert
         var ex = Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 compartment, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000,
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null));
         ex.Message.ShouldContain("wildcard compartment search");
@@ -580,7 +582,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(lastUpdated, Ignixa.Search.Expressions.SortOrder.Ascending)],
                 sortPhase: SortPhase.MissingPrimary, page: null))
@@ -598,7 +600,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { CountOnly = true }).Plan;
 
@@ -617,7 +619,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -636,7 +638,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -655,7 +657,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -683,7 +685,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null));
     }
@@ -700,7 +702,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("Special");
@@ -726,7 +728,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             missing, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
@@ -755,7 +757,7 @@ public class LowerTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("Number");
@@ -782,7 +784,7 @@ public class LowerTests
 
         // Act & Assert -- should throw NotSupportedException, not NullReferenceException
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 missing, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
                 sort: [], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("unresolved");
@@ -817,7 +819,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { ApproximationReferenceTime = fixedTime }).Plan;
 
@@ -843,7 +845,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldNotContain(cte => cte is CteDefinition.ResourceSource);
@@ -866,7 +868,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         plan.Ctes.ShouldContain(cte => cte is CteDefinition.ResourceSource);
@@ -893,7 +895,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert -- no search-param CTE is needed for a query that only filters resource columns
         plan.OuterPredicate.ShouldNotBeNull();
@@ -920,7 +922,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Observation"] = 96 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
@@ -949,7 +951,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var not = plan.OuterPredicate.ShouldBeOfType<Predicate.Not>();
@@ -969,7 +971,7 @@ public class LowerTests
             notReferencedPaths: new Dictionary<(string, string), SearchParameterInfo> { [("Observation", "subject")] = subjectParam });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
@@ -988,7 +990,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
@@ -1008,7 +1010,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 96 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var source = plan.Ctes.ShouldHaveSingleItem().ShouldBeOfType<CteDefinition.NotReferencedSource>();
@@ -1037,7 +1039,7 @@ public class LowerTests
             systemIds: new Dictionary<string, int?> { ["http://ignixa.io/testscript/suite/ms-not-referenced"] = 5 });
 
         // Act
-        var plan = Lower.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
         var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
@@ -1052,7 +1054,7 @@ public class LowerTests
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1073,7 +1075,7 @@ public class LowerTests
     {
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1101,7 +1103,7 @@ public class LowerTests
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1125,7 +1127,7 @@ public class LowerTests
         // An empty IN list would be dropped, producing a full-table scan — wrong and dangerous.
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1151,7 +1153,7 @@ public class LowerTests
             new Dictionary<string, short>(),
             new Dictionary<string, short> { ["Patient"] = 103 });
 
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression: null,
             symbols,
             targetResourceType: null,
@@ -1194,7 +1196,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             predicate,
             symbols,
             targetResourceType: null,
@@ -1229,7 +1231,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["Observation"] = 104 });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
 
@@ -1254,7 +1256,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103, ["NotAType"] = SymbolTable.UnmatchableResourceTypeId });
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             TypeList("Patient", "NotAType"), symbols, targetResourceType: null, includes: [], revIncludes: [],
             includeLimit: 0, sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
 
@@ -1262,6 +1264,319 @@ public class LowerTests
         var or = plan.OuterPredicate.ShouldBeOfType<Predicate.Or>();
         or.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceTypeId");
         or.Right.ShouldBeOfType<Predicate.False>().Reason.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenAReverseChainUnderASystemLevelSearch_WhenLowered_ThenItLowersAgainstItsOwnReferencingType()
+    {
+        // Arrange -- GET /?_type=Patient,Device&_has:Device:subject:code=4548-4. The chain sits under no
+        // ambient resource type, but it does not need one: a reverse chain names its own referencing type
+        // (Device, which its inner expression scopes against) and its own target types (Patient, which the
+        // join emits), so the ambient scope it would otherwise inherit is unused. LowerChain reads neither.
+        // The identities a ChainJoin yields are (ResourceTypeId, SurrogateId) pairs over concrete target
+        // types, so the enclosing cross-type intersection stays well-typed.
+        var chain = ReverseChain(["Device"], ["Patient"]);
+        var symbols = ChainSymbols();
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }).Plan;
+
+        // Assert -- the join reads Device rows and emits Patient identities, both taken from the chain.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var join = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        join.Direction.ShouldBe(ChainDirection.Reverse);
+        join.InnerResourceTypeId.ShouldBe((short)104);
+        join.OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[join.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)104);
+    }
+
+    [Fact]
+    public void GivenAForwardChainUnderASystemLevelSearch_WhenLowered_ThenItLowersAgainstItsOwnTargetType()
+    {
+        // Arrange -- GET /?_type=Observation,Device&subject:Patient.name=smith. The mirror of the reverse
+        // case: a forward chain scopes its inner expression against its single target type (Patient) and
+        // emits its referencing types (Observation), so the null ambient scope is again unused.
+        var chain = ForwardChain(["Observation"], ["Patient"]);
+        var symbols = ChainSymbols();
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }).Plan;
+
+        // Assert -- the join reads Patient rows and emits Observation identities, both taken from the chain.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var join = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>();
+        join.Direction.ShouldBe(ChainDirection.Forward);
+        join.InnerResourceTypeId.ShouldBe((short)103);
+        join.OutputResourceTypeIds.ShouldBe([(short)105]);
+        plan.Ctes[join.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)103);
+    }
+
+    [Fact]
+    public void GivenAChainNestedInAnAndUnderASystemLevelSearch_WhenLowered_ThenTheChainStillLowers()
+    {
+        // Arrange -- the shape the deleted dispatch guard claimed to cover "equally": the chain is not at
+        // the top level, so the null ambient scope reaches it through LowerAnd's recursion rather than
+        // directly. The sibling must be an ordinary search parameter, not _type: a resource-column leaf is
+        // peeled into the outer WHERE by ExtractResourceColumnPredicates, which would collapse the And back
+        // to a bare chain and never reach LowerAnd at all.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var codeLeaf = new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(
+            codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "1234", text: null)));
+        var chain = ForwardChain(["Observation"], ["Patient"]);
+        var and = Expression.And(chain, codeLeaf);
+        var symbols = ChainSymbols();
+
+        // Act
+        var plan = LowerHarness.Run(
+            and, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }).Plan;
+
+        // Assert -- the chain still self-typed under the null ambient scope.
+        var join = plan.Ctes.OfType<CteDefinition.ChainJoin>().ShouldHaveSingleItem();
+        join.Direction.ShouldBe(ChainDirection.Forward);
+        join.InnerResourceTypeId.ShouldBe((short)103);
+        join.OutputResourceTypeIds.ShouldBe([(short)105]);
+
+        // ...and it got there through LowerAnd: the sibling leg lowered cross-type into its own CTE and the
+        // two legs are joined by an Intersect. Neither exists if the And was peeled away before dispatch.
+        var indexed = plan.Ctes.Select((cte, index) => (cte, index)).ToList();
+        var siblingIndex = indexed.Single(x => x.cte is CteDefinition.ParamSource { SearchParamId: 202 }).index;
+        var joinIndex = indexed.Single(x => ReferenceEquals(x.cte, join)).index;
+        plan.Ctes.OfType<CteDefinition.Intersect>().ShouldContain(
+            intersect => (intersect.Left.Index == joinIndex && intersect.Right.Index == siblingIndex)
+                || (intersect.Left.Index == siblingIndex && intersect.Right.Index == joinIndex));
+    }
+
+    [Fact]
+    public void GivenAForwardChainWithMoreThanOneTargetTypeUnderSystemLevel_WhenLowered_ThenItThrows()
+    {
+        // The side that must be single is now reachable under a null ambient scope, where the deleted
+        // dispatch guard used to short-circuit first. LowerChain must still refuse the ambiguity rather
+        // than silently picking a type.
+        var chain = ForwardChain(["Observation"], ["Patient", "Device"]);
+
+        var exception = Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }));
+
+        // Assert on the ambiguity guard specifically -- the deleted dispatch guard also threw
+        // NotSupportedException, so only the message distinguishes the two.
+        exception.Message.ShouldContain("Forward chain resolved to 2 candidate target types");
+    }
+
+    [Fact]
+    public void GivenAReverseChainWithMoreThanOneReferencingTypeUnderSystemLevel_WhenLowered_ThenItThrows()
+    {
+        var chain = ReverseChain(["Device", "Observation"], ["Patient"]);
+
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }))
+            .Message.ShouldContain("Reverse chain's referencing side resolved to 2 types");
+    }
+
+    [Fact]
+    public void GivenAReverseChainWithNoTargetTypes_WhenLowered_ThenItThrowsRatherThanEmittingAnEmptyOutputFilter()
+    {
+        // The output side has no ambiguity to resolve, so it has no single-type guard -- but an empty list is
+        // worse than an ambiguous one: EmitChainJoin string.Joins the output equalities, and joining none of
+        // them interpolates an empty string straight into the WHERE clause, which does not parse. Refusing at
+        // lowering names the chain that produced it; SqlBuilder.RejectUnsupportedCombinations carries the same
+        // check as a backstop for a QueryPlan built without going through Lower.
+        var chain = ReverseChain(["Device"], []);
+
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] }))
+            .Message.ShouldContain("Reverse chain's target side resolved to 0 resource types");
+    }
+
+    [Fact]
+    public void GivenAForwardChainWithNoReferencingTypes_WhenLowered_ThenItThrowsRatherThanEmittingAnEmptyOutputFilter()
+    {
+        // Mirror of the reverse case: forward chains emit their referencing types, so that is the side that
+        // must be non-empty.
+        var chain = ForwardChain([], ["Patient"]);
+
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] }))
+            .Message.ShouldContain("Forward chain's referencing side resolved to 0 resource types");
+    }
+
+    [Fact]
+    public void GivenAReverseChainWithSeveralTargetTypes_WhenLoweredUnderSystemLevel_ThenEveryTargetTypeIsEmitted()
+    {
+        // Arrange -- GET /?_type=Patient,Device&_has:Observation:subject:code=4548-4, the production shape:
+        // SearchKeyBinder.BindReverse computes the targets as the reference parameter's own targets INTERSECT
+        // the requested types, which is routinely more than one. Only the referencing side is constrained to a
+        // single type, so a multi-target output is legal, and it reaches EmitChainJoin's parenthesisation
+        // branch, where an unparenthesised OR would bind loosely against the sibling AND terms and silently
+        // widen the join. The forward sibling below covers the same branch from the other direction.
+        var chain = ReverseChain(["Observation"], ["Patient", "Device"]);
+
+        // Act
+        var lowered = LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Patient", "Device"] });
+        var sql = SqlBuilder.Run(lowered.Plan).Sql;
+
+        // Assert
+        var join = lowered.Plan.Ctes.OfType<CteDefinition.ChainJoin>().ShouldHaveSingleItem();
+        join.InnerResourceTypeId.ShouldBe((short)105);
+        join.OutputResourceTypeIds.ShouldBe([(short)103, (short)104]);
+        sql.ShouldContain("(rsp.ReferenceResourceTypeId = 103 OR rsp.ReferenceResourceTypeId = 104)");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
+    public void GivenAForwardChainWithSeveralReferencingTypes_WhenLoweredUnderSystemLevel_ThenEveryReferencingTypeIsEmitted()
+    {
+        // Arrange -- GET /?_type=Observation,Device&subject:Patient.name=smith exactly as the binder produces
+        // it: SearchKeyBinder.BindForward binds the referencing side to the FULL requested type list, so the
+        // real shape is ForwardChain(["Observation", "Device"], ["Patient"]) -- not the single-output shape the
+        // sibling tests build. Only the target side is narrowed to one type.
+        var chain = ForwardChain(["Observation", "Device"], ["Patient"]);
+
+        // Act
+        var lowered = LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation", "Device"] });
+        var sql = SqlBuilder.Run(lowered.Plan).Sql;
+
+        // Assert
+        var join = lowered.Plan.Ctes.OfType<CteDefinition.ChainJoin>().ShouldHaveSingleItem();
+        join.InnerResourceTypeId.ShouldBe((short)103);
+        join.OutputResourceTypeIds.ShouldBe([(short)105, (short)104]);
+        sql.ShouldContain("(rsp.ResourceTypeId = 105 OR rsp.ResourceTypeId = 104)");
+        SqlGrammar.AssertValid(sql);
+    }
+
+    [Fact]
+    public void GivenAChainWhoseOutputTypeIsOutsideTheRequestedTypes_WhenLowered_ThenTheRequestedTypesStillNarrowIt()
+    {
+        // Arrange -- GET /?_type=Device&_has:Device:subject:code=4548-4. The chain emits Patient identities
+        // while the caller asked only for Device, so the requested-type narrowing is the only thing that keeps
+        // the answer empty. The sibling chain tests all pick chain types inside ResourceTypes and assert only
+        // that an Intersect is there, never which types it narrows to; this one pins the narrowing set itself.
+        var chain = ReverseChain(["Device"], ["Patient"]);
+
+        // Act
+        var plan = LowerHarness.Run(
+            chain, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Device"] }).Plan;
+
+        // Assert -- the match root intersects the chain's Patient output against a Device-only base set.
+        var intersect = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ChainJoin>()
+            .OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>()
+            .ResourceTypeIds.ShouldBe([(short)104]);
+    }
+
+    [Fact]
+    public void GivenAChainUnderAWildcardCompartmentSearch_WhenLowered_ThenItStillThrows()
+    {
+        // Arrange -- the other null-target case the deleted dispatch guard used to cover. A wildcard
+        // compartment search has no single type to scope anything against and is NOT system-level, so it must
+        // still be refused. The refusal now comes from Lower.Run's residue arm rather than from leaf dispatch,
+        // which is correct but incidental: this pins it so a refactor that peels the compartment leaf
+        // differently cannot fail open into LowerChain with a null scope.
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var tree = Expression.And(compartment, ForwardChain(["Observation"], ["Patient"]));
+
+        // Act & Assert -- no SystemLevelSearch option, so this stays a genuine wildcard compartment search.
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            tree, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null))
+            .Message.ShouldContain("wildcard compartment search");
+    }
+
+    [Fact]
+    public void GivenAChainNestedInAnotherChainUnderASystemLevelSearch_WhenLowered_ThenTheInnerChainSeesAConcreteScope()
+    {
+        // Arrange -- depth 2 under a null ambient scope. LowerChain passes a concrete type into lowerNode for
+        // its inner expression in both directions, so a chain reached inside another chain's scope never sees
+        // the null. EndToEndCompilationTests' GivenANestedChainTwoLevelsDeep covers depth 2 only under a typed
+        // target, where there is no null to leak; this is what lets the outer chain tolerate a null ambient
+        // scope without the tolerance leaking further down.
+        var inner = ReverseChain(["Device"], ["Patient"]);
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        var outer = new ChainedExpression(["Observation"], subjectParam, ["Patient"], reversed: false, inner);
+
+        // Act
+        var plan = LowerHarness.Run(
+            outer, ChainSymbols(), targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            new LowerOptions { SystemLevelSearch = true, ResourceTypes = ["Observation"] }).Plan;
+
+        // Assert -- both joins lowered, and the inner one scoped against Device rather than nothing.
+        var joins = plan.Ctes.OfType<CteDefinition.ChainJoin>().ToList();
+        joins.Count.ShouldBe(2);
+
+        var innerJoin = joins.Single(j => j.Direction == ChainDirection.Reverse);
+        innerJoin.InnerResourceTypeId.ShouldBe((short)104);
+        innerJoin.OutputResourceTypeIds.ShouldBe([(short)103]);
+        plan.Ctes[innerJoin.InnerMatch.Index].ShouldBeOfType<CteDefinition.ParamSource>().ResourceTypeId.ShouldBe((short)104);
+
+        var outerJoin = joins.Single(j => j.Direction == ChainDirection.Forward);
+        outerJoin.InnerResourceTypeId.ShouldBe((short)103);
+        outerJoin.OutputResourceTypeIds.ShouldBe([(short)105]);
+    }
+
+    /// <summary>A forward chain on <c>subject</c> whose inner expression is a name filter on the target type.</summary>
+    private static ChainedExpression ForwardChain(string[] referencingTypes, string[] targetTypes)
+    {
+        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        return new ChainedExpression(
+            referencingTypes,
+            subjectParam,
+            targetTypes,
+            reversed: false,
+            new SearchParameterExpression(nameParam, new SearchParameterPredicateExpression(
+                nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("smith"))));
+    }
+
+    /// <summary>A reverse chain on <c>subject</c> whose inner expression is a code filter on the referencing type.</summary>
+    private static ChainedExpression ReverseChain(string[] referencingTypes, string[] targetTypes)
+    {
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var subjectParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Device-subject"));
+        return new ChainedExpression(
+            referencingTypes,
+            subjectParam,
+            targetTypes,
+            reversed: true,
+            new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(
+                codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, "4548-4", text: null))));
+    }
+
+    /// <summary>Symbols covering both chain shapes: the code/name/subject parameters and the types they span.</summary>
+    private static SymbolTable ChainSymbols()
+    {
+        return new SymbolTable(
+            new Dictionary<string, short>
+            {
+                ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 202,
+                ["http://hl7.org/fhir/SearchParameter/Device-subject"] = 203,
+                ["http://hl7.org/fhir/SearchParameter/Patient-name"] = 204,
+            },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Device"] = 104, ["Observation"] = 105 });
     }
 
     /// <summary>The shape a bound <c>_type=a,b</c> takes: an Or of bare _type equalities under one wrapper.</summary>
@@ -1273,6 +1588,21 @@ public class LowerTests
             Expression.Or([.. resourceTypes.Select(t => (Expression)new SearchParameterPredicateExpression(
                 typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: t, text: null)))]));
     }
+
+    /// <summary>The shape a bound single-valued <c>_type=X</c> takes: one bare _type equality under its wrapper.
+    /// This is the shape a system-level union leg derives its own scope from (see TryDeriveSingleTypeScope).</summary>
+    private static SearchParameterExpression SingleType(string resourceType)
+    {
+        var typeParam = new SearchParameterInfo("_type", "_type", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-type"));
+        return new SearchParameterExpression(
+            typeParam,
+            new SearchParameterPredicateExpression(typeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: resourceType, text: null)));
+    }
+
+    /// <summary>A patient reference parameter, reused as both a compartment-membership parameter and the target of a
+    /// <c>patient:missing=true</c> negation in the system-level union-leg tests.</summary>
+    private static readonly SearchParameterInfo PatientRefParam =
+        new("patient", "patient", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/clinical-patient"));
 
     // ─── IncludesOnly Lower.Run guard tests ─────────────────────────────────────────────────────────
 
@@ -1286,7 +1616,7 @@ public class LowerTests
             new Dictionary<string, short> { ["Patient"] = 103 });
 
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 expression: null,
                 symbols,
                 targetResourceType: "Patient",
@@ -1300,57 +1630,358 @@ public class LowerTests
     }
 
     [Fact]
-    public void GivenLowerRunWithIncludesOnlyAndCountOnly_WhenCalled_ThenThrowsNotSupportedException()
+    public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenCarriesTheSortPhaseAsAFilterRatherThanRefusing()
     {
-        // IncludesOnly asks for include rows; CountOnly counts match rows — these are contradictory.
-        // The guard fires before BuildIncludeStages and before the access-constraint binding loop,
-        // so the combination is rejected immediately without building any include stages.
-        var symbols = new SymbolTable(
-            new Dictionary<string, short>(),
-            new Dictionary<string, short> { ["Patient"] = 103 });
-
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
-                expression: null,
-                symbols,
-                targetResourceType: "Patient",
-                includes: [],
-                revIncludes: [],
-                includeLimit: 0,
-                sort: [],
-                sortPhase: SortPhase.Valued,
-                page: null,
-                new LowerOptions { IncludesOnly = true, CountOnly = true }));
-    }
-
-    [Fact]
-    public void GivenLowerRunWithIncludesOnlyAndSort_WhenCalled_ThenThrowsNotSupportedException()
-    {
-        // _sort orders the match rows, but an IncludesOnly page drops the match arm and pages its include
-        // rows by (T1, Sid1). The sort key has nothing to order, so the combination is refused rather than
-        // silently dropped -- mirroring the IncludesOnly + CountOnly and IncludesOnly + no-stages guards.
+        // _sort has two roles here, and an includes-only page keeps only one. The ordering role drops -- the
+        // page has no match rows to order and pages its include rows by (T1, Sid1) -- but the SortPhase is a
+        // *filter* that partitions the match set into rows missing the sort value and rows that have it. The
+        // page bounds its match set by a surrogate window and seeds its includes from it, so the phase decides
+        // which windowed rows are matches and therefore which resources are included. Lower must carry the sort
+        // through (its phase reaches the match-page CTE independently of ORDER BY), not refuse it.
         var orgParam = new SearchParameterInfo(
             "organization", "organization", SearchParamType.Reference,
             new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
             targetResourceTypes: ["Organization"]);
-        var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var dateParam = new SearchParameterInfo("birthdate", "birthdate", SearchParamType.Date, new Uri("http://hl7.org/fhir/SearchParameter/Patient-birthdate"));
         var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
         var symbols = new SymbolTable(
-            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [dateParam.Url.ToString()] = 203 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+        var plan = LowerHarness.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [include],
+            revIncludes: [],
+            includeLimit: 1000,
+            sort: [new SortExpression(dateParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+            sortPhase: SortPhase.MissingPrimary,
+            page: null,
+            new LowerOptions { IncludesOnly = true }).Plan;
+
+        // The sort survives lowering with its phase intact -- that is what makes the phase predicate
+        // load-bearing on the includes-only match set downstream.
+        plan.IncludesOnly.ShouldBeTrue();
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Phase.ShouldBe(SortPhase.MissingPrimary);
+        plan.Sort.Keys.ShouldHaveSingleItem().Kind.ShouldBe(SortKeyKind.Date);
+    }
+
+    [Fact]
+    public void GivenLowerRunWithATypedPageAndACustomSort_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // A custom (search-parameter) sort emits ORDER BY (sort keys…, Sid1) -- type-free -- but a type on
+        // the boundary makes the seek type-major. Within a run of tied sort values a row of a lower type id
+        // but higher surrogate id then sorts after the boundary yet is excluded by the seek, and is dropped
+        // at the page seam with no error. Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
+        var nameParam = new SearchParameterInfo(
+            "name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var typedPage = new PageSpec(
+            [new SqlParameterRef("Adams")],
+            new SqlParameterRef((short)103),
+            BoundarySurrogateId: new SqlParameterRef(5000L));
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            LowerHarness.Run(
                 expression: null,
                 symbols,
                 targetResourceType: "Patient",
-                includes: [include],
+                includes: [],
                 revIncludes: [],
-                includeLimit: 1000,
+                includeLimit: 0,
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
                 sortPhase: SortPhase.Valued,
-                page: null,
-                new LowerOptions { IncludesOnly = true }));
+                page: typedPage));
+
+        ex.Message.ShouldContain("typed keyset Page");
+        ex.Message.ShouldContain("page seam");
+    }
+
+    [Fact]
+    public void GivenLowerRunWithATypelessPageAndANonCustomSort_WhenCalled_ThenThrowsNotSupportedException()
+    {
+        // The mirror of the guard above, and unsound for the mirrored reason. A typeless boundary breaks its
+        // final tie on Sid1 alone, which agrees with the ORDER BY only when the sort is custom. A sortless
+        // search orders by (T1, Sid1), so a typeless boundary here would disagree with that type-major
+        // ORDER BY and page unsoundly. Refuse it here, mirrored by SqlBuilder for direct QueryPlan callers.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var typelessPage = new PageSpec(
+            [],
+            BoundaryResourceTypeId: null,
+            BoundarySurrogateId: new SqlParameterRef(7000L));
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            LowerHarness.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 0,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: typelessPage));
+
+        ex.Message.ShouldContain("typeless");
+        ex.Message.ShouldContain("custom");
+    }
+
+    [Fact]
+    public void GivenLowerRunWithATypelessPageAndACustomSort_WhenCalled_ThenTheSortAndPageBothSurviveLowering()
+    {
+        // The permitted half of the same pairing: a typeless boundary matches the type-free ORDER BY a
+        // custom sort emits, so lowering carries both through untouched.
+        var nameParam = new SearchParameterInfo(
+            "name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Patient-name"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [nameParam.Url.ToString()] = 202 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+        var typelessPage = new PageSpec(
+            [new SqlParameterRef("Adams")],
+            BoundaryResourceTypeId: null,
+            BoundarySurrogateId: new SqlParameterRef(5000L));
+
+        var plan = LowerHarness.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [],
+            revIncludes: [],
+            includeLimit: 0,
+            sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
+            sortPhase: SortPhase.Valued,
+            page: typelessPage).Plan;
+
+        plan.Page.ShouldNotBeNull();
+        plan.Page!.BoundaryResourceTypeId.ShouldBeNull();
+        plan.Sort.ShouldNotBeNull();
+        plan.Sort!.Keys.ShouldHaveSingleItem().Kind.ShouldBe(SortKeyKind.String);
+    }
+
+    [Fact]
+    public void GivenAUnionOfLegs_WhenLowered_ThenEachLegBecomesItsOwnCteJoinedByAUnion()
+    {
+        // Arrange -- the shape a SMART compartment expands to: several independent row-producing legs, each
+        // admitting resources for a different reason, combined so a resource matching any one of them is
+        // visible. Written as UnionExpression rather than Or because the legs are set-producing subqueries
+        // over different tables, not alternative values of one parameter.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var tree = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null))),
+                new SearchParameterExpression(statusParam, new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))),
+            ]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 10, ["http://hl7.org/fhir/SearchParameter/Observation-status"] = 11 },
+            new Dictionary<string, short> { ["Observation"] = 96 });
+
+        // Act
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- the match is a union over both legs, not one leg with the other silently dropped. A
+        // dropped leg is the dangerous direction here: these legs are what grants access, so losing one
+        // hides rows the caller is entitled to, and losing all but one would still look like a working query.
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        union.Parts.Select(part => plan.Ctes[part.Index]).ShouldAllBe(cte => cte is CteDefinition.ParamSource);
+    }
+
+    [Fact]
+    public void GivenAUnionNestedUnderAnAnd_WhenLowered_ThenTheUnionIsIntersectedWithTheOtherConjunct()
+    {
+        // Arrange -- the real SMART shape: the access union ANDed with the caller's own filter. The union
+        // must narrow the result, never replace it, so a caller searching status=final inside a compartment
+        // cannot see a non-final resource just because the compartment admits it.
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var accessUnion = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null))),
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "b", text: null))),
+            ]);
+        var tree = Expression.And(
+            accessUnion,
+            new SearchParameterExpression(statusParam, new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 10, ["http://hl7.org/fhir/SearchParameter/Observation-status"] = 11 },
+            new Dictionary<string, short> { ["Observation"] = 96 });
+
+        // Act
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert
+        plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Intersect>();
+        plan.Ctes.ShouldContain(cte => cte is CteDefinition.Union);
+    }
+
+    [Fact]
+    public void GivenAUnionLegOfOnlyResourceColumns_WhenLowered_ThenTheLegFoldsIntoItsOwnScopedResourceSource()
+    {
+        // Arrange -- the SMART compartment's "the compartment resource itself" leg: _id and _type only. At the
+        // top level such predicates lift into the outer WHERE, but inside a union that would apply them to
+        // every leg and collapse the whole access set to one resource. They must stay scoped to their own leg.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var codeParam = new SearchParameterInfo("code", "code", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/clinical-code"));
+        var tree = Expression.Union(
+            UnionOperator.All,
+            [
+                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "p1", text: null))),
+                new SearchParameterExpression(codeParam, new SearchParameterPredicateExpression(codeParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "a", text: null))),
+            ]);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { ["http://hl7.org/fhir/SearchParameter/clinical-code"] = 10 },
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        // Act
+        var plan = LowerHarness.Run(tree, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- the _id leg is a ResourceSource carrying its own predicate, and nothing leaked outward.
+        plan.OuterPredicate.ShouldBeNull();
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        var idLeg = plan.Ctes[union.Parts[0].Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        idLeg.Predicate.ShouldNotBeNull().ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ResourceId");
+        plan.Ctes[union.Parts[1].Index].ShouldBeOfType<CteDefinition.ParamSource>();
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionOfPureResourceColumnLegs_WhenLowered_ThenEachLegFoldsIntoAnAllTypesScanCarryingItsPredicate()
+    {
+        // Arrange -- the SMART compartment shape under a system-level search (GET /?_id=...&_count=100, no
+        // _type). The "compartment resource itself" leg is _id+_type; each "universal resource type" leg is a
+        // bare _type. Neither has a residue to lower, so each folds into an AllTypes dbo.Resource scan whose
+        // WHERE carries the resource-column predicate -- the cross-type analog of the typed ResourceSource fold.
+        // This shape used to be refused outright; the refusal was the wrong call, because a purely
+        // resource-column leg carries all the scope it needs inside its own predicate.
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var tree = Expression.Union(
+            UnionOperator.All,
+            SingleType("Location"),
+            Expression.And(
+                new SearchParameterExpression(idParam, new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "c1", text: null))),
+                SingleType("Patient")));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103, ["Location"] = 110 });
+
+        // Act -- must NOT throw.
+        var plan = LowerHarness.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- nothing lifted to the outer WHERE (that would apply one leg's columns to every leg), and
+        // each leg is an AllTypes scan (empty ResourceTypeIds) carrying its own predicate.
+        plan.OuterPredicate.ShouldBeNull();
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        foreach (var part in union.Parts)
+        {
+            var scan = plan.Ctes[part.Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>();
+            scan.ResourceTypeIds.ShouldBeEmpty();
+            scan.Predicate.ShouldNotBeNull();
+        }
+
+        // And the emitted SQL is a full dbo.Resource scan bounded by a WHERE, never an unbounded one.
+        var sql = SqlBuilder.Run(plan).Sql;
+        sql.ShouldContain("FROM dbo.Resource");
+        sql.ShouldContain("ResourceId =");
+        sql.ShouldContain("ResourceTypeId =");
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionLegPairingATypeWithAMissingNegation_WhenLowered_ThenItDerivesTheTypeAndLowersRatherThanThrowing()
+    {
+        // Arrange -- the SMART "orphan devices" leg: And(_type=Device, patient:missing=true). Under a
+        // system-level search the leg has no ambient type, and a :missing negation cannot anchor its Except on
+        // "every resource in the database". The leg's own single _type=Device supplies the anchor -- the very
+        // pairing that confines the leg on a typed search -- so the leg must lower, not throw.
+        var deviceLeg = Expression.And(
+            SingleType("Device"),
+            new MissingSearchParameterExpression(PatientRefParam, isMissing: true));
+        var tree = Expression.Union(UnionOperator.All, SingleType("Location"), deviceLeg);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [PatientRefParam.Url!.ToString()] = 55 },
+            new Dictionary<string, short> { ["Device"] = 120, ["Location"] = 110 });
+
+        // Act -- must NOT throw.
+        var plan = LowerHarness.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- the device leg lowered to (a Device ResourceSource carrying its _type predicate) INTERSECT
+        // (the negation, itself an Except anchored on Device). Because a concrete type was recovered, the leg
+        // is indistinguishable from a natively typed one and the negation anchors on Device rather than
+        // tripping the null-scope guard.
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        var intersect = plan.Ctes[union.Parts[1].Index].ShouldBeOfType<CteDefinition.Intersect>();
+        var scoped = plan.Ctes[intersect.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>();
+        scoped.ResourceTypeId.ShouldBe((short)120);
+        scoped.Predicate.ShouldNotBeNull();
+        var negation = plan.Ctes[intersect.Right.Index].ShouldBeOfType<CteDefinition.Except>();
+        plan.Ctes[negation.Left.Index].ShouldBeOfType<CteDefinition.ResourceSource>().ResourceTypeId.ShouldBe((short)120);
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionLegWithAMultiValuedTypeAndANegation_WhenLowered_ThenNoScopeIsDerivedAndTheNegationIsRefused()
+    {
+        // Arrange -- a leg pairing a MULTI-valued _type=Device,Location (an Or, not a single equality) with a
+        // :missing negation. Deriving a single-type scope from one arm of that Or would silently narrow the
+        // leg to Device or Location; instead no scope is derived, the negation lowers under a null type, and
+        // its Except anchor -- which has no single type to subtract from -- is refused. Refusal is the correct
+        // answer here: the alternative is returning a wrong, silently narrowed row set.
+        var leg = Expression.And(
+            TypeList("Device", "Location"),
+            new MissingSearchParameterExpression(PatientRefParam, isMissing: true));
+        var tree = Expression.Union(UnionOperator.All, SingleType("Patient"), leg);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [PatientRefParam.Url!.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Device"] = 120, ["Location"] = 110 });
+
+        // Act & Assert -- the negation-anchor guard fires, naming the real problem (a system-level negation),
+        // not a fabricated "the union leg needs a type".
+        Should.Throw<NotSupportedException>(() => LowerHarness.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }))
+            .Message.ShouldContain("system-level");
+    }
+
+    [Fact]
+    public void GivenASystemLevelUnionWithACompartmentLeg_WhenLowered_ThenTheCompartmentLegLowersUnderANullScope()
+    {
+        // Arrange -- the SMART "compartment traversal" leg: a bare CompartmentSearchExpression with no _type to
+        // derive from. It must lower under a null scope (LowerCompartment needs no resource type) while a
+        // sibling universal-type leg folds into an AllTypes scan, proving the null-scope path and the
+        // pure-column path coexist inside one union.
+        var compartment = new CompartmentSearchExpression("Patient", "123");
+        var tree = Expression.Union(UnionOperator.All, compartment, SingleType("Location"));
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [PatientRefParam.Url!.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Location"] = 110, ["Observation"] = 104 },
+            new Dictionary<string, IReadOnlyList<(SearchParameterInfo, IReadOnlyList<string>)>>
+            {
+                ["Patient"] = [(PatientRefParam, ["Observation"])],
+            });
+
+        // Act -- must NOT throw.
+        var plan = LowerHarness.Run(
+            tree, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }).Plan;
+
+        // Assert -- a CompartmentSource is present (the traversal leg lowered), and the Location leg is an
+        // AllTypes scan.
+        var union = plan.Ctes[plan.Match.Index].ShouldBeOfType<CteDefinition.Union>();
+        union.Parts.Count.ShouldBe(2);
+        plan.Ctes.ShouldContain(cte => cte is CteDefinition.CompartmentSource);
+        plan.Ctes[union.Parts[1].Index].ShouldBeOfType<CteDefinition.MultiTypeResourceSource>()
+            .ResourceTypeIds.ShouldBeEmpty();
     }
 }
-

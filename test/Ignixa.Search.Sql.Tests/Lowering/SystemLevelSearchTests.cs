@@ -5,6 +5,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -22,7 +23,7 @@ public class SystemLevelSearchTests
         var symbols = new SymbolTable(new Dictionary<string, short> { [parameter.Url!.ToString()] = 202 }, new Dictionary<string, short>());
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
 
@@ -47,7 +48,7 @@ public class SystemLevelSearchTests
         var symbols = new SymbolTable(new Dictionary<string, short>(), new Dictionary<string, short>());
 
         // Act
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             expression, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
 
@@ -69,7 +70,7 @@ public class SystemLevelSearchTests
             new Dictionary<string, short>());
 
         // Act -- must NOT throw.
-        var lowered = Lower.Run(
+        var lowered = LowerHarness.Run(
             predicate, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
             sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)],
             sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
@@ -87,9 +88,15 @@ public class SystemLevelSearchTests
     }
 
     [Fact]
-    public void GivenAChainedExpressionWithNoResourceType_WhenLowered_ThenThrowsNotSupportedException()
+    public void GivenAChainedExpressionWithNoResourceType_WhenLowered_ThenItUsesTheChainsOwnTypes()
     {
-        // Arrange -- ?organization.name=Acme with no target type; chain still requires a known target type.
+        // Arrange -- ?organization.name=Acme with no target type. A chain names its own referencing and
+        // target types, so a null ambient scope is unused rather than missing, and the plan it lowers to is
+        // the one the typed Patient?organization.name=Acme produces (see
+        // EndToEndCompilationTests.GivenAForwardChainQuery_..., whose golden Explain this matches exactly).
+        // This case was refused at the chain dispatch choke point until LowerChain was shown to read only
+        // the chain's own types; asserting the plan, not just the absence of a throw, is what keeps the
+        // relaxation from degenerating into a cross-type chain that silently ignores its scope.
         var orgParam = new SearchParameterInfo("organization", "organization", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"));
         var nameParam = new SearchParameterInfo("name", "name", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/Organization-name"));
         var innerPredicate = new SearchParameterPredicateExpression(nameParam, SearchComparator.Eq, modifier: null, new StringSearchValue("Acme"));
@@ -98,12 +105,15 @@ public class SystemLevelSearchTests
             new Dictionary<string, short> { [orgParam.Url!.ToString()] = 55, [nameParam.Url!.ToString()] = 202 },
             new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
 
-        // Act & Assert
-        Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
-                chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
-                sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }))
-            .Message.ShouldContain("Chain is not supported in system-level search");
+        // Act
+        var lowered = LowerHarness.Run(
+            chain, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true });
+
+        // Assert
+        lowered.Plan.Explain().ShouldBe(
+            "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
     }
 
     [Fact]
@@ -123,7 +133,7 @@ public class SystemLevelSearchTests
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 predicate, symbols, targetResourceType: null, includes: [include], revIncludes: [], includeLimit: 1000,
                 sort: [], sortPhase: SortPhase.Valued, page: null, new LowerOptions { SystemLevelSearch = true }))
             .Message.ShouldContain("SeedFromMatch");
@@ -151,7 +161,7 @@ public class SystemLevelSearchTests
         // Act & Assert -- note: NO systemLevelSearch argument (defaults false), so this stays a genuine
         // wildcard compartment search, not a system-level search.
         Should.Throw<NotSupportedException>(() =>
-            Lower.Run(
+            LowerHarness.Run(
                 compartment, symbols, targetResourceType: null, includes: [], revIncludes: [], includeLimit: 0,
                 sort: [new SortExpression(nameParam, Ignixa.Search.Expressions.SortOrder.Ascending)], sortPhase: SortPhase.Valued, page: null))
             .Message.ShouldContain("wildcard compartment search");

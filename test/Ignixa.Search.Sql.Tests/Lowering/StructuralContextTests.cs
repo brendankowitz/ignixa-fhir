@@ -4,6 +4,7 @@ using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -41,7 +42,7 @@ public class StructuralContextTests
 
         // Act & Assert
         var ex = Should.Throw<NotSupportedException>(() =>
-            Lower.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
+            LowerHarness.Run(tree, symbols, targetResourceType: "Observation", includes: [], revIncludes: [], includeLimit: 0, sort: [], sortPhase: SortPhase.Valued, page: null));
         ex.Message.ShouldContain(
             "This commonly happens when a resource-column predicate arrives nested inside an And/Or that " +
             "wasn't flattened before reaching Lower.Run -- e.g. a caller composing And(otherExpression, " +

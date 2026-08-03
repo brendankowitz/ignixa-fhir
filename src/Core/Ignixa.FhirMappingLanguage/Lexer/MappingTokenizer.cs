@@ -24,6 +24,9 @@ public static class MappingTokenizer
     public static Tokenizer<MappingTokenKind> CreateWithTrivia()
     {
         return new TokenizerBuilder<MappingTokenKind>()
+            // Metadata declarations (must precede the comment rules - '///' is a prefix of '//')
+            .Match(Span.Regex(@"///[^\r\n]*"), MappingTokenKind.MetadataLine, requireDelimiters: false)
+
             // Comments (must come before other operators to avoid capturing // as division)
             .Match(Comment.CStyle, MappingTokenKind.BlockComment, requireDelimiters: true)
             .Match(Comment.CPlusPlusStyle, MappingTokenKind.LineComment)
@@ -68,9 +71,9 @@ public static class MappingTokenizer
             // String literals (single-quoted, SQL-style escaping)
             .Match(QuotedString.SqlStyle, MappingTokenKind.StringLiteral)
 
-            // Delimited identifiers (backtick or double-quote style)
+            // Delimited identifiers (backtick) and double-quoted strings
             .Match(Span.Regex("`[^`]*`"), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
-            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
+            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DoubleQuotedString, requireDelimiters: false)
 
             // Numeric literals
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
@@ -90,6 +93,8 @@ public static class MappingTokenizer
             .Match(Span.EqualTo("~="), MappingTokenKind.RelatedTo)
             .Match(Span.EqualTo("!="), MappingTokenKind.NotEquals)
             .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
+            .Match(Span.EqualTo("<="), MappingTokenKind.LessOrEqual)
+            .Match(Span.EqualTo(">="), MappingTokenKind.GreaterOrEqual)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -107,6 +112,14 @@ public static class MappingTokenizer
             .Match(Character.EqualTo('['), MappingTokenKind.LeftBracket)
             .Match(Character.EqualTo(']'), MappingTokenKind.RightBracket)
 
+            // Arithmetic / FHIRPath operators (after multi-character forms so -> and <= win)
+            .Match(Character.EqualTo('+'), MappingTokenKind.Plus)
+            .Match(Character.EqualTo('-'), MappingTokenKind.Minus)
+            .Match(Character.EqualTo('%'), MappingTokenKind.Percent)
+            .Match(Character.EqualTo('/'), MappingTokenKind.Slash)
+            .Match(Character.EqualTo('|'), MappingTokenKind.Pipe)
+            .Match(Character.EqualTo('&'), MappingTokenKind.Ampersand)
+
             .Build();
     }
 
@@ -117,6 +130,9 @@ public static class MappingTokenizer
     public static Tokenizer<MappingTokenKind> Create()
     {
         return new TokenizerBuilder<MappingTokenKind>()
+            // Metadata declarations (must precede the comment rules - '///' is a prefix of '//')
+            .Match(Span.Regex(@"///[^\r\n]*"), MappingTokenKind.MetadataLine, requireDelimiters: false)
+
             // Comments (ignore for standard parsing)
             .Ignore(Comment.CStyle)
             .Ignore(Comment.CPlusPlusStyle)
@@ -158,9 +174,9 @@ public static class MappingTokenizer
             // String literals (single-quoted, SQL-style escaping)
             .Match(QuotedString.SqlStyle, MappingTokenKind.StringLiteral)
 
-            // Delimited identifiers (backtick or double-quote style)
+            // Delimited identifiers (backtick) and double-quoted strings
             .Match(Span.Regex("`[^`]*`"), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
-            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DelimitedIdentifier, requireDelimiters: false)
+            .Match(Span.Regex("\"([^\"\\\\]|\\\\.)*\""), MappingTokenKind.DoubleQuotedString, requireDelimiters: false)
 
             // Numeric literals
             .Match(Span.Regex(@"[0-9]+\.[0-9]+"), MappingTokenKind.DecimalLiteral, requireDelimiters: true)
@@ -180,6 +196,8 @@ public static class MappingTokenizer
             .Match(Span.EqualTo("~="), MappingTokenKind.RelatedTo)
             .Match(Span.EqualTo("!="), MappingTokenKind.NotEquals)
             .Match(Span.EqualTo("<-"), MappingTokenKind.LeftArrow)
+            .Match(Span.EqualTo("<="), MappingTokenKind.LessOrEqual)
+            .Match(Span.EqualTo(">="), MappingTokenKind.GreaterOrEqual)
 
             // Single-character operators and delimiters
             .Match(Character.EqualTo('='), MappingTokenKind.Equals)
@@ -196,6 +214,14 @@ public static class MappingTokenizer
             .Match(Character.EqualTo('>'), MappingTokenKind.RightAngle)
             .Match(Character.EqualTo('['), MappingTokenKind.LeftBracket)
             .Match(Character.EqualTo(']'), MappingTokenKind.RightBracket)
+
+            // Arithmetic / FHIRPath operators (after multi-character forms so -> and <= win)
+            .Match(Character.EqualTo('+'), MappingTokenKind.Plus)
+            .Match(Character.EqualTo('-'), MappingTokenKind.Minus)
+            .Match(Character.EqualTo('%'), MappingTokenKind.Percent)
+            .Match(Character.EqualTo('/'), MappingTokenKind.Slash)
+            .Match(Character.EqualTo('|'), MappingTokenKind.Pipe)
+            .Match(Character.EqualTo('&'), MappingTokenKind.Ampersand)
 
             // Whitespace (ignore for standard parsing)
             .Ignore(Span.WhiteSpace)

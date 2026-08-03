@@ -7,4 +7,4 @@ namespace Ignixa.Search.Sql.Symbols;
 /// reported rather than silently dropped, so callers can explain the failure instead of hitting a
 /// KeyNotFoundException later in lowering.
 /// </summary>
-public sealed record ResolvedSymbols(SymbolTable Symbols, IReadOnlyList<SearchParameterInfo> Unresolved);
+internal sealed record ResolvedSymbols(SymbolTable Symbols, IReadOnlyList<SearchParameterInfo> Unresolved);

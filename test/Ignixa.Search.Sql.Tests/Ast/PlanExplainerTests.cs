@@ -1,5 +1,7 @@
+using System.Text.RegularExpressions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
+using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Catalog;
 using Shouldly;
 using Xunit;
@@ -194,6 +196,46 @@ public class PlanExplainerTests
     }
 
     [Fact]
+    public void GivenAnIncludesOnlyPlanWithAResumeBoundary_WhenExplained_ThenTheBoundaryRowNamesTheOrdinalsTheEmitterActuallyBinds()
+    {
+        // Arrange -- two parameterized CTEs ahead of the boundary, so its ordinals are neither 0 nor
+        // trivially aligned with anything: this is the drift the row exists to expose. Emit and Describe run
+        // on the same plan and are cross-checked against each other rather than against a pinned string.
+        var stringTable = SqlCatalog.Default.Table("StringSearchParam");
+        var tokenTable = SqlCatalog.Default.Table("TokenSearchParam");
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ParamSource(stringTable, 103, 202, new Predicate.Equal(new SqlColumnRef(stringTable.TableName, "Text"), new SqlParameterRef("Smith"))),
+                new CteDefinition.ParamSource(tokenTable, 103, 44, new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"))),
+                new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
+            ],
+            new CteRef(2),
+            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- the ordinals the emitted resume predicate really seeks on, read back out of the SQL
+        var seek = Regex.Match(emitted.Sql, @"\(T1 > (@p\d+) OR \(T1 = @p\d+ AND Sid1 > (@p\d+)\)\)");
+        seek.Success.ShouldBeTrue(emitted.Sql);
+        var typeParam = seek.Groups[1].Value;
+        var sidParam = seek.Groups[2].Value;
+        emitted.Parameters.ShouldContain(p => p.Name == typeParam && Equals(p.Value, (short)111));
+        emitted.Parameters.ShouldContain(p => p.Name == sidParam && Equals(p.Value, 5000L));
+
+        var boundaryRow = rows.Where(r => r.CanonicalLabel == "includeBoundary").ShouldHaveSingleItem();
+        boundaryRow.Kind.ShouldBe(PlanRowKind.IncludeBoundary);
+        boundaryRow.Label.ShouldBe("includeBoundary");
+        boundaryRow.Body.ShouldBe($"IncludeBoundary(type={typeParam}, sid={sidParam})");
+
+        // The row sits where the emitter binds it: after the CTE graph, before the stage rows.
+        rows.Select(r => r.CanonicalLabel).ToList().IndexOf("includeBoundary")
+            .ShouldBeLessThan(rows.Select(r => r.CanonicalLabel).ToList().IndexOf("inc0"));
+    }
+
+    [Fact]
     public void GivenACompartmentSourcePlan_WhenExplained_ThenPrintsTheGroupedTypeListAndSearchParamId()
     {
         // Arrange
@@ -249,13 +291,36 @@ public class PlanExplainerTests
     }
 
     [Fact]
-    public void GivenAPlanWithSortAndAPageBoundary_WhenExplained_ThenPrintsBothAsTrailingLines()
+    public void GivenAPlanWithACustomSortAndATypelessPageBoundary_WhenExplained_ThenPrintsBothAsTrailingLinesAndConsumesNoTypeOrdinal()
     {
-        // Arrange
+        // Arrange -- a custom sort requires a typeless boundary (SqlBuilder rejects the typed pairing), so
+        // this is the shape a _sort=name continuation page actually has.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
+        var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert -- "type=none", and the surrogate id takes @p2 rather than @p3: a typeless page binds no
+        // type parameter, so printing one would misalign every later ordinal against what Emit binds.
+        explained.ShouldBe(
+            "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "sort = SortSpec([String:202 ASC], Valued)\n" +
+            "page = PageSpec(boundary=[@p1], type=none, sid=@p2)");
+    }
+
+    [Fact]
+    public void GivenAPlanWithAResourceColumnSortAndATypedPageBoundary_WhenExplained_ThenPrintsTheTypeParameterOrdinal()
+    {
+        // Arrange -- the other half of the enforced pairing: a resource-column sort keeps the m.T1 tiebreak,
+        // so its boundary carries a type and the printed ordinals must account for it.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued);
+        var page = new PageSpec([new SqlParameterRef(5000L)], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
         var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
 
         // Act
@@ -264,7 +329,7 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe(
             "root = StringSearchParam[103,202]  Text = @p0\n" +
-            "sort = SortSpec([String:202 ASC], Valued)\n" +
+            "sort = SortSpec([LastUpdated:- ASC], Valued)\n" +
             "page = PageSpec(boundary=[@p1], type=@p2, sid=@p3)");
     }
 
@@ -274,7 +339,7 @@ public class PlanExplainerTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), CountOnly: true);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var explained = plan.Explain();

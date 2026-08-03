@@ -20,6 +20,7 @@ public class MapExpression : Expression
         IEnumerable<GroupExpression> groups,
         IEnumerable<ConceptMapDeclarationExpression>? conceptMaps = null,
         IEnumerable<ConstantDeclarationExpression>? constants = null,
+        IReadOnlyDictionary<string, string>? metadata = null,
         ISourcePositionInfo? location = null) : base(location)
     {
         Url = url ?? throw new ArgumentNullException(nameof(url));
@@ -29,6 +30,7 @@ public class MapExpression : Expression
         Groups = groups?.ToList() ?? [];
         ConceptMaps = conceptMaps?.ToList() ?? [];
         Constants = constants?.ToList() ?? [];
+        Metadata = metadata ?? new Dictionary<string, string>(StringComparer.Ordinal);
     }
 
     public string Url { get; }
@@ -36,6 +38,12 @@ public class MapExpression : Expression
     public IReadOnlyList<UsesExpression> Uses { get; }
     public IReadOnlyList<ImportsExpression> Imports { get; }
     public IReadOnlyList<GroupExpression> Groups { get; }
+
+    /// <summary>
+    /// Gets the metadata declarations (<c>/// key = 'value'</c>) that preceded the map body.
+    /// Empty when the map used the classic <c>map "url" = "name"</c> header form.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> Metadata { get; }
 
     /// <summary>
     /// Inline ConceptMap declarations.

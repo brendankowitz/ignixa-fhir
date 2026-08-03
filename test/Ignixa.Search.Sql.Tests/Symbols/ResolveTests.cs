@@ -1,8 +1,9 @@
-using Ignixa.Search.Definition;
+﻿using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.Search.Sql.Tests.Symbols;
@@ -23,7 +24,7 @@ public class ResolveTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Patient-name"] = 202;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.SearchParamId(parameter).ShouldBe((short)202);
@@ -65,7 +66,7 @@ public class ResolveTests
         resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Observation-component-code-value-quantity"] = 400;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(composite, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(composite, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.SearchParamId(compositeParam).ShouldBe((short)400);
@@ -86,7 +87,7 @@ public class ResolveTests
         var resolver = new FakeSymbolResolver();
 
         // Act -- Resolve itself must not throw for an unresolvable parameter.
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
 
         // Assert -- the miss only surfaces when something actually looks the parameter up later.
         Should.Throw<KeyNotFoundException>(() => symbolTable.SearchParamId(parameter));
@@ -105,7 +106,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
@@ -133,7 +134,7 @@ public class ResolveTests
         // "Organization" is deliberately absent from resolver.ResourceTypeIds -- GetResourceTypeIdAsync returns null
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
 
         // Assert -- Resolve stored the sentinel rather than omitting the key; the entry is present as -1.
         symbolTable.ResourceTypeId("Organization").ShouldBe(SymbolTable.UnmatchableResourceTypeId);
@@ -153,7 +154,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.ResourceTypeId("Observation").ShouldBe((short)104);
@@ -170,7 +171,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(predicate, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.ResourceTypeId("Patient").ShouldBe((short)103);
@@ -192,7 +193,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(chain, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
 
         // Assert
         symbolTable.SearchParamId(orgParam).ShouldBe((short)55);
@@ -225,7 +226,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Organization"] = 105;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             expression: null, includes: [include], revIncludes: [], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
 
         // Assert
@@ -255,7 +256,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Condition"] = 106;
 
         // Act -- must not throw even though the resolver has no row for "*"
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             expression: null, includes: [], revIncludes: [include], sort: [], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
 
         // Assert
@@ -285,7 +286,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
             compartmentManager, searchParamManager)).Symbols;
 
@@ -302,8 +303,9 @@ public class ResolveTests
     [Fact]
     public async Task GivenACompartmentMemberParameterWithNoUrl_WhenResolved_ThenItIsSkippedRatherThanThrowing()
     {
-        // Arrange -- SearchParameterInfo's Url is typed non-null but nullable at runtime, and CompileAsync
-        // awaits Resolve outside its try/catch, so a dereference here would escape as an NRE.
+        // Arrange -- SearchParameterInfo's Url is typed non-null but nullable at runtime, and
+        // SearchSqlCompiler.RunAsync awaits Resolve outside its try/catch, so a dereference here would
+        // escape as an NRE.
         var compartment = new CompartmentSearchExpression("Patient", "123", new HashSet<string> { "Observation" });
         var urllessParam = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, url: null);
 
@@ -319,7 +321,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Observation"] = 104;
 
         // Act
-        var resolved = await Resolve.RunAsync(
+        var resolved = await ResolveHarness.RunAsync(
             compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None,
             compartmentManager, searchParamManager);
 
@@ -336,7 +338,7 @@ public class ResolveTests
 
         // Act & Assert
         await Should.ThrowAsync<InvalidOperationException>(() =>
-            Resolve.RunAsync(compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None));
+            ResolveHarness.RunAsync(compartment, includes: [], revIncludes: [], sort: [], resolver, targetResourceType: "Observation", CancellationToken.None));
     }
 
     [Fact]
@@ -352,7 +354,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             predicate, includes: [], revIncludes: [], sort: [sortExpression], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
 
         // Assert
@@ -370,7 +372,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act -- must not throw even though the resolver has no SearchParamId row for _lastUpdated.
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             expression: null, includes: [], revIncludes: [], sort: [sortExpression], resolver, targetResourceType: "Patient", CancellationToken.None)).Symbols;
 
         // Assert
@@ -419,7 +421,7 @@ public class ResolveTests
         resolver.QuantityCodeIds["mg"] = 42;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(tree, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
 
         // Assert -- all three terminology values are present and resolved
         symbolTable.SystemId("http://loinc.org").ShouldBe(7);
@@ -448,7 +450,7 @@ public class ResolveTests
         // resolver.SystemIds does NOT contain "http://unknown.example" -- resolver returns null (known miss)
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(expression, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
+        var symbolTable = (await ResolveHarness.RunAsync(expression, includes: [], revIncludes: [], sort: [], resolver, "Observation", CancellationToken.None)).Symbols;
 
         // Assert -- the system was collected and the resolver's null result was stored as a known miss
         symbolTable.SystemId("http://unknown.example").ShouldBeNull();
@@ -475,7 +477,7 @@ public class ResolveTests
         definitions.Parameters[("Observation", "subject")] = subjectParam;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None,
             searchParameterDefinitionManager: definitions)).Symbols;
 
@@ -504,7 +506,7 @@ public class ResolveTests
         definitions.Parameters[("Observation", "status")] = statusParam;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None,
             searchParameterDefinitionManager: definitions)).Symbols;
 
@@ -526,7 +528,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Observation"] = 96;
 
         // Act & Assert -- no searchParameterDefinitionManager supplied
-        await Should.ThrowAsync<InvalidOperationException>(() => Resolve.RunAsync(
+        await Should.ThrowAsync<InvalidOperationException>(() => ResolveHarness.RunAsync(
             expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None));
     }
 
@@ -540,7 +542,7 @@ public class ResolveTests
         resolver.ResourceTypeIds["Patient"] = 103;
 
         // Act
-        var symbolTable = (await Resolve.RunAsync(
+        var symbolTable = (await ResolveHarness.RunAsync(
             expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
 
         // Assert

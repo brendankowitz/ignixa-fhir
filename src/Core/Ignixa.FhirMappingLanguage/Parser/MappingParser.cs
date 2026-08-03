@@ -66,6 +66,13 @@ public class MappingParser
                     result.ErrorPosition);
             }
 
+            if (result.Value.Groups.Count == 0)
+            {
+                throw new ParseException(
+                    "The input has no group declarations; at least one group is required.",
+                    Position.Zero);
+            }
+
             return result.Value;
         }
         catch (ParseException)

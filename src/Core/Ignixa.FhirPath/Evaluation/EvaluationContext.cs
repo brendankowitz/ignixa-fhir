@@ -147,6 +147,17 @@ public record EvaluationContext
     public Action<NodeEvaluationEntry>? NodeEvaluationHandler { get; init; }
 
     /// <summary>
+    /// Optional host-provided delegate for instance-selector object creation
+    /// (<c>Type { element: value, ... }</c>). Mirrors the <c>resolve()</c> hook
+    /// (<see cref="FhirEvaluationContext.ElementResolver"/>): when set, the engine
+    /// delegates construction; when unset, evaluating an instance selector throws
+    /// <see cref="InvalidOperationException"/>, because the engine has no object model
+    /// of its own to fall back on. Return null to decline a type — the engine then
+    /// yields an empty result.
+    /// </summary>
+    public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
+
+    /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).
     /// The forked context has its own copy of DefinedVariables so that variables defined
     /// in one branch don't leak to sibling branches.
@@ -298,6 +309,15 @@ public record EvaluationContext
     public EvaluationContext WithNodeEvaluationHandler(Action<NodeEvaluationEntry> handler)
     {
         return this with { NodeEvaluationHandler = handler };
+    }
+
+    /// <summary>
+    /// Creates a new context with the specified instance-creation delegate.
+    /// The delegate is invoked when an instance selector (<c>Type { ... }</c>) is evaluated.
+    /// </summary>
+    public EvaluationContext WithInstanceCreator(Func<InstanceCreationRequest, IElement?> instanceCreator)
+    {
+        return this with { InstanceCreator = instanceCreator };
     }
 
     /// <summary>

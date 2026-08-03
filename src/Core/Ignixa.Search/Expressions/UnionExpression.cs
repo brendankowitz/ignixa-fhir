@@ -8,8 +8,15 @@ using EnsureThat;
 namespace Ignixa.Search.Expressions;
 
 /// <summary>
-/// Represents a union expression that combines multiple expressions with UNION ALL semantics.
-/// Used for compartment searches to generate efficient SQL UNION queries.
+/// Represents a union expression that combines multiple independent row-producing legs. Intended for
+/// compartment searches.
+/// <para>
+/// No consumer honours <see cref="Operator"/>: every one of them emits a <em>deduplicated</em> union. That is
+/// not a shortcut — a leg yields <c>(ResourceTypeId, ResourceSurrogateId)</c> identities, so a duplicate is one
+/// row admitted by two legs and never two distinct results. <c>UNION ALL</c> would double-count that row in
+/// <c>_total</c> and let it consume two slots of a page, which makes the distinct union the only correct
+/// emission for either operator.
+/// </para>
 /// </summary>
 public class UnionExpression : Expression
 {

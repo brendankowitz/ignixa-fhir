@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -269,38 +270,38 @@ public class CompiledSearchSortPagingDifferentialTests
     }
 
     [Fact]
-    public async Task GivenAPartialPrecisionLastUpdatedSearch_WhenSearchedOnBothEngines_ThenLegacySucceedsAndCompiledThrowsRequestNotValidException()
+    public async Task GivenAPartialPrecisionLastUpdatedSearch_WhenSearchedOnBothEngines_ThenTheCompiledEngineMatchesTheWholeYear()
     {
         await using var harness = await DifferentialTestHarness.CreateAsync(CancellationToken.None);
 
         var patientId = $"diff-lastupdated-partial-{Guid.NewGuid():N}";
         await CreateResourceAsync(harness, "Patient", patientId, null, CancellationToken.None);
 
-        // Arrange -- a _lastUpdated=2026 (year-only) search, which flattens to a single instant on the
-        // legacy path but has Start != End on the compiler's typed IR.
+        // Arrange -- a year-only _lastUpdated search over the year the resource was just written in. The
+        // value has Start != End on the compiler's typed IR; the legacy path flattens it to its single
+        // start instant.
+        var currentYear = DateTimeOffset.UtcNow.Year.ToString(CultureInfo.InvariantCulture);
         var options = new SearchOptions
         {
             ResourceType = "Patient",
             Expression = new SearchParameterExpression(
                 LastUpdatedParameter,
-                new SearchParameterPredicateExpression(LastUpdatedParameter, SearchComparator.Eq, modifier: null, DateTimeSearchValue.Parse("2026"))),
+                new SearchParameterPredicateExpression(LastUpdatedParameter, SearchComparator.Eq, modifier: null, DateTimeSearchValue.Parse(currentYear))),
         };
 
         // Act
         var legacyResults = await CollectAsync(harness.LegacySearchService.SearchStreamAsync(options, CancellationToken.None));
+        var newResults = await CollectAsync(harness.NewSearchService.SearchStreamAsync(options, CancellationToken.None));
 
-        // Assert -- documented divergence: legacy silently flattens and searches only that single instant
-        // (returns SOME result, possibly wrong/incomplete but doesn't throw); the compiler throws
-        // RequestNotValidException naming ResourceColumnLoweringRule's specific message.
-        legacyResults.ShouldNotBeNull();
-
-        var ex = await Should.ThrowAsync<RequestNotValidException>(async () =>
-        {
-            await foreach (var _ in harness.NewSearchService.SearchStreamAsync(options, CancellationToken.None))
-            {
-            }
-        });
-        ex.Message.ShouldContain("_lastUpdated only supports an exact instant");
+        // Assert -- the divergence this test was written to document is CLOSED. It used to refuse a
+        // partial-precision range outright (RequestNotValidException out of ResourceColumnLoweringRule,
+        // while legacy returned something); the compiler now lowers [Start, End] as a real closed range
+        // over the surrogate-id bucket, so a year-precision _lastUpdated matches a resource written
+        // anywhere in that year -- which is both the FHIR semantics and what legacy already did. The two
+        // engines now agree, so this asserts agreement rather than the old documented difference.
+        newResults.Select(r => r.ResourceId).ShouldContain(patientId);
+        legacyResults.Select(r => r.ResourceId).OrderBy(x => x, StringComparer.Ordinal)
+            .ShouldBe(newResults.Select(r => r.ResourceId).OrderBy(x => x, StringComparer.Ordinal));
     }
 
     [Fact]

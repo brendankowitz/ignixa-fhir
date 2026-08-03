@@ -348,8 +348,11 @@ public class JsonNodeMutator : IJsonNodeMutator
     /// <returns>JsonNode representation of the element</returns>
     private JsonNode? SerializeValue(IElement element)
     {
-        // Check if element has a primitive value
-        if (element.Value is not null)
+        // Gate on HasPrimitiveValue, not Value alone: engine-synthesized complex wrappers
+        // (Quantity, ClassInfo) expose a CLR object on Value while reporting HasPrimitiveValue
+        // false. Treating those as primitives serializes the CLR shape (PascalCase) into the
+        // resource instead of FHIR JSON.
+        if (element.HasPrimitiveValue && element.Value is not null)
         {
             return SerializePrimitive(element.Value);
         }
@@ -373,19 +376,8 @@ public class JsonNodeMutator : IJsonNodeMutator
     /// <returns>JsonValue representation</returns>
     private static JsonNode? SerializePrimitive(object value)
     {
-        return value switch
-        {
-            string s => JsonValue.Create(s),
-            int i => JsonValue.Create(i),
-            long l => JsonValue.Create(l),
-            bool b => JsonValue.Create(b),
-            decimal d => JsonValue.Create(d),
-            double db => JsonValue.Create(db),
-            float f => JsonValue.Create(f),
-            DateTime dt => JsonValue.Create(dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
-            DateTimeOffset dto => JsonValue.Create(dto.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
-            _ => JsonNode.Parse(JsonSerializer.Serialize(value))
-        };
+        // Shared FHIRPath-primitive -> JSON contract (see ElementJsonConverter).
+        return ElementJsonConverter.ToJsonValue(value);
     }
 
     /// <summary>
@@ -399,7 +391,7 @@ public class JsonNodeMutator : IJsonNodeMutator
 
         foreach (var child in element.Children())
         {
-            var childValue = child.Value is not null
+            var childValue = child.HasPrimitiveValue && child.Value is not null
                 ? SerializePrimitive(child.Value)
                 : SerializeComplexElement(child);
 

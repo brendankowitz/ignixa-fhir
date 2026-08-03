@@ -186,7 +186,7 @@ public class FmlSerializer
 
     /// <summary>
     /// Serializes a group definition.
-    /// Format: group Name(parameters) extends Base { rules }
+    /// Format: group Name(parameters) [extends Base] [&lt;&lt;types&gt;&gt;|&lt;&lt;type+&gt;&gt;] { rules }
     /// </summary>
     private void SerializeGroup(GroupExpression group, SerializationContext context)
     {
@@ -209,6 +209,12 @@ public class FmlSerializer
         if (group.Extends is not null)
         {
             context.Append($" extends {group.Extends}");
+        }
+
+        // Type-mode annotation
+        if (group.TypeMode != GroupTypeMode.None)
+        {
+            context.Append(group.TypeMode == GroupTypeMode.TypeAndTypes ? " <<type+>>" : " <<types>>");
         }
 
         // Rules

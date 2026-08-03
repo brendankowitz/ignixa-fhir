@@ -139,6 +139,50 @@ public class MappingTokenizerTests
 
     // NOTE: DoubleColon (::) test removed - not part of FHIR Mapping Language spec
 
+    [Theory]
+    [InlineData("+", MappingTokenKind.Plus)]
+    [InlineData("-", MappingTokenKind.Minus)]
+    [InlineData("%", MappingTokenKind.Percent)]
+    [InlineData("/", MappingTokenKind.Slash)]
+    [InlineData("|", MappingTokenKind.Pipe)]
+    [InlineData("&", MappingTokenKind.Ampersand)]
+    [InlineData("<=", MappingTokenKind.LessOrEqual)]
+    [InlineData(">=", MappingTokenKind.GreaterOrEqual)]
+    public void GivenAnOperator_WhenTokenizing_ThenTheOperatorTokenIsProduced(string input, MappingTokenKind expected)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var tokens = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("+", MappingTokenKind.Plus)]
+    [InlineData("-", MappingTokenKind.Minus)]
+    [InlineData("%", MappingTokenKind.Percent)]
+    [InlineData("/", MappingTokenKind.Slash)]
+    [InlineData("|", MappingTokenKind.Pipe)]
+    [InlineData("&", MappingTokenKind.Ampersand)]
+    [InlineData("<=", MappingTokenKind.LessOrEqual)]
+    [InlineData(">=", MappingTokenKind.GreaterOrEqual)]
+    public void GivenAnOperator_WhenTokenizingWithTrivia_ThenTheOperatorTokenIsProduced(string input, MappingTokenKind expected)
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var tokens = tokenizer.Tokenize(input).ToList();
+
+        // Assert
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(expected);
+    }
+
     #endregion
 
     #region Literal Tests
@@ -213,6 +257,34 @@ public class MappingTokenizerTests
         result.First().Kind.ShouldBe(expectedKind);
     }
 
+    [Fact]
+    public void GivenADoubleQuotedString_WhenTokenizing_ThenItIsADoubleQuotedString()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize("\"quoted identifier\"");
+
+        // Assert
+        result.Count().ShouldBe(1);
+        result.First().Kind.ShouldBe(MappingTokenKind.DoubleQuotedString);
+    }
+
+    [Fact]
+    public void GivenADoubleQuotedString_WhenTokenizingWithTrivia_ThenItIsADoubleQuotedString()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var tokens = tokenizer.Tokenize("\"quoted identifier\"").ToList();
+
+        // Assert
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(MappingTokenKind.DoubleQuotedString);
+    }
+
     #endregion
 
     #region Identifier Tests
@@ -238,20 +310,18 @@ public class MappingTokenizerTests
         result.First().ToStringValue().ShouldBe(identifier);
     }
 
-    [Theory]
-    [InlineData("`escaped identifier`")]
-    [InlineData("\"quoted identifier\"")]
-    public void GivenDelimitedIdentifier_WhenTokenizing_ThenReturnsDelimitedIdentifierToken(string identifier)
+    [Fact]
+    public void GivenABacktickDelimitedIdentifier_WhenTokenizing_ThenItIsADelimitedIdentifier()
     {
         // Arrange
         var tokenizer = MappingTokenizer.Create();
 
         // Act
-        var result = tokenizer.Tokenize(identifier);
+        var tokens = tokenizer.Tokenize("`quoted identifier`").ToList();
 
         // Assert
-        result.Count().ShouldBe(1);
-        result.First().Kind.ShouldBe(MappingTokenKind.DelimitedIdentifier);
+        tokens.Count.ShouldBe(1);
+        tokens[0].Kind.ShouldBe(MappingTokenKind.DelimitedIdentifier);
     }
 
     #endregion
@@ -322,6 +392,80 @@ public class MappingTokenizerTests
         result.Count.ShouldBe(1);
         result[0].Kind.ShouldBe(MappingTokenKind.Map);
     }
+
+    [Fact]
+    public void GivenALineComment_WhenTokenizingWithTrivia_ThenItIsStillACommentNotTwoSlashes()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var kinds = tokenizer.Tokenize("// hello").Select(t => t.Kind).ToList();
+
+        // Assert
+        kinds.ShouldBe(new[] { MappingTokenKind.LineComment });
+    }
+
+    #region Metadata declaration tokenization (Task 5)
+
+    [Fact]
+    public void GivenMetadataDeclarationLine_WhenTokenizingWithCreate_ThenItIsMetadataLine()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var result = tokenizer.Tokenize("/// url = 'http://example.org'").ToList();
+
+        // Assert — the '///' line is preserved as a single MetadataLine token in standard mode
+        result.ShouldHaveSingleItem();
+        result[0].Kind.ShouldBe(MappingTokenKind.MetadataLine);
+    }
+
+    [Fact]
+    public void GivenMetadataDeclarationLine_WhenTokenizingWithCreateWithTrivia_ThenItIsMetadataLine()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+
+        // Act
+        var result = tokenizer.Tokenize("/// url = 'http://example.org'").ToList();
+
+        // Assert — the '///' line is preserved as a single MetadataLine token in trivia mode
+        result.ShouldContain(t => t.Kind == MappingTokenKind.MetadataLine);
+        result[0].Kind.ShouldBe(MappingTokenKind.MetadataLine);
+    }
+
+    [Fact]
+    public void GivenMetadataLineFollowedByNormalComment_WhenTokenizingWithCreate_ThenEachIsClassifiedCorrectly()
+    {
+        // Arrange — '///' is MetadataLine; '//' is ignored in standard mode
+        var tokenizer = MappingTokenizer.Create();
+        var input = "/// key = 'value'\n// ordinary comment\nmap";
+
+        // Act
+        var kinds = tokenizer.Tokenize(input).Select(t => t.Kind).ToList();
+
+        // Assert — only MetadataLine and Map survive (ordinary comment is ignored)
+        kinds.ShouldBe(new[] { MappingTokenKind.MetadataLine, MappingTokenKind.Map });
+    }
+
+    [Fact]
+    public void GivenMetadataLineFollowedByNormalComment_WhenTokenizingWithCreateWithTrivia_ThenEachIsClassifiedCorrectly()
+    {
+        // Arrange — '///' is MetadataLine; '//' is LineComment in trivia mode
+        var tokenizer = MappingTokenizer.CreateWithTrivia();
+        var input = "/// key = 'value'\n// ordinary comment";
+
+        // Act
+        var kinds = tokenizer.Tokenize(input).Where(t => t.Kind != MappingTokenKind.Whitespace).Select(t => t.Kind).ToList();
+
+        // Assert — MetadataLine precedes LineComment, not the other way around
+        kinds[0].ShouldBe(MappingTokenKind.MetadataLine);
+        kinds[1].ShouldBe(MappingTokenKind.LineComment);
+    }
+
+    #endregion
 
     #endregion
 
@@ -436,6 +580,44 @@ public class MappingTokenizerTests
         result[4].Kind.ShouldBe(MappingTokenKind.Identifier); // tgt
         result[5].Kind.ShouldBe(MappingTokenKind.Dot);
         result[6].Kind.ShouldBe(MappingTokenKind.Identifier); // name
+    }
+
+    [Fact]
+    public void GivenAPercentConstantWithDateArithmetic_WhenTokenizing_ThenAllTokensAreProduced()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var kinds = tokenizer.Tokenize("%value + 5 days").Select(t => t.Kind).ToList();
+
+        // Assert
+        kinds.ShouldBe(new[]
+        {
+            MappingTokenKind.Percent,
+            MappingTokenKind.Identifier,
+            MappingTokenKind.Plus,
+            MappingTokenKind.IntegerLiteral,
+            MappingTokenKind.Identifier
+        });
+    }
+
+    [Fact]
+    public void GivenAnArrow_WhenTokenizing_ThenItIsStillASingleArrowNotMinus()
+    {
+        // Arrange
+        var tokenizer = MappingTokenizer.Create();
+
+        // Act
+        var kinds = tokenizer.Tokenize("src -> tgt").Select(t => t.Kind).ToList();
+
+        // Assert
+        kinds.ShouldBe(new[]
+        {
+            MappingTokenKind.Identifier,
+            MappingTokenKind.Arrow,
+            MappingTokenKind.Identifier
+        });
     }
 
     #endregion

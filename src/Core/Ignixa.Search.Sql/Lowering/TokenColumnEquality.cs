@@ -5,20 +5,11 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the token equality predicate for a composite's or leaf's token slot, supporting the full
-/// FHIR token qualifier semantics: bare code, |code, system|, system|code, unknown system → false,
-/// and text-only → unsupported.
+/// Builds the token equality predicate for a leaf's or composite's token slot, supporting the full FHIR
+/// token qualifier semantics (bare code, |code, system|, system|code, unknown system → false, text-only →
+/// unsupported). A long code splits across Code + CodeOverflow (leading chars / remainder — opposite to
+/// StringSearchParam), so both halves compare; an exactly-width code adds a <c>CodeOverflow IS NULL</c> guard.
 /// </summary>
-/// <remarks>
-/// A code longer than <see cref="InlineCodeWidth"/> is stored split across two columns: the Code column
-/// holds the first <see cref="InlineCodeWidth"/> characters and the CodeOverflow column holds the
-/// REMAINDER. That is the opposite convention from StringSearchParam, whose TextOverflow holds the whole
-/// value, so a long code cannot be matched by comparing either column alone — both halves are compared.
-/// A code of exactly <see cref="InlineCodeWidth"/> characters needs an <c>CodeOverflow IS NULL</c> guard:
-/// without it, the truncated prefix of a longer stored code would false-positive match. A shorter code
-/// needs no guard, because a truncated prefix is always exactly <see cref="InlineCodeWidth"/> long and so
-/// can never equal it — which keeps the common case a plain sargable equality against the indexed column.
-/// </remarks>
 internal static class TokenColumnEquality
 {
     /// <summary>
@@ -26,11 +17,22 @@ internal static class TokenColumnEquality
     /// </summary>
     /// <remarks>
     /// This mirrors the split point every token row generator writes with, which is NOT the declared width
-    /// of the Code column (VARCHAR(256)) — the generators split at 128. The compiler has to match the data
-    /// as written rather than the column as declared, so this constant is deliberately not read off
-    /// <see cref="SqlCatalog"/>. It must be changed in lockstep with the row generators.
+    /// of the Code column — the DDL declares VARCHAR(256) for TokenSearchParam.Code and for every composite
+    /// Code1/Code2, while every generator in both data layers splits at 128
+    /// (<c>TokenSearchParameterRowGenerator</c>, <c>TokenStringCompositeRowGenerator</c>, and siblings, in
+    /// Ignixa.DataLayer.SqlServer and Ignixa.DataLayer.SqlEntityFramework alike). The compiler has to match
+    /// the data as written rather than the column as declared, so this constant is deliberately NOT read off
+    /// <see cref="SqlCatalog"/> — that catalog "describes the schema, not storage convention", by its own
+    /// doc comment, and a split point is storage convention. It must be changed in lockstep with the row
+    /// generators.
+    /// <para>
+    /// Deriving it from <c>Column(codeColumn).MaxLength</c> instead is silently wrong and does not show up
+    /// in this assembly's own tests, because those tests would read the same wrong number and agree with
+    /// themselves. It shows up only against real written rows: every overflowing code stops matching. That
+    /// is why this is a constant with a comment rather than a lookup.
+    /// </para>
     /// </remarks>
-    private const int InlineCodeWidth = 128;
+    internal const int InlineCodeWidth = 128;
 
     public static Predicate Build(TableDescriptor table, string systemColumn, string codeColumn, string overflowColumn, TokenSearchValue value, LeafContext context)
     {
@@ -66,8 +68,8 @@ internal static class TokenColumnEquality
         return code switch
         {
             null or "" => null,
-            { Length: < InlineCodeWidth } => new Predicate.Equal(column, context.Parameter(code)),
-            { Length: InlineCodeWidth } => new Predicate.And(
+            { } shorter when shorter.Length < InlineCodeWidth => new Predicate.Equal(column, context.Parameter(code)),
+            { } exact when exact.Length == InlineCodeWidth => new Predicate.And(
                 new Predicate.IsNull(overflow),
                 new Predicate.Equal(column, context.Parameter(code))),
             _ => new Predicate.And(

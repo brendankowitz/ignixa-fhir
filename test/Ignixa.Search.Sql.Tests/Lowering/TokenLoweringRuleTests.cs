@@ -14,6 +14,14 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 
 public class TokenLoweringRuleTests
 {
+    /// <summary>
+    /// The point the row generators split an overflowing code at. Read from the compiler's own storage
+    /// convention, not from the Code column's declared width: the DDL declares VARCHAR(256) while every
+    /// generator splits at 128, so pinning these tests to the schema would make them agree with a rule that
+    /// read the same wrong number and match nothing against real rows.
+    /// </summary>
+    private const int InlineCodeWidth = Sql.Lowering.TokenColumnEquality.InlineCodeWidth;
+
     private static LeafContext ContextResolving(
         SearchParameterInfo parameter,
         short searchParamId,
@@ -123,18 +131,19 @@ public class TokenLoweringRuleTests
     }
 
     // The token row generators (TokenSearchParameterRowGenerator and every Token* composite generator)
-    // split at 128 characters and write the REMAINDER to CodeOverflow — the opposite of StringSearchParam,
-    // whose TextOverflow holds the whole value. The three boundary cases below pin length-1 / length /
-    // length+1 against that split, exactly as StringLoweringRuleTests does for TextOverflow.
+    // split at the Code column's declared width and write the REMAINDER to CodeOverflow — the opposite of
+    // StringSearchParam, whose TextOverflow holds the whole value. The three boundary cases below pin
+    // length-1 / length / length+1 against that split, exactly as StringLoweringRuleTests does for
+    // TextOverflow.
     [Fact]
-    public void GivenACodeAt127Chars_WhenLowered_ThenComparesCodeColumnWithNoOverflowGuard()
+    public void GivenACodeOneBelowTheInlineWidth_WhenLowered_ThenComparesCodeColumnWithNoOverflowGuard()
     {
-        // Arrange — 127 is strictly below the split, so a truncated prefix (always exactly 128 long)
+        // Arrange — strictly below the split, so a truncated prefix (always exactly the split width)
         // can never equal it; the guard would only cost sargability.
         var parameter = IdentifierParameter();
-        var code127 = new string('A', 127);
+        var shortCode = new string('A', InlineCodeWidth - 1);
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code127, text: null));
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: shortCode, text: null));
 
         // Act
         var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
@@ -143,18 +152,18 @@ public class TokenLoweringRuleTests
         var equal = cte.Predicate.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Table.ShouldBe("TokenSearchParam");
         equal.Column.Column.ShouldBe("Code");
-        equal.Value.Value.ShouldBe(code127);
+        equal.Value.Value.ShouldBe(shortCode);
     }
 
     [Fact]
-    public void GivenACodeAt128Chars_WhenLowered_ThenGuardsOnCodeOverflowIsNull()
+    public void GivenACodeAtTheInlineWidth_WhenLowered_ThenGuardsOnCodeOverflowIsNull()
     {
-        // Arrange — 128 equals the split; without the IsNull guard an overflowed row whose truncated
-        // 128-char Code prefix equals this value would false-positive match.
+        // Arrange — exactly the split; without the IsNull guard an overflowed row whose truncated Code
+        // prefix equals this value would false-positive match.
         var parameter = IdentifierParameter();
-        var code128 = new string('A', 128);
+        var exactCode = new string('A', InlineCodeWidth);
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code128, text: null));
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: exactCode, text: null));
 
         // Act
         var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
@@ -166,27 +175,27 @@ public class TokenLoweringRuleTests
         isNull.Column.Column.ShouldBe("CodeOverflow");
         var equal = and.Right.ShouldBeOfType<Predicate.Equal>();
         equal.Column.Column.ShouldBe("Code");
-        equal.Value.Value.ShouldBe(code128);
+        equal.Value.Value.ShouldBe(exactCode);
     }
 
     [Fact]
-    public void GivenACodeAt129Chars_WhenLowered_ThenComparesBothHalvesAgainstTheRemainderSplit()
+    public void GivenACodeOneAboveTheInlineWidth_WhenLowered_ThenComparesBothHalvesAgainstTheRemainderSplit()
     {
-        // Arrange — 129 exceeds the split, so the value exists only as (prefix, remainder) across two
+        // Arrange — exceeds the split, so the value exists only as (prefix, remainder) across two
         // columns; comparing either alone cannot match it.
         var parameter = IdentifierParameter();
-        var code129 = new string('A', 128) + "B";
+        var longCode = new string('A', InlineCodeWidth) + "B";
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code129, text: null));
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: longCode, text: null));
 
         // Act
         var cte = TokenLoweringRule.Lower(predicate, (TokenSearchValue)predicate.Value, ContextResolving(parameter, 55), 103);
 
-        // Assert — And(Equal(Code, first 128), Equal(CodeOverflow, remainder))
+        // Assert — And(Equal(Code, prefix), Equal(CodeOverflow, remainder))
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var codeEqual = and.Left.ShouldBeOfType<Predicate.Equal>();
         codeEqual.Column.Column.ShouldBe("Code");
-        codeEqual.Value.Value.ShouldBe(new string('A', 128));
+        codeEqual.Value.Value.ShouldBe(new string('A', InlineCodeWidth));
         var overflowEqual = and.Right.ShouldBeOfType<Predicate.Equal>();
         overflowEqual.Column.Column.ShouldBe("CodeOverflow");
         overflowEqual.Value.Value.ShouldBe("B");
@@ -195,21 +204,21 @@ public class TokenLoweringRuleTests
     [Fact]
     public void GivenAnOverflowedCode_WhenEvaluatedAgainstTheRowTheGeneratorWouldWrite_ThenItMatches()
     {
-        // Arrange — the generator writes Code = code[..128] and CodeOverflow = code[128..]. Before the
-        // overflow column was threaded through, the emitted predicate compared the whole code against
-        // Code alone and such a row could never match.
+        // Arrange — the generator writes Code = the leading InlineCodeWidth characters and CodeOverflow =
+        // the remainder. Before the overflow column was threaded through, the emitted predicate compared
+        // the whole code against Code alone and such a row could never match.
         var parameter = IdentifierParameter();
-        var longCode = new string('A', 128) + new string('B', 40);
+        var longCode = new string('A', InlineCodeWidth) + new string('B', 40);
         var predicate = new SearchParameterPredicateExpression(
             parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: longCode, text: null));
         var storedRow = new Dictionary<string, object>
         {
-            ["Code"] = longCode[..128],
-            ["CodeOverflow"] = longCode[128..],
+            ["Code"] = longCode[..InlineCodeWidth],
+            ["CodeOverflow"] = longCode[InlineCodeWidth..],
         };
         var differentTailRow = new Dictionary<string, object>
         {
-            ["Code"] = longCode[..128],
+            ["Code"] = longCode[..InlineCodeWidth],
             ["CodeOverflow"] = new string('C', 40),
         };
 
@@ -222,17 +231,17 @@ public class TokenLoweringRuleTests
     }
 
     [Fact]
-    public void GivenACodeAt128Chars_WhenEvaluatedAgainstAnOverflowedRowWithTheSamePrefix_ThenTheGuardRejectsIt()
+    public void GivenACodeAtTheInlineWidth_WhenEvaluatedAgainstAnOverflowedRowWithTheSamePrefix_ThenTheGuardRejectsIt()
     {
         // Arrange — the false positive the IsNull(CodeOverflow) guard exists to prevent
         var parameter = IdentifierParameter();
-        var code128 = new string('A', 128);
+        var exactCode = new string('A', InlineCodeWidth);
         var predicate = new SearchParameterPredicateExpression(
-            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: code128, text: null));
-        var exactRow = new Dictionary<string, object> { ["Code"] = code128 };
+            parameter, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: exactCode, text: null));
+        var exactRow = new Dictionary<string, object> { ["Code"] = exactCode };
         var overflowedRow = new Dictionary<string, object>
         {
-            ["Code"] = code128,
+            ["Code"] = exactCode,
             ["CodeOverflow"] = "extra",
         };
 

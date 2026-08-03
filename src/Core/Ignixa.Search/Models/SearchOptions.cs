@@ -10,8 +10,63 @@ namespace Ignixa.Search.Models;
 /// <summary>
 /// Represents the parsed search query configuration.
 /// </summary>
-public class SearchOptions
+public sealed class SearchOptions
 {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptions"/> class with default values.
+    /// </summary>
+    public SearchOptions()
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SearchOptions"/> class as a shallow copy of
+    /// <paramref name="other"/>.
+    /// </summary>
+    /// <param name="other">The instance to copy every property from.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="other"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This type is a mutable configuration object that callers routinely need to vary by one or two
+    /// properties — a search that re-requests one extra row to detect a further page, or a <c>$includes</c>
+    /// pass that widens the page and drops the caller's page boundary. Without a copy constructor the only
+    /// options are to mutate the caller's instance, which leaks across every other holder of that reference,
+    /// or to hand-copy the properties at the call site, which silently drops any property added later. Both
+    /// in-repo call sites previously hand-copied, and both had fallen nine properties behind.
+    /// </para>
+    /// <para>
+    /// The copy is shallow: collection properties are shared with <paramref name="other"/>. Every one is
+    /// typed as a read-only interface and this class never mutates one in place — varying a collection means
+    /// assigning a new one. A caller that retains a concrete reference to a collection it assigned can still
+    /// mutate it and be seen by every copy; don't.
+    /// </para>
+    /// </remarks>
+    public SearchOptions(SearchOptions other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        MaxItemCount = other.MaxItemCount;
+        ContinuationToken = other.ContinuationToken;
+        Expression = other.Expression;
+        Sort = other.Sort;
+        Include = other.Include;
+        RevInclude = other.RevInclude;
+        Elements = other.Elements;
+        Total = other.Total;
+        Summary = other.Summary;
+        UnsupportedParams = other.UnsupportedParams;
+        BundleIssues = other.BundleIssues;
+        ResourceType = other.ResourceType;
+        ResourceTypes = other.ResourceTypes;
+        StartSurrogateId = other.StartSurrogateId;
+        EndSurrogateId = other.EndSurrogateId;
+        IncludesMaxItemCount = other.IncludesMaxItemCount;
+        IncludesContinuationToken = other.IncludesContinuationToken;
+        ResourceVersionTypes = other.ResourceVersionTypes;
+        AccessConstraints = other.AccessConstraints;
+        AllowedResourceTypes = other.AllowedResourceTypes;
+    }
+
     /// <summary>
     /// Gets or sets the maximum number of items to return per page.
     /// </summary>
@@ -112,13 +167,16 @@ public class SearchOptions
     /// </summary>
     /// <remarks>
     /// Like <see cref="AccessConstraints"/>, this property is forwarded into the SQL compiler:
-    /// <c>Ignixa.Search.Sql.Tracing.SearchCompiler.CompileFromOptionsAsync</c> maps it onto
-    /// <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c> by testing two bits --
-    /// <c>IncludeHistory = types.HasFlag(History)</c> and <c>IncludeDeleted = types.HasFlag(SoftDeleted)</c>.
-    /// <see cref="Latest"/> is deliberately not tested -- it is the implicit baseline every search already
-    /// returns, and exists so that "an ordinary search" has a named non-zero value rather than being spelled
-    /// <see cref="None"/>. So <c>Latest | History</c> and <c>History</c> map to the same visibility; the
-    /// distinction is which one states the intent. <see cref="None"/> is not a valid search input and the
+    /// <c>SearchSqlCompiler.TryCreatePlanFromOptionsAsync</c> maps it onto the tri-state
+    /// <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c>, resolving each version column independently. A set
+    /// that names <see cref="Latest"/> but not a column's non-current partner pins that column to its
+    /// current value (<c>IsHistory = 0</c> / <c>IsDeleted = 0</c>); one that names the non-current partner
+    /// (<see cref="History"/> or <see cref="SoftDeleted"/>) but not <see cref="Latest"/> pins it to the
+    /// non-current value (<c>= 1</c>); one that names both, or neither, leaves the column unfiltered. So
+    /// <c>History</c> alone returns superseded versions <em>exclusively</em> (<c>IsHistory = 1</c>), while
+    /// <c>Latest | History</c> returns the union (no <c>IsHistory</c> filter) — the distinction the earlier
+    /// relaxation-only mapping could not draw, which is why a history-only or soft-deleted-only search had
+    /// to be refused upstream rather than compiled. <see cref="None"/> is not a valid search input and the
     /// compiler throws <see cref="NotSupportedException"/> rather than treating it as <see cref="Latest"/>.
     /// </remarks>
     public ResourceVersionTypes ResourceVersionTypes { get; set; } = ResourceVersionTypes.Latest;
@@ -128,6 +186,26 @@ public class SearchOptions
     /// unrestricted. Enforced structurally by the compiler, not by rewriting the search expression.
     /// </summary>
     public IReadOnlyList<AccessConstraint> AccessConstraints { get; set; } = Array.Empty<AccessConstraint>();
+
+    /// <summary>
+    /// The global allow-list of resource types the caller is permitted to see. Null or empty means
+    /// unrestricted. Unlike <see cref="AccessConstraints"/>, which narrows the <em>listed</em> types and
+    /// leaves every <em>unlisted</em> type untouched, this is an allow-list: only the types named here may
+    /// appear in any result, and a type absent from a non-empty list is denied outright. That distinction
+    /// is why both concepts exist — a per-type narrowing cannot express "the caller may see nothing else",
+    /// so a resource type with no constraint reached through an <c>_include</c> would otherwise pass
+    /// unguarded, a fail-open authorization bypass. This is the concept SMART-on-FHIR clinical scopes
+    /// produce (the set of resource types a scope grants) and the reason a SMART request can be routed to
+    /// this compiler at all.
+    /// <para>
+    /// It is a caller <em>permission</em>, distinct from <see cref="ResourceTypes"/>, which is caller
+    /// <em>intent</em> (the <c>_type</c> the caller asked to search). Both may be set; the effective base
+    /// set is their intersection. Enforced structurally by the compiler on every row-producing stage — the
+    /// match set, every <c>_include</c>/<c>_revinclude</c>/<c>:iterate</c> stage — not by rewriting the
+    /// search expression, so no reachability path can navigate around it.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string> AllowedResourceTypes { get; set; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -135,12 +213,13 @@ public class SearchOptions
 /// history together, and $export may additionally need soft-deleted rows.
 /// </summary>
 /// <remarks>
-/// A SQL data layer maps this onto <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c> by testing two bits:
-/// <c>IncludeHistory = (types &amp; History) != 0</c> and <c>IncludeDeleted = (types &amp; SoftDeleted) != 0</c>.
-/// <see cref="Latest"/> is deliberately not tested — it is the implicit baseline every search already
-/// returns, and exists so that "an ordinary search" has a named non-zero value rather than being spelled
-/// <see cref="None"/>. So <c>Latest | History</c> and <c>History</c> map to the same visibility; the
-/// distinction is which one states the intent.
+/// A SQL data layer maps this onto the tri-state <c>Ignixa.Search.Sql.Ast.ResourceVisibility</c>, resolving
+/// the <c>IsHistory</c> and <c>IsDeleted</c> columns independently: naming <see cref="Latest"/> without a
+/// column's non-current partner pins it to <c>= 0</c>, naming the partner (<see cref="History"/> or
+/// <see cref="SoftDeleted"/>) without <see cref="Latest"/> pins it to <c>= 1</c>, and naming both or neither
+/// leaves it unfiltered. So <c>History</c> alone returns superseded versions exclusively, whereas
+/// <c>Latest | History</c> returns the union of current and superseded; the two are genuinely different
+/// searches, not merely different statements of intent.
 /// </remarks>
 [Flags]
 public enum ResourceVersionTypes

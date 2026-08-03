@@ -52,6 +52,7 @@ public enum MappingTokenKind
     Identifier,
     DelimitedIdentifier,
     StringLiteral,
+    DoubleQuotedString,
     IntegerLiteral,
     DecimalLiteral,
     Url,
@@ -81,6 +82,19 @@ public enum MappingTokenKind
     RightAngle,          // >
     LeftBracket,         // [
     RightBracket,        // ]
+
+    // Arithmetic and FHIRPath operators (appear inside embedded FHIRPath and in <<type+>>)
+    Plus,                // +
+    Minus,               // -
+    Percent,             // % (FHIRPath environment variable prefix)
+    Slash,               // /
+    Pipe,                // |
+    Ampersand,           // &
+    LessOrEqual,         // <=
+    GreaterOrEqual,      // >=
+
+    // Metadata declarations (R6 FML header form)
+    MetadataLine,        // /// key = 'value'
 
     // Comments (for trivia mode)
     LineComment,         // //

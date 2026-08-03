@@ -18,7 +18,7 @@ public class SqlBuilderCountPhaseScopedTests
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Sort: sort, CountOnly: true, CountPhaseScoped: true);
+            Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase());
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -44,7 +44,7 @@ public class SqlBuilderCountPhaseScopedTests
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var plan = new QueryPlan(
             [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Sort: sort, CountOnly: true);
+            Sort: sort, Shape: new ResultShape.Count.AllMatches());
 
         // Act
         var emitted = SqlBuilder.Run(plan);

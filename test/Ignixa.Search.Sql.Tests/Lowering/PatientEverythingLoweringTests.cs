@@ -5,6 +5,7 @@ using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 using Ignixa.Search.Sql.Lowering;
 using Ignixa.Search.Sql.Symbols;
+using Ignixa.Search.Sql.Tests.TestSupport;
 using Ignixa.Specification.ValueSets.Normative;
 using Shouldly;
 using Xunit;
@@ -77,7 +78,7 @@ public class PatientEverythingLoweringTests
         SymbolTable symbols,
         LowerOptions? options = null,
         PageSpec? page = null)
-        => Lower.Run(
+        => LowerHarness.Run(
             expression,
             symbols,
             "Patient",
@@ -311,7 +312,7 @@ public class PatientEverythingLoweringTests
         var relaxed = Lowered(
             expression,
             symbols,
-            new LowerOptions { Visibility = new ResourceVisibility(IncludeHistory: true, IncludeDeleted: true) });
+            new LowerOptions { Visibility = new ResourceVisibility(IsHistory: null, IsDeleted: null) });
         var current = Lowered(expression, symbols);
 
         var relaxedSql = SqlBuilder.Run(relaxed).Sql;
@@ -586,7 +587,7 @@ public class PatientEverythingLoweringTests
             ]);
 
         // Act
-        var plan = Lower.Run(
+        var plan = LowerHarness.Run(
             expression, symbols, "Patient", includes: [], revIncludes: [], includeLimit: 100,
             sort: [], SortPhase.Valued, page: null,
             new LowerOptions { AccessConstraints = [constraint] }).Plan;

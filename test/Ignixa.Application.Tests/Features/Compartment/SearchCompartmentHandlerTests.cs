@@ -109,10 +109,18 @@ public class SearchCompartmentHandlerTests
         // Act
         await _handler.HandleAsync(query, CancellationToken.None);
 
-        // Assert -- the composed Expression is a SINGLE flat MultiaryExpression{And} containing 3 children
+        // Assert -- read the options the handler actually executed, not the caller's own: the handler
+        // composes into a copy and deliberately leaves request.SearchOptions untouched, so asserting on
+        // query.SearchOptions would only ever see the caller's unmodified input.
+        var executed = (SearchOptions)_executionStrategy.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IQueryExecutionStrategy.SearchStreamAsync))
+            .GetArguments()[1];
+        query.SearchOptions.Expression.ShouldBeSameAs(existingAnd);
+
+        // The composed Expression is a SINGLE flat MultiaryExpression{And} containing 3 children
         // (compartment + the 2 original params), not a MultiaryExpression{And} containing 2 children where
         // one child is itself a nested MultiaryExpression{And}.
-        var composed = query.SearchOptions.Expression.ShouldBeOfType<MultiaryExpression>();
+        var composed = executed.Expression.ShouldBeOfType<MultiaryExpression>();
         composed.MultiaryOperation.ShouldBe(MultiaryOperator.And);
         composed.Expressions.Count.ShouldBe(3);
         composed.Expressions.ShouldContain(idExpression);

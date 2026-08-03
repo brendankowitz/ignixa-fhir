@@ -31,6 +31,88 @@ public class SearchKeySyntaxParserTests
     }
 
     [Theory]
+    [InlineData("07d5d21479ee52Code", "07d5d21479ee52Code", null)]
+    [InlineData("2ndline:exact", "2ndline", "exact")]
+    [InlineData("0", "0", null)]
+    public void GivenAParameterCodeStartingWithADigit_WhenParsing_ThenItIsAcceptedAsAnIdentifier(
+        string key,
+        string expectedName,
+        string? expectedModifier)
+    {
+        // FHIR types SearchParameter.code as `code`, whose regex ([^\s]+([\s]?[^\s]+)*) admits any
+        // non-whitespace first character, so a custom search parameter is free to start with a digit.
+        // Rejecting it as a syntax error turns a valid registered parameter into an unparseable key.
+        var syntax = SearchKeySyntaxParser.ParseParameter(key);
+
+        var parameter = syntax.ShouldBeOfType<ParameterKeySyntax>();
+        parameter.Name.ShouldBe(expectedName);
+        parameter.Modifier.ShouldBe(expectedModifier);
+    }
+
+    [Fact]
+    public void GivenADigitLeadingResourceTypeInAChain_WhenParsing_ThenItIsDeferredToTheBinder()
+    {
+        // A digit-leading token in a resource-type position is a name error, not a syntax error --
+        // the parser accepts it and the binder rejects it, which is what produces a usable diagnostic.
+        var syntax = SearchKeySyntaxParser.ParseParameter("subject:2Foo.name");
+
+        var chain = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
+        chain.ReferenceName.ShouldBe("subject");
+        chain.TargetResourceType.ShouldBe("2Foo");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingModifier_WhenParsing_ThenItIsAcceptedAsAnIdentifier()
+    {
+        var syntax = SearchKeySyntaxParser.ParseParameter("name:0exact");
+
+        var parameter = syntax.ShouldBeOfType<ParameterKeySyntax>();
+        parameter.Name.ShouldBe("name");
+        parameter.Modifier.ShouldBe("0exact");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingParameterInAChain_WhenParsing_ThenBothSegmentsAreAccepted()
+    {
+        var syntax = SearchKeySyntaxParser.ParseParameter("subject.07code");
+
+        var chain = syntax.ShouldBeOfType<ForwardChainKeySyntax>();
+        chain.ReferenceName.ShouldBe("subject");
+        chain.Next.ShouldBeOfType<ParameterKeySyntax>().Name.ShouldBe("07code");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingReferencePathInNotReferenced_WhenParsing_ThenItIsAcceptedAsAnIdentifier()
+    {
+        // The reference path is an identifier position like any other; gating it on a leading letter made
+        // it the one place a digit-leading custom parameter was a syntax error rather than a name error.
+        var syntax = SearchKeySyntaxParser.ParseNotReferenced("Observation:0subject");
+
+        syntax.SourceResourceType.ShouldBe("Observation");
+        syntax.ReferencePath.ShouldBe("0subject");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingSourceTypeInNotReferenced_WhenParsing_ThenItIsDeferredToTheBinder()
+    {
+        var syntax = SearchKeySyntaxParser.ParseNotReferenced("2Observation:subject");
+
+        syntax.SourceResourceType.ShouldBe("2Observation");
+        syntax.ReferencePath.ShouldBe("subject");
+    }
+
+    [Fact]
+    public void GivenADigitLeadingSourceTypeInAnInclude_WhenParsing_ThenItIsDeferredToTheBinder()
+    {
+        var syntax = SearchKeySyntaxParser.ParseInclude("2Observation:0subject:3Patient");
+
+        syntax.SourceResourceType.ShouldBe("2Observation");
+        syntax.SearchParameterName.ShouldBe("0subject");
+        syntax.TargetResourceType.ShouldBe("3Patient");
+        syntax.Wildcard.ShouldBeFalse();
+    }
+
+    [Theory]
     [InlineData("subject.name", "subject", null, "name")]
     [InlineData("subject:Patient.name", "subject", "Patient", "name")]
     public void GivenForwardKey_WhenParsing_ThenReturnsForwardChainKeySyntax(
@@ -62,6 +144,19 @@ public class SearchKeySyntaxParserTests
         var next = chain.Next.ShouldBeOfType<ParameterKeySyntax>();
         next.Name.ShouldBe("code");
         next.Modifier.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenADigitLeadingSegmentInAReverseChain_WhenParsing_ThenBothSegmentsAreAccepted()
+    {
+        // The _has: path parses its source type and reference name through the same identifier rules,
+        // so the loosened start character must apply there too rather than only to a terminal name.
+        var syntax = SearchKeySyntaxParser.ParseParameter("_has:2Observation:0subject:code");
+
+        var chain = syntax.ShouldBeOfType<ReverseChainKeySyntax>();
+        chain.SourceResourceType.ShouldBe("2Observation");
+        chain.ReferenceName.ShouldBe("0subject");
+        chain.Next.ShouldBeOfType<ParameterKeySyntax>().Name.ShouldBe("code");
     }
 
     [Fact]
@@ -116,6 +211,47 @@ public class SearchKeySyntaxParserTests
         var terminal = reverse.Next.ShouldBeOfType<ParameterKeySyntax>();
         terminal.Name.ShouldBe("_tag");
         terminal.Modifier.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenAWildcardReferencePathInNotReferenced_WhenParsing_ThenTheReferencePathIsNull()
+    {
+        var syntax = SearchKeySyntaxParser.ParseNotReferenced("Observation:*");
+
+        syntax.SourceResourceType.ShouldBe("Observation");
+        syntax.ReferencePath.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData("Observation:")]
+    [InlineData("Observation")]
+    [InlineData(":subject")]
+    [InlineData("Observation:subject:extra")]
+    public void GivenMalformedNotReferencedValue_WhenParsing_ThenThrowsPositionedSyntaxError(string value)
+    {
+        // "Observation:" is the at-end case: the reference path delegates to ParseIdentifier, which is what
+        // reports the missing identifier now that ParseNotReferencedPath does not test for the end itself.
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchKeySyntaxParser.ParseNotReferenced(value));
+
+        exception.Message.ShouldContain("_not-referenced value");
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain("column");
+    }
+
+    [Theory]
+    [InlineData("Observation")]
+    [InlineData("Observation:")]
+    [InlineData("Observation:subject:")]
+    [InlineData(":subject")]
+    public void GivenMalformedIncludeKey_WhenParsing_ThenThrowsPositionedSyntaxError(string key)
+    {
+        var exception = Should.Throw<InvalidSearchOperationException>(
+            () => SearchKeySyntaxParser.ParseInclude(key));
+
+        exception.Message.ShouldContain("include key");
+        exception.Message.ShouldContain("line 1");
+        exception.Message.ShouldContain("column");
     }
 
     [Theory]

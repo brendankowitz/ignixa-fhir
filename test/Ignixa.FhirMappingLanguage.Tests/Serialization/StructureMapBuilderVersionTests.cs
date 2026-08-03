@@ -251,4 +251,90 @@ public class StructureMapBuilderVersionTests
         // Assert
         structureMap.SupportsConstants().ShouldBeFalse();
     }
+
+    [Fact]
+    public void GivenR4Builder_WhenBuildingGroupWithNoTypeMode_ThenTypeModeIsNoneInJson()
+    {
+        // Arrange
+        var fml = """
+            map 'http://example.org/test' = 'TestMap'
+
+            group Main(source src, target tgt) {
+            }
+            """;
+        var ast = _parser.Parse(fml);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
+
+        // Act
+        var structureMap = builder.Build(ast);
+
+        // Assert
+        structureMap.Group[0].MutableNode()["typeMode"]!.GetValue<string>().ShouldBe("none");
+    }
+
+    [Theory]
+    [InlineData("<<types>>", "types")]
+    [InlineData("<<type+>>", "type-and-types")]
+    public void GivenR4Builder_WhenBuildingAnnotatedGroup_ThenTypeModeIsEmittedInJson(
+        string annotation, string expectedWireValue)
+    {
+        // Arrange
+        var fml = $$"""
+            map 'http://example.org/test' = 'TestMap'
+
+            group Main(source src, target tgt) {{annotation}} {
+            }
+            """;
+        var ast = _parser.Parse(fml);
+        var builder = new StructureMapBuilder(FhirVersion.R4);
+
+        // Act
+        var structureMap = builder.Build(ast);
+
+        // Assert
+        structureMap.Group[0].MutableNode()["typeMode"]!.GetValue<string>().ShouldBe(expectedWireValue);
+    }
+
+    [Fact]
+    public void GivenR5Builder_WhenBuildingGroupWithNoTypeMode_ThenTypeModeIsOmittedFromJson()
+    {
+        // Arrange
+        var fml = """
+            map 'http://example.org/test' = 'TestMap'
+
+            group Main(source src, target tgt) {
+            }
+            """;
+        var ast = _parser.Parse(fml);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
+
+        // Act
+        var structureMap = builder.Build(ast);
+
+        // Assert
+        structureMap.Group[0].MutableNode().ContainsKey("typeMode").ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("<<types>>", "types")]
+    [InlineData("<<type+>>", "type-and-types")]
+    public void GivenR5Builder_WhenBuildingAnnotatedGroup_ThenTypeModeIsEmittedInJson(
+        string annotation, string expectedWireValue)
+    {
+        // Arrange
+        var fml = $$"""
+            map 'http://example.org/test' = 'TestMap'
+
+            group Main(source src, target tgt) {{annotation}} {
+            }
+            """;
+        var ast = _parser.Parse(fml);
+        var builder = new StructureMapBuilder(FhirVersion.R5);
+
+        // Act
+        var structureMap = builder.Build(ast);
+
+        // Assert
+        structureMap.Group[0].MutableNode()["typeMode"]!.GetValue<string>().ShouldBe(expectedWireValue);
+    }
 }

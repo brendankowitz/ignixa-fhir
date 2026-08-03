@@ -5,20 +5,10 @@ using Ignixa.Specification.ValueSets.Normative;
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Builds the comparator-dependent predicate shared by base and composite DateTime lowering — both store
-/// [StartDateTime, EndDateTime] and compare against the search value's own [Start, End], which already
-/// encodes FHIR partial-date precision.
-/// <para>
-/// The comparators implement the FHIR search prefix table (search.html), which defines every prefix as a
-/// relation between the parameter's range and the resource's range. <c>eq</c> is CONTAINMENT — the
-/// parameter range fully contains the resource range — so <c>date=2013</c> matches a resource dated
-/// <c>2013-01-14</c> but <c>date=2013-01-14</c> does not match one dated <c>2013</c>. <c>ne</c> is the
-/// exact negation of that containment, which makes <c>eq</c> and <c>ne</c> genuine complements: every
-/// stored row satisfies exactly one of them. <c>ap</c> is OVERLAP, not containment, against the bounds
-/// widened by <see cref="ApproximateDateRange.Widen"/> using
-/// <see cref="LeafContext.ApproximationReferenceTime"/> — the spec defines <c>ap</c> as the parameter
-/// range overlapping the resource range, and a looser relation than <c>eq</c> is the point of it.
-/// </para>
+/// Builds the comparator-dependent predicate shared by base and composite DateTime lowering (both store
+/// [StartDateTime, EndDateTime]), implementing the FHIR search prefix table over the search value's own
+/// [Start, End]. eq is containment (<c>date=2013</c> matches <c>2013-01-14</c>, not vice versa), ne its exact
+/// negation, ap overlap against bounds widened by <see cref="ApproximateDateRange.Widen"/>.
 /// </summary>
 internal static class DateTimeRangeComparison
 {

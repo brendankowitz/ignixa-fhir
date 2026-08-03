@@ -8,7 +8,7 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// <summary>
 /// Lowers a DateTime search value to a ParamSource over DateTimeSearchParam, via DateTimeRangeComparison.
 /// </summary>
-public static class DateTimeLoweringRule
+internal static class DateTimeLoweringRule
 {
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, DateTimeSearchValue value, LeafContext context, short? resourceTypeId)
     {

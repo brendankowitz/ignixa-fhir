@@ -6,19 +6,12 @@ using Ignixa.Search.Sql.Catalog;
 namespace Ignixa.Search.Sql.Lowering.Leaf;
 
 /// <summary>
-/// Lowers a Token search value to a ParamSource over TokenSearchParam with full FHIR qualifier support:
-/// bare code, |code, system|, system|code, unknown system → false. A text-only token (no system, no code)
-/// retains its throw because display text is not a code.
+/// Lowers a Token search value to a ParamSource over TokenSearchParam (bare code, |code, system|,
+/// system|code, unknown system → false; text-only throws — display text is not a code). Only the
+/// unmodified form is handled here: <c>:not</c> is rewritten by <c>Lower</c> before dispatch, <c>:missing</c>
+/// uses its own node kind, and every other modifier throws rather than degrade to plain equality.
 /// </summary>
-/// <remarks>
-/// Only the unmodified form is implemented here. <c>:not</c> never reaches this rule — <c>Lower</c>
-/// rewrites it into a negation before leaf dispatch — and <c>:missing</c> lowers through its own node kind.
-/// Every remaining token modifier (<c>:text</c>, <c>:in</c>, <c>:not-in</c>, <c>:of-type</c>,
-/// <c>:above</c>, <c>:below</c>, <c>:identifier</c>) needs either a different table or a terminology
-/// expansion this compiler does not perform, so each throws rather than silently degrading to plain
-/// equality and returning wrong rows.
-/// </remarks>
-public static class TokenLoweringRule
+internal static class TokenLoweringRule
 {
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, TokenSearchValue value, LeafContext context, short? resourceTypeId)
     {

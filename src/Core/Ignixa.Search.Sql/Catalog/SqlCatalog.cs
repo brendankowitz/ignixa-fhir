@@ -1,10 +1,9 @@
 namespace Ignixa.Search.Sql.Catalog;
 
 /// <summary>
-/// The tables and columns the compiler emits SQL against. The table/column facts are source-generated
-/// from the schema DDL by Ignixa.Search.Sql.Generators; this file owns only the lookup behavior, not the
-/// data. It describes the schema, not storage convention (e.g. which column an overflowing string lands
-/// in) — that is a Lower rule, not a catalog fact.
+/// The tables and columns the compiler emits SQL against. The facts are source-generated from the schema
+/// DDL by Ignixa.Search.Sql.Generators; this file owns only the lookup behavior. Describes the schema, not
+/// storage convention (e.g. which column an overflowing string lands in) — that is a Lower rule.
 /// </summary>
 public sealed partial class SqlCatalog
 {
