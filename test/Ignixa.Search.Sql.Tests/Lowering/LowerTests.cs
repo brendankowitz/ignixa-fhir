@@ -935,10 +935,15 @@ public class LowerTests
     [Fact]
     public void GivenASingleValuedNegatedIdParameter_WhenLowered_ThenLiftsABarePredicateUnderNotIntoTheOuterWhere()
     {
-        // Arrange -- Patient?_id:not=a. The binder still wraps a single value as NotExpression(Or([_id=a])),
-        // so the outer predicate is Not(Equal) directly (a bare predicate under Not), a distinct shape from
-        // the multi-value Not(Or(...)) case. Pins that the one-element Or collapses to the equality without
-        // a spurious Or wrapper.
+        // Arrange -- a one-element NotExpression(Or([_id=a])), which lowers to Not(Equal) directly (a bare
+        // predicate under Not), a distinct shape from the multi-value Not(Or(...)) case. Pins that the
+        // one-element Or collapses to the equality without a spurious Or wrapper.
+        //
+        // This is NOT the shape the binder emits for Patient?_id:not=a, despite what this comment used to
+        // claim: BindAlternatives only lifts the modifier into a NotExpression when it has a comma list to
+        // wrap, and a lone value goes through BindAtomic, which leaves the modifier on the predicate. That
+        // false premise is why _id:not=a returned 400 while this test passed. See
+        // ResourceColumnNotModifierTests for the binder-driven coverage of both spellings.
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var tree = new SearchParameterExpression(
             idParam,

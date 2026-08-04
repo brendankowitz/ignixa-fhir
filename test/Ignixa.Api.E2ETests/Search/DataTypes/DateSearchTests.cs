@@ -54,16 +54,24 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
     public static readonly object[][] DateSearchParameterData =
     [
         // ===== eq (equals - search value fully contains target) =====
-        ["1980", 1, 2, 3, 4, 5, 7],                          // Year: all dates within 1980
-        ["1980-01", 1],                                       // January 1980: only year-precision obs[1]
-        ["1980-05", 1, 2, 3, 4, 5, 7],                       // May 1980
-        ["1980-05-10", 1, 2],                                 // May 10: obs with wider ranges
-        ["1980-05-11", 1, 2, 3, 4, 5],                       // May 11
-        ["1980-05-11T16:32:15", 1, 2, 3, 4, 5],              // Specific second
-        ["1980-05-11T16:32:15.500", 1, 2, 3, 4, 5],          // Specific millisecond
-        ["1980-05-11T16:32:15.5000000", 1, 2, 3, 4, 5],      // 7 decimal places
-        ["1980-05-11T16:32:15.5000001", 1, 2, 3, 4],         // Microsecond (excludes obs[5])
-        ["1980-05-11T16:32:30", 1, 2, 3],                    // Different second
+        // eq is containment, NOT overlap: the search value's range must fully contain the target's range.
+        // A narrower search value therefore matches FEWER observations, not more -- an observation stored
+        // at a coarser precision (obs[1]="1980", obs[2]="1980-05") is excluded by any search value narrower
+        // than itself, because a month cannot contain a year. Each row below names the observations whose
+        // stored range fits entirely inside the search value's range.
+        //
+        // The ne rows further down are the exact complements of these sets and already pass, which is the
+        // independent check that these values are right.
+        ["1980", 1, 2, 3, 4, 5, 7],                          // 1980 contains everything in 1980; obs[0] is 1979 and obs[6] is 1981
+        ["1980-01"],                                          // obs[1] is the whole of 1980, which January cannot contain; nothing else is in January
+        ["1980-05", 2, 3, 4, 5, 7],                          // May contains obs[2] (exactly May), obs[3..5] (May 11) and obs[7] (May 16-17); not obs[1], the whole year
+        ["1980-05-10"],                                       // nothing is stored on May 10 -- obs[3..5] are May 11, obs[2] is the whole month
+        ["1980-05-11", 3, 4, 5],                             // May 11 contains obs[3] (exactly that day) and the two instants inside it; not obs[2], the whole month
+        ["1980-05-11T16:32:15", 4, 5],                       // that second contains obs[4] (exactly that second) and obs[5] (.500 within it); not obs[3], the whole day
+        ["1980-05-11T16:32:15.500", 5],                      // obs[5] only -- obs[4] spans the whole second, which one millisecond cannot contain
+        ["1980-05-11T16:32:15.5000000", 5],                  // same instant as above written to tick precision
+        ["1980-05-11T16:32:15.5000001"],                      // one tick past obs[5]'s stored instant, so nothing fits
+        ["1980-05-11T16:32:30"],                              // nothing is stored in that second
 
         // ===== ne (not equals - search value does NOT fully contain target) =====
         ["ne1980", 0, 6],                                     // Not in 1980
@@ -285,10 +293,14 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
 
     /// <summary>
     /// Tests date search against Period datatype (start and end dates).
-    /// A date matches a Period if it overlaps with the period range.
+    /// A Period target is subject to the same containment rule as any other date target: it matches only
+    /// when the search value's range fully contains [period.start, period.end]. Overlap is not enough --
+    /// an instant inside a two-day period does not match it, because an instant contains nothing.
+    /// obs[7] is a Period, so it appears in the eq rows above only for search values at month precision
+    /// or coarser (1980, 1980-05), the only ones wide enough to contain May 16 through May 17.
     /// </summary>
     [Theory]
-    [InlineData("1980-05-16T16:32:15.500", 1, 2, 7)] // Overlaps with period [1980-05-16 to 1980-05-17]
+    [InlineData("1980-05-16T16:32:15.500")] // Falls inside obs[7]'s period but contains none of it; obs[1] and obs[2] are coarser still
     public async Task GivenADateTimeSearchParam_WhenSearchedAgainstAPeriod_ThenCorrectBundleShouldBeReturned(
         string queryValue,
         params int[] expectedIndices)

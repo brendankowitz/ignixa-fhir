@@ -550,7 +550,7 @@ internal static class Lower
 
         if (expression is SearchParameterPredicateExpression predicate)
         {
-            return ResourceColumnLoweringRule.TryLower(predicate, leafContext);
+            return TryLowerResourceColumnPredicate(predicate, leafContext);
         }
 
         if (expression is not MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or)
@@ -571,6 +571,28 @@ internal static class Lower
         }
 
         return combined;
+    }
+
+    /// <summary>Lowers a single resource-column predicate, rewriting a <c>:not</c>-modified one the way
+    /// <see cref="TryGetNegatedInner"/> rewrites its CTE-path equivalent.</summary>
+    /// <remarks>
+    /// <c>_id:not=a,b</c> reaches <see cref="TryLowerResourceColumn"/> as a NotExpression because
+    /// SearchExpressionBinder.BindAlternatives lifts the modifier off the items it wraps in an Or; a
+    /// single-valued <c>_id:not=a</c> binds through BindAtomic instead, which has no Or to lift onto and so
+    /// leaves the modifier on the predicate. Both spellings mean the same thing, so both must lower to the
+    /// same Predicate.Not. ResourceColumnLoweringRule still rejects every other modifier, since dropping one
+    /// of those would silently widen the match rather than negate it.
+    /// </remarks>
+    private static Predicate? TryLowerResourceColumnPredicate(SearchParameterPredicateExpression predicate, LeafContext leafContext)
+    {
+        if (predicate.Modifier?.SearchModifierCode != SearchModifierCode.Not)
+        {
+            return ResourceColumnLoweringRule.TryLower(predicate, leafContext);
+        }
+
+        var positive = new SearchParameterPredicateExpression(predicate.Parameter, predicate.Comparator, modifier: null, predicate.Value) { Span = predicate.Span };
+        var inner = ResourceColumnLoweringRule.TryLower(positive, leafContext);
+        return inner is null ? null : new Predicate.Not(inner);
     }
 
     /// <summary>Lowers a chain's target expression or a union leg within its own scope, folding any resource-column

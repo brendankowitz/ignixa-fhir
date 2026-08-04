@@ -192,6 +192,12 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         results.ShouldNotContain(r => r.Id == created[2].Id);
     }
 
+    /// <remarks>
+    /// eq is containment, so a coarser stored value is excluded by a narrower search value: birthdate=1982
+    /// spans the whole year, which January 1982 cannot contain. Only the month-precision and day-precision
+    /// patients match. This is the mirror image of the year-only test above, where the search value is the
+    /// coarser of the two and every precision inside 1982 matches.
+    /// </remarks>
     [Fact]
     public async Task GivenPatientsWithMixedPrecisions_WhenSearchingByMonthOnly_ThenMatchesAllPrecisionsInThatMonth()
     {
@@ -213,11 +219,11 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01");
 
         // Assert
-        results.Length.ShouldBe(3, "Should match year-only, month-only, and full date containing January 1982");
-        results.ShouldContain(r => r.Id == created[0].Id, "Year 1982 contains January");
+        results.Length.ShouldBe(2, "Should match month-only and full date within January 1982");
         results.ShouldContain(r => r.Id == created[1].Id);
         results.ShouldContain(r => r.Id == created[2].Id);
-        results.ShouldNotContain(r => r.Id == created[3].Id);
+        results.ShouldNotContain(r => r.Id == created[0].Id, "January 1982 does not contain the whole of year 1982");
+        results.ShouldNotContain(r => r.Id == created[3].Id, "February is outside January");
     }
 
     #endregion

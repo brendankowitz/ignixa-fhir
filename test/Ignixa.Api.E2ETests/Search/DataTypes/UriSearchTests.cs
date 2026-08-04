@@ -177,30 +177,43 @@ public class UriSearchTests : CapabilityDrivenTestBase, IClassFixture<UriSearchF
     }
 
     /// <summary>
-    /// Tests that URN OID schemes are distinct from HTTP URLs.
-    /// URN searches should not match HTTP URLs and vice versa.
+    /// Tests that URN OID schemes are distinct from HTTP URLs, and that the hierarchical modifiers do not
+    /// reach into URN space at all.
     /// </summary>
+    /// <remarks>
+    /// R4 is explicit that the hierarchy modifiers are a URL feature: "Note that the :above and :below
+    /// modifiers only apply to URLs, and not URNS such as OIDs." (http://hl7.org/fhir/R4/search.html#uri)
+    /// A URN has no path-segment hierarchy to walk, so <c>url:below=urn:oid:</c> has no defined meaning and
+    /// matching nothing is a correct answer rather than a gap. The implementation reaches that answer by
+    /// appending a '/' segment separator to the search value, which turns "urn:oid:" into "urn:oid:/" --
+    /// a prefix no OID carries.
+    /// <para>
+    /// The exact-match assertion is what keeps the zero honest: without it a broken or empty fixture would
+    /// satisfy this test just as well as correct behaviour does.
+    /// </para>
+    /// </remarks>
     [Fact]
     public async Task GivenAUriSearchParam_WhenSearchingDifferentSchemes_ThenSchemesAreDistinct()
     {
         // Capability check
         RequireSearchParameter("ValueSet", "url");
 
-        // Act: Search for URN OID with :below modifier
-        var results = await Harness.SearchAsync("ValueSet",
+        // Act: :below against a URN prefix, then the same URN by exact match
+        var belowResults = await Harness.SearchAsync("ValueSet",
             $"_tag={_fixture.Tag}&url:below={Uri.EscapeDataString("urn:oid:")}");
+        var exactResults = await Harness.SearchAsync("ValueSet",
+            $"_tag={_fixture.Tag}&url={Uri.EscapeDataString("urn:oid:2.16.840.1.113883.1.11.16929")}");
 
-        // Assert: Should only match URN OID ValueSets, not HTTP URLs
-        results.Length.ShouldBe(3, "Only URN OID ValueSets should match");
-        results.ShouldContain(r => r.Id == _fixture.ValueSets[4].Id);
-        results.ShouldContain(r => r.Id == _fixture.ValueSets[5].Id);
-        results.ShouldContain(r => r.Id == _fixture.ValueSets[6].Id);
+        // Assert: :below is undefined over URNs, so it matches nothing -- including the HTTP ValueSets,
+        // which a scheme-blind prefix match could otherwise have swept in.
+        belowResults.Length.ShouldBe(0,
+            "R4: ':above and :below modifiers only apply to URLs, and not URNS such as OIDs'");
 
-        // Verify HTTP URLs are NOT in results
-        results.ShouldNotContain(r => r.Id == _fixture.ValueSets[0].Id,
-            "HTTP URL should not match URN search");
-        results.ShouldNotContain(r => r.Id == _fixture.ValueSets[1].Id,
-            "HTTP URL should not match URN search");
+        // Assert: the URN ValueSets do exist and are reachable by exact match, and an HTTP URL search does
+        // not reach them -- the scheme distinction this test is named for.
+        exactResults.Length.ShouldBe(1);
+        exactResults.ShouldContain(r => r.Id == _fixture.ValueSets[4].Id,
+            "The URN ValueSet is stored and matchable by exact URI");
     }
 
     /// <summary>
