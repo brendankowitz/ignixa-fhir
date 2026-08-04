@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
+    <ProjectReference Include="../../src/Core/Ignixa.Search.Sql/Ignixa.Search.Sql.csproj" />
   </ItemGroup>
 
 </Project>
