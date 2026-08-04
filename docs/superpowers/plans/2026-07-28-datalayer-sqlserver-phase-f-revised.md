@@ -178,6 +178,44 @@ one consumer that takes a `FhirDbContext` directly), and the storage-type rename
 
 ---
 
+### Task 9: RESULT — PASSED 2026-07-30 at `2829091b`
+
+Every test project enumerated from `All.sln` — 28 suites, **zero aborts anywhere**, exit codes checked
+individually rather than inferred from a summary line.
+
+| Suite | Result |
+|---|---|
+| `DataLayer.SqlServer.IntegrationTests` | **313** / 0 |
+| `Search.Sql.Tests` | 1096 per TFM |
+| `Application.Tests` | 1180 / 0 / 1 skip |
+| `FhirPath.Tests` | 4005 / 0 / 1 skip, both TFMs |
+| `FhirFakes.Tests` | 1428, both TFMs |
+| `Validation.Tests` | 678, both TFMs |
+| `FhirMappingLanguage.Tests` | 659 / 1 skip, both TFMs |
+| `TestScript.Tests` | 379, both TFMs |
+| `DeId.Tests` | 203 / 1 skip, both TFMs |
+| `Api.Tests` 151 · `DataLayer.SqlServer.Tests` 70 · `RepoGuards` 17×2 · 14 others | all green |
+| `SqlEntityFramework.IntegrationTests` | 95 / 0 / 8 skip — *disappears with the project* |
+| **`Api.E2ETests`** | **571 / 29 / 20 of 620** — documented gaps, 2 fewer than pre-merge |
+| **`SqlOnFhir.Tests`** | **54 / 2** — upstream submodule drift, not ours |
+
+**The app-start check, which no suite covers.** Every composition-root registration changed this phase, and a
+DI resolution failure surfaces nowhere else. `dotnet run` on `Ignixa.Web`: bound both ports, `Application
+started`, tenant package preload completed, capability statements built for tenants 0 and 1,
+`ConformanceStateSyncService` polling. **Zero resolution failures.** Then over HTTP against a real database:
+
+```
+GET  /metadata                  → 200, valid CapabilityStatement
+POST /Patient                   → 201
+GET  /Patient?family=GateCheck  → 200, Bundle containing the written resource
+```
+
+Write path and search path both live through `SqlServerTenantServiceFactory`. A second startup against
+already-imported state also ran the ported package-load sync cleanly and invalidated the capability cache —
+the path changed from swallow to rethrow, exercised where a naive implementation would throw on every restart.
+
+---
+
 ### Task 9: Pre-deletion gate — *verification only*
 
 **New, and non-negotiable.** Deletion is the one irreversible step; it removes the rollback lever for a
