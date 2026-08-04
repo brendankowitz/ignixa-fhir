@@ -288,7 +288,38 @@ If any of these fail, **stop**. Task 10 does not start.
 
 ---
 
-### Task 10: Delete the EF project
+### Task 10: DONE — `21502c35`, 2026-08-04
+
+149 files, 33,540 deletions. Integration **313 → 224**, reconciling exactly as 313 − 50 differential − 39
+oracle, both counted from the deleted files rather than taken from this plan. `TerminologyOracleFixture`
+became `TerminologyTestFixture` — surgery, since six surviving test files depend on it, and "oracle" would
+have described a job that no longer exists.
+
+**Phase F is complete. One data layer.**
+
+What it cost and produced, because the ratio is the useful part:
+
+- **~20 defects found.** Four were introduced *by the port* and caught only by comparing against the EF
+  implementation — the argument for keeping it readable until the end, and the reason deletion was gated on
+  the disposition table rather than on the suites being green.
+- **6 tests that passed for the wrong reason**, two of them written during this phase. The worst was the
+  differential hard-delete sweep, which asserted 15 tables were empty against a resource that had no search
+  indices at all — it would have passed if delete swept nothing. Mutation-checking is the only reason the
+  replacements are trustworthy.
+- **A regression on `main`, found here.** #381 moved the token overflow split to `MaxLength` (256) while
+  every row generator writes at 128, so overflowing token codes silently stop matching. Main's tests derive
+  the expected width from the same value the rule reads, so they agreed with the wrong number. Fixed in
+  `5c9556d2` with a guard that compares the compiler's constant against the generators' behaviour — **this
+  fix exists only on this branch.**
+
+- [ ] Amend `docs/superpowers/specs/2026-07-25-search-sql-gap-closure-design.md` — it assumes the legacy
+      engine is available for row-level comparison when closing the remaining search gaps. It is not.
+- [ ] Amend `docs/superpowers/specs/2026-07-25-unified-execution-gate-results.md` — its differential
+      evidence is now historical rather than reproducible.
+
+---
+
+### Superseded plan text for Task 10
 
 As the original Task 9: the project, the 50 differential facts, the two EF test projects, the E2E project
 reference, and `All.sln` entries. Plus:
@@ -316,6 +347,12 @@ evaporate when the plan closes.
 | 31 E2E search gaps, 5 groups | gap-closure design | Their oracle disappears at Task 10 |
 | No volume test for CodeSystem import | `dbo.ImportTermCodeSystem` | Largest case exercised is 1,001 concepts; real CodeSystems are orders of magnitude past it and the TVP's memory profile at that size is unmeasured |
 | Compose filter ops `not-in`, `generalizes`, `exists` unevaluated | `SqlServerValueSetComposer` | Now reported through `IsPartialExpansion` rather than silently guessed, so the gap is visible; implementing them is a feature, not a port |
+| **Token split-point fix is only on this branch** | `TokenColumnEquality`, `5c9556d2` | `main` ships the regression: compiler splits at 256, every row generator writes at 128, so overflowing token codes silently stop matching. Main's tests derive the width from the value the rule reads and cannot catch it. **Cherry-pick candidate, independent of Phase F.** |
+| Package repository and importer straddle two tenants | `SqlServerTerminologyImporterFactory` | Repository registered at tenant 1, importer reads the same `dbo.PackageResource` rows at partition 0. They agree only because partition 0 inherits tenant 1's connection string. Give partition 0 its own database and the importer looks in the wrong one — and `PackageResourceId` is a per-database IDENTITY, so it could find a *different* row rather than none |
+| `TokenNumberNumber` single-point components unsearchable | row generator vs lowering rule | Generator writes `SingleValue2/3` leaving `LowValue2/HighValue2` null; the lowering rule reads only Low/High. Pre-existing on both engines; the new composite test uses genuine ranges to route around it |
+| `_sqlEfFactory` constructor parameter name is stale | `CompositeRepositoryFactory`, `CompositeSearchServiceFactory` | Autofac can bind by parameter name, so renaming is a public-signature change rather than a rename |
+| `GivenAResourceWithHistory_WhenHardDeleteResourceAsyncCalled_ThenAllVersionsAndSearchIndexRowsAreGone` is misnamed | `SqlServerFhirRepositoryExpiryTests` | Checks `dbo.Resource` and `dbo.ResourceTtl` only. The 15-table sweep it claims is now a sibling test; fold or rename |
+| `ResourceWriteClaimRowGenerator` yields no rows | `RowGenerators` | Documented Phase 1 stub, so `dbo.ResourceWriteClaim` is unreachable from the write path. The delete-sweep test inserts into it directly to cover the delete SQL |
 
 ---
 
