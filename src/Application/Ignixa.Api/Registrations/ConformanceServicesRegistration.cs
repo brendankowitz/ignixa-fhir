@@ -36,7 +36,7 @@ public static class ConformanceServicesRegistration
     }
 
     // Conformance and package state is global, not per-tenant, and has always lived in tenant 1's
-    // database (see PackageRepositoryDbContextFactory's registration in DataLayerRegistration).
+    // database (see GlobalPackageTenantId in DataLayerRegistration).
     private const int GlobalConformanceTenantId = 1;
 
     /// <summary>
@@ -50,7 +50,7 @@ public static class ConformanceServicesRegistration
 
         // Event store implementation (SQL-based).
         // Tenant 1 mirrors what the EF implementation already resolved to: its DbContext came from
-        // PackageRepositoryDbContextFactory, which is registered against tenant 1's connection string
+        // PackageRepositoryDbContextFactory, which was constructed against tenant 1's connection string
         // because conformance and package state is global rather than per-tenant. Phase F Task 1 moved the
         // implementation to raw ADO.NET; it did not change which database the store reads and writes.
         builder.Register<ISourceEventStore>(c => new SqlServerSourceEventStore(

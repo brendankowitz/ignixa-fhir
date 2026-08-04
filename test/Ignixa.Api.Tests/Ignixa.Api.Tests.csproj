@@ -24,6 +24,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Application/Ignixa.Api/Ignixa.Api.csproj" />
+    <!-- Ignixa.Api no longer references the EF data layer. ValidationServicesRegistrationTerminologyTests
+         asserts the EF SqlTerminologyService is NOT registered, and needs the type to name it. -->
+    <ProjectReference Include="../../src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj" />
     <ProjectReference Include="../../src/Core/Ignixa.Validation/Ignixa.Validation.csproj" />
     <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>

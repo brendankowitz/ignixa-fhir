@@ -8,8 +8,6 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.DataLayer.BlobStorage;
 using Ignixa.DataLayer.FileSystem.FileSystem;
 using Ignixa.DataLayer.InMemoryIndex;
-using Ignixa.DataLayer.SqlEntityFramework;
-using Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Features.PackageManagement;
 using Ignixa.DataLayer.SqlServer.Features.Terminology;
@@ -17,7 +15,6 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
 using Ignixa.Domain.Terminology;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IO;
 
 namespace Ignixa.Api.Registrations;
@@ -37,9 +34,6 @@ public static class DataLayerRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
-
-        // MultiTenantSearchIndexCache (per-tenant cache for search index reference data)
-        services.AddSingleton<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>();
 
         // One SqlServer reference-data cache per tenant, shared by the write path and the package-load
         // search-parameter sync. Singleton because the identity of the instance is the point: a sync against
@@ -189,12 +183,15 @@ public static class DataLayerRegistration
             .AsSelf()
             .SingleInstance();
 
-        // SQL Entity Framework factory (implements both interfaces)
-        builder.Register(c => new SqlEntityFrameworkRepositoryFactory(
+        // SQL Server factory (implements both interfaces). The "SqlEf" name is the DI key the composite
+        // factories resolve by, not a statement about the implementation: it is kept so
+        // CompositeRepositoryFactory/CompositeSearchServiceFactory -- which take the inner factory as a
+        // plain interface -- need no change. Tenant storage types "SqlEntityFramework" and "SqlServer" are
+        // a separate, unrelated vocabulary and both remain accepted.
+        builder.Register(c => new SqlServerTenantServiceFactory(
                 c.Resolve<ITenantConfigurationStore>(),
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<RecyclableMemoryStreamManager>(),
-                c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
                 c.Resolve<SqlServerTenantInitializer>(),
                 c.Resolve<ManagedIdentityConnectionStringValidator>(),
                 c.Resolve<ISqlExecutionService>()))
@@ -284,28 +281,15 @@ public static class DataLayerRegistration
 
     private static void RegisterPackageRepository(ContainerBuilder builder)
     {
-        // Package repository DbContext factory (also used by event store)
-        builder.Register<PackageRepositoryDbContextFactory>(c =>
-        {
-            var tenantStore = c.Resolve<ITenantConfigurationStore>();
-            var loggerFactory = c.Resolve<ILoggerFactory>();
-
-            var tenantConfig = tenantStore.GetTenantConfigurationAsync(1, default).AsTask().GetAwaiter().GetResult();
-            if (tenantConfig == null || string.IsNullOrEmpty(tenantConfig.Storage.ConnectionString))
-            {
-                throw new InvalidOperationException(
-                    "Tenant 1 connection string is required for global package resource repository");
-            }
-
-            return new PackageRepositoryDbContextFactory(tenantConfig.Storage.ConnectionString, loggerFactory);
-        })
-        .As<IDbContextFactory<FhirDbContext>>()
-        .AsSelf()
-        .SingleInstance();
+        // PackageRepositoryDbContextFactory is deliberately not registered. Its only two consumers -- the EF
+        // SqlPackageResourceRepository and the EF SqlSourceEventStore -- were both replaced by raw-ADO.NET
+        // SqlServer implementations (below, and in ConformanceServicesRegistration), leaving nothing in the
+        // process that resolves IDbContextFactory<FhirDbContext>. Keeping the registration would only look
+        // like wiring, the same reason ISystemRepository above is left unregistered.
 
         // SQL package resource repository (Phase F Task 5a: raw ADO.NET, no DbContext).
-        // Tenant 1 for the same reason PackageRepositoryDbContextFactory above uses it: package content is
-        // global, and dbo.PackageResource has no tenant column to scope it by.
+        // Tenant 1 for the same reason the removed EF DbContext factory used it: package content is global,
+        // and dbo.PackageResource has no tenant column to scope it by.
         builder.Register<IPackageResourceRepository>(c =>
             new SqlServerPackageResourceRepository(
                 c.Resolve<ISqlExecutionService>(),
