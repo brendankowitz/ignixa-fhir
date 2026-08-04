@@ -1,6 +1,7 @@
 using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
+using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
@@ -64,6 +65,32 @@ public class SqlServerMergeRepositoryTests : IAsyncLifetime
         var rowCount = await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.Resource WHERE ResourceId = 'test-patient-1'");
         rowCount.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Pins the <c>catch (SqlException ex) when (ex.Number == 50409)</c> mapping in
+    /// <c>MergeResourcesAsync</c>. Merging the SAME explicit version for the same
+    /// (ResourceTypeId, ResourceId) twice forces the conflict inside <c>dbo.MergeResources</c> itself,
+    /// bypassing <c>SqlServerFhirRepository</c>'s own client-side "read the current version first"
+    /// logic -- which is the only deterministic way to reach this path. Racing two concurrent
+    /// <c>CreateOrUpdateAsync</c> calls does not: if they happen to serialize, both succeed.
+    /// </summary>
+    [Fact]
+    public async Task GivenTheSameExplicitVersionMergedTwice_WhenMergeResourcesAsyncCalled_ThenThrowsPreconditionFailedException()
+    {
+        var (transactionId, _) = await _repository.BeginTransactionAsync(resourceCount: 2, CancellationToken.None);
+
+        var resource = new ResourceWrapper(
+            "Patient", "merge-conflict-1", "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse("""{"resourceType":"Patient","id":"merge-conflict-1"}"""),
+            new ResourceRequest("PUT", "Patient/merge-conflict-1"));
+
+        await _repository.MergeResourcesAsync(
+            transactionId, singleTransaction: true, [resource], [0], CancellationToken.None);
+
+        await Should.ThrowAsync<PreconditionFailedException>(() =>
+            _repository.MergeResourcesAsync(
+                transactionId, singleTransaction: true, [resource with { }], [1], CancellationToken.None));
     }
 
     [Fact]

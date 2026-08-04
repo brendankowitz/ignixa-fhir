@@ -1,4 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
@@ -6,6 +9,7 @@ using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
+using Microsoft.IO;
 using Shouldly;
 using Xunit;
 
@@ -191,6 +195,84 @@ public class SqlServerFhirRepositoryCrudTests : IAsyncLifetime
         var rowCount = await _database.ExecuteScalarAsync<int>(
             "SELECT COUNT(*) FROM dbo.ResourceType WHERE Name = 'Observation'");
         rowCount.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Pins what actually lands in <c>dbo.Resource.RawResource</c>: the caller's own JSON, gzip
+    /// compressed, with exactly two server-managed additions -- <c>meta.versionId</c> and
+    /// <c>meta.lastUpdated</c>. Asserted against concrete expected values (including the complete
+    /// top-level property set, so a dropped or invented field fails) rather than against a recorded
+    /// snapshot: the write path bakes both meta fields in before compressing, and nothing else in the
+    /// stored bytes is allowed to drift.
+    /// </summary>
+    [Fact]
+    public async Task GivenAResourceWithContent_WhenCreateOrUpdateAsyncCalled_ThenDboResourceRawResourceHoldsThatContentPlusServerManagedMeta()
+    {
+        const string ResourceId = "patient-rawresource-1";
+        var resource = new ResourceWrapper("Patient", ResourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ResourceId}}","active":true,"name":[{"family":"Rawlings","given":["Ada"]}]}"""),
+            new ResourceRequest("PUT", $"Patient/{ResourceId}"));
+
+        await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+
+        var rawResource = await _database.ExecuteScalarBytesAsync(
+            $"SELECT RawResource FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        rawResource.ShouldNotBeNull();
+
+        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
+        var json = compressor.DecompressBytes(rawResource);
+        var reader = new Utf8JsonReader(json.Span);
+        var stored = JsonNode.Parse(ref reader)!.AsObject();
+
+        stored.Select(property => property.Key).OrderBy(name => name, StringComparer.Ordinal)
+            .ShouldBe(["active", "id", "meta", "name", "resourceType"]);
+        stored["resourceType"]!.GetValue<string>().ShouldBe("Patient");
+        stored["id"]!.GetValue<string>().ShouldBe(ResourceId);
+        stored["active"]!.GetValue<bool>().ShouldBeTrue();
+        stored["name"]!.AsArray().Count.ShouldBe(1);
+        stored["name"]![0]!["family"]!.GetValue<string>().ShouldBe("Rawlings");
+        stored["name"]![0]!["given"]!.AsArray().Select(given => given!.GetValue<string>()).ShouldBe(["Ada"]);
+        stored["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
+        DateTimeOffset.TryParse(
+            stored["meta"]!["lastUpdated"]!.GetValue<string>(),
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out _).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The delete-path counterpart of
+    /// <c>SqlServerFhirRepositoryExpiryTests.GivenAResourceIndexedIntoEverySearchIndexTable_WhenHardDeleteResourceAsyncCalled_ThenEverySearchIndexTableIsSweptClean</c>.
+    /// <c>DeleteAsync</c> wipes the index rows of the superseded version's surrogate id across the
+    /// same fixed 15-table list; every table's rows are asserted present first, so the sweep is
+    /// genuinely exercised rather than asserted against empty tables.
+    /// </summary>
+    [Fact]
+    public async Task GivenAResourceIndexedIntoEverySearchIndexTable_WhenDeleteAsyncCalled_ThenEverySearchIndexTableIsSweptClean()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+
+        const string ReferenceTargetId = "delete-sweep-target";
+        await _repository.CreateOrUpdateAsync(BuildTestPatientWrapper(ReferenceTargetId), CancellationToken.None);
+
+        const string ResourceId = "delete-sweep-1";
+        var resource = new ResourceWrapper("Patient", ResourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ResourceId}}"}"""),
+            new ResourceRequest("PUT", $"Patient/{ResourceId}"))
+        {
+            SearchIndices = SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable(ReferenceTargetId)
+        };
+        await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+
+        var surrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(_database, surrogateId, CancellationToken.None);
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, surrogateId, CancellationToken.None);
+
+        await _repository.DeleteAsync(
+            new ResourceKey("Patient", ResourceId), new ResourceRequest("DELETE", $"Patient/{ResourceId}"), null, CancellationToken.None);
+
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(_database, surrogateId, CancellationToken.None);
     }
 
     private static ResourceWrapper BuildTestPatientWrapper(string id) =>

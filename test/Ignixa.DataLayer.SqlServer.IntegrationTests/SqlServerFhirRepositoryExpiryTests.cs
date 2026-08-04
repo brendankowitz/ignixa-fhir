@@ -65,4 +65,44 @@ public class SqlServerFhirRepositoryExpiryTests : IAsyncLifetime
             "SELECT COUNT(*) FROM dbo.ResourceTtl WHERE ResourceId = 'hard-delete-1'");
         remainingTtl.ShouldBe(0);
     }
+
+    /// <summary>
+    /// The TTL cleanup job's real contract: hard delete must leave no orphaned search-index row
+    /// behind in any of the 15 tables <c>SqlServerFhirRepository.SearchIndexTables</c> lists, not just
+    /// in <c>dbo.Resource</c>/<c>dbo.ResourceTtl</c> (all the test above checks, despite its name).
+    /// The resource is written with an index entry per table first and each table's row count is
+    /// asserted non-zero before the delete -- see <see cref="SearchIndexTableSeeder"/> for why an
+    /// "everything is empty afterwards" assertion on its own would prove nothing.
+    /// </summary>
+    [Fact]
+    public async Task GivenAResourceIndexedIntoEverySearchIndexTable_WhenHardDeleteResourceAsyncCalled_ThenEverySearchIndexTableIsSweptClean()
+    {
+        await SearchIndexTableSeeder.SeedSearchParameterCatalogAsync(_database, CancellationToken.None);
+
+        const string ReferenceTargetId = "hard-delete-sweep-target";
+        await _repository.CreateOrUpdateAsync(
+            new ResourceWrapper("Patient", ReferenceTargetId, "1", DateTimeOffset.UtcNow,
+                ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ReferenceTargetId}}"}"""),
+                new ResourceRequest("PUT", $"Patient/{ReferenceTargetId}")),
+            CancellationToken.None);
+
+        const string ResourceId = "hard-delete-sweep-1";
+        var resource = new ResourceWrapper("Patient", ResourceId, "1", DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"{{ResourceId}}"}"""),
+            new ResourceRequest("PUT", $"Patient/{ResourceId}"))
+        {
+            SearchIndices = SearchIndexTableSeeder.BuildSearchIndicesCoveringEverySearchIndexTable(ReferenceTargetId)
+        };
+        await _repository.CreateOrUpdateAsync(resource, CancellationToken.None);
+
+        var surrogateId = await _database.ExecuteScalarAsync<long>(
+            $"SELECT ResourceSurrogateId FROM dbo.Resource WHERE ResourceId = '{ResourceId}' AND IsHistory = 0");
+        await SearchIndexTableSeeder.InsertResourceWriteClaimAsync(_database, surrogateId, CancellationToken.None);
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableHasRowsAsync(_database, surrogateId, CancellationToken.None);
+
+        var resourceTypeId = await _database.ExecuteScalarAsync<short>("SELECT ResourceTypeId FROM dbo.ResourceType WHERE Name = 'Patient'");
+        await _repository.HardDeleteResourceAsync(resourceTypeId, ResourceId, CancellationToken.None);
+
+        await SearchIndexTableSeeder.AssertEverySearchIndexTableIsEmptyAsync(_database, surrogateId, CancellationToken.None);
+    }
 }

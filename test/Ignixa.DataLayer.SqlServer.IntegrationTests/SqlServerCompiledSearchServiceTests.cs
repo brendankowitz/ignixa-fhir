@@ -8,6 +8,7 @@ using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Serialization.SourceNodes;
@@ -223,5 +224,89 @@ public class SqlServerCompiledSearchServiceTests : IAsyncLifetime
     {
         var ranges = await _service.GetExportRangesAsync("Observation", numberOfRanges: 4, CancellationToken.None);
         ranges.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// <c>_include</c> combined with a system-level (multi-type) search is a self-documented compiler
+    /// scope boundary -- <c>Lower.Run</c> throws <c>NotSupportedException</c> when the target resource
+    /// type is null and includes are present, because <c>BuildIncludeStages</c> needs a concrete match
+    /// type to compute <c>SeedFromMatch</c>. This asserts the service maps that to a 400
+    /// <see cref="RequestNotValidException"/> rather than leaking the internal exception or silently
+    /// returning an under-filtered result set.
+    /// <para>
+    /// The control half matters as much as the refusal: an unresolvable search parameter ALSO surfaces
+    /// as <see cref="RequestNotValidException"/>, so without proving the identical query succeeds with
+    /// a concrete resource type, this test would pass just as happily against a catalog seeding
+    /// mistake.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GivenAnIncludeOnASystemLevelSearch_WhenSearchStreamAsyncCalled_ThenThrowsRequestNotValidExceptionWhileTheSameIncludeSucceedsOnATypedSearch()
+    {
+        // Arrange
+        var parameterManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        var familyParameter = parameterManager.GetSearchParameter("Patient", "family");
+        var organizationParameter = parameterManager.GetSearchParameter("Patient", "organization");
+        foreach (var url in new[] { familyParameter.Url!, organizationParameter.Url! })
+        {
+            await _database.ExecuteNonQueryAsync(
+                "INSERT INTO dbo.SearchParam (Uri, Status, LastUpdated, IsPartiallySupported) " +
+                $"VALUES ('{url}', 'active', SYSDATETIMEOFFSET(), 0)");
+        }
+
+        var organizationId = $"include-org-{Guid.NewGuid():N}";
+        await CreateResourceAsync("Organization", organizationId, null);
+
+        var patientId = $"include-patient-{Guid.NewGuid():N}";
+        await CreateResourceAsync("Patient", patientId,
+        [
+            new SearchIndexEntry(familyParameter, new StringSearchValue("Includable")),
+            new SearchIndexEntry(organizationParameter, new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Organization", resourceId: organizationId)),
+        ]);
+
+        var include = new IncludeExpression(
+            ["Patient"], organizationParameter, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var predicate = new SearchParameterExpression(
+            familyParameter,
+            new SearchParameterPredicateExpression(familyParameter, SearchComparator.Eq, modifier: null, new StringSearchValue("Includable")));
+
+        var systemLevelOptions = new SearchOptions { ResourceType = null, Expression = predicate, Include = [include] };
+        var typedOptions = new SearchOptions { ResourceType = "Patient", Expression = predicate, Include = [include] };
+
+        // Act & Assert -- the system-level shape is refused.
+        await Should.ThrowAsync<RequestNotValidException>(async () =>
+        {
+            await foreach (var _ in _service.SearchStreamAsync(systemLevelOptions, CancellationToken.None))
+            {
+            }
+        });
+
+        // Act & Assert -- the same include against a concrete resource type compiles and runs, so the
+        // refusal above is about the missing match type, not about anything unresolvable.
+        var typedResults = new List<SearchEntryResult>();
+        await foreach (var result in _service.SearchStreamAsync(typedOptions, CancellationToken.None))
+        {
+            typedResults.Add(result);
+        }
+
+        typedResults.Single(r => r.ResourceId == patientId).SearchMode.ShouldBe(SearchEntryMode.Match);
+        typedResults.Single(r => r.ResourceId == organizationId).SearchMode.ShouldBe(SearchEntryMode.Include);
+    }
+
+    private async Task CreateResourceAsync(string resourceType, string resourceId, IReadOnlyList<object>? searchIndices)
+    {
+        var resource = new ResourceWrapper(
+            resourceType,
+            resourceId,
+            "1",
+            DateTimeOffset.UtcNow,
+            ResourceJsonNode.Parse($$"""{"resourceType":"{{resourceType}}","id":"{{resourceId}}"}"""),
+            new ResourceRequest("PUT", $"{resourceType}/{resourceId}"))
+        {
+            SearchIndices = searchIndices,
+        };
+
+        await _database.Repository.CreateOrUpdateAsync(resource, CancellationToken.None);
     }
 }

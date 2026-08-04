@@ -80,6 +80,12 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
     private static readonly SearchParameterInfo FamilyParameter = new(
         "family", "family", SearchParamType.String, new Uri("http://hl7.org/fhir/SearchParameter/individual-family"));
 
+    // "_id" is a resource-column key (no SearchParamId, no catalog seeding needed) -- constructed the
+    // same way SqlServerCompiledSearchServiceTests.cs's own fixture does, rather than resolved through
+    // a definition manager, which has no entry for it.
+    private static readonly SearchParameterInfo IdParameter = new(
+        "_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+
     private static readonly SortExpression FamilyAscending = new(FamilyParameter, SortOrder.Ascending);
 
     // The bare ResourceWrapper constructor leaves SearchIndices null -- production indexing
@@ -223,5 +229,173 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
 
         // Assert -- exactly 3 rows (rows 12, 13, 14 of the combined 15).
         results.Count.ShouldBe(3);
+    }
+
+    /// <summary>
+    /// The ordering consequence of the two-phase model: rows with no value for the sort key come
+    /// LAST, not first, in an ascending sort. That is a deliberate divergence from SQL Server's own
+    /// default (NULLs first ascending), so it cannot be inferred from the SQL -- it comes from the
+    /// executor exhausting the Valued phase before touching MissingPrimary at all. The two tests
+    /// above only count rows across the phase boundary; neither would notice the two phases being
+    /// emitted in the opposite order.
+    /// </summary>
+    [Fact]
+    public async Task GivenAnAscendingSortWithSomeResourcesMissingTheSortKey_WhenSearchStreamAsyncCalled_ThenTheMissingKeyRowsComeLast()
+    {
+        // Arrange
+        var tag = Guid.NewGuid().ToString("N");
+        await CreatePatientWithFamilyAsync($"sort-{tag}-with-1", "Alpha");
+        await CreatePatientWithFamilyAsync($"sort-{tag}-with-2", "Beta");
+        await CreatePatientWithoutFamilyAsync($"sort-{tag}-without-1");
+        await CreatePatientWithoutFamilyAsync($"sort-{tag}-without-2");
+
+        var options = new SearchOptions { ResourceType = "Patient", Sort = [FamilyAscending] };
+
+        // Act
+        var results = await CollectAsync(options);
+
+        // Assert
+        results.Select(r => r.ResourceId).ShouldBe(
+        [
+            $"sort-{tag}-with-1",
+            $"sort-{tag}-with-2",
+            $"sort-{tag}-without-1",
+            $"sort-{tag}-without-2",
+        ]);
+    }
+
+    [Fact]
+    public async Task GivenADescendingSortWhereEveryResourceHasTheSortKey_WhenSearchStreamAsyncCalled_ThenResultsAreInDescendingOrder()
+    {
+        // Arrange -- distinct, plain-ASCII values so there is no tie-break ambiguity.
+        var tag = Guid.NewGuid().ToString("N");
+        (string Suffix, string Family)[] patients =
+        [
+            ("apple", "Apple"), ("banana", "Banana"), ("cherry", "Cherry"), ("date", "Date"),
+        ];
+        foreach (var (suffix, family) in patients)
+        {
+            await CreatePatientWithFamilyAsync($"sort-{tag}-{suffix}", family);
+        }
+
+        var options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(FamilyParameter, SortOrder.Descending)],
+        };
+
+        // Act
+        var results = await CollectAsync(options);
+
+        // Assert
+        results.Select(r => r.ResourceId).ShouldBe(
+        [
+            $"sort-{tag}-date",
+            $"sort-{tag}-cherry",
+            $"sort-{tag}-banana",
+            $"sort-{tag}-apple",
+        ]);
+    }
+
+    /// <summary>
+    /// <c>_sort=_id</c> takes the <c>SortKeyKind.ResourceId</c> path -- a join against
+    /// <c>dbo.Resource.ResourceId</c> rather than a search-index table -- and never produces a
+    /// MissingPrimary phase, since every resource has an id. Ids here are lowercase-ASCII-only so the
+    /// expected order is the same under any SQL Server collation.
+    /// </summary>
+    [Fact]
+    public async Task GivenAnIdSort_WhenSearchStreamAsyncCalled_ThenResultsAreOrderedByResourceIdInBothDirections()
+    {
+        // Arrange -- created out of order, so a passing assertion cannot come from insertion order.
+        var tag = Guid.NewGuid().ToString("N");
+        foreach (var suffix in new[] { "c", "a", "e", "b", "d" })
+        {
+            await CreatePatientWithoutFamilyAsync($"idsort-{tag}-{suffix}");
+        }
+
+        var ascendingOptions = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(IdParameter, SortOrder.Ascending)],
+        };
+        var descendingOptions = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(IdParameter, SortOrder.Descending)],
+        };
+
+        // Act
+        var ascending = await CollectAsync(ascendingOptions);
+        var descending = await CollectAsync(descendingOptions);
+
+        // Assert
+        string[] expectedAscending =
+        [
+            $"idsort-{tag}-a", $"idsort-{tag}-b", $"idsort-{tag}-c", $"idsort-{tag}-d", $"idsort-{tag}-e",
+        ];
+        ascending.Select(r => r.ResourceId).ShouldBe(expectedAscending);
+        descending.Select(r => r.ResourceId).ShouldBe(expectedAscending.Reverse());
+    }
+
+    /// <summary>
+    /// Offset paging through the real <c>ContinuationToken</c> API, mirroring the Application layer's
+    /// own convention: request <c>pageSize + 1</c> to detect hasMore, render only the first
+    /// <c>pageSize</c> entries, and encode the next token as
+    /// <c>ContinuationToken.Encode(currentOffset + pageSize, pageSize)</c> -- the ORIGINAL page size,
+    /// not the +1'd one (see <c>StreamingBundleSerializer.SerializeWithPaginationAsync</c>). The two
+    /// tests at the top of this file page within a Valued/MissingPrimary split; this one pages a
+    /// single-phase result set and asserts the exact contents of both pages.
+    /// </summary>
+    [Fact]
+    public async Task GivenOffsetPagingAcrossAPageBoundary_WhenBothPagesAreFetched_ThenTogetherTheyCoverEveryResourceExactlyOnceInOrder()
+    {
+        // Arrange
+        const int PageSize = 3;
+        var tag = Guid.NewGuid().ToString("N");
+        string[] suffixes = ["a", "b", "c", "d", "e", "f"];
+        foreach (var suffix in suffixes)
+        {
+            await CreatePatientWithoutFamilyAsync($"page-{tag}-{suffix}");
+        }
+
+        var page1Options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(IdParameter, SortOrder.Ascending)],
+            MaxItemCount = PageSize + 1,
+        };
+
+        // Act
+        var page1Raw = await CollectAsync(page1Options);
+
+        var page2Options = new SearchOptions
+        {
+            ResourceType = "Patient",
+            Sort = [new SortExpression(IdParameter, SortOrder.Ascending)],
+            MaxItemCount = PageSize + 1,
+            ContinuationToken = ContinuationToken.Encode(offset: PageSize, count: PageSize),
+        };
+        var page2Raw = await CollectAsync(page2Options);
+
+        // Assert -- page 1 signals hasMore by returning more than PageSize rows; the rendered page is
+        // the first PageSize of them.
+        page1Raw.Count.ShouldBe(PageSize + 1);
+        page1Raw.Take(PageSize).Select(r => r.ResourceId).ShouldBe(
+            [$"page-{tag}-a", $"page-{tag}-b", $"page-{tag}-c"]);
+
+        page2Raw.Take(PageSize).Select(r => r.ResourceId).ShouldBe(
+            [$"page-{tag}-d", $"page-{tag}-e", $"page-{tag}-f"]);
+        page2Raw.Count.ShouldBe(PageSize, "page 2 is the last page: there is no seventh row to signal hasMore with.");
+    }
+
+    private async Task<List<SearchEntryResult>> CollectAsync(SearchOptions options)
+    {
+        var results = new List<SearchEntryResult>();
+        await foreach (var result in _service.SearchStreamAsync(options, CancellationToken.None))
+        {
+            results.Add(result);
+        }
+
+        return results;
     }
 }

@@ -94,6 +94,26 @@ public sealed class TestTenantDatabase
         return (T)Convert.ChangeType(result!, typeof(T));
     }
 
+    /// <summary>
+    /// Reads a single <c>VARBINARY</c> column value (e.g. <c>dbo.Resource.RawResource</c>). Separate
+    /// from <see cref="ExecuteScalarAsync{T}"/> because that method routes through
+    /// <see cref="Convert.ChangeType(object, Type)"/>, which throws on <c>byte[]</c>.
+    /// </summary>
+    // CA2100 suppressed: this is a test-only raw-SQL helper -- callers pass literal assertion
+    // queries, never untrusted input, matching the same suppression rationale used throughout this
+    // fixture and SchemaDeployerUpgradeTests.cs for test-controlled SQL text.
+    public async Task<byte[]?> ExecuteScalarBytesAsync(string sql, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqlConnection(BuildConnectionStringForDatabase(_databaseName));
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+#pragma warning disable CA2100
+        command.CommandText = sql;
+#pragma warning restore CA2100
+        var result = await command.ExecuteScalarAsync(cancellationToken);
+        return result as byte[];
+    }
+
     // CA2100 suppressed: this is a test-only raw-SQL helper -- callers pass literal assertion
     // queries, never untrusted input, matching the same suppression rationale used throughout this
     // fixture and SchemaDeployerUpgradeTests.cs for test-controlled SQL text.

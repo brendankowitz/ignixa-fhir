@@ -1,8 +1,12 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.DataLayer.SqlServer.Compression;
 using Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
 using Ignixa.Serialization.SourceNodes;
+using Microsoft.IO;
 using Shouldly;
 using Xunit;
 
@@ -72,6 +76,48 @@ public class SqlServerFhirRepositoryBatchTests : IAsyncLifetime
 
         await Should.ThrowAsync<ResourceVersionConflictException>(() =>
             _repository.BatchWriteAsync(staleTransactionId, operations, CancellationToken.None));
+    }
+
+    /// <summary>
+    /// Batch writes must store the same <c>RawResource</c> content a single-resource write does --
+    /// <c>BatchWriteAsync</c> has its own wrapper-building path (<c>BuildResourceWrappersAsync</c>),
+    /// separate from <c>CreateOrUpdateAsync</c>'s, that stamps <c>meta.versionId</c>/
+    /// <c>meta.lastUpdated</c> itself. Every one of the five rows is decompressed and asserted against
+    /// its own concrete expected content, so a row-to-operation mix-up (all five sharing one entry's
+    /// JSON, or an off-by-one in the entry-index-to-surrogate-id mapping) fails.
+    /// </summary>
+    [Fact]
+    public async Task GivenAFiveResourceBatch_WhenBatchWriteAsyncCalled_ThenEachDboResourceRowHoldsItsOwnResourceContent()
+    {
+        var transactionId = await _repository.GetNextTransactionIdAsync(CancellationToken.None);
+        var operations = Enumerable.Range(0, 5)
+            .Select(i => ("Patient", $"batch-content-{i}",
+                ResourceJsonNode.Parse($$"""{"resourceType":"Patient","id":"batch-content-{{i}}","name":[{"family":"Family{{i}}"}]}"""),
+                (IReadOnlyList<object>)[], "PUT", i))
+            .ToArray();
+
+        await _repository.BatchWriteAsync(transactionId, operations, CancellationToken.None);
+        await _repository.CommitTransactionAsync(transactionId, CancellationToken.None);
+
+        var compressor = new GzipResourceCompressor(new RecyclableMemoryStreamManager());
+        for (var i = 0; i < 5; i++)
+        {
+            var rawResource = await _database.ExecuteScalarBytesAsync(
+                $"SELECT RawResource FROM dbo.Resource WHERE ResourceId = 'batch-content-{i}' AND IsHistory = 0");
+            rawResource.ShouldNotBeNull($"batch-content-{i} was not written.");
+
+            var json = compressor.DecompressBytes(rawResource);
+            var reader = new Utf8JsonReader(json.Span);
+            var stored = JsonNode.Parse(ref reader)!.AsObject();
+
+            stored.Select(property => property.Key).OrderBy(name => name, StringComparer.Ordinal)
+                .ShouldBe(["id", "meta", "name", "resourceType"]);
+            stored["resourceType"]!.GetValue<string>().ShouldBe("Patient");
+            stored["id"]!.GetValue<string>().ShouldBe($"batch-content-{i}");
+            stored["name"]![0]!["family"]!.GetValue<string>().ShouldBe($"Family{i}");
+            stored["meta"]!["versionId"]!.GetValue<string>().ShouldBe("1");
+            stored["meta"]!["lastUpdated"].ShouldNotBeNull();
+        }
     }
 
     [Fact]
