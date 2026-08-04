@@ -5480,39 +5480,6 @@ public static class R5SearchParameterDefinitions
                 description: "Search Composition Bundle")
 ,
             new SearchParameterInfo(
-                name: "ExampleSearchParameterOnAnExtension",
-                code: "part-agree",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-extension"),
-                components: null,
-                expression: "Patient.extension('http://example.org/fhir/StructureDefinition/participation-agreement').value",
-                targetResourceTypes: new[] { "DocumentReference" },
-                baseResourceTypes: new[] { "Patient" },
-                description: "Search by url for a participation agreement, which is stored as an extension referencing a DocumentReference")
-,
-            new SearchParameterInfo(
-                name: "ExampleSearchParameter",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-reference"),
-                components: null,
-                expression: "Condition.subject",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "Condition" },
-                description: "Search by condition subject")
-,
-            new SearchParameterInfo(
-                name: "IDSEARCHPARAMETER",
-                code: "_id",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example"),
-                components: null,
-                expression: "id",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Search by resource identifier - e.g. same as the read interaction, but can return included resources")
-,
-            new SearchParameterInfo(
                 name: "care-team",
                 code: "care-team",
                 searchParamType: SearchParamType.Reference,

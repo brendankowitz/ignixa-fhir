@@ -6393,39 +6393,6 @@ public static class R4SearchParameterDefinitions
                 description: "The business version of the evidence variable")
 ,
             new SearchParameterInfo(
-                name: "Example Search Parameter on an extension",
-                code: "part-agree",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-extension"),
-                components: null,
-                expression: "DocumentReference.extension('http://example.org/fhir/StructureDefinition/participation-agreement')",
-                targetResourceTypes: new[] { "DocumentReference" },
-                baseResourceTypes: new[] { "Patient" },
-                description: "Search by url for a participation agreement, which is stored in a DocumentReference")
-,
-            new SearchParameterInfo(
-                name: "Example Search Parameter",
-                code: "subject",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-reference"),
-                components: null,
-                expression: "Condition.subject",
-                targetResourceTypes: new[] { "Organization" },
-                baseResourceTypes: new[] { "Condition" },
-                description: "Search by condition subject")
-,
-            new SearchParameterInfo(
-                name: "ID-SEARCH-PARAMETER",
-                code: "_id",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example"),
-                components: null,
-                expression: "id",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Search by resource identifier - e.g. same as the read interaction, but can return included resources")
-,
-            new SearchParameterInfo(
                 name: "context-quantity",
                 code: "context-quantity",
                 searchParamType: SearchParamType.Quantity,
