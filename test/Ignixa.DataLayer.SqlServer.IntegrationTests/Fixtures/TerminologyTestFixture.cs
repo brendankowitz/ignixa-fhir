@@ -1,119 +1,75 @@
-using Ignixa.DataLayer.SqlEntityFramework;
-using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
-using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlServer;
 using Ignixa.DataLayer.SqlServer.Features.Terminology;
+using Ignixa.DataLayer.SqlServer.Indexing;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
 using Ignixa.Domain.Models;
-using Ignixa.Domain.Terminology;
 using Ignixa.Validation.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Microsoft.IO;
 
 namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Fixtures;
 
 /// <summary>
-/// Stands up the **EF** terminology implementation against a real database, so its behaviour can be captured
-/// as tests before Phase F ports it. This exists because the port has no other oracle: there is no
-/// terminology test project and no terminology test class anywhere in the repository, and the EF
-/// implementation stops existing when the project is deleted.
+/// Stands up the terminology stack against a real database: the importers, the terminology service and the
+/// search-index cache registry, all over <see cref="ISqlExecutionService"/>.
 /// <para>
-/// Two things make this harder than the other Phase F fixtures, and both are worth knowing because they are
-/// the reason the coverage gap existed in the first place.
+/// <b>Terminology lives in the system partition, not a tenant.</b> Every terminology query resolves against
+/// <see cref="SystemConstants.SystemPartitionId"/>, so the tenant store here serves partition 0 as well as
+/// the ordinary test tenant. <see cref="TestTenantDatabase"/>'s own store returns null for anything but
+/// tenant 1, which alone makes the service unconstructible in that fixture — which is why this one exists.
 /// </para>
 /// <para>
-/// <b>Terminology lives in the system partition, not a tenant.</b>
-/// <c>SqlTerminologyService</c> resolves every context through
-/// <c>GetDbContextAsync(SystemConstants.SystemPartitionId)</c>, so the tenant store here must serve
-/// partition 0 as well as the ordinary test tenant. <see cref="TestTenantDatabase"/>'s own store returns
-/// null for anything but tenant 1, which alone makes the service unconstructible in that fixture.
-/// </para>
-/// <para>
-/// <b>It depends on the concrete composition root.</b> <c>SqlTerminologyService</c> takes a
-/// <see cref="SqlEntityFrameworkRepositoryFactory"/> rather than an abstraction, so exercising it means
-/// building the whole factory: tenant store, logger factory, stream manager, multi-tenant cache, schema
-/// deployer and execution service. The Phase F port removes that coupling — it needs only
-/// <see cref="ISqlExecutionService"/> — which is precisely why the oracle has to be captured first.
+/// Both partitions point at the same physical database, whose schema <see cref="TestTenantDatabase"/> has
+/// already deployed. Nothing here needs a composition root: the importers and the service take
+/// <see cref="ISqlExecutionService"/> and a partition id, and that is the whole dependency graph.
 /// </para>
 /// </summary>
-public sealed class TerminologyOracleFixture : IAsyncDisposable
+public sealed class TerminologyTestFixture : IAsyncDisposable
 {
     private readonly TestTenantDatabase _database;
-    private readonly SqlEntityFrameworkRepositoryFactory _factory;
 
     // Each CreateTerminologyService call gets its own cache (see that method); the fixture owns their
     // lifetimes so callers do not have to.
     private readonly List<MemoryCache> _caches = [];
 
-    // Reference-data caches created for the ported importer; disposed with the fixture.
-    private readonly List<global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache> _searchCaches = [];
+    // Reference-data caches created for the importer; disposed with the fixture.
+    private readonly List<SqlServerSearchIndexReferenceDataCache> _searchCaches = [];
 
-    private readonly global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry _cacheRegistry;
+    private readonly SqlServerSearchIndexCacheRegistry _cacheRegistry;
 
-    private TerminologyOracleFixture(
+    private TerminologyTestFixture(
         TestTenantDatabase database,
-        SqlEntityFrameworkRepositoryFactory factory,
         ISqlExecutionService sqlExecutionService,
-        global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry cacheRegistry)
+        SqlServerSearchIndexCacheRegistry cacheRegistry)
     {
         _database = database;
-        _factory = factory;
         SqlExecutionService = sqlExecutionService;
         _cacheRegistry = cacheRegistry;
     }
 
     /// <summary>
-    /// The registry the factory was built with, so a test can reach the same per-tenant cache instance the
-    /// write path uses. Obtaining a cache any other way defeats the point of the registry.
+    /// The registry the write path resolves its per-tenant cache through, so a test can reach the same
+    /// instance the write path uses. Obtaining a cache any other way defeats the point of the registry.
     /// </summary>
-    public global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry CacheRegistry => _cacheRegistry;
+    public SqlServerSearchIndexCacheRegistry CacheRegistry => _cacheRegistry;
 
     public ISqlExecutionService SqlExecutionService { get; }
 
     public int SystemPartitionId => SystemConstants.SystemPartitionId;
 
-    public static async Task<TerminologyOracleFixture> CreateAsync(CancellationToken cancellationToken = default)
+    public static async Task<TerminologyTestFixture> CreateAsync(CancellationToken cancellationToken = default)
     {
         var database = await TestTenantDatabase.CreateSqlServerFhirRepositoryAsync();
 
         var store = new SystemPartitionTenantStore(database.ConnectionString);
 
-        var deployer = new SchemaDeployer(
-            store,
-            new FixtureHostEnvironment(),
-            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = true }),
-            new SchemaVersionResolver(store, NullLogger<SchemaVersionResolver>.Instance),
-            NullLogger<SchemaDeployer>.Instance);
-
         var sqlExecutionService = new SqlExecutionService(store, NullLogger<SqlExecutionService>.Instance);
 
-        var cacheRegistry = new global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexCacheRegistry(
+        var cacheRegistry = new SqlServerSearchIndexCacheRegistry(
             sqlExecutionService, NullLoggerFactory.Instance);
 
-        var tenantInitializer = new SqlServerTenantInitializer(
-            deployer, cacheRegistry, NullLogger<SqlServerTenantInitializer>.Instance);
-
-        // "Development" rather than "Production": the validator rejects any connection string carrying a
-        // password when the environment is Production. The fixture uses integrated security so it would pass
-        // either way, but pinning it here keeps the fixture working if the connection string ever gains
-        // credentials. Since the injected value is now the one actually honoured, this pin is load-bearing
-        // rather than decorative.
-        var managedIdentityValidator = new ManagedIdentityConnectionStringValidator(
-            "Development", NullLogger<ManagedIdentityConnectionStringValidator>.Instance);
-
-        var factory = new SqlEntityFrameworkRepositoryFactory(
-            store,
-            NullLoggerFactory.Instance,
-            new RecyclableMemoryStreamManager(),
-            new MultiTenantSearchIndexCache(NullLoggerFactory.Instance),
-            tenantInitializer,
-            managedIdentityValidator,
-            sqlExecutionService);
-
-        return new TerminologyOracleFixture(database, factory, sqlExecutionService, cacheRegistry);
+        return new TerminologyTestFixture(database, sqlExecutionService, cacheRegistry);
     }
 
     /// <summary>
@@ -121,10 +77,6 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
     /// <c>system|version|code</c> and returns before touching the database on a hit, so a test that shares a
     /// cache across cases can assert against the cache rather than the query it meant to exercise. Each call
     /// here gets a fresh one.
-    /// <para>
-    /// <b>The seam Task 6 flips.</b> Every assertion in the oracle was written and run green against the EF
-    /// implementation first; none were edited when this changed. Swap the two lines below to compare.
-    /// </para>
     /// </summary>
     public ITerminologyService CreateTerminologyService()
     {
@@ -139,62 +91,16 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
     }
 
     /// <summary>
-    /// GetImportStatusAsync is public on both implementations but is not part of ITerminologyService, so it
-    /// is routed through the fixture rather than making the seam return a concrete type.
-    /// </summary>
-    public async Task<Ignixa.Domain.Terminology.TerminologyImportStatus?> GetImportStatusAsync(
-        string canonical, CancellationToken cancellationToken = default)
-    {
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        _caches.Add(cache);
-
-        var service = new SqlServerTerminologyService(
-            SqlExecutionService,
-            SystemConstants.SystemPartitionId,
-            cache,
-            NullLogger<SqlServerTerminologyService>.Instance);
-
-        return await service.GetImportStatusAsync(canonical, cancellationToken);
-    }
-
-    /// <summary>The EF implementation, kept so a disagreement can be attributed to the port rather than the test.</summary>
-    public ITerminologyService CreateEfTerminologyService()
-    {
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        _caches.Add(cache);
-        return new SqlTerminologyService(_factory, cache, NullLogger<SqlTerminologyService>.Instance);
-    }
-
-    /// <summary>
-    /// The importer, plus the system repository it depends on, built the way
-    /// <c>ImportTerminologyResourceActivity</c> builds them: by hand, from a partition-0 context. The caller
-    /// owns the returned context's lifetime.
-    /// </summary>
-    public async Task<(SqlCodeSystemImporter Importer, FhirDbContext Context)> CreateImporterAsync(
-        CancellationToken cancellationToken = default)
-    {
-        var context = await _factory.GetDbContextAsync(SystemConstants.SystemPartitionId, cancellationToken);
-
-        var systemRepository = new SqlSystemRepository(
-            context, NullLogger<SqlSystemRepository>.Instance, searchIndexCache: null);
-
-        var importer = new SqlCodeSystemImporter(
-            context, systemRepository, NullLogger<SqlCodeSystemImporter>.Instance);
-
-        return (importer, context);
-    }
-
-    /// <summary>
-    /// The ported CodeSystem importer, built the way the composition root will build it: over
+    /// The CodeSystem importer, built the way the composition root builds it: over
     /// <see cref="ISqlExecutionService"/> alone, with no DbContext and no composition root. It resolves
-    /// system ids through the ported <c>SqlServerSystemRepository</c>, so this exercises both.
+    /// system ids through <see cref="SqlServerSystemRepository"/>, so this exercises both.
     /// </summary>
     public SqlServerCodeSystemImporter CreateSqlServerImporter()
     {
-        var searchIndexCache = new global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache(
+        var searchIndexCache = new SqlServerSearchIndexReferenceDataCache(
             SqlExecutionService,
             SystemConstants.SystemPartitionId,
-            NullLogger<global::Ignixa.DataLayer.SqlServer.Indexing.SqlServerSearchIndexReferenceDataCache>.Instance);
+            NullLogger<SqlServerSearchIndexReferenceDataCache>.Instance);
 
         _searchCaches.Add(searchIndexCache);
 
@@ -220,15 +126,15 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
     /// <c>ImportCodeSystemAsync</c> looks the row up by <c>PackageResourceId</c> and throws if it is absent,
     /// so terminology import genuinely depends on the package row existing first — a CodeSystem arrives as
     /// package content, not on its own. Inserted directly rather than through
-    /// <c>IPackageResourceRepository</c>: that interface's upsert returns void, and mixing the ported
-    /// repository into an EF oracle fixture would blur which implementation a failure came from.
+    /// <c>IPackageResourceRepository</c> so that a failure here is unambiguously a seeding failure rather
+    /// than a defect in the repository under test.
     /// </para>
     /// </summary>
     public async Task<PackageResource> SeedPackageResourceAsync(
         string resourceType, string canonical, string json, CancellationToken cancellationToken = default)
     {
         var resourceId = canonical.Split('/')[^1];
-        var packageId = $"oracle.{Guid.NewGuid():N}";
+        var packageId = $"terminology.{Guid.NewGuid():N}";
 
         var packageResourceId = await _database.ExecuteScalarAsync<long>(
             "INSERT INTO dbo.PackageResource " +
@@ -307,7 +213,7 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
         return "{" +
             "\"resourceType\":\"ValueSet\"," +
             $"\"url\":\"{url}\"," +
-            "\"name\":\"OracleValueSet\"," +
+            "\"name\":\"TerminologyTestValueSet\"," +
             "\"version\":\"1.0.0\"," +
             "\"status\":\"active\"," +
             $"\"expansion\":{{\"contains\":[{contains}]}}" +
@@ -323,7 +229,7 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
         "{" +
         "\"resourceType\":\"ConceptMap\"," +
         $"\"url\":\"{url}\"," +
-        "\"name\":\"OracleConceptMap\"," +
+        "\"name\":\"TerminologyTestConceptMap\"," +
         "\"version\":\"1.0.0\"," +
         "\"status\":\"active\"," +
         "\"group\":[{" +
@@ -383,17 +289,5 @@ public sealed class TerminologyOracleFixture : IAsyncDisposable
             IsSystemPartition = isSystemPartition,
             Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = connectionString },
         };
-    }
-
-    private sealed class FixtureHostEnvironment : Microsoft.Extensions.Hosting.IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Development";
-
-        public string ApplicationName { get; set; } = "Ignixa.DataLayer.SqlServer.IntegrationTests";
-
-        public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; }
-            = new Microsoft.Extensions.FileProviders.NullFileProvider();
     }
 }

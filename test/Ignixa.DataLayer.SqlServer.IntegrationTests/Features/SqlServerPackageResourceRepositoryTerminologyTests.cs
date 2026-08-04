@@ -14,9 +14,9 @@ namespace Ignixa.DataLayer.SqlServer.IntegrationTests.Features;
 /// </summary>
 public class SqlServerPackageResourceRepositoryTerminologyTests : IAsyncLifetime
 {
-    private TerminologyOracleFixture _fixture = null!;
+    private TerminologyTestFixture _fixture = null!;
 
-    public async Task InitializeAsync() => _fixture = await TerminologyOracleFixture.CreateAsync();
+    public async Task InitializeAsync() => _fixture = await TerminologyTestFixture.CreateAsync();
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
@@ -41,7 +41,7 @@ public class SqlServerPackageResourceRepositoryTerminologyTests : IAsyncLifetime
         var seeded = await _fixture.SeedPackageResourceAsync(
             "CodeSystem",
             "http://example.org/fhir/CodeSystem/by-id",
-            TerminologyOracleFixture.HierarchicalCodeSystemJson("http://example.org/fhir/CodeSystem/by-id"));
+            TerminologyTestFixture.HierarchicalCodeSystemJson("http://example.org/fhir/CodeSystem/by-id"));
 
         var result = await CreateRepository().GetByPackageResourceIdAsync(
             seeded.PackageResourceId, CancellationToken.None);
@@ -126,7 +126,7 @@ public class SqlServerPackageResourceRepositoryTerminologyTests : IAsyncLifetime
         var seeded = await _fixture.SeedPackageResourceAsync(
             "CodeSystem",
             "http://example.org/fhir/CodeSystem/mark-failed",
-            TerminologyOracleFixture.HierarchicalCodeSystemJson("http://example.org/fhir/CodeSystem/mark-failed"));
+            TerminologyTestFixture.HierarchicalCodeSystemJson("http://example.org/fhir/CodeSystem/mark-failed"));
 
         await CreateRepository().MarkTerminologyImportFailedAsync(
             seeded.PackageResourceId, "something went wrong", CancellationToken.None);
@@ -151,7 +151,7 @@ public class SqlServerPackageResourceRepositoryTerminologyTests : IAsyncLifetime
         var seeded = await _fixture.SeedPackageResourceAsync(
             "CodeSystem",
             "http://example.org/fhir/CodeSystem/mark-failed-long",
-            TerminologyOracleFixture.HierarchicalCodeSystemJson("http://example.org/fhir/CodeSystem/mark-failed-long"));
+            TerminologyTestFixture.HierarchicalCodeSystemJson("http://example.org/fhir/CodeSystem/mark-failed-long"));
 
         await CreateRepository().MarkTerminologyImportFailedAsync(
             seeded.PackageResourceId, new string('x', 5000), CancellationToken.None);

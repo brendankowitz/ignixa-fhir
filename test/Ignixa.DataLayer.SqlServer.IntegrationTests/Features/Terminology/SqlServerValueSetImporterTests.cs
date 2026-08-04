@@ -19,16 +19,16 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
 {
     private const string CodeSystemUrl = "http://example.org/fhir/CodeSystem/ported-vs-vehicles";
 
-    private TerminologyOracleFixture _fixture = null!;
+    private TerminologyTestFixture _fixture = null!;
 
-    public async Task InitializeAsync() => _fixture = await TerminologyOracleFixture.CreateAsync();
+    public async Task InitializeAsync() => _fixture = await TerminologyTestFixture.CreateAsync();
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
     private async Task SeedCodeSystemAsync()
     {
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", CodeSystemUrl, TerminologyOracleFixture.HierarchicalCodeSystemJson(CodeSystemUrl));
+            "CodeSystem", CodeSystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(CodeSystemUrl));
 
         await _fixture.CreateSqlServerImporter().ImportCodeSystemAsync(
             _fixture.SystemPartitionId, packageResource, CancellationToken.None);
@@ -75,7 +75,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ValueSet/ported-expanded";
 
         await ImportValueSetAsync(
-            url, TerminologyOracleFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck", "building"));
+            url, TerminologyTestFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck", "building"));
 
         (await ExpansionRowCountAsync(url)).ShouldBe(3);
 
@@ -91,7 +91,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ValueSet/ported-readback";
 
         await ImportValueSetAsync(
-            url, TerminologyOracleFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck"));
+            url, TerminologyTestFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck"));
 
         (await ExpandedCodesAsync(url)).ShouldBe(["car", "truck"]);
 
@@ -300,7 +300,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ValueSet/ported-compose-reference";
 
         await ImportValueSetAsync(
-            sourceUrl, TerminologyOracleFixture.ExpandedValueSetJson(sourceUrl, CodeSystemUrl, "car", "truck"));
+            sourceUrl, TerminologyTestFixture.ExpandedValueSetJson(sourceUrl, CodeSystemUrl, "car", "truck"));
 
         await ImportValueSetAsync(url, ComposeValueSetJson(url,
             $"{{\"include\":[{{\"valueSet\":[\"{sourceUrl}\"]}}]}}"));
@@ -367,7 +367,7 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ValueSet/ported-reimport";
 
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "ValueSet", url, TerminologyOracleFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck"));
+            "ValueSet", url, TerminologyTestFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck"));
 
         var importer = _fixture.CreateSqlServerImporter();
 

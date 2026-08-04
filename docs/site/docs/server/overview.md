@@ -72,7 +72,7 @@ src/
 │   ├── Ignixa.FhirPath/
 │   └── ...
 └── DataLayer/
-    ├── Ignixa.DataLayer.SqlEntityFramework/
+    ├── Ignixa.DataLayer.SqlServer/
     ├── Ignixa.DataLayer.FileSystem/
     └── Ignixa.DataLayer.BlobStorage/
 ```

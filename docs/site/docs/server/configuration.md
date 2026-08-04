@@ -24,7 +24,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "IsActive": true,
         "IsSystemPartition": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "InheritConnectionStringFromTenant": true
         }
       },
@@ -34,7 +34,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=localhost;Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
         }
       }
@@ -50,7 +50,7 @@ Ignixa requires at least two tenant configurations: Tenant 0 (system partition) 
 | `Mode` | `Isolated` - each tenant has separate data. (`Distributed` planned but not yet implemented) |
 | `TenantId` | Unique identifier. `0` is reserved for system operations |
 | `FhirVersion` | `4.0` (R4), `4.3` (R4B), `5.0` (R5), or `6.0` (R6) |
-| `Storage.Type` | `SqlEntityFramework` (recommended) |
+| `Storage.Type` | `SqlServer` (recommended). `SqlEntityFramework` is accepted as a legacy alias for the same storage. |
 | `InheritConnectionStringFromTenant` | System partition inherits from Tenant 1 |
 
 ### Hostname-based Tenant Resolution
@@ -67,7 +67,7 @@ Each tenant may declare a `Hostnames` array to enable resolution by request `Hos
         "TenantId": 1,
         "DisplayName": "Production Database",
         "Hostnames": ["fhir1.example.org", "fhir1-backup.example.org"],
-        "Storage": { "Type": "SqlEntityFramework", "ConnectionString": "..." }
+        "Storage": { "Type": "SqlServer", "ConnectionString": "..." }
       }
     ]
   }
@@ -136,7 +136,7 @@ For production SQL Server:
 ```json
 {
   "Storage": {
-    "Type": "SqlEntityFramework",
+    "Type": "SqlServer",
     "ConnectionString": "Server=your-server.database.windows.net;Database=FHIR_R4;Authentication=Active Directory Default;TrustServerCertificate=true"
   }
 }
@@ -147,7 +147,7 @@ For local development with Windows Auth:
 ```json
 {
   "Storage": {
-    "Type": "SqlEntityFramework",
+    "Type": "SqlServer",
     "ConnectionString": "Server=(local);Database=FHIR_R4;Integrated Security=true;TrustServerCertificate=true"
   }
 }
@@ -519,7 +519,7 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "IsActive": true,
         "IsSystemPartition": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "InheritConnectionStringFromTenant": true
         }
       },
@@ -529,7 +529,7 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
         "FhirVersion": "4.0",
         "IsActive": true,
         "Storage": {
-          "Type": "SqlEntityFramework",
+          "Type": "SqlServer",
           "ConnectionString": "Server=sql.example.com;Database=FHIR_R4;Authentication=Active Directory Default"
         }
       }

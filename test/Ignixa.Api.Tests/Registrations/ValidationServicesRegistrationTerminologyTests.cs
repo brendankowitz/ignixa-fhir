@@ -22,11 +22,12 @@ using Shouldly;
 namespace Ignixa.Api.Tests.Registrations;
 
 /// <summary>
-/// Proves the composition root actually serves terminology from the ported SQL Server implementation.
+/// Proves the composition root actually serves terminology from the SQL Server implementation.
 /// <para>
-/// The container built here registers only what the terminology graph needs -- notably <b>no</b>
-/// <c>SqlEntityFrameworkRepositoryFactory</c>, which the EF <c>SqlTerminologyService</c> required. Resolution
-/// succeeding at all is therefore structural evidence that the EF path is gone, not merely unused.
+/// The container built here registers only what the terminology graph needs: an
+/// <see cref="ISqlExecutionService"/>, a logger factory, a request-context accessor and a memory cache.
+/// Resolution succeeding against that alone is structural evidence that terminology has no dependency on a
+/// wider composition root.
 /// </para>
 /// </summary>
 public class ValidationServicesRegistrationTerminologyTests
@@ -94,24 +95,6 @@ public class ValidationServicesRegistrationTerminologyTests
 
         // The hybrid receives this same per-scope instance for both its SQL side and its routing decision.
         statusProvider.ShouldBeSameAs(scope.Resolve<SqlServerTerminologyService>());
-    }
-
-    /// <summary>
-    /// The EF <c>SqlTerminologyService</c> must not be reachable. Asserting on the registration rather than
-    /// on the resolved graph's private fields is what makes this a wiring test instead of a reflection test.
-    /// </summary>
-    [Fact]
-    public void GivenTheValidationServiceRegistrations_WhenInspectingTheContainer_ThenTheEfTerminologyServiceIsNotRegistered()
-    {
-        // Arrange
-        using var container = BuildContainer();
-
-        // Act
-        var efIsRegistered = container
-            .IsRegistered<Ignixa.DataLayer.SqlEntityFramework.Features.Terminology.SqlTerminologyService>();
-
-        // Assert
-        efIsRegistered.ShouldBeFalse();
     }
 
     /// <summary>

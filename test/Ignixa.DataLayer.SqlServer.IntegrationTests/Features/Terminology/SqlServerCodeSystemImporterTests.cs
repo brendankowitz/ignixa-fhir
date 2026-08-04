@@ -19,16 +19,16 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
 {
     private const string SystemUrl = "http://example.org/fhir/CodeSystem/ported-vehicles";
 
-    private TerminologyOracleFixture _fixture = null!;
+    private TerminologyTestFixture _fixture = null!;
 
-    public async Task InitializeAsync() => _fixture = await TerminologyOracleFixture.CreateAsync();
+    public async Task InitializeAsync() => _fixture = await TerminologyTestFixture.CreateAsync();
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
     private async Task<Ignixa.Domain.Terminology.TerminologyImportResult> ImportAsync(string url, string? json = null)
     {
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", url, json ?? TerminologyOracleFixture.HierarchicalCodeSystemJson(url));
+            "CodeSystem", url, json ?? TerminologyTestFixture.HierarchicalCodeSystemJson(url));
 
         var importer = _fixture.CreateSqlServerImporter();
         return await importer.ImportCodeSystemAsync(
@@ -44,8 +44,10 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
     [Fact]
     public async Task GivenAHierarchicalCodeSystem_WhenImported_ThenTheHierarchyIsPersisted()
     {
-        // THE FIX. Against the EF importer this same seed produced zero parent links; see
-        // TerminologyOracleImportTests, whose assertions record that defect.
+        // THE FIX. Against the EF importer this same seed produced zero parent links: it chose between two
+        // insert paths and ran parent resolution on only one, so every CodeSystem at or below 1,000 concepts
+        // landed flat. That implementation and the oracle recording its behaviour are both deleted; the
+        // defect is described in the commit that introduced dbo.ImportTermCodeSystem.
         await ImportAsync(SystemUrl);
 
         (await ConceptCountAsync(SystemUrl)).ShouldBe(4);
@@ -101,8 +103,8 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
         var atUrl = "http://example.org/fhir/CodeSystem/ported-flat-1000";
         var aboveUrl = "http://example.org/fhir/CodeSystem/ported-flat-1001";
 
-        await ImportAsync(atUrl, TerminologyOracleFixture.FlatCodeSystemJson(atUrl, 1000));
-        await ImportAsync(aboveUrl, TerminologyOracleFixture.FlatCodeSystemJson(aboveUrl, 1001));
+        await ImportAsync(atUrl, TerminologyTestFixture.FlatCodeSystemJson(atUrl, 1000));
+        await ImportAsync(aboveUrl, TerminologyTestFixture.FlatCodeSystemJson(aboveUrl, 1001));
 
         (await ConceptCountAsync(atUrl)).ShouldBe(1000);
         (await ConceptCountAsync(aboveUrl)).ShouldBe(1001);
@@ -116,7 +118,7 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
         // HybridTerminologyService routes anything other than Completed to the in-memory fallback -- and
         // failed this very guard on the following load, re-importing in full every time.
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", SystemUrl, TerminologyOracleFixture.HierarchicalCodeSystemJson(SystemUrl));
+            "CodeSystem", SystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl));
 
         var importer = _fixture.CreateSqlServerImporter();
 
@@ -183,13 +185,13 @@ public class SqlServerCodeSystemImporterTests : IAsyncLifetime
     {
         // The procedure deletes the previous code system row first, and the FK cascade takes its concepts.
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", SystemUrl, TerminologyOracleFixture.HierarchicalCodeSystemJson(SystemUrl));
+            "CodeSystem", SystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl));
 
         var importer = _fixture.CreateSqlServerImporter();
         await importer.ImportCodeSystemAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);
 
         // Same package resource, different content: two concepts instead of four.
-        packageResource.ResourceJson = TerminologyOracleFixture.FlatCodeSystemJson(SystemUrl, 2);
+        packageResource.ResourceJson = TerminologyTestFixture.FlatCodeSystemJson(SystemUrl, 2);
         await _fixture.ExecuteNonQueryAsync(
             $"UPDATE dbo.PackageResource SET ResourceJson = '{packageResource.ResourceJson.Replace("'", "''", StringComparison.Ordinal)}' " +
             $"WHERE PackageResourceId = {packageResource.PackageResourceId}", CancellationToken.None);

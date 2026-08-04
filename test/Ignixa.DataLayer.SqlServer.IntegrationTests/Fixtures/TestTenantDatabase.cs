@@ -35,9 +35,9 @@ public sealed class TestTenantDatabase
 
     public ISqlExecutionService SqlExecutionService { get; }
 
-    // Exposed for consumers that need to wire a non-ISqlExecutionService client directly against this
-    // database (e.g. DifferentialTestHarness's EF DbContext for the legacy SqlEntityFrameworkRepository,
-    // which needs a raw connection string, not the tenant-routed ISqlExecutionService abstraction).
+    // Exposed for consumers that need to build their own tenant store over this database rather than use
+    // the one above (e.g. TerminologyTestFixture, which must also serve the system partition), and so need
+    // the raw connection string rather than the tenant-routed ISqlExecutionService abstraction.
     public string ConnectionString => BuildConnectionStringForDatabase(_databaseName);
 
     public static async Task<TestTenantDatabase> CreateEmptyAsync(CancellationToken cancellationToken = default)
@@ -164,9 +164,9 @@ public sealed class TestTenantDatabase
     public SqlServerFhirRepository Repository { get; private set; } = null!;
 
     /// <summary>
-    /// The same <see cref="SqlServerMergeRepository"/> instance <see cref="Repository"/> was
-    /// constructed with -- exposed so <c>DifferentialTestHarness</c> can surface it as
-    /// <c>NewMergeRepository</c>, matching its <c>LegacyMergeRepository</c> equivalent.
+    /// The same <see cref="SqlServerMergeRepository"/> instance <see cref="Repository"/> was constructed
+    /// with, exposed so a test can drive a merge directly and then assert against what the repository above
+    /// sees -- the two must share one instance or the assertion proves nothing.
     /// </summary>
     public SqlServerMergeRepository MergeRepository { get; private set; } = null!;
 

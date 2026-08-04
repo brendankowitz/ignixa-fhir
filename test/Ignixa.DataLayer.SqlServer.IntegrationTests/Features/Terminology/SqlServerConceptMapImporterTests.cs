@@ -16,9 +16,9 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
     private const string SourceSystemUrl = "http://example.org/fhir/CodeSystem/ported-cm-vehicles";
     private const string TargetSystemUrl = "http://example.org/fhir/CodeSystem/ported-cm-autos";
 
-    private TerminologyOracleFixture _fixture = null!;
+    private TerminologyTestFixture _fixture = null!;
 
-    public async Task InitializeAsync() => _fixture = await TerminologyOracleFixture.CreateAsync();
+    public async Task InitializeAsync() => _fixture = await TerminologyTestFixture.CreateAsync();
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
@@ -53,7 +53,7 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ConceptMap/ported-basic";
 
         await ImportConceptMapAsync(
-            url, TerminologyOracleFixture.ConceptMapJson(url, SourceSystemUrl, TargetSystemUrl));
+            url, TerminologyTestFixture.ConceptMapJson(url, SourceSystemUrl, TargetSystemUrl));
 
         (await ElementCountAsync(url)).ShouldBe(1);
 
@@ -70,7 +70,7 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ConceptMap/ported-translate";
 
         await ImportConceptMapAsync(
-            url, TerminologyOracleFixture.ConceptMapJson(url, SourceSystemUrl, TargetSystemUrl));
+            url, TerminologyTestFixture.ConceptMapJson(url, SourceSystemUrl, TargetSystemUrl));
 
         var service = _fixture.CreateTerminologyService();
 
@@ -187,7 +187,7 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
         const string url = "http://example.org/fhir/ConceptMap/ported-reimport";
 
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "ConceptMap", url, TerminologyOracleFixture.ConceptMapJson(url, SourceSystemUrl, TargetSystemUrl));
+            "ConceptMap", url, TerminologyTestFixture.ConceptMapJson(url, SourceSystemUrl, TargetSystemUrl));
 
         var importer = _fixture.CreateSqlServerImporter();
         await importer.ImportConceptMapAsync(_fixture.SystemPartitionId, packageResource, CancellationToken.None);

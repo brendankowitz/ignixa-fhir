@@ -1491,7 +1491,7 @@ public static class FhirEndpoints
         var queryParameters = queryParser.Parse(context.Request.Query);
 
         // Build SearchOptions for base-level search (resourceType = null for system-wide search)
-        // This will search across all resource types (handled by SqlEntityFrameworkSearchService)
+        // This will search across all resource types (handled by the configured search service)
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
         // Check for unsupported parameters with handling=strict

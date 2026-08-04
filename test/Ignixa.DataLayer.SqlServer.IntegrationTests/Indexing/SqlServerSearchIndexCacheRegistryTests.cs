@@ -25,9 +25,9 @@ public class SqlServerSearchIndexCacheRegistryTests : IAsyncLifetime
 {
     private const string IdentifierSearchParamUrl = "http://hl7.org/fhir/SearchParameter/Patient-identifier";
 
-    private TerminologyOracleFixture _fixture = null!;
+    private TerminologyTestFixture _fixture = null!;
 
-    public async Task InitializeAsync() => _fixture = await TerminologyOracleFixture.CreateAsync();
+    public async Task InitializeAsync() => _fixture = await TerminologyTestFixture.CreateAsync();
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 

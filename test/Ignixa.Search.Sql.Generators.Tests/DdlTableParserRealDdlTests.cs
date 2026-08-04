@@ -7,7 +7,8 @@ public class DdlTableParserRealDdlTests
     [Fact]
     public void GivenRealStringSearchParamDdl_WhenParsed_ThenTextColumnMatchesHandVerifiedCatalog()
     {
-        // Arrange -- copied verbatim from src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Resources/97.sql lines 713-721
+        // Arrange -- copied verbatim from
+        // src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/StringSearchParam.sql lines 1-9
         var ddl = """
             CREATE TABLE dbo.StringSearchParam (
                 ResourceTypeId      SMALLINT       NOT NULL,

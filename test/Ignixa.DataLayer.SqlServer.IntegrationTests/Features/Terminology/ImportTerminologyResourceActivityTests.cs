@@ -31,9 +31,9 @@ public class ImportTerminologyResourceActivityTests : IAsyncLifetime
 {
     private const string SystemUrl = "http://example.org/fhir/CodeSystem/activity-vehicles";
 
-    private TerminologyOracleFixture _fixture = null!;
+    private TerminologyTestFixture _fixture = null!;
 
-    public async Task InitializeAsync() => _fixture = await TerminologyOracleFixture.CreateAsync();
+    public async Task InitializeAsync() => _fixture = await TerminologyTestFixture.CreateAsync();
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
@@ -80,7 +80,7 @@ public class ImportTerminologyResourceActivityTests : IAsyncLifetime
     public async Task GivenACodeSystemPackageResource_WhenTheActivityRuns_ThenItIsImportedAndTheRowRecordsCompleted()
     {
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", SystemUrl, TerminologyOracleFixture.HierarchicalCodeSystemJson(SystemUrl));
+            "CodeSystem", SystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl));
 
         var output = await CreateActivity().RunExecuteAsync(
             TaskContext,
@@ -101,7 +101,7 @@ public class ImportTerminologyResourceActivityTests : IAsyncLifetime
     public async Task GivenAnUnchangedPackage_WhenTheActivityRunsTwice_ThenTheSecondPassDoesNoWorkAndLeavesTheRowCompleted()
     {
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", SystemUrl, TerminologyOracleFixture.HierarchicalCodeSystemJson(SystemUrl));
+            "CodeSystem", SystemUrl, TerminologyTestFixture.HierarchicalCodeSystemJson(SystemUrl));
 
         var input = new ImportTerminologyResourceInput(
             _fixture.SystemPartitionId, packageResource.PackageResourceId);
@@ -143,13 +143,13 @@ public class ImportTerminologyResourceActivityTests : IAsyncLifetime
         var url = "http://example.org/fhir/CodeSystem/activity-changed";
 
         var packageResource = await _fixture.SeedPackageResourceAsync(
-            "CodeSystem", url, TerminologyOracleFixture.HierarchicalCodeSystemJson(url));
+            "CodeSystem", url, TerminologyTestFixture.HierarchicalCodeSystemJson(url));
 
         var activity = CreateActivity();
         await activity.RunExecuteAsync(
             TaskContext, new ImportTerminologyResourceInput(_fixture.SystemPartitionId, packageResource.PackageResourceId));
 
-        var changed = TerminologyOracleFixture.FlatCodeSystemJson(url, 7);
+        var changed = TerminologyTestFixture.FlatCodeSystemJson(url, 7);
         await _fixture.ExecuteNonQueryAsync(
             $"UPDATE dbo.PackageResource SET ResourceJson = '{changed.Replace("'", "''", StringComparison.Ordinal)}' " +
             $"WHERE PackageResourceId = {packageResource.PackageResourceId}",
