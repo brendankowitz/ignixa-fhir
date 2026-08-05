@@ -53,7 +53,10 @@ COPY src/Core/Extensions/Ignixa.Extensions.FirelySdk6/Ignixa.Extensions.FirelySd
 COPY src/DataLayer/Ignixa.DataLayer.BlobStorage/Ignixa.DataLayer.BlobStorage.csproj src/DataLayer/Ignixa.DataLayer.BlobStorage/
 COPY src/DataLayer/Ignixa.DataLayer.FileSystem/Ignixa.DataLayer.FileSystem.csproj src/DataLayer/Ignixa.DataLayer.FileSystem/
 COPY src/DataLayer/Ignixa.DataLayer.InMemoryIndex/Ignixa.DataLayer.InMemoryIndex.csproj src/DataLayer/Ignixa.DataLayer.InMemoryIndex/
-COPY src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/Ignixa.DataLayer.SqlEntityFramework.csproj src/DataLayer/Ignixa.DataLayer.SqlEntityFramework/
+COPY src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj src/DataLayer/Ignixa.DataLayer.SqlServer/
+# The .sqlproj is referenced with ReferenceOutputAssembly="false" purely to order the build, but restore
+# still has to resolve it, so its project file has to be present too.
+COPY src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj src/DataLayer/Ignixa.DataLayer.SqlServer.Database/
 
 # Restore dependencies for Web project only (excludes test/bench projects)
 # DisableGitVersion=true because .git folder is not available in Docker build context
