@@ -55,7 +55,22 @@ public sealed class TestTenantDatabase
             new SchemaVersionResolver(tenantConfigurationStore, NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
-        await deployer.DeployIfEmptyAsync(TestTenantId, cancellationToken);
+        // Serialised for the same reason CREATE DATABASE is, and more urgently. A DacFx deploy reverse-
+        // engineers the target database before it can diff, holding several connections for the duration;
+        // sixteen xUnit collections doing that at once put 32 sleeping DacFx sessions on the server and the
+        // deploys start timing out inside SqlReverseEngineer -- an environmental failure that looks nothing
+        // like the assertion it interrupts. Gating creation alone was not enough: the deploy is far heavier
+        // than the CREATE.
+        await SchemaDeploymentGate.WaitAsync(cancellationToken);
+
+        try
+        {
+            await deployer.DeployIfEmptyAsync(TestTenantId, cancellationToken);
+        }
+        finally
+        {
+            SchemaDeploymentGate.Release();
+        }
 
         // dbo.ResourceType has no seed data of its own: the dacpac's post-deployment script only
         // seeds dbo.ResourceChangeType (see Script.PostDeployment.sql), and real deployments only
@@ -241,6 +256,9 @@ public sealed class TestTenantDatabase
     /// </para>
     /// </summary>
     private static readonly SemaphoreSlim DatabaseCreationGate = new(1, 1);
+
+    /// <summary>Serialises DacFx schema deployment; see the call site for why one gate is not enough.</summary>
+    private static readonly SemaphoreSlim SchemaDeploymentGate = new(1, 1);
 
     private const int DatabaseLifecycleCommandTimeoutSeconds = 180;
 
