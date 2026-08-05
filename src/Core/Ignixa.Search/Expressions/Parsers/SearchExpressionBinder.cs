@@ -181,12 +181,16 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             syntax.IdentifierValue);
         OfTypeTokenSearchValue value = atomicValueParser.ParseOfType(raw);
 
-        return new SearchValueExpressionBuilderHelper().Build(
-            searchParameter.Code,
+        // Keep the typed value rather than flattening it into an AND of field-level StringExpressions. The
+        // flattened form loses the fact that the three conditions describe one Identifier: the SQL backend
+        // lowers an AND by intersecting its children as separate index sources, which would match a resource
+        // holding the type on one identifier and the value on another.
+        return new SearchPredicateExpressionBuilder().Build(
+            searchParameter,
             modifier: null,
             SearchComparator.Eq,
-            componentIndex: null,
-            value);
+            value,
+            syntax.Span);
     }
 
     private Expression BindComposite(

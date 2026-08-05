@@ -207,9 +207,11 @@ public class IrProjectorTests
     }
 
     [Fact]
-    public void GivenAnOfTypeModifier_WhenDescribed_ThenTheUntypedFieldShapesItBindsToStillProject()
+    public void GivenAnOfTypeModifier_WhenDescribed_ThenItProjectsAsOneTypedPredicate()
     {
-        // Arrange
+        // Arrange -- :of-type keeps its typed OfTypeTokenSearchValue rather than flattening into an AND of
+        // field-level StringExpressions. The flattened form read as three independent conditions, which is
+        // both wrong (they describe one Identifier) and unlowerable by the SQL compiler.
         var ir = ParsePatient(
             ("identifier", SearchParamType.Token),
             ("identifier:of-type", "http://ignixa.test/v2-0203|MR|446053"));
@@ -218,10 +220,8 @@ public class IrProjectorTests
         var rows = IrProjector.Describe(ir);
 
         // Assert
-        rows[0].Kind.ShouldBe("param");
-        rows.ShouldContain(row => row.Kind == "and");
-        rows.Where(row => row.Kind == "stringField").ShouldNotBeEmpty();
-        rows[0].Depth.ShouldBe(0);
+        rows.Select(row => (row.Kind, row.Depth)).ShouldBe([("param", 0), ("predicate", 1)]);
+        rows[1].Text.ShouldContain("446053");
     }
 
     [Fact]

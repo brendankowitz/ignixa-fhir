@@ -27,7 +27,7 @@ internal static class TokenColumnEquality
             _ => new Predicate.Equal(new SqlColumnRef(table.TableName, systemColumn), context.Parameter(systemId!.Value)),
         };
 
-        Predicate? codePredicate = BuildCodePredicate(table, codeColumn, overflowColumn, value.Code, context);
+        Predicate? codePredicate = CodeEquality(table, codeColumn, overflowColumn, value.Code, context);
 
         return (systemPredicate, codePredicate) switch
         {
@@ -38,7 +38,14 @@ internal static class TokenColumnEquality
         };
     }
 
-    private static Predicate? BuildCodePredicate(TableDescriptor table, string codeColumn, string overflowColumn, string? code, LeafContext context)
+    /// <summary>
+    /// The code half of the equality on its own, for callers that pair it with something other than a token
+    /// system (<c>:of-type</c> pairs it with the identifier type columns). Shared rather than reimplemented
+    /// because the overflow split point is schema-derived: a second copy would be the one that drifts from
+    /// the DDL, and a drifted split silently matches nothing for every overflowing code.
+    /// Returns <see langword="null"/> for an absent code, leaving the pairing to the caller.
+    /// </summary>
+    public static Predicate? CodeEquality(TableDescriptor table, string codeColumn, string overflowColumn, string? code, LeafContext context)
     {
         var column = new SqlColumnRef(table.TableName, codeColumn);
         var overflow = new SqlColumnRef(table.TableName, overflowColumn);

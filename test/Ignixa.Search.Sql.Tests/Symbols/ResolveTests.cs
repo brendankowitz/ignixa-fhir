@@ -459,6 +459,54 @@ public class ResolveTests
     }
 
     [Fact]
+    public async Task GivenAnOfTypePredicate_WhenResolved_ThenItsIdentifierTypeSystemIsCollected()
+    {
+        // Arrange -- OfTypeTokenSearchValue is not a TokenSearchValue, so the collector's TokenSearchValue
+        // arm does not see its TypeSystem. Left uncollected, SymbolTable.SystemId throws KeyNotFoundException
+        // during Lower and the whole search fails -- the failure mode a missing collector arm always has here.
+        var parameter = new SearchParameterInfo(
+            "identifier", "identifier", SearchParamType.Token,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null,
+            new OfTypeTokenSearchValue("12345", "http://terminology.hl7.org/CodeSystem/v2-0203", "MR"));
+        var expression = new SearchParameterExpression(parameter, predicate);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Patient-identifier"] = 55;
+        resolver.SystemIds["http://terminology.hl7.org/CodeSystem/v2-0203"] = 77;
+
+        // Act
+        var symbolTable = (await ResolveHarness.RunAsync(expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+
+        // Assert
+        symbolTable.SystemId("http://terminology.hl7.org/CodeSystem/v2-0203").ShouldBe(77);
+    }
+
+    [Fact]
+    public async Task GivenAnOfTypePredicateWithNoTypeSystem_WhenResolved_ThenNoSystemIsCollected()
+    {
+        // Arrange -- the |MR|12345 form has nothing to look up; collecting an empty string would ask the
+        // resolver for a system that cannot exist.
+        var parameter = new SearchParameterInfo(
+            "identifier", "identifier", SearchParamType.Token,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-identifier"));
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, modifier: null,
+            new OfTypeTokenSearchValue("12345", typeSystem: null, "MR"));
+        var expression = new SearchParameterExpression(parameter, predicate);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds["http://hl7.org/fhir/SearchParameter/Patient-identifier"] = 55;
+
+        // Act
+        var symbolTable = (await ResolveHarness.RunAsync(expression, includes: [], revIncludes: [], sort: [], resolver, "Patient", CancellationToken.None)).Symbols;
+
+        // Assert
+        Should.Throw<KeyNotFoundException>(() => symbolTable.SystemId(string.Empty));
+    }
+
+    [Fact]
     public async Task GivenANotReferencedPath_WhenResolved_ThenTheReferenceParameterIsResolvedAndStored()
     {
         // Arrange -- Patient?_not-referenced=Observation:subject. Resolve must look the (Observation,

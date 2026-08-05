@@ -18,10 +18,10 @@ namespace Ignixa.Search.Expressions;
 /// <see cref="Parsing.ParameterTrace"/>: every traced parse would pay for it, and only a renderer ever
 /// wants it. Callers project <c>trace.Ir</c> at the point they need rows.
 /// <para>
-/// Covers the untyped field-level kinds as well as the typed ones: <c>:text</c> and <c>:of-type</c> bind
-/// through <c>SearchValueExpressionBuilderHelper</c> and so put a bare <see cref="StringExpression"/> or a
-/// multiary of them into a parameter's IR. Those are ordinary FHIR searches, not exotica, so refusing to
-/// project them would make <see cref="Describe"/> throw on real traffic. The remaining field-level kinds
+/// Covers the untyped field-level kinds as well as the typed ones: <c>:text</c> binds through
+/// <c>SearchValueExpressionBuilderHelper</c> and so puts a bare <see cref="StringExpression"/> into a
+/// parameter's IR. That is an ordinary FHIR search, not exotica, so refusing to project it would make
+/// <see cref="Describe"/> throw on real traffic. The remaining field-level kinds
 /// (<see cref="BinaryExpression"/>, <see cref="MissingFieldExpression"/>) have no binder path into a traced
 /// IR — the legacy factories that make them feed the EF query generator, not a parse — so they are left to
 /// the loud <see cref="NotSupportedException"/> arm rather than given tokens nothing can produce.
