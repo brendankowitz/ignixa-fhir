@@ -21,6 +21,35 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
 {
     private const string LanguageName = "CSharpSearchParameter";
 
+    /// <summary>
+    /// Canonical URLs of the SearchParameter instances the FHIR specification publishes purely as
+    /// *examples* on the SearchParameter resource page. They are illustrations, not conformance
+    /// resources, and they must never reach the definition set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// They matter because they collide with real parameters on (base resource type, code), and the
+    /// consumer indexes by that pair with a first-writer-wins <c>TryAdd</c>. Emission order therefore
+    /// decides the winner, and for <c>_id</c> the example wins in every FHIR version: the definition
+    /// published under <c>SearchParameter/example</c> ("ID-SEARCH-PARAMETER", expression <c>id</c>)
+    /// shadows the normative <c>SearchParameter/Resource-id</c> (expression <c>Resource.id</c>).
+    /// Anything joining the two definition sets by canonical URL therefore fails to resolve <c>_id</c>.
+    /// </para>
+    /// <para>
+    /// <c>example-reference</c> loses its race today only by luck of ordering — it declares code
+    /// <c>subject</c> on Condition, targeting Organization instead of Group|Patient — and
+    /// <c>example-extension</c> contributes a <c>part-agree</c> parameter based on Patient whose
+    /// expression navigates a DocumentReference extension. Excluding all three removes the class of
+    /// defect rather than the one instance of it.
+    /// </para>
+    /// </remarks>
+    private static readonly HashSet<string> SpecificationExampleSearchParameterUrls = new(StringComparer.Ordinal)
+    {
+        "http://hl7.org/fhir/SearchParameter/example",
+        "http://hl7.org/fhir/SearchParameter/example-extension",
+        "http://hl7.org/fhir/SearchParameter/example-reference",
+    };
+
     /// <summary>Gets the language name.</summary>
     public string Name => LanguageName;
 
@@ -138,6 +167,11 @@ public sealed class CSharpSearchParameterLanguage : ILanguage
         int count = 0;
         foreach (var searchParam in searchParameters.Values)
         {
+            if (searchParam.Url != null && SpecificationExampleSearchParameterUrls.Contains(searchParam.Url))
+            {
+                continue;
+            }
+
             GenerateSearchParameterInfoFromObject(sb, searchParam, count == 0);
             count++;
         }

@@ -12,7 +12,7 @@ $ErrorActionPreference = "Stop"
 
 # Paths
 $scriptDir = $PSScriptRoot
-$outputDir = Join-Path $scriptDir ".." "src" "Ignixa.Search" "Generated"
+$outputDir = Join-Path $scriptDir ".." "src" "Core" "Ignixa.Search" "Generated"
 $codegenExe = Join-Path $scriptDir "fhir-codegen" "src" "fhir-codegen" "bin" "Release" "net8.0" "fhir-codegen.exe"
 
 # Create output directory
