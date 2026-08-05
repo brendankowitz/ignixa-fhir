@@ -18,6 +18,9 @@ namespace Ignixa.DataLayer.SqlServer.RowGenerators;
 /// </summary>
 public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
 {
+    private static readonly int Code1Width = SearchParamColumnWidths.For("TokenTokenCompositeSearchParam", "Code1");
+    private static readonly int Code2Width = SearchParamColumnWidths.For("TokenTokenCompositeSearchParam", "Code2");
+
     private readonly IReadOnlyDictionary<string, int> _systemMappings;
 
     /// <summary>
@@ -42,10 +45,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId1", SqlDbType.Int),
-            new SqlMetaData("Code1", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code1", SqlDbType.VarChar, Code1Width),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
             new SqlMetaData("SystemId2", SqlDbType.Int),
-            new SqlMetaData("Code2", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code2", SqlDbType.VarChar, Code2Width),
             new SqlMetaData("CodeOverflow2", SqlDbType.VarChar, -1),
         };
 
@@ -106,10 +109,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent1.Code != null && tokenComponent1.Code.Length > 128)
+                        if (tokenComponent1.Code != null && tokenComponent1.Code.Length > Code1Width)
                         {
-                            record.SetString(4, tokenComponent1.Code.Substring(0, 128));
-                            record.SetString(5, tokenComponent1.Code.Substring(128));
+                            record.SetString(4, tokenComponent1.Code.Substring(0, Code1Width));
+                            record.SetString(5, tokenComponent1.Code.Substring(Code1Width));
                         }
                         else
                         {
@@ -135,10 +138,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent2.Code != null && tokenComponent2.Code.Length > 128)
+                        if (tokenComponent2.Code != null && tokenComponent2.Code.Length > Code2Width)
                         {
-                            record.SetString(7, tokenComponent2.Code.Substring(0, 128));
-                            record.SetString(8, tokenComponent2.Code.Substring(128));
+                            record.SetString(7, tokenComponent2.Code.Substring(0, Code2Width));
+                            record.SetString(8, tokenComponent2.Code.Substring(Code2Width));
                         }
                         else
                         {

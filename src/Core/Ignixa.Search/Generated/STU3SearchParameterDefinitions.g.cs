@@ -5557,28 +5557,6 @@ public static class STU3SearchParameterDefinitions
                 description: "The current status of the Episode of Care as provided (does not check the status history collection)")
 ,
             new SearchParameterInfo(
-                name: "Example Search Parameter on an extension",
-                code: "part-agree",
-                searchParamType: SearchParamType.Reference,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example-extension"),
-                components: null,
-                expression: "DocumentReference.extension('http://example.org/fhir/StructureDefinition/participation-agreement')",
-                targetResourceTypes: new[] { "DocumentReference" },
-                baseResourceTypes: new[] { "Patient" },
-                description: "Search by url for a participation agreement, which is stored in a DocumentReference")
-,
-            new SearchParameterInfo(
-                name: "ID-SEARCH-PARAMETER",
-                code: "_id",
-                searchParamType: SearchParamType.Token,
-                url: new Uri("http://hl7.org/fhir/SearchParameter/example"),
-                components: null,
-                expression: "id",
-                targetResourceTypes: null,
-                baseResourceTypes: new[] { "Resource" },
-                description: "Search by resource identifier - e.g. same as the read interaction, but can return included resources")
-,
-            new SearchParameterInfo(
                 name: "date",
                 code: "date",
                 searchParamType: SearchParamType.Date,

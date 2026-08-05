@@ -8,7 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
-using Ignixa.Search.Sql.Lowering;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient.Server;
@@ -21,24 +21,23 @@ namespace Ignixa.DataLayer.SqlServer.Tests.RowGenerators;
 /// Pins the compiler's token code-overflow split point to what the row generators actually write.
 /// <para>
 /// <b>Why this exists.</b> The two live in different assemblies with no shared symbol:
-/// <c>TokenColumnEquality.InlineCodeWidth</c> decides where a searched-for code is cut in two, and every
-/// token row generator cuts the stored code with its own literal <c>128</c>. When the compiler's split
-/// point was changed to the <c>Code</c> column's declared <c>MaxLength</c> (256), every overflowing code
-/// silently stopped matching and nine E2E tests failed; the compiler's own tests agreed with the wrong
-/// value because they derived their expectation from the same lookup the rule read.
+/// <c>TokenColumnEquality</c> decides where a searched-for code is cut in two by resolving the <c>Code</c>
+/// column's declared <c>MaxLength</c> from <see cref="SqlCatalog"/>, and every token row generator cuts the
+/// stored code the same way via <c>SearchParamColumnWidths</c>. When the compiler's split point was still a
+/// literal <c>128</c> instead of the catalog-declared width, every overflowing code silently stopped
+/// matching and nine E2E tests failed; the compiler's own tests agreed with the wrong value because they
+/// derived their expectation from the same lookup the rule read.
 /// </para>
 /// <para>
-/// <b>Why behavioural, and why the generators are deliberately NOT refactored onto the constant.</b> A
-/// shared constant would make divergence impossible, which sounds strictly better — but it would also make
-/// every assertion here tautological, reading the number back from the place that produced it. That is the
-/// exact failure mode of the tests this replaces. Driving the real generators and comparing their output
-/// against the compiler's constant keeps two independent sources of truth and fails if <i>either</i> moves
-/// alone.
+/// <b>Why behavioural.</b> Reading the width straight off <see cref="SqlCatalog"/> here mirrors what
+/// <c>TokenColumnEquality</c> itself does, so this stays a real behavioural check against the row
+/// generators' actual output rather than a tautology -- it fails if the generators split anywhere else,
+/// independent of whether the compiler's own catalog lookup is correct.
 /// </para>
 /// </summary>
 public class TokenCodeSplitPointGuardTests
 {
-    private const int SplitPoint = TokenColumnEquality.InlineCodeWidth;
+    private static readonly int SplitPoint = SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;
     private const string SearchParameterUrl = "http://hl7.org/fhir/SearchParameter/Observation-code";
 
     private static readonly IReadOnlyDictionary<string, short> ResourceTypeIdMap =

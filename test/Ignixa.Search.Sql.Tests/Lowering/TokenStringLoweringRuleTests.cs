@@ -82,6 +82,11 @@ public class TokenStringLoweringRuleTests
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         var stringPredicate = and.Right.ShouldBeOfType<Predicate.Like>();
         stringPredicate.Column.Column.ShouldBe("TextOverflow2");
+        stringPredicate.Match.ShouldBe(LikeMatch.StartsWith);
+        stringPredicate.Value.Value.ShouldBe(
+            longValue,
+            "TextOverflow2 stores the whole value, so the comparison is against the whole search value -- " +
+            "matching it against a remainder here would silently return nothing for every overflowing string");
     }
 
     [Fact]
