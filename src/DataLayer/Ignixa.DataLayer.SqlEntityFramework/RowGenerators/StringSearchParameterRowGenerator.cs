@@ -8,7 +8,6 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
-using Ignixa.Search.Sql.Catalog;
 using Microsoft.Data.SqlClient.Server;
 
 namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
@@ -33,7 +32,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </remarks>
 public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    private static readonly int InlineWidth = SearchParamColumnWidths.StringText;
+    private static readonly int InlineWidth = SearchParamColumnWidths.For("StringSearchParam", "Text");
 
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
@@ -46,7 +45,7 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
-            new SqlMetaData("Text", SqlDbType.NVarChar, SearchParamColumnWidths.StringText),
+            new SqlMetaData("Text", SqlDbType.NVarChar, InlineWidth),
             new SqlMetaData("TextOverflow", SqlDbType.NVarChar, -1),
             new SqlMetaData("IsMin", SqlDbType.Bit),
             new SqlMetaData("IsMax", SqlDbType.Bit),

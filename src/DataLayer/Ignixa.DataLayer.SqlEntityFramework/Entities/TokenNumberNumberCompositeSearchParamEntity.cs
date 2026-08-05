@@ -44,6 +44,11 @@ public class TokenNumberNumberCompositeSearchParamEntity
     public string Code1 { get; set; } = null!;
 
     /// <summary>
+    /// Gets or sets overflow code for the token component (when code exceeds 256 chars).
+    /// </summary>
+    public string? CodeOverflow1 { get; set; }
+
+    /// <summary>
     /// Gets or sets the single low value for the first number component.
     /// </summary>
     public decimal? SingleValue2 { get; set; }

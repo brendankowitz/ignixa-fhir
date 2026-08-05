@@ -21,6 +21,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 /// </summary>
 public class SearchParameterQueryGenerator
 {
+    private static readonly int TokenCodeWidth = SearchParamColumnWidths.For("TokenSearchParam", "Code");
+
     private readonly FhirDbContext _context;
     private readonly SearchIndexReferenceDataCache _cache;
     private readonly ILogger<SearchParameterQueryGenerator> _logger;
@@ -1510,11 +1512,21 @@ public class SearchParameterQueryGenerator
             return query.Select(sp => sp.ResourceSurrogateId);
         }
 
-        if (code.Length > SearchParamColumnWidths.TokenCode)
+        if (code.Length > TokenCodeWidth)
         {
             return query
                 .Where(sp => sp.CodeOverflow != null &&
                     EF.Functions.Collate(sp.Code + sp.CodeOverflow, "Latin1_General_100_CI_AS") == code)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+
+        if (code.Length == TokenCodeWidth)
+        {
+            // At exactly the inline width the stored Code is indistinguishable from the truncated head of a
+            // longer code, so the overflow column has to be empty for this to be the whole stored value.
+            return query
+                .Where(sp => sp.CodeOverflow == null &&
+                    EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
                 .Select(sp => sp.ResourceSurrogateId);
         }
 
@@ -1733,11 +1745,20 @@ public class SearchParameterQueryGenerator
 
         IQueryable<long> query;
 
-        if (code.Length > SearchParamColumnWidths.TokenCode)
+        if (code.Length > TokenCodeWidth)
         {
             query = baseQuery
                 .Where(sp => sp.CodeOverflow != null &&
                     EF.Functions.Collate(sp.Code + sp.CodeOverflow, "Latin1_General_100_CI_AS") == code)
+                .Select(sp => sp.ResourceSurrogateId);
+        }
+        else if (code.Length == TokenCodeWidth)
+        {
+            // At exactly the inline width the stored Code is indistinguishable from the truncated head of a
+            // longer code, so the overflow column has to be empty for this to be the whole stored value.
+            query = baseQuery
+                .Where(sp => sp.CodeOverflow == null &&
+                    EF.Functions.Collate(sp.Code, "Latin1_General_100_CI_AS") == code)
                 .Select(sp => sp.ResourceSurrogateId);
         }
         else

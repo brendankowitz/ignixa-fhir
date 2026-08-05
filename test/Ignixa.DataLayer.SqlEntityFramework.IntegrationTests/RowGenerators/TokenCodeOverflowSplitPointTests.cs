@@ -25,15 +25,25 @@ namespace Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.RowGenerators;
 /// silently matches nothing -- no error, just an empty result set.
 /// </summary>
 /// <remarks>
-/// The expected width comes from <see cref="SqlCatalog"/>, i.e. the DDL, which is the single source of
-/// truth all three parties derive from. What this test adds is that the generators really do derive it
-/// rather than carrying a literal that happens to agree today: they are driven for real, and a
-/// reintroduced hard-coded width shows up here as a failure.
+/// Each slot's expected width is resolved from <see cref="SqlCatalog"/> for <em>that slot's own column</em>,
+/// not from the leaf TokenSearchParam.Code width. Deriving every slot from one leaf column would agree with
+/// the generators only while the DDL stayed uniform, which is the same coupling as the literal this guards
+/// against -- a composite column narrowed in a future schema has to fail here, not pass silently.
 /// </remarks>
 public class TokenCodeOverflowSplitPointTests
 {
-    private static readonly int InlineCodeWidth =
-        SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;
+    private static readonly int LeafCodeWidth = WidthOf("TokenSearchParam.Code");
+
+    /// <summary>
+    /// The declared width of the slot's own column -- the same catalog entry TokenColumnEquality resolves
+    /// when it compiles a predicate against that table.
+    /// </summary>
+    private static int WidthOf(string slot)
+    {
+        var parts = slot.Split('.');
+        return SqlCatalog.Default.Table(parts[0]).Column(parts[1]).MaxLength
+            ?? throw new InvalidOperationException($"{slot} declares no width in SqlCatalog.");
+    }
 
     private const string CompositeUrl = "http://hl7.org/fhir/SearchParameter/Observation-code-value";
 
@@ -62,7 +72,8 @@ public class TokenCodeOverflowSplitPointTests
     public void GivenACodeLongerThanTheCompilersSplitPoint_WhenTheRowGeneratorWritesIt_ThenItDividesAtExactlyThatPoint(string slot)
     {
         // Arrange — distinct fill either side of the split point, so a split at any other offset shows up
-        var code = new string('a', InlineCodeWidth) + new string('b', 37);
+        var width = WidthOf(slot);
+        var code = new string('a', width) + new string('b', 37);
 
         // Act
         var record = Emit(slot, code);
@@ -70,13 +81,13 @@ public class TokenCodeOverflowSplitPointTests
         // Assert
         var (codeOrdinal, overflowOrdinal) = Ordinals(record, slot);
         record.GetString(codeOrdinal).ShouldBe(
-            code[..InlineCodeWidth],
-            $"{slot}: the generator split the code somewhere other than the Code column's declared width, " +
+            code[..width],
+            $"{slot}: the generator split the code somewhere other than this column's declared width, " +
             "so the compiler's Code predicate compares against a prefix that is never stored");
         record.IsDBNull(overflowOrdinal).ShouldBeFalse($"{slot}: an over-long code must write a remainder");
         record.GetString(overflowOrdinal).ShouldBe(
-            code[InlineCodeWidth..],
-            $"{slot}: the remainder does not start at the Code column's declared width");
+            code[width..],
+            $"{slot}: the remainder does not start at this column's declared width");
     }
 
     [Theory]
@@ -84,7 +95,7 @@ public class TokenCodeOverflowSplitPointTests
     public void GivenACodeOfExactlyTheCompilersSplitWidth_WhenTheRowGeneratorWritesIt_ThenTheOverflowColumnIsNull(string slot)
     {
         // Arrange — the boundary the compiler's exact-width arm depends on
-        var code = new string('a', InlineCodeWidth);
+        var code = new string('a', WidthOf(slot));
 
         // Act
         var record = Emit(slot, code);
@@ -102,7 +113,7 @@ public class TokenCodeOverflowSplitPointTests
     {
         // Arrange — PostMergeExtensionUpdater locates the row it just merged by (…, SystemId, Code), so this
         // key has to be truncated exactly as GenerateSqlDataRecords truncated the Code column
-        var code = new string('a', InlineCodeWidth) + new string('b', 37);
+        var code = new string('a', LeafCodeWidth) + new string('b', 37);
         var token = new TokenSearchValue(
             system: null,
             code,
@@ -122,7 +133,7 @@ public class TokenCodeOverflowSplitPointTests
 
         // Assert
         extension.Code.ShouldBe(
-            code[..InlineCodeWidth],
+            code[..LeafCodeWidth],
             "the extension-update join key must equal the Code value written to TokenSearchParam, or the " +
             "post-merge update silently stamps nothing and :of-type stops matching this identifier");
     }

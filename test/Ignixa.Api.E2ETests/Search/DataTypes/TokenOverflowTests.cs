@@ -55,6 +55,8 @@ public class TokenOverflowTests : CapabilityDrivenTestBase, IClassFixture<TokenO
     [InlineData(1)] // PatientB - overflow
     [InlineData(2)] // PatientC - max no overflow
     [InlineData(3)] // PatientD - short no overflow
+    [InlineData(4)] // PatientE - exactly the inline Code width (boundary of the exact-width arm)
+    [InlineData(5)] // PatientF - inside the inline Code width, past the old 128 split
     public async Task GivenResourcesWithAndWithoutTokenOverflow_WhenSearchByToken_ThenCorrectResultsReturned(int patientIndex)
     {
         // Capability check
@@ -68,6 +70,8 @@ public class TokenOverflowTests : CapabilityDrivenTestBase, IClassFixture<TokenO
             1 => _fixture.IdentifierB,
             2 => _fixture.IdentifierC,
             3 => _fixture.IdentifierD,
+            4 => _fixture.IdentifierE,
+            5 => _fixture.IdentifierF,
             _ => throw new ArgumentOutOfRangeException(nameof(patientIndex))
         };
 
@@ -90,6 +94,8 @@ public class TokenOverflowTests : CapabilityDrivenTestBase, IClassFixture<TokenO
     [InlineData(1, "TestB")] // PatientB overflow + family name
     [InlineData(2, "TestC")] // PatientC max + family name
     [InlineData(3, "TestD")] // PatientD short + family name
+    [InlineData(4, "TestE")] // PatientE at the inline Code width + family name
+    [InlineData(5, "TestF")] // PatientF inside the inline Code width + family name
     public async Task GivenTokenOverflowAndString_WhenCompositeSearched_ThenCorrectResultsReturned(int patientIndex, string familyName)
     {
         // Capability check
@@ -103,6 +109,8 @@ public class TokenOverflowTests : CapabilityDrivenTestBase, IClassFixture<TokenO
             1 => _fixture.IdentifierB,
             2 => _fixture.IdentifierC,
             3 => _fixture.IdentifierD,
+            4 => _fixture.IdentifierE,
+            5 => _fixture.IdentifierF,
             _ => throw new ArgumentOutOfRangeException(nameof(patientIndex))
         };
 
