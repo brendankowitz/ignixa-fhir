@@ -6,6 +6,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
+using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
@@ -1509,7 +1510,7 @@ public class SearchParameterQueryGenerator
             return query.Select(sp => sp.ResourceSurrogateId);
         }
 
-        if (code.Length > 128)
+        if (code.Length > SearchParamColumnWidths.TokenCode)
         {
             return query
                 .Where(sp => sp.CodeOverflow != null &&
@@ -1732,7 +1733,7 @@ public class SearchParameterQueryGenerator
 
         IQueryable<long> query;
 
-        if (code.Length > 128)
+        if (code.Length > SearchParamColumnWidths.TokenCode)
         {
             query = baseQuery
                 .Where(sp => sp.CodeOverflow != null &&

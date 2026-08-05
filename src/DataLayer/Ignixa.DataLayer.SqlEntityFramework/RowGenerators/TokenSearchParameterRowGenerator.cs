@@ -45,7 +45,7 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId", SqlDbType.Int),
-            new SqlMetaData("Code", SqlDbType.VarChar, 256),
+            new SqlMetaData("Code", SqlDbType.VarChar, SearchParamColumnWidths.TokenCode),
             new SqlMetaData("CodeOverflow", SqlDbType.VarChar, -1),
         };
 
@@ -97,10 +97,10 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
 
                 // Handle code overflow for very long codes
                 // Code is guaranteed to be non-null here due to guard above
-                if (tokenValue.Code.Length > 128)
+                if (tokenValue.Code.Length > SearchParamColumnWidths.TokenCode)
                 {
-                    record.SetString(4, tokenValue.Code[..128]);
-                    record.SetString(5, tokenValue.Code[128..]);
+                    record.SetString(4, tokenValue.Code[..SearchParamColumnWidths.TokenCode]);
+                    record.SetString(5, tokenValue.Code[SearchParamColumnWidths.TokenCode..]);
                 }
                 else
                 {
@@ -157,8 +157,11 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                     identifierTypeSystemId = sysId;
                 }
 
-                // Truncate code to 128 chars to match the key used in the main table
-                var code = tokenValue.Code.Length > 128 ? tokenValue.Code[..128] : tokenValue.Code;
+                // Truncate to the inline width so this matches the Code value written to the main table,
+                // which is the key PostMergeExtensionUpdater joins on
+                var code = tokenValue.Code.Length > SearchParamColumnWidths.TokenCode
+                    ? tokenValue.Code[..SearchParamColumnWidths.TokenCode]
+                    : tokenValue.Code;
 
                 int? systemId = null;
                 if (!string.IsNullOrEmpty(tokenValue.System) &&

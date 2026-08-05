@@ -33,11 +33,7 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </remarks>
 public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
 {
-    // Inline width sourced from SqlCatalog (Phase 3) instead of a locally hardcoded constant --
-    // matches dbo.StringSearchParam.Text's real DDL width (Resources/97.sql).
-    private static readonly int InlineWidth =
-        SqlCatalog.Default.Table("StringSearchParam").Column("Text").MaxLength
-        ?? throw new InvalidOperationException("StringSearchParam.Text has no MaxLength in SqlCatalog.");
+    private static readonly int InlineWidth = SearchParamColumnWidths.StringText;
 
     public IEnumerable<SqlDataRecord> GenerateSqlDataRecords(
         IReadOnlyList<ResourceWrapper> resources,
@@ -50,7 +46,7 @@ public class StringSearchParameterRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceTypeId", SqlDbType.SmallInt),
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
-            new SqlMetaData("Text", SqlDbType.NVarChar, 256),
+            new SqlMetaData("Text", SqlDbType.NVarChar, SearchParamColumnWidths.StringText),
             new SqlMetaData("TextOverflow", SqlDbType.NVarChar, -1),
             new SqlMetaData("IsMin", SqlDbType.Bit),
             new SqlMetaData("IsMax", SqlDbType.Bit),

@@ -40,10 +40,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId1", SqlDbType.Int),
-            new SqlMetaData("Code1", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code1", SqlDbType.VarChar, SearchParamColumnWidths.TokenCode),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
             new SqlMetaData("SystemId2", SqlDbType.Int),
-            new SqlMetaData("Code2", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code2", SqlDbType.VarChar, SearchParamColumnWidths.TokenCode),
             new SqlMetaData("CodeOverflow2", SqlDbType.VarChar, -1),
         };
 
@@ -99,10 +99,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent1.Code != null && tokenComponent1.Code.Length > 128)
+                        if (tokenComponent1.Code != null && tokenComponent1.Code.Length > SearchParamColumnWidths.TokenCode)
                         {
-                            record.SetString(4, tokenComponent1.Code.Substring(0, 128));
-                            record.SetString(5, tokenComponent1.Code.Substring(128));
+                            record.SetString(4, tokenComponent1.Code.Substring(0, SearchParamColumnWidths.TokenCode));
+                            record.SetString(5, tokenComponent1.Code.Substring(SearchParamColumnWidths.TokenCode));
                         }
                         else
                         {
@@ -128,10 +128,10 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent2.Code != null && tokenComponent2.Code.Length > 128)
+                        if (tokenComponent2.Code != null && tokenComponent2.Code.Length > SearchParamColumnWidths.TokenCode)
                         {
-                            record.SetString(7, tokenComponent2.Code.Substring(0, 128));
-                            record.SetString(8, tokenComponent2.Code.Substring(128));
+                            record.SetString(7, tokenComponent2.Code.Substring(0, SearchParamColumnWidths.TokenCode));
+                            record.SetString(8, tokenComponent2.Code.Substring(SearchParamColumnWidths.TokenCode));
                         }
                         else
                         {

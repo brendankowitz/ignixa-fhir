@@ -45,7 +45,7 @@ public class TokenQuantityCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId1", SqlDbType.Int),
-            new SqlMetaData("Code1", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code1", SqlDbType.VarChar, SearchParamColumnWidths.TokenCode),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
             new SqlMetaData("SystemId2", SqlDbType.Int),
             new SqlMetaData("QuantityCodeId2", SqlDbType.Int),
@@ -106,10 +106,10 @@ public class TokenQuantityCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
+                        if (tokenComponent.Code != null && tokenComponent.Code.Length > SearchParamColumnWidths.TokenCode)
                         {
-                            record.SetString(4, tokenComponent.Code.Substring(0, 128));
-                            record.SetString(5, tokenComponent.Code.Substring(128));
+                            record.SetString(4, tokenComponent.Code.Substring(0, SearchParamColumnWidths.TokenCode));
+                            record.SetString(5, tokenComponent.Code.Substring(SearchParamColumnWidths.TokenCode));
                         }
                         else
                         {

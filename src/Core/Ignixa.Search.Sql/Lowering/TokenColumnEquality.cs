@@ -12,23 +12,6 @@ namespace Ignixa.Search.Sql.Lowering;
 /// </summary>
 internal static class TokenColumnEquality
 {
-    /// <summary>
-    /// The character count at which the row generators split an overflowing token code: the leading
-    /// <see cref="InlineCodeWidth"/> characters go to the Code column and the remainder to CodeOverflow.
-    /// This is a storage convention, not a schema fact, and it must change in lockstep with the literal
-    /// 128 in every token row generator — the writers and this reader are deliberately two independent
-    /// sources of truth, so a divergence is caught rather than propagated.
-    /// <para>
-    /// It is deliberately NOT read from <c>SqlCatalog</c>, whose own summary says it "describes the
-    /// schema, not storage convention". The Code column is declared VARCHAR(256) while the generators
-    /// split at 128, so deriving the split point from the column width searches for a prefix no row ever
-    /// stores: every code longer than 128 characters silently matches nothing. Tests inside this assembly
-    /// cannot detect that, because the only width they can read is the same one the rule would read;
-    /// the guard lives in the row generators' test project instead.
-    /// </para>
-    /// </summary>
-    internal const int InlineCodeWidth = 128;
-
     public static Predicate Build(TableDescriptor table, string systemColumn, string codeColumn, string overflowColumn, TokenSearchValue value, LeafContext context)
     {
         int? systemId = value.System is { Length: > 0 } system ? context.SystemId(system) : null;
@@ -60,16 +43,25 @@ internal static class TokenColumnEquality
         var column = new SqlColumnRef(table.TableName, codeColumn);
         var overflow = new SqlColumnRef(table.TableName, overflowColumn);
 
+        // The split point is the Code column's declared width. microsoft/fhir-server derives it the same
+        // way (VLatest.TokenSearchParam.Code.Metadata.MaxLength), and so do this repo's row generators via
+        // SearchParamColumnWidths, so a database either server populated splits here too. A literal that
+        // drifted from the DDL would search for a prefix no row stores — every overflowing code would
+        // silently match nothing.
+        int inlineCodeWidth = table.Column(codeColumn).MaxLength
+            ?? throw new NotSupportedException(
+                $"Column {table.TableName}.{codeColumn} declares no width, so the code overflow split point is unknown.");
+
         return code switch
         {
             null or "" => null,
-            { } shorter when shorter.Length < InlineCodeWidth => new Predicate.Equal(column, context.Parameter(code)),
-            { } exact when exact.Length == InlineCodeWidth => new Predicate.And(
+            { } shorter when shorter.Length < inlineCodeWidth => new Predicate.Equal(column, context.Parameter(code)),
+            { } exact when exact.Length == inlineCodeWidth => new Predicate.And(
                 new Predicate.IsNull(overflow),
                 new Predicate.Equal(column, context.Parameter(code))),
             _ => new Predicate.And(
-                new Predicate.Equal(column, context.Parameter(code[..InlineCodeWidth])),
-                new Predicate.Equal(overflow, context.Parameter(code[InlineCodeWidth..]))),
+                new Predicate.Equal(column, context.Parameter(code[..inlineCodeWidth])),
+                new Predicate.Equal(overflow, context.Parameter(code[inlineCodeWidth..]))),
         };
     }
 }

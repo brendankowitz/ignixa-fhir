@@ -30,9 +30,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.Search.Sql.Tests" />
-    <!-- Reads TokenColumnEquality.InlineCodeWidth to pin the compiler's split point against what the
-         token row generators actually write, which this assembly's own tests cannot observe. -->
-    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlEntityFramework.IntegrationTests" />
   </ItemGroup>
 
 </Project>

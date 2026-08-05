@@ -8,7 +8,7 @@ using Ignixa.Domain.Models;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
-using Ignixa.Search.Sql.Lowering;
+using Ignixa.Search.Sql.Catalog;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Data.SqlClient.Server;
@@ -18,21 +18,23 @@ using Xunit;
 namespace Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.RowGenerators;
 
 /// <summary>
-/// Pins the token code-overflow split point from the writers' side. The search compiler splits a long code
-/// at <see cref="TokenColumnEquality.InlineCodeWidth"/> to build its <c>Code = @prefix AND CodeOverflow =
-/// @remainder</c> predicate; these generators are what actually put the two halves in those columns. If the
-/// two ever disagree, the compiler searches for a prefix no row stores and every over-long token code
+/// Pins the token code-overflow split point from the writers' side. Both the search compiler
+/// (TokenColumnEquality) and microsoft/fhir-server split a long code at the Code column's declared width;
+/// these generators are what actually put the two halves in those columns. If a generator ever splits
+/// somewhere else, the compiler searches for a prefix no row stores and every over-long token code
 /// silently matches nothing -- no error, just an empty result set.
 /// </summary>
 /// <remarks>
-/// This lives here, driving the real generators, precisely because Ignixa.Search.Sql's own tests cannot
-/// catch that class of divergence: the only split width available inside that assembly is whatever the rule
-/// itself uses, so a test written there agrees with any value the rule picks. The generators are the
-/// independent second source of truth, and they are deliberately left holding their own literal 128 --
-/// pointing them at the constant would collapse the two sources back into one and re-open the hole.
+/// The expected width comes from <see cref="SqlCatalog"/>, i.e. the DDL, which is the single source of
+/// truth all three parties derive from. What this test adds is that the generators really do derive it
+/// rather than carrying a literal that happens to agree today: they are driven for real, and a
+/// reintroduced hard-coded width shows up here as a failure.
 /// </remarks>
 public class TokenCodeOverflowSplitPointTests
 {
+    private static readonly int InlineCodeWidth =
+        SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;
+
     private const string CompositeUrl = "http://hl7.org/fhir/SearchParameter/Observation-code-value";
 
     private static readonly IReadOnlyDictionary<string, short> ResourceTypeIdMap =
@@ -60,20 +62,21 @@ public class TokenCodeOverflowSplitPointTests
     public void GivenACodeLongerThanTheCompilersSplitPoint_WhenTheRowGeneratorWritesIt_ThenItDividesAtExactlyThatPoint(string slot)
     {
         // Arrange — distinct fill either side of the split point, so a split at any other offset shows up
-        var code = new string('a', TokenColumnEquality.InlineCodeWidth) + new string('b', 37);
+        var code = new string('a', InlineCodeWidth) + new string('b', 37);
 
         // Act
-        var (record, codeOrdinal, overflowOrdinal) = Emit(slot, code);
+        var record = Emit(slot, code);
 
         // Assert
+        var (codeOrdinal, overflowOrdinal) = Ordinals(record, slot);
         record.GetString(codeOrdinal).ShouldBe(
-            code[..TokenColumnEquality.InlineCodeWidth],
-            $"{slot}: the generator split the code somewhere other than TokenColumnEquality.InlineCodeWidth, " +
+            code[..InlineCodeWidth],
+            $"{slot}: the generator split the code somewhere other than the Code column's declared width, " +
             "so the compiler's Code predicate compares against a prefix that is never stored");
         record.IsDBNull(overflowOrdinal).ShouldBeFalse($"{slot}: an over-long code must write a remainder");
         record.GetString(overflowOrdinal).ShouldBe(
-            code[TokenColumnEquality.InlineCodeWidth..],
-            $"{slot}: the remainder does not start at TokenColumnEquality.InlineCodeWidth");
+            code[InlineCodeWidth..],
+            $"{slot}: the remainder does not start at the Code column's declared width");
     }
 
     [Theory]
@@ -81,65 +84,100 @@ public class TokenCodeOverflowSplitPointTests
     public void GivenACodeOfExactlyTheCompilersSplitWidth_WhenTheRowGeneratorWritesIt_ThenTheOverflowColumnIsNull(string slot)
     {
         // Arrange — the boundary the compiler's exact-width arm depends on
-        var code = new string('a', TokenColumnEquality.InlineCodeWidth);
+        var code = new string('a', InlineCodeWidth);
 
         // Act
-        var (record, codeOrdinal, overflowOrdinal) = Emit(slot, code);
+        var record = Emit(slot, code);
 
         // Assert
+        var (codeOrdinal, overflowOrdinal) = Ordinals(record, slot);
         record.GetString(codeOrdinal).ShouldBe(code, $"{slot}: a code of exactly the split width belongs inline, whole");
         record.IsDBNull(overflowOrdinal).ShouldBeTrue(
             $"{slot}: the compiler emits 'CodeOverflow IS NULL' for an exact-width code to stop it matching a " +
             "truncated longer one; that guard only works if this column really is NULL here");
     }
 
-    private static (SqlDataRecord Record, int CodeOrdinal, int OverflowOrdinal) Emit(string slot, string code)
+    [Fact]
+    public void GivenAnOverLongCode_WhenExtractingExtensionData_ThenTheJoinKeyMatchesTheStoredCode()
+    {
+        // Arrange — PostMergeExtensionUpdater locates the row it just merged by (…, SystemId, Code), so this
+        // key has to be truncated exactly as GenerateSqlDataRecords truncated the Code column
+        var code = new string('a', InlineCodeWidth) + new string('b', 37);
+        var token = new TokenSearchValue(
+            system: null,
+            code,
+            text: null,
+            identifierTypeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203",
+            identifierTypeCode: "MR");
+        var resource = Leaf(token);
+
+        // Act
+        var extension = new TokenSearchParameterRowGenerator(NoSystemMappings)
+            .ExtractExtensionData(
+                [resource],
+                ResourceTypeIdMap,
+                SearchParamIdMap,
+                new Dictionary<ResourceWrapper, long> { [resource] = 1L })
+            .Single();
+
+        // Assert
+        extension.Code.ShouldBe(
+            code[..InlineCodeWidth],
+            "the extension-update join key must equal the Code value written to TokenSearchParam, or the " +
+            "post-merge update silently stamps nothing and :of-type stops matching this identifier");
+    }
+
+    private static (int CodeOrdinal, int OverflowOrdinal) Ordinals(SqlDataRecord record, string slot)
+    {
+        // "TokenTokenCompositeSearchParam.Code2" -> Code2 / CodeOverflow2. Resolved by name so a column
+        // added to a TVP moves the assertion with it instead of silently repointing it.
+        var codeColumn = slot.Split('.')[1];
+        var suffix = codeColumn["Code".Length..];
+        return (record.GetOrdinal(codeColumn), record.GetOrdinal($"CodeOverflow{suffix}"));
+    }
+
+    private static SqlDataRecord Emit(string slot, string code)
     {
         var token = new TokenSearchValue(system: null, code, text: null);
         var otherToken = new TokenSearchValue(system: null, "short", text: null);
 
         return slot switch
         {
-            "TokenSearchParam.Code" => (
-                Single(new TokenSearchParameterRowGenerator(NoSystemMappings), Leaf(token)), 4, 5),
+            "TokenSearchParam.Code" =>
+                Single(new TokenSearchParameterRowGenerator(NoSystemMappings), Leaf(token)),
 
-            "TokenTokenCompositeSearchParam.Code1" => (
-                Single(new TokenTokenCompositeRowGenerator(NoSystemMappings), Composite([token], [otherToken])), 4, 5),
+            "TokenTokenCompositeSearchParam.Code1" =>
+                Single(new TokenTokenCompositeRowGenerator(NoSystemMappings), Composite([token], [otherToken])),
 
-            "TokenTokenCompositeSearchParam.Code2" => (
-                Single(new TokenTokenCompositeRowGenerator(NoSystemMappings), Composite([otherToken], [token])), 7, 8),
+            "TokenTokenCompositeSearchParam.Code2" =>
+                Single(new TokenTokenCompositeRowGenerator(NoSystemMappings), Composite([otherToken], [token])),
 
-            "TokenDateTimeCompositeSearchParam.Code1" => (
+            "TokenDateTimeCompositeSearchParam.Code1" =>
                 Single(
                     new TokenDateTimeCompositeRowGenerator(NoSystemMappings),
                     Composite([token], [new DateTimeSearchValue(new DateTimeOffset(2023, 1, 1, 0, 0, 0, TimeSpan.Zero))])),
-                4, 5),
 
-            "TokenQuantityCompositeSearchParam.Code1" => (
+            "TokenQuantityCompositeSearchParam.Code1" =>
                 Single(
                     new TokenQuantityCompositeRowGenerator(NoSystemMappings, new Dictionary<string, int>()),
                     Composite([token], [new QuantitySearchValue(system: null, code: null, 5.4m)])),
-                4, 5),
 
-            "TokenStringCompositeSearchParam.Code1" => (
+            "TokenStringCompositeSearchParam.Code1" =>
                 Single(
                     new TokenStringCompositeRowGenerator(NoSystemMappings),
                     Composite([token], [new StringSearchValue("Smith")])),
-                4, 5),
 
-            "TokenNumberNumberCompositeSearchParam.Code1" => (
+            "TokenNumberNumberCompositeSearchParam.Code1" =>
                 Single(
                     new TokenNumberNumberCompositeRowGenerator(NoSystemMappings),
                     Composite([token], [new NumberSearchValue(1m)], [new NumberSearchValue(9m)])),
-                4, 5),
 
-            "ReferenceTokenCompositeSearchParam.Code2" => (
+            "ReferenceTokenCompositeSearchParam.Code2" =>
                 Single(
                     new RefTokenCompositeRowGenerator(NoSystemMappings),
                     Composite(
                         [new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Organization", resourceId: "o1")],
                         [token])),
-                8, 9),
 
             _ => throw new ArgumentOutOfRangeException(nameof(slot), slot, "Unknown token slot."),
         };
@@ -154,15 +192,15 @@ public class TokenCodeOverflowSplitPointTests
             .Single();
     }
 
-    private static ResourceWrapper Leaf(ISearchValue value) => Resource(value);
+    private static ResourceWrapper Leaf(ISearchValue value) => Resource(value, SearchParamType.Token);
 
     private static ResourceWrapper Composite(params IReadOnlyList<ISearchValue>[] components)
-        => Resource(new CompositeIndexSearchValue(components));
+        => Resource(new CompositeIndexSearchValue(components), SearchParamType.Composite);
 
-    private static ResourceWrapper Resource(ISearchValue value)
+    private static ResourceWrapper Resource(ISearchValue value, SearchParamType type)
     {
         var searchParameter = new SearchParameterInfo(
-            "code-value", "code-value", SearchParamType.Composite, url: new Uri(CompositeUrl));
+            "code-value", "code-value", type, url: new Uri(CompositeUrl));
 
         return new ResourceWrapper(
             ResourceType: "Observation",
