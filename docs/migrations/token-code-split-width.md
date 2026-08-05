@@ -34,8 +34,12 @@ first 256. The two disagree for one band of values:
 
 The failure is silent: an affected search returns an empty result set, not an error.
 
-`TokenStringCompositeSearchParam` rows with a string component longer than 256 characters are affected the
-same way, because `TextOverflow2` holds a remainder that the read path now compares as a whole value.
+`TokenStringCompositeSearchParam` is affected more broadly: the old writer split at 128 unconditionally, so
+every row with a string component longer than 128 characters — not just past 256 — has `TextOverflow2`
+holding a remainder rather than the whole value. The read path now treats `TextOverflow2` as the whole
+value once the *search* value exceeds 256 characters, so any of those rows can miss a match at that point,
+not only ones whose stored value happens to exceed 256. The diagnostic query below already scopes to this
+full band — it has no upper bound for exactly this reason.
 
 ## What to do
 

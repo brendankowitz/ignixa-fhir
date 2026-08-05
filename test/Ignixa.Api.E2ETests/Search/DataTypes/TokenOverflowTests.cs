@@ -250,8 +250,8 @@ public class TokenOverflowTests : CapabilityDrivenTestBase, IClassFixture<TokenO
         var results = await Harness.SearchAsync("Patient",
             $"_tag={_fixture.Tag}&identifier={TokenOverflowFixture.IdentifierSystem}|");
 
-        // Assert - Should find all 4 patients
-        results.Length.ShouldBe(4, "Should find all patients with the same identifier system");
+        // Assert - Should find all 6 patients
+        results.Length.ShouldBe(6, "Should find all patients with the same identifier system");
 
         // Verify all expected patients are in results
         foreach (var patient in _fixture.Patients)
