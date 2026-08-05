@@ -5,7 +5,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.SqlServer.Dac;
 using Shouldly;
 
-namespace Ignixa.SchemaUpgrade.Cli.Tests;
+namespace Ignixa.DataLayer.SqlServer.IntegrationTests;
 
 // Proves Finding 1 is fixed: without --allow-data-loss, dacServices.Deploy(...) had no
 // DacDeployOptions at all, so DacDeployOptions.BlockOnPossibleDataLoss defaulted to true (DacFx's
@@ -14,7 +14,7 @@ namespace Ignixa.SchemaUpgrade.Cli.Tests;
 // SchemaDeployerUpgradeTests.cs's real-database method: deploy the current dacpac fresh, diverge
 // the live database with an undeclared column via raw SQL, then insert a row so the pending
 // column-drop is genuinely data-lossy (not just schema-lossy against an empty table).
-public class RunAsyncDataLossTests
+public class SchemaUpgradeCliDataLossTests
 {
     private static string GetBaseConnectionString()
     {

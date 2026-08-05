@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.SchemaUpgrade.Cli.Tests" />
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

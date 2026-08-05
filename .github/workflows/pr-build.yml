@@ -50,7 +50,10 @@ jobs:
           dotnet-version: ${{ matrix.dotnet-version }}
           solution-file: 'All.sln'
           build-configuration: 'Release'
-          test-filter: 'FullyQualifiedName!~E2ETests'
+          # IntegrationTests need a live SQL Server, which this job does not start. They run in
+          # e2e-tests-sql, which does. Their fixtures fail rather than skip when the connection
+          # string is absent, so running them here is 222 red tests that say nothing about the code.
+          test-filter: 'FullyQualifiedName!~E2ETests&FullyQualifiedName!~IntegrationTests'
 
   e2e-tests-sql:
     name: E2E Tests (SQL Server)
@@ -113,6 +116,26 @@ jobs:
         with:
           name: schema-deploy-report
           path: ${{ runner.temp }}/deployreport.xml
+
+      - name: Run SQL Server integration tests
+        run: |
+          dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=integration-test-results.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=master;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+          SqlServer__AutomaticSchemaDeploymentEnabled: "true"
+          Logging__LogLevel__Default: "Warning"
+          Logging__LogLevel__Microsoft: "Warning"
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: '**/integration-test-results.trx'
 
       - name: Restore E2E test project
         run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
