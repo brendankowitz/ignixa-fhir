@@ -140,9 +140,10 @@ public class ResourceColumnNotModifierTests
     {
         // Arrange -- stripping :not must not have opened the door for every other modifier. _id:above is
         // meaningless on a resource id, and lowering it as though the modifier were absent would return a
-        // positive _id match. Asserted at the Lower boundary because SearchOptionsBuilder's parse-time
-        // catch discards an unsupported modifier before it ever reaches the compiler, so a query-string
-        // test would prove nothing about this guard.
+        // positive _id match. Asserted at the Lower boundary because SearchOptionsBuilder rejects an
+        // unsupported modifier at parse time and never hands it to the compiler (see
+        // UnsupportedModifierClassificationTests), so a query-string test would prove nothing about this
+        // guard -- it exists for a caller that builds the expression tree directly.
         var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
         var tree = new SearchParameterExpression(
             idParam,

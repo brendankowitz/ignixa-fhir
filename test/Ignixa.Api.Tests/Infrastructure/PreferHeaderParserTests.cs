@@ -251,4 +251,56 @@ public class PreferHeaderParserTests
     }
 
     #endregion
+
+    [Fact]
+    public void GivenHandlingLenient_WhenCheckingLenientHandling_ThenReturnsTrue()
+    {
+        // Arrange
+        var headers = new HeaderDictionary { { "Prefer", "handling=lenient" } };
+
+        // Act
+        var result = PreferHeaderParser.IsLenientHandling(headers);
+
+        // Assert
+        result.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenNoPreferHeader_WhenCheckingLenientHandling_ThenReturnsFalse()
+    {
+        // Arrange -- the distinction the caller needs: absent is not the same as explicitly lenient, so a
+        // failure the spec says SHALL be rejected can default to rejection.
+        var headers = new HeaderDictionary();
+
+        // Act
+        var result = PreferHeaderParser.IsLenientHandling(headers);
+
+        // Assert
+        result.ShouldBeFalse();
+        PreferHeaderParser.IsStrictHandling(headers).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenHandlingStrict_WhenCheckingLenientHandling_ThenReturnsFalse()
+    {
+        // Arrange
+        var headers = new HeaderDictionary { { "Prefer", "handling=strict" } };
+
+        // Act & Assert
+        PreferHeaderParser.IsLenientHandling(headers).ShouldBeFalse();
+        PreferHeaderParser.IsStrictHandling(headers).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenHandlingLenientAmongOtherPreferences_WhenCheckingLenientHandling_ThenReturnsTrue()
+    {
+        // Arrange
+        var headers = new HeaderDictionary { { "Prefer", "return=representation, handling=lenient" } };
+
+        // Act
+        var result = PreferHeaderParser.IsLenientHandling(headers);
+
+        // Assert
+        result.ShouldBeTrue();
+    }
 }

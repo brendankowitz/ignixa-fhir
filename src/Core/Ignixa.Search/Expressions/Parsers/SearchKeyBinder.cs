@@ -244,7 +244,7 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
             return new SearchModifier(SearchModifierCode.Type, modifier);
         }
 
-        throw new InvalidSearchOperationException(
+        throw new SearchModifierNotSupportedException(
             string.Format(Resources.ModifierNotSupported, modifier, searchParameter.Code));
     }
 

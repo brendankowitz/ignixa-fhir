@@ -335,7 +335,7 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
     private void ThrowModifierNotSupported()
     {
-        throw new InvalidSearchOperationException(
+        throw new SearchModifierNotSupportedException(
             string.Format(Resources.ModifierNotSupported, _modifier, _searchParameterName));
     }
 

@@ -67,7 +67,7 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
         if (modifier?.SearchModifierCode == SearchModifierCode.Text)
         {
             if (searchParameter.Type != SearchParamType.Token)
-                throw new InvalidSearchOperationException(
+                throw new SearchModifierNotSupportedException(
                     string.Format(CultureInfo.InvariantCulture, Resources.ModifierNotSupported, modifier, searchParameter.Code));
 
             outputExpression = Expression.StartsWith(FieldName.TokenText, null, value, true);
@@ -75,7 +75,7 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
         else if (modifier?.SearchModifierCode == SearchModifierCode.OfType)
         {
             if (searchParameter.Type != SearchParamType.Token)
-                throw new InvalidSearchOperationException(
+                throw new SearchModifierNotSupportedException(
                     string.Format(CultureInfo.InvariantCulture, Resources.ModifierNotSupported, modifier, searchParameter.Code));
 
             outputExpression = BuildOfTypeExpression(searchParameter, value);
@@ -85,7 +85,7 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
             if (searchParameter.Type == SearchParamType.Composite)
             {
                 if (modifier != null)
-                    throw new InvalidSearchOperationException(
+                    throw new SearchModifierNotSupportedException(
                         string.Format(CultureInfo.InvariantCulture, Resources.ModifierNotSupported, modifier, searchParameter.Code));
 
                 IReadOnlyList<string> orParts = value.SplitByOrSeparator();
@@ -265,7 +265,7 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
             {
                 if (string.Equals(referenceSearchValue.ResourceType, modifier.ResourceType, StringComparison.OrdinalIgnoreCase)) return source;
 
-                throw new InvalidSearchOperationException(
+                throw new SearchModifierNotSupportedException(
                     string.Format(Resources.ModifierNotSupported, modifier, searchParameter.Code));
             }
 
@@ -279,7 +279,7 @@ public sealed class LegacySearchParameterExpressionParser : ISearchParameterExpr
             }
             catch (ArgumentException)
             {
-                throw new InvalidSearchOperationException(
+                throw new SearchModifierNotSupportedException(
                     string.Format(Resources.ModifierNotSupported, modifier, searchParameter.Code));
             }
         }

@@ -55,6 +55,7 @@ public sealed class SearchOptions
         Total = other.Total;
         Summary = other.Summary;
         UnsupportedParams = other.UnsupportedParams;
+        UnsupportedModifierParams = other.UnsupportedModifierParams;
         BundleIssues = other.BundleIssues;
         ResourceType = other.ResourceType;
         ResourceTypes = other.ResourceTypes;
@@ -116,6 +117,20 @@ public sealed class SearchOptions
     /// Gets or sets any unsupported search parameters encountered.
     /// </summary>
     public IReadOnlyList<string> UnsupportedParams { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the search parameters that carried a modifier this server does not support for them,
+    /// for example <c>_id:above</c>. Always a subset of <see cref="UnsupportedParams"/>.
+    /// </summary>
+    /// <remarks>
+    /// Tracked apart from <see cref="UnsupportedParams"/> because FHIR R4 gives the two cases different
+    /// force: an unknown or unsupported <i>parameter</i> SHOULD be ignored, whereas a request suffixed by
+    /// an unsupported <i>modifier</i> SHALL be rejected with a 400. Both are dropped from
+    /// <see cref="Expression"/> either way, so a caller that chooses to honour <c>handling=lenient</c> can
+    /// keep serving the query; the list exists so the HTTP boundary can apply the stricter default without
+    /// this layer having to know about headers.
+    /// </remarks>
+    public IReadOnlyList<string> UnsupportedModifierParams { get; set; } = Array.Empty<string>();
 
     /// <summary>
     /// Gets or sets issues related to the search (e.g., unsupported parameters).

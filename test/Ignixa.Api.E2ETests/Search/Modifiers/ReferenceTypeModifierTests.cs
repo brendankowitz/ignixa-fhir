@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Net;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
@@ -493,12 +494,19 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
     #region Edge Cases
 
     /// <summary>
-    /// Tests that invalid type modifier returns no results or OperationOutcome (server should handle gracefully).
-    /// For example, searching performer:InvalidType should return no results.
-    /// Per FHIR spec, servers MAY return OperationOutcome for unsupported search parameters.
+    /// A type modifier naming something that is not a resource type is an unsupported modifier, and R4 makes
+    /// rejecting it a SHALL: "Server SHALL reject any search request that ... is suffixed by a modifier that
+    /// the server does not support for that parameter ... using an HTTP 400 error with an OperationOutcome".
+    /// <para>
+    /// This previously asserted nothing. Its body guarded a <c>ShouldContain(OperationOutcome)</c> behind
+    /// <c>if (results.Any(… OperationOutcome))</c> — a tautology inside its own condition — and its comment
+    /// stated it "passes regardless of whether server returns empty, OperationOutcome, or resources". So it
+    /// was green while the server ignored the modifier and returned every Observation, which is the outcome
+    /// its name says it was guarding against.
+    /// </para>
     /// </summary>
     [Fact]
-    public async Task GivenObservationsWithValidPerformerTypes_WhenSearchedWithInvalidTypeModifier_ThenReturnsNoResults()
+    public async Task GivenAnInvalidTypeModifierOnAReferenceParameter_WhenSearched_ThenBadRequestIsReturned()
     {
         // Capability check
         RequireSearchParameter("Observation", "performer");
@@ -510,22 +518,31 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
 
         var practitionerId = scenario.Practitioner.Id!;
 
-        // Act - Search with invalid type modifier (not a valid FHIR resource type for performer)
-        var results = await Harness.SearchAsync("Observation", $"performer:InvalidType={practitionerId}&_tag={tag}");
+        // Act
+        var response = await Client.SendAsync(new HttpRequestMessage(
+            HttpMethod.Get, $"/Observation?performer:InvalidType={practitionerId}&_tag={tag}"));
 
         // Assert
-        // Servers may handle invalid type modifiers in different ways per FHIR spec:
-        // 1. Return empty results (strict interpretation)
-        // 2. Return OperationOutcome warning
-        // 3. Ignore the invalid modifier and return all matching resources (lenient interpretation)
-        // This test documents the current server behavior without enforcing a specific approach
-        if (results.Any(r => r.ResourceType == "OperationOutcome"))
-        {
-            // If OperationOutcome is present, it should indicate the parameter is not supported
-            results.ShouldContain(r => r.ResourceType == "OperationOutcome", "server returned a warning about unsupported parameter");
-        }
-        // Note: Test passes regardless of whether server returns empty, OperationOutcome, or resources
-        // This flexible assertion allows for different valid FHIR server implementations
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GivenAValidTypeModifierOnTheSameParameter_WhenSearched_ThenItStillSucceeds()
+    {
+        // The control for the test above: without it, asserting a 400 passes equally well if the parameter
+        // were broken outright rather than only its invalid modifier being rejected.
+        RequireSearchParameter("Observation", "performer");
+
+        var tag = Guid.NewGuid().ToString();
+        var scenario = SchemaProvider.GetIncludeSearchScenario(tag);
+        await Harness.CreateResourcesAsync([.. scenario.AllResources]);
+
+        var practitionerId = scenario.Practitioner.Id!;
+
+        var response = await Client.SendAsync(new HttpRequestMessage(
+            HttpMethod.Get, $"/Observation?performer:Practitioner={practitionerId}&_tag={tag}"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     /// <summary>
