@@ -17,7 +17,9 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
 {
-    private const int StringColumnMaxLength = 128;
+    private static readonly int Code1Width = SearchParamColumnWidths.For("TokenStringCompositeSearchParam", "Code1");
+    private static readonly int Text2Width = SearchParamColumnWidths.For("TokenStringCompositeSearchParam", "Text2");
+
     private readonly IReadOnlyDictionary<string, int> _systemMappings;
 
     /// <summary>
@@ -41,9 +43,9 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ResourceSurrogateId", SqlDbType.BigInt),
             new SqlMetaData("SearchParamId", SqlDbType.SmallInt),
             new SqlMetaData("SystemId1", SqlDbType.Int),
-            new SqlMetaData("Code1", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code1", SqlDbType.VarChar, Code1Width),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
-            new SqlMetaData("Text2", SqlDbType.NVarChar, 128),
+            new SqlMetaData("Text2", SqlDbType.NVarChar, Text2Width),
             new SqlMetaData("TextOverflow2", SqlDbType.NVarChar, -1),
         };
 
@@ -99,10 +101,10 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
+                        if (tokenComponent.Code != null && tokenComponent.Code.Length > Code1Width)
                         {
-                            record.SetString(4, tokenComponent.Code.Substring(0, 128));
-                            record.SetString(5, tokenComponent.Code.Substring(128));
+                            record.SetString(4, tokenComponent.Code.Substring(0, Code1Width));
+                            record.SetString(5, tokenComponent.Code.Substring(Code1Width));
                         }
                         else
                         {
@@ -115,10 +117,15 @@ public class TokenStringCompositeRowGenerator : ISearchParameterRowGenerator
 
                         // String component
                         var textValue = stringComponent.String?.ToUpperInvariant();
-                        if (textValue != null && textValue.Length > StringColumnMaxLength)
+                        if (textValue != null && textValue.Length > Text2Width)
                         {
-                            record.SetString(6, textValue.Substring(0, StringColumnMaxLength));
-                            record.SetString(7, textValue.Substring(StringColumnMaxLength));
+                            // Text2 keeps a redundant prefix so the index can still seek; TextOverflow2 holds
+                            // the WHOLE value -- not the remainder -- which is what TokenStringLoweringRule
+                            // compares against once a value overflows. Only the overflow convention is shared
+                            // with StringSearchParam: the case folding above is this table's own, so :exact is
+                            // not recoverable here the way it is on the leaf.
+                            record.SetString(6, textValue.Substring(0, Text2Width));
+                            record.SetString(7, textValue);
                         }
                         else
                         {

@@ -60,4 +60,9 @@ public class ReferenceTokenCompositeSearchParamEntity
     [Required]
     [MaxLength(256)]
     public string Code2 { get; set; } = null!;
+
+    /// <summary>
+    /// Gets or sets overflow code for the token component (when code exceeds 256 chars).
+    /// </summary>
+    public string? CodeOverflow2 { get; set; }
 }

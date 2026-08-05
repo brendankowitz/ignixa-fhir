@@ -6,6 +6,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
+using Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
@@ -18,6 +19,18 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 /// </summary>
 public class CompositeSearchParameterQueryGenerator
 {
+    // Each slot resolves its own column's declared width, the same way the row generators that write it and
+    // the lowering rules that compile against it do. Above that width the value is stored split, so the
+    // predicate has to reassemble it; at or below it the overflow column must be empty, or an exact-width
+    // search would also match the truncated head of a longer code.
+    private static readonly int TokenTokenCode1Width = SearchParamColumnWidths.For("TokenTokenCompositeSearchParam", "Code1");
+    private static readonly int TokenTokenCode2Width = SearchParamColumnWidths.For("TokenTokenCompositeSearchParam", "Code2");
+    private static readonly int TokenQuantityCode1Width = SearchParamColumnWidths.For("TokenQuantityCompositeSearchParam", "Code1");
+    private static readonly int TokenStringCode1Width = SearchParamColumnWidths.For("TokenStringCompositeSearchParam", "Code1");
+    private static readonly int TokenStringText2Width = SearchParamColumnWidths.For("TokenStringCompositeSearchParam", "Text2");
+    private static readonly int TokenDateTimeCode1Width = SearchParamColumnWidths.For("TokenDateTimeCompositeSearchParam", "Code1");
+    private static readonly int RefTokenCode2Width = SearchParamColumnWidths.For("ReferenceTokenCompositeSearchParam", "Code2");
+
     private readonly FhirDbContext _context;
     private readonly SearchIndexReferenceDataCache _cache;
     private readonly ILogger<CompositeSearchParameterQueryGenerator> _logger;
@@ -170,9 +183,12 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply first component filter
-        if (!string.IsNullOrEmpty(token1.Code))
+        var code1 = token1.Code;
+        if (!string.IsNullOrEmpty(code1))
         {
-            query = query.Where(t => t.Code1 == token1.Code);
+            query = code1.Length > TokenTokenCode1Width
+                ? query.Where(t => t.CodeOverflow1 != null && t.Code1 + t.CodeOverflow1 == code1)
+                : query.Where(t => t.CodeOverflow1 == null && t.Code1 == code1);
         }
 
         if (systemId1.HasValue)
@@ -186,9 +202,12 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply second component filter
-        if (!string.IsNullOrEmpty(token2.Code))
+        var code2 = token2.Code;
+        if (!string.IsNullOrEmpty(code2))
         {
-            query = query.Where(t => t.Code2 == token2.Code);
+            query = code2.Length > TokenTokenCode2Width
+                ? query.Where(t => t.CodeOverflow2 != null && t.Code2 + t.CodeOverflow2 == code2)
+                : query.Where(t => t.CodeOverflow2 == null && t.Code2 == code2);
         }
 
         if (systemId2.HasValue)
@@ -240,9 +259,12 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply first component (token) filter
-        if (!string.IsNullOrEmpty(token.Code))
+        var qtyCode = token.Code;
+        if (!string.IsNullOrEmpty(qtyCode))
         {
-            query = query.Where(t => t.Code1 == token.Code);
+            query = qtyCode.Length > TokenQuantityCode1Width
+                ? query.Where(t => t.CodeOverflow1 != null && t.Code1 + t.CodeOverflow1 == qtyCode)
+                : query.Where(t => t.CodeOverflow1 == null && t.Code1 == qtyCode);
         }
 
         if (systemId1.HasValue)
@@ -296,9 +318,12 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply first component (token) filter
-        if (!string.IsNullOrEmpty(token.Code))
+        var strCode = token.Code;
+        if (!string.IsNullOrEmpty(strCode))
         {
-            query = query.Where(t => t.Code1 == token.Code);
+            query = strCode.Length > TokenStringCode1Width
+                ? query.Where(t => t.CodeOverflow1 != null && t.Code1 + t.CodeOverflow1 == strCode)
+                : query.Where(t => t.CodeOverflow1 == null && t.Code1 == strCode);
         }
 
         if (systemId1.HasValue)
@@ -315,7 +340,9 @@ public class CompositeSearchParameterQueryGenerator
         if (!string.IsNullOrEmpty(stringValue))
         {
             var normalizedValue = stringValue.ToUpperInvariant();
-            query = query.Where(t => t.Text2.StartsWith(normalizedValue));
+            query = normalizedValue.Length > TokenStringText2Width
+                ? query.Where(t => t.TextOverflow2 != null && t.TextOverflow2.StartsWith(normalizedValue))
+                : query.Where(t => t.Text2.StartsWith(normalizedValue));
         }
 
         return query.Select(t => t.ResourceSurrogateId);
@@ -398,9 +425,12 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply second component (token) filter
-        if (!string.IsNullOrEmpty(token.Code))
+        var refTokenCode = token.Code;
+        if (!string.IsNullOrEmpty(refTokenCode))
         {
-            query = query.Where(r => r.Code2 == token.Code);
+            query = refTokenCode.Length > RefTokenCode2Width
+                ? query.Where(r => r.CodeOverflow2 != null && r.Code2 + r.CodeOverflow2 == refTokenCode)
+                : query.Where(r => r.CodeOverflow2 == null && r.Code2 == refTokenCode);
         }
 
         if (systemId2.HasValue)
@@ -492,9 +522,12 @@ public class CompositeSearchParameterQueryGenerator
         }
 
         // Apply first component (token) filter
-        if (!string.IsNullOrEmpty(token.Code))
+        var dtCode = token.Code;
+        if (!string.IsNullOrEmpty(dtCode))
         {
-            query = query.Where(t => t.Code1 == token.Code);
+            query = dtCode.Length > TokenDateTimeCode1Width
+                ? query.Where(t => t.CodeOverflow1 != null && t.Code1 + t.CodeOverflow1 == dtCode)
+                : query.Where(t => t.CodeOverflow1 == null && t.Code1 == dtCode);
         }
 
         if (systemId1.HasValue)

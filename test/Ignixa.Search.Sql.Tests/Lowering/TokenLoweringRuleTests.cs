@@ -15,9 +15,11 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 public class TokenLoweringRuleTests
 {
     /// <summary>
-    /// The point the row generators split an overflowing code at, which is the Code column's declared
-    /// width. Read from the catalog rather than written as a literal so these tests pin the relationship
-    /// to the schema instead of one schema's current number.
+    /// The point an overflowing code splits at: the Code column's declared width, read from the catalog so
+    /// these tests pin the relationship to the schema rather than one schema's current number. That the row
+    /// generators really split here — rather than at a literal that happens to agree — is pinned from the
+    /// writers' side by TokenCodeOverflowSplitPointTests in
+    /// Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.
     /// </summary>
     private static readonly int InlineCodeWidth =
         Sql.Catalog.SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;

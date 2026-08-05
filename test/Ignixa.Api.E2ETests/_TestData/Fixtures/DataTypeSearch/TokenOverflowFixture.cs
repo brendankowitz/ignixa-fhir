@@ -24,6 +24,13 @@ public class TokenOverflowFixture : IAsyncLifetime
     /// </summary>
     private const int MaxTokenLength = 450;
 
+    /// <summary>
+    /// The real width of dbo.TokenSearchParam.Code, which is where a code actually divides between Code and
+    /// CodeOverflow. <see cref="MaxTokenLength"/> above sits well past it, so every value derived from it
+    /// overflows -- these two cover the boundary itself and the band just below it.
+    /// </summary>
+    private const int InlineCodeWidth = 256;
+
     public TokenOverflowFixture(IgnixaApiFixture apiFixture)
     {
         _apiFixture = apiFixture ?? throw new ArgumentNullException(nameof(apiFixture));
@@ -41,6 +48,8 @@ public class TokenOverflowFixture : IAsyncLifetime
     /// [1] = PatientB - identifier with overflow (500+ chars, different value), birthdate: 1985-06-20
     /// [2] = PatientC - identifier at max length (450 chars, no overflow), birthdate: 1992-03-10
     /// [3] = PatientD - identifier short (350 chars, no overflow), birthdate: 1988-11-05
+    /// [4] = PatientE - identifier at exactly the inline Code width (256 chars), birthdate: 1975-07-22
+    /// [5] = PatientF - identifier just inside the inline Code width (200 chars), birthdate: 1979-02-14
     /// </summary>
     public IReadOnlyList<ResourceJsonNode> Patients { get; private set; } = null!;
 
@@ -65,6 +74,19 @@ public class TokenOverflowFixture : IAsyncLifetime
     public string IdentifierD { get; private set; } = null!;
 
     /// <summary>
+    /// Identifier value E - exactly the inline Code width (256 chars, no overflow). Pins the boundary the
+    /// read path's exact-width arm depends on: at this length a stored Code is indistinguishable from the
+    /// truncated head of a longer one unless CodeOverflow is also required to be empty.
+    /// </summary>
+    public string IdentifierE { get; private set; } = null!;
+
+    /// <summary>
+    /// Identifier value F - 200 chars, inside the inline Code width but past the 128 this server used to
+    /// split at. Nothing else in this fixture covers that band.
+    /// </summary>
+    public string IdentifierF { get; private set; } = null!;
+
+    /// <summary>
     /// Identifier system used for all test identifiers.
     /// </summary>
     public const string IdentifierSystem = "http://test.ignixa.io/overflow";
@@ -78,6 +100,8 @@ public class TokenOverflowFixture : IAsyncLifetime
         IdentifierB = GetTokenValueWithOverflow("B");
         IdentifierC = GetTokenValueMaxNoOverflow("C");
         IdentifierD = GetTokenValueShortNoOverflow("D");
+        IdentifierE = "E".PadRight(InlineCodeWidth, 'x');
+        IdentifierF = "F".PadRight(200, 'x');
 
         // Create patients with these identifiers
         var patients = new[]
@@ -132,6 +156,34 @@ public class TokenOverflowFixture : IAsyncLifetime
                 .WithBirthDate(1988, 11, 5)
                 .WithTypedIdentifier(
                     value: IdentifierD,
+                    typeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203",
+                    typeCode: "MR",
+                    typeDisplay: "Medical Record",
+                    identifierSystem: IdentifierSystem)
+                .Build(),
+
+            // PatientE - exactly the inline Code width, no overflow
+            PatientBuilderFactory.Create(_apiFixture.SchemaProvider)
+                .WithTag(Tag)
+                .WithGivenName("InlineWidth")
+                .WithFamilyName("TestE")
+                .WithBirthDate(1975, 7, 22)
+                .WithTypedIdentifier(
+                    value: IdentifierE,
+                    typeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203",
+                    typeCode: "MR",
+                    typeDisplay: "Medical Record",
+                    identifierSystem: IdentifierSystem)
+                .Build(),
+
+            // PatientF - inside the inline Code width, past the old 128 split
+            PatientBuilderFactory.Create(_apiFixture.SchemaProvider)
+                .WithTag(Tag)
+                .WithGivenName("BelowInlineWidth")
+                .WithFamilyName("TestF")
+                .WithBirthDate(1979, 2, 14)
+                .WithTypedIdentifier(
+                    value: IdentifierF,
                     typeSystem: "http://terminology.hl7.org/CodeSystem/v2-0203",
                     typeCode: "MR",
                     typeDisplay: "Medical Record",

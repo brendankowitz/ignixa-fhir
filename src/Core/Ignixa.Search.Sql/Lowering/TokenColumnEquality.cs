@@ -43,9 +43,11 @@ internal static class TokenColumnEquality
         var column = new SqlColumnRef(table.TableName, codeColumn);
         var overflow = new SqlColumnRef(table.TableName, overflowColumn);
 
-        // Split point is the Code column's declared width (what every row generator splits at). Reading it
-        // from the catalog, not a constant, keeps the compiler matching the DDL: a hard-coded width that
-        // disagreed would silently match nothing for every overflowing code.
+        // The split point is the Code column's declared width. microsoft/fhir-server derives it the same
+        // way (VLatest.TokenSearchParam.Code.Metadata.MaxLength), and so do this repo's row generators via
+        // SearchParamColumnWidths, so a database either server populated splits here too. A literal that
+        // drifted from the DDL would search for a prefix no row stores — every overflowing code would
+        // silently match nothing.
         int inlineCodeWidth = table.Column(codeColumn).MaxLength
             ?? throw new NotSupportedException(
                 $"Column {table.TableName}.{codeColumn} declares no width, so the code overflow split point is unknown.");

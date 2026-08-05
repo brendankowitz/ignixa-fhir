@@ -18,6 +18,8 @@ namespace Ignixa.DataLayer.SqlEntityFramework.RowGenerators;
 /// </summary>
 public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
 {
+    private static readonly int Code2Width = SearchParamColumnWidths.For("ReferenceTokenCompositeSearchParam", "Code2");
+
     private readonly IReadOnlyDictionary<string, int> _systemMappings;
 
     /// <summary>
@@ -45,7 +47,7 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("ReferenceResourceId1", SqlDbType.VarChar, 64),
             new SqlMetaData("ReferenceResourceVersion1", SqlDbType.Int),
             new SqlMetaData("SystemId2", SqlDbType.Int),
-            new SqlMetaData("Code2", SqlDbType.VarChar, 128),
+            new SqlMetaData("Code2", SqlDbType.VarChar, Code2Width),
             new SqlMetaData("CodeOverflow2", SqlDbType.VarChar, -1),
         };
 
@@ -128,10 +130,10 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
                             continue;
                         }
 
-                        if (tokenComponent.Code != null && tokenComponent.Code.Length > 128)
+                        if (tokenComponent.Code != null && tokenComponent.Code.Length > Code2Width)
                         {
-                            record.SetString(8, tokenComponent.Code.Substring(0, 128));
-                            record.SetString(9, tokenComponent.Code.Substring(128));
+                            record.SetString(8, tokenComponent.Code.Substring(0, Code2Width));
+                            record.SetString(9, tokenComponent.Code.Substring(Code2Width));
                         }
                         else
                         {

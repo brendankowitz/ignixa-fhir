@@ -20,9 +20,11 @@ namespace Ignixa.Search.Sql.Tests.Lowering;
 public class CompositeTokenCodeOverflowTests
 {
     /// <summary>
-    /// The point the row generators split an overflowing code at, which is the Code column's declared
-    /// width. Every composite table's token slot declares the same width as TokenSearchParam.Code, so one
-    /// catalog lookup covers all the slots exercised here.
+    /// The point an overflowing code splits at: the Code column's declared width. Every composite table's
+    /// token slot declares the same width as TokenSearchParam.Code, so one catalog lookup covers all the
+    /// slots exercised here. That the row generators really split here — rather than at a literal that
+    /// happens to agree — is pinned from the writers' side by TokenCodeOverflowSplitPointTests in
+    /// Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.
     /// </summary>
     private static readonly int SplitWidth =
         Sql.Catalog.SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;
