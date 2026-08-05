@@ -3,7 +3,6 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -131,11 +130,19 @@ public class StreamingBundleSerializerSnapshotTests
         actualJson.ShouldBe(expectedJson);
     }
 
-    private static string GetSnapshotPath(string fileName, [CallerFilePath] string sourceFilePath = "")
-    {
-        string directory = Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "Snapshots");
-        return Path.Combine(directory, fileName);
-    }
+    /// <summary>
+    /// Resolves against the test assembly's output directory, where the csproj copies the snapshots, rather
+    /// than against <c>[CallerFilePath]</c>.
+    /// <para>
+    /// A caller file path is baked in at compile time, and CI builds with
+    /// <c>ContinuousIntegrationBuild=true</c>, which rewrites source paths to a deterministic <c>/_/</c>
+    /// root. So the old form resolved to <c>/_/test/…/Snapshots/…</c> and threw
+    /// <see cref="DirectoryNotFoundException"/> on every CI run, while passing locally for the only reason
+    /// it ever passed: the machine that compiled it was the machine that ran it.
+    /// </para>
+    /// </summary>
+    private static string GetSnapshotPath(string fileName)
+        => Path.Combine(AppContext.BaseDirectory, "Features", "Bundle", "Serialization", "Snapshots", fileName);
 
     private static async IAsyncEnumerable<SearchEntryResult> CreateAsyncEnumerable(List<SearchEntryResult> entries)
     {

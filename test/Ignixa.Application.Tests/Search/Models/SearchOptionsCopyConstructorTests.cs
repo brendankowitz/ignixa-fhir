@@ -30,7 +30,7 @@ public class SearchOptionsCopyConstructorTests
 
         foreach ((PropertyInfo property, int ordinal) in properties.Select((p, i) => (p, i)))
         {
-            object distinct = DistinctValueFor(property, ordinal);
+            object distinct = DistinctValueFor(property, ordinal, property.GetValue(defaults));
 
             // Without this, a property whose distinct value happened to equal its default would be
             // reported as carried over even when the constructor never assigns it.
@@ -116,7 +116,7 @@ public class SearchOptionsCopyConstructorTests
     /// transposed one (<c>StartSurrogateId = other.EndSurrogateId</c>) does not slip through two properties
     /// that share a type.
     /// </summary>
-    private static object DistinctValueFor(PropertyInfo property, int ordinal)
+    private static object DistinctValueFor(PropertyInfo property, int ordinal, object? currentDefault)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
@@ -138,10 +138,23 @@ public class SearchOptionsCopyConstructorTests
         if (type.IsEnum)
         {
             // Rotated by ordinal so two properties sharing an enum type still get different members and a
-            // transposition between them is caught. The guard in the caller catches the case where the
-            // rotation lands on the property's default.
+            // transposition between them is caught. The rotation is then advanced past the property's own
+            // default: without that, inserting any property earlier in the declaration order shifts every
+            // later ordinal and can land an unrelated enum property on its default, failing the caller's
+            // guard for a reason that has nothing to do with the copy constructor.
             Array values = Enum.GetValues(type);
-            return values.GetValue((values.Length - 1 - ordinal % values.Length + values.Length) % values.Length)!;
+            for (var offset = 0; offset < values.Length; offset++)
+            {
+                int index = (values.Length - 1 - (ordinal + offset) % values.Length + values.Length) % values.Length;
+                object candidate = values.GetValue(index)!;
+                if (!Equals(candidate, currentDefault))
+                {
+                    return candidate;
+                }
+            }
+
+            throw new InvalidOperationException(
+                $"{property.Name} ({type}) has no enum member distinguishable from its default.");
         }
 
         if (type == typeof(Expression))

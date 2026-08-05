@@ -36,5 +36,14 @@
     <ProjectReference Include="..\Ignixa.Serialization.TestSupport\Ignixa.Serialization.TestSupport.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The snapshot tests read these at runtime. They used to be located via [CallerFilePath], a
+         compile-time path that becomes /_/... under ContinuousIntegrationBuild, so the tests passed
+         locally and threw DirectoryNotFoundException on every CI run. -->
+    <None Update="Features\Bundle\Serialization\Snapshots\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
 
