@@ -96,8 +96,24 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
 
                 foreach (var refComponent in refComponents)
                 {
+                    // ReferenceResourceId1 is NOT NULL in the TVP schema, so a reference component with no
+                    // resolvable resource id has nothing to index here and the whole composite row is
+                    // skipped rather than written as NULL -- same reasoning as the Code2 check below
+                    if (string.IsNullOrEmpty(refComponent.ResourceId))
+                    {
+                        logger.LogWarning(
+                            "ReferenceResourceId missing on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                            searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
+                        continue;
+                    }
+
                     foreach (var tokenComponent in tokenComponents)
                     {
+                        // Code2 is NOT NULL in the TVP schema, so a text-only token (no coding) has nothing
+                        // to index here and the whole composite row is skipped rather than written as NULL
+                        if (string.IsNullOrEmpty(tokenComponent.Code))
+                            continue;
+
                         var record = new SqlDataRecord(metadata);
                         record.SetInt16(0, resourceTypeId);
                         record.SetInt64(1, surrogateId);
@@ -133,21 +149,20 @@ public class RefTokenCompositeRowGenerator : ISearchParameterRowGenerator
                         }
                         else
                         {
-                            // System not found in cache - skip this record
+                            logger.LogWarning(
+                                "SystemId not found in cache for {System} on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                                tokenComponent.System, searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                             continue;
                         }
 
-                        if (tokenComponent.Code != null && tokenComponent.Code.Length > Code2Width)
+                        if (tokenComponent.Code.Length > Code2Width)
                         {
                             record.SetString(8, tokenComponent.Code.Substring(0, Code2Width));
                             record.SetString(9, tokenComponent.Code.Substring(Code2Width));
                         }
                         else
                         {
-                            if (tokenComponent.Code != null)
-                                record.SetString(8, tokenComponent.Code);
-                            else
-                                record.SetDBNull(8);
+                            record.SetString(8, tokenComponent.Code);
                             record.SetDBNull(9);
                         }
 

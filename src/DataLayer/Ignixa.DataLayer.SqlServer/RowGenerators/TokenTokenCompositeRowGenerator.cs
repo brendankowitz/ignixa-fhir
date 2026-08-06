@@ -87,8 +87,17 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
 
                 foreach (var tokenComponent1 in tokenComponents1)
                 {
+                    // Code1 is NOT NULL in the TVP schema, so a text-only token (no coding) has nothing
+                    // to index here and the whole composite row is skipped rather than written as NULL
+                    if (string.IsNullOrEmpty(tokenComponent1.Code))
+                        continue;
+
                     foreach (var tokenComponent2 in tokenComponents2)
                     {
+                        // Code2 is NOT NULL in the TVP schema -- same reasoning as Code1 above
+                        if (string.IsNullOrEmpty(tokenComponent2.Code))
+                            continue;
+
                         var record = new SqlDataRecord(metadata);
                         record.SetInt16(0, resourceTypeId);
                         record.SetInt64(1, surrogateId);
@@ -105,21 +114,20 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                         }
                         else
                         {
-                            // System not found in cache - skip this record
+                            logger.LogWarning(
+                                "SystemId not found in cache for {System} on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                                tokenComponent1.System, searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                             continue;
                         }
 
-                        if (tokenComponent1.Code != null && tokenComponent1.Code.Length > Code1Width)
+                        if (tokenComponent1.Code.Length > Code1Width)
                         {
                             record.SetString(4, tokenComponent1.Code.Substring(0, Code1Width));
                             record.SetString(5, tokenComponent1.Code.Substring(Code1Width));
                         }
                         else
                         {
-                            if (tokenComponent1.Code != null)
-                                record.SetString(4, tokenComponent1.Code);
-                            else
-                                record.SetDBNull(4);
+                            record.SetString(4, tokenComponent1.Code);
                             record.SetDBNull(5);
                         }
 
@@ -134,21 +142,20 @@ public class TokenTokenCompositeRowGenerator : ISearchParameterRowGenerator
                         }
                         else
                         {
-                            // System not found in cache - skip this record
+                            logger.LogWarning(
+                                "SystemId not found in cache for {System} on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                                tokenComponent2.System, searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                             continue;
                         }
 
-                        if (tokenComponent2.Code != null && tokenComponent2.Code.Length > Code2Width)
+                        if (tokenComponent2.Code.Length > Code2Width)
                         {
                             record.SetString(7, tokenComponent2.Code.Substring(0, Code2Width));
                             record.SetString(8, tokenComponent2.Code.Substring(Code2Width));
                         }
                         else
                         {
-                            if (tokenComponent2.Code != null)
-                                record.SetString(7, tokenComponent2.Code);
-                            else
-                                record.SetDBNull(7);
+                            record.SetString(7, tokenComponent2.Code);
                             record.SetDBNull(8);
                         }
 

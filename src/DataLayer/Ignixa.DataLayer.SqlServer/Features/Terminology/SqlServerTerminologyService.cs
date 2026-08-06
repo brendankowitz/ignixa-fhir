@@ -153,35 +153,45 @@ public sealed class SqlServerTerminologyService(
         var count = parameters.Count ?? 1000;
         var offset = parameters.Offset ?? 0;
 
-        using var command = Command(
-            $"SELECT s.{Systems.Column("Value").Name}, e.{Expansions.Column("Code").Name}, " +
-            $"e.{Expansions.Column("Display").Name}, e.{Expansions.Column("SystemVersion").Name}, " +
-            $"e.{Expansions.Column("IsActive").Name} " +
-            $"FROM {Qualified(Expansions)} e " +
-            $"JOIN {Qualified(Systems)} s ON s.{Systems.Column("SystemId").Name} = e.{Expansions.Column("SystemId").Name} " +
-            $"WHERE e.{Expansions.Column("TermValueSetId").Name} = @valueSetId{filterClause} " +
-            $"ORDER BY e.{Expansions.Column("Code").Name} " +
-            "OFFSET @offset ROWS FETCH NEXT @count ROWS ONLY");
-
-        command.Parameters.AddWithValue("@valueSetId", valueSet.Value.Id);
-        command.Parameters.AddWithValue("@offset", offset);
-        command.Parameters.AddWithValue("@count", count);
-        if (!string.IsNullOrWhiteSpace(parameters.Filter))
+        // count=0 is a deliberate FHIR $expand request for the total alone; FETCH NEXT 0 ROWS ONLY is illegal
+        // T-SQL (error 10744), so the paged query is skipped entirely rather than sent with a zero fetch size.
+        IReadOnlyList<ExpandedConcept> contains;
+        if (count == 0)
         {
-            command.Parameters.AddWithValue("@filter", $"%{parameters.Filter}%");
+            contains = [];
         }
+        else
+        {
+            using var command = Command(
+                $"SELECT s.{Systems.Column("Value").Name}, e.{Expansions.Column("Code").Name}, " +
+                $"e.{Expansions.Column("Display").Name}, e.{Expansions.Column("SystemVersion").Name}, " +
+                $"e.{Expansions.Column("IsActive").Name} " +
+                $"FROM {Qualified(Expansions)} e " +
+                $"JOIN {Qualified(Systems)} s ON s.{Systems.Column("SystemId").Name} = e.{Expansions.Column("SystemId").Name} " +
+                $"WHERE e.{Expansions.Column("TermValueSetId").Name} = @valueSetId{filterClause} " +
+                $"ORDER BY e.{Expansions.Column("Code").Name} " +
+                "OFFSET @offset ROWS FETCH NEXT @count ROWS ONLY");
 
-        var contains = await sqlExecutionService.ExecuteReaderAsync(
-            systemPartitionId,
-            command,
-            reader => new ExpandedConcept(
-                System: reader.GetString(0),
-                Code: reader.GetString(1),
-                Display: reader.IsDBNull(2) ? null : reader.GetString(2),
-                Version: reader.IsDBNull(3) ? null : reader.GetString(3),
-                // Inactive is only set when the concept is inactive, never set to false.
-                Inactive: reader.GetBoolean(4) ? null : true),
-            cancellationToken);
+            command.Parameters.AddWithValue("@valueSetId", valueSet.Value.Id);
+            command.Parameters.AddWithValue("@offset", offset);
+            command.Parameters.AddWithValue("@count", count);
+            if (!string.IsNullOrWhiteSpace(parameters.Filter))
+            {
+                command.Parameters.AddWithValue("@filter", $"%{parameters.Filter}%");
+            }
+
+            contains = await sqlExecutionService.ExecuteReaderAsync(
+                systemPartitionId,
+                command,
+                reader => new ExpandedConcept(
+                    System: reader.GetString(0),
+                    Code: reader.GetString(1),
+                    Display: reader.IsDBNull(2) ? null : reader.GetString(2),
+                    Version: reader.IsDBNull(3) ? null : reader.GetString(3),
+                    // Inactive is only set when the concept is inactive, never set to false.
+                    Inactive: reader.GetBoolean(4) ? null : true),
+                cancellationToken);
+        }
 
         var result = new ExpandResult(
             Identifier: $"urn:uuid:{Guid.NewGuid()}",
@@ -347,6 +357,15 @@ public sealed class SqlServerTerminologyService(
 
         var maps = SqlCatalog.Default.Table("TermConceptMap");
 
+        // A caller-supplied url scopes the translation to that one ConceptMap (and its version, when given);
+        // omitting url preserves the legitimate "search across every imported ConceptMap" behaviour.
+        var mapFilter = string.IsNullOrEmpty(parameters.Url)
+            ? string.Empty
+            : $" AND cm.{maps.Column("Canonical").Name} = @url" +
+              (parameters.ConceptMapVersion is null
+                  ? string.Empty
+                  : $" AND cm.{maps.Column("Version").Name} = @conceptMapVersion");
+
         using var command = Command(
             $"SELECT e.{MapElements.Column("SourceCode").Name}, e.{MapElements.Column("SourceDisplay").Name}, " +
             $"e.{MapElements.Column("TargetCode").Name}, e.{MapElements.Column("TargetDisplay").Name}, " +
@@ -358,13 +377,22 @@ public sealed class SqlServerTerminologyService(
             $"JOIN {Qualified(Systems)} ss ON ss.{Systems.Column("SystemId").Name} = e.{MapElements.Column("SourceSystemId").Name} " +
             $"LEFT JOIN {Qualified(Systems)} ts ON ts.{Systems.Column("SystemId").Name} = e.{MapElements.Column("TargetSystemId").Name} " +
             $"WHERE e.{MapElements.Column(matchColumn).Name} = @sourceSystemId " +
-            $"AND e.{MapElements.Column(codeColumn).Name} = @code{targetFilter}");
+            $"AND e.{MapElements.Column(codeColumn).Name} = @code{targetFilter}{mapFilter}");
 
         command.Parameters.AddWithValue("@sourceSystemId", sourceSystemId.Value);
         command.Parameters.AddWithValue("@code", parameters.Code);
         if (targetSystemId is not null && targetFilter.Length > 0)
         {
             command.Parameters.AddWithValue("@targetSystemId", targetSystemId.Value);
+        }
+
+        if (!string.IsNullOrEmpty(parameters.Url))
+        {
+            command.Parameters.AddWithValue("@url", parameters.Url);
+            if (parameters.ConceptMapVersion is not null)
+            {
+                command.Parameters.AddWithValue("@conceptMapVersion", parameters.ConceptMapVersion);
+            }
         }
 
         var rows = await sqlExecutionService.ExecuteReaderAsync(

@@ -22,9 +22,10 @@ public class GzipResourceCompressor(RecyclableMemoryStreamManager memoryStreamMa
     public byte[] SerializeAndCompress(ResourceJsonNode node)
     {
         using RecyclableMemoryStream outputStream = _memoryStreamManager.GetStream("gzip-compress");
-        using var gzipStream = new GZipStream(outputStream, CompressionLevel.Optimal);
-        node.SerializeToStream(gzipStream);
-        gzipStream.Flush();
+        using (var gzipStream = new GZipStream(outputStream, CompressionLevel.Optimal, leaveOpen: true))
+        {
+            node.SerializeToStream(gzipStream);
+        }
         return outputStream.ToArray();
     }
 

@@ -50,6 +50,10 @@ public class DateTimeSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
                 continue;
 
+            // Deduplicate search indices per resource to prevent UNIQUE KEY constraint violations
+            // The TVP has a UNIQUE constraint on (ResourceTypeId, ResourceSurrogateId, SearchParamId, StartDateTime, EndDateTime, IsLongerThanADay, IsMin, IsMax)
+            var dedupSet = new HashSet<(short SearchParamId, DateTimeOffset Start, DateTimeOffset End, bool IsLongerThanADay, bool IsMin, bool IsMax)>();
+
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not DateTimeSearchValue dateTimeValue)
@@ -63,26 +67,35 @@ public class DateTimeSearchParameterRowGenerator : ISearchParameterRowGenerator
                     continue;
                 }
 
+                var duration = dateTimeValue.End - dateTimeValue.Start;
+                var isLongerThanADay = duration.TotalDays > 1;
+
+                bool isMin;
+                bool isMax;
+                if (searchIndex.Value is ISupportSortSearchValue sortValue)
+                {
+                    isMin = sortValue.IsMin;
+                    isMax = sortValue.IsMax;
+                }
+                else
+                {
+                    isMin = false;
+                    isMax = false;
+                }
+
+                // Skip if duplicate
+                if (!dedupSet.Add((searchParamId, dateTimeValue.Start, dateTimeValue.End, isLongerThanADay, isMin, isMax)))
+                    continue;
+
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);
                 record.SetInt64(1, surrogateId);
                 record.SetInt16(2, searchParamId);
                 record.SetDateTimeOffset(3, dateTimeValue.Start);
                 record.SetDateTimeOffset(4, dateTimeValue.End);
-
-                var duration = dateTimeValue.End - dateTimeValue.Start;
-                record.SetBoolean(5, duration.TotalDays > 1);
-
-                if (searchIndex.Value is ISupportSortSearchValue sortValue)
-                {
-                    record.SetBoolean(6, sortValue.IsMin);
-                    record.SetBoolean(7, sortValue.IsMax);
-                }
-                else
-                {
-                    record.SetBoolean(6, false);
-                    record.SetBoolean(7, false);
-                }
+                record.SetBoolean(5, isLongerThanADay);
+                record.SetBoolean(6, isMin);
+                record.SetBoolean(7, isMax);
 
                 yield return record;
             }

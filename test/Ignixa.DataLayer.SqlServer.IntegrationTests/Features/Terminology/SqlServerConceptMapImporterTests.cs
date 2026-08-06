@@ -37,7 +37,7 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
         "JOIN dbo.TermConceptMap cm ON cm.TermConceptMapId = e.TermConceptMapId " +
         $"WHERE cm.Canonical = '{url}'", CancellationToken.None);
 
-    private static TranslateParameters Translate(string url, string code, string system) => new(
+    private static TranslateParameters Translate(string? url, string code, string system) => new(
         Url: url,
         ConceptMapVersion: null,
         Code: code,
@@ -46,6 +46,22 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
         Source: null,
         Target: null,
         TargetSystem: null);
+
+    private static string ConceptMapJsonWithTargetCode(
+        string url, string name, string sourceSystem, string targetSystem, string targetCode) =>
+        "{" +
+        "\"resourceType\":\"ConceptMap\"," +
+        $"\"url\":\"{url}\"," +
+        $"\"name\":\"{name}\"," +
+        "\"version\":\"1.0.0\"," +
+        "\"status\":\"active\"," +
+        "\"group\":[{" +
+        $"\"source\":\"{sourceSystem}\"," +
+        $"\"target\":\"{targetSystem}\"," +
+        "\"element\":[{" +
+        "\"code\":\"car\"," +
+        $"\"target\":[{{\"code\":\"{targetCode}\",\"equivalence\":\"equivalent\"}}]" +
+        "}]}]}";
 
     [Fact]
     public async Task GivenAConceptMap_WhenImported_ThenItsElementsLandWithBothSystemsResolved()
@@ -87,6 +103,34 @@ public class SqlServerConceptMapImporterTests : IAsyncLifetime
 
         reverse.Result.ShouldBeTrue();
         reverse.Matches[0].Concept.Code.ShouldBe("car");
+    }
+
+    [Fact]
+    public async Task GivenTwoImportedConceptMapsMappingTheSameSourceCode_WhenTranslatedWithAUrl_ThenOnlyThatMapsMatchIsReturned()
+    {
+        // THE FIX. Without a WHERE on cm.Canonical, a url-scoped $translate returned mappings from every
+        // imported ConceptMap that happened to map the same source system+code, not just the one the caller
+        // named.
+        const string urlA = "http://example.org/fhir/ConceptMap/ported-translate-scope-a";
+        const string urlB = "http://example.org/fhir/ConceptMap/ported-translate-scope-b";
+
+        await ImportConceptMapAsync(
+            urlA, ConceptMapJsonWithTargetCode(urlA, "ScopeA", SourceSystemUrl, TargetSystemUrl, "autoA"));
+        await ImportConceptMapAsync(
+            urlB, ConceptMapJsonWithTargetCode(urlB, "ScopeB", SourceSystemUrl, TargetSystemUrl, "autoB"));
+
+        var service = _fixture.CreateTerminologyService();
+
+        var unscoped = await service.TranslateCodeAsync(
+            Translate(null, "car", SourceSystemUrl), CancellationToken.None);
+        unscoped.Matches.Count.ShouldBe(2);
+
+        var scopedToA = await service.TranslateCodeAsync(
+            Translate(urlA, "car", SourceSystemUrl), CancellationToken.None);
+
+        scopedToA.Matches.Count.ShouldBe(1);
+        scopedToA.Matches[0].Concept.Code.ShouldBe("autoA");
+        scopedToA.Matches[0].Source.ShouldBe(urlA);
     }
 
     [Fact]

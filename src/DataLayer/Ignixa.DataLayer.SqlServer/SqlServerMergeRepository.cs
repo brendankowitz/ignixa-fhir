@@ -335,10 +335,23 @@ public class SqlServerMergeRepository(
                 tokenExtensions.Count,
                 uriExtensions.Count);
 
-            await _extensionUpdater.UpdateAllExtensionsAsync(
-                tokenExtensions,
-                uriExtensions,
-                cancellationToken);
+            try
+            {
+                await _extensionUpdater.UpdateAllExtensionsAsync(
+                    tokenExtensions,
+                    uriExtensions,
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to update extension columns after merge (TenantId={TenantId}, ResourceCount={ResourceCount}, TokenExtensionCount={TokenExtensionCount}, UriExtensionCount={UriExtensionCount}). Core resource data was successfully merged; extension columns remain NULL.",
+                    tenantId,
+                    resources.Count,
+                    tokenExtensions.Count,
+                    uriExtensions.Count);
+            }
         }
 
         return affectedRows;

@@ -85,7 +85,7 @@ public sealed class SqlServerBackgroundJobRepository<T>(
         var existing = await FindByJobIdAsync(job.JobId, cancellationToken)
             ?? throw NotFound(job.JobId);
 
-        if (ShouldValidateTenant() && job.Definition.TenantId != tenantId)
+        if (ShouldValidateTenant() && existing.Definition.TenantId != tenantId)
         {
             logger.LogWarning("Job {JobId} update denied for tenant {TenantId}", job.JobId, tenantId);
             throw new InvalidOperationException($"Not authorized to update job {job.JobId}");

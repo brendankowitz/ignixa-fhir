@@ -48,6 +48,10 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
             if (!resourceSurrogateIdMap.TryGetValue(resource, out var surrogateId))
                 continue;
 
+            // Deduplicate search indices per resource to prevent PRIMARY KEY constraint violations
+            // The TVP has a PRIMARY KEY on (ResourceTypeId, ResourceSurrogateId, SearchParamId, Uri)
+            var dedupSet = new HashSet<(short SearchParamId, string Uri)>();
+
             foreach (var searchIndex in resource.SearchIndices.OfType<SearchIndexEntry>())
             {
                 if (searchIndex.Value is not UriSearchValue uriValue)
@@ -60,6 +64,10 @@ public class UriSearchParameterRowGenerator : ISearchParameterRowGenerator
                         searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                     continue;
                 }
+
+                // Skip if duplicate
+                if (!dedupSet.Add((searchParamId, uriValue.Uri)))
+                    continue;
 
                 var record = new SqlDataRecord(metadata);
                 record.SetInt16(0, resourceTypeId);

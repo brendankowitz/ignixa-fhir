@@ -102,7 +102,9 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 }
                 else
                 {
-                    // System not found in cache - skip this record
+                    logger.LogWarning(
+                        "SystemId not found in cache for {System} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        quantityValue.System, resource.ResourceType, resource.ResourceId);
                     continue;
                 }
 
@@ -117,7 +119,9 @@ public class QuantitySearchParameterRowGenerator : ISearchParameterRowGenerator
                 }
                 else
                 {
-                    // Quantity code not found in cache - skip this record
+                    logger.LogWarning(
+                        "QuantityCodeId not found in cache for {Code} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        quantityValue.Code, resource.ResourceType, resource.ResourceId);
                     continue;
                 }
 

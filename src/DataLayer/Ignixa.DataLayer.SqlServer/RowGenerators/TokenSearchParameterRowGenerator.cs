@@ -99,8 +99,10 @@ public class TokenSearchParameterRowGenerator : ISearchParameterRowGenerator
                 }
                 else
                 {
-                    // System not found in cache - this shouldn't happen if cache is properly initialized
-                    // Skip this record to avoid data inconsistency
+                    // The cache does on-demand resolution and can genuinely miss transiently
+                    logger.LogWarning(
+                        "SystemId not found in cache for {System} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                        tokenValue.System, resource.ResourceType, resource.ResourceId);
                     continue;
                 }
 

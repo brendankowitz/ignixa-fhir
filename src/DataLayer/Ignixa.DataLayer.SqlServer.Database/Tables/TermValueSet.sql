@@ -23,12 +23,6 @@ CREATE INDEX IX_TermValueSet_Canonical
 
 GO
 
-CREATE INDEX IX_TermValueSet_Expanded
-    ON dbo.TermValueSet(IsExpanded)
-    WHERE IsExpanded = 0;
-
-GO
-
 CREATE INDEX IX_TermValueSet_PackageResourceId
     ON dbo.TermValueSet(PackageResourceId);
 

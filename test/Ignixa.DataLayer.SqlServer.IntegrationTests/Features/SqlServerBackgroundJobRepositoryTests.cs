@@ -218,6 +218,27 @@ public class SqlServerBackgroundJobRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenIsolatedMode_WhenUpdateIsCalledWithASpoofedDefinitionTenantId_ThenItThrows()
+    {
+        // The tenant gate must compare the FETCHED row's tenant, not the tenant embedded in the
+        // caller-supplied object. A tenant that knows/guesses another tenant's JobId could otherwise
+        // submit a job payload whose Definition.TenantId lies about ownership -- claiming to be the
+        // calling tenant -- and have the check compare that lie against itself instead of the real owner.
+        var repository = CreateRepository(TenantMode.Isolated);
+        var jobId = NewJobId();
+        await repository.CreateAsync(Job(jobId, OwnerTenantId), CancellationToken.None);
+
+        var spoofedJob = Job(jobId, OtherTenantId);
+
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => repository.UpdateAsync(spoofedJob, OtherTenantId, CancellationToken.None));
+
+        var afterAttempt = await repository.GetAsync(jobId, OwnerTenantId, CancellationToken.None);
+        afterAttempt.ShouldNotBeNull();
+        afterAttempt.Definition.TenantId.ShouldBe(OwnerTenantId);
+    }
+
+    [Fact]
     public async Task GivenDistributedMode_WhenAnotherTenantFetchesTheJob_ThenItIsReturned()
     {
         // Distributed mode shards a single customer across databases, so every job in reach already belongs

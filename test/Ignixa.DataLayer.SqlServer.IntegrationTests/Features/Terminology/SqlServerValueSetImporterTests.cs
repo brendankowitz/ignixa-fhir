@@ -104,6 +104,32 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GivenCountZero_WhenExpanded_ThenTheTotalIsReturnedWithNoContainsAndItDoesNotThrow()
+    {
+        // THE FIX. count=0 is a deliberate FHIR $expand request for the expansion size alone ("how large is
+        // this without the codes"). The paged query built `FETCH NEXT @count ROWS ONLY` with @count=0, which
+        // is illegal T-SQL (error 10744) rather than a legitimate empty page.
+        const string url = "http://example.org/fhir/ValueSet/ported-count-zero";
+
+        await ImportValueSetAsync(
+            url, TerminologyTestFixture.ExpandedValueSetJson(url, CodeSystemUrl, "car", "truck", "building"));
+
+        // Shouldly 4.3 has no value-returning NotThrowAsync, so the result is read back on a second call --
+        // which the service answers from its own cache rather than the database.
+        var service = _fixture.CreateTerminologyService();
+
+        await Should.NotThrowAsync(() => service.ExpandValueSetAsync(
+            new ExpansionParameters(url, Count: 0), CancellationToken.None));
+
+        var expansion = await service.ExpandValueSetAsync(
+            new ExpansionParameters(url, Count: 0), CancellationToken.None);
+
+        expansion.ShouldNotBeNull();
+        expansion.Total.ShouldBe(3);
+        expansion.Contains.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task GivenAValueSetWithoutAName_WhenImported_ThenItFailsOntoThePackageRowRatherThanThrowing()
     {
         const string url = "http://example.org/fhir/ValueSet/ported-nameless";
@@ -128,8 +154,11 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GivenAValueSetWithNoExpansionAtAll_WhenImported_ThenItIsStoredButNotMarkedExpanded()
+    public async Task GivenAValueSetWithNoExpansionAtAll_WhenImported_ThenItExpandsToNothingRatherThanDisappearing()
     {
+        // Was asserting IsExpanded = 0 and a null expansion. A ValueSet that designates no codes has an
+        // expansion -- an empty one -- and the read paths filter on IsExpanded, so reporting it as
+        // not-expanded made an imported ValueSet indistinguishable from one that was never imported.
         const string url = "http://example.org/fhir/ValueSet/ported-empty";
 
         await ImportValueSetAsync(
@@ -137,13 +166,52 @@ public class SqlServerValueSetImporterTests : IAsyncLifetime
             "{\"resourceType\":\"ValueSet\",\"url\":\"" + url +
             "\",\"name\":\"NoExpansion\",\"status\":\"active\"}");
 
-        var expanded = await _fixture.ExecuteScalarAsync<int>(
-            $"SELECT COUNT(*) FROM dbo.TermValueSet WHERE Canonical = '{url}' AND IsExpanded = 1",
-            CancellationToken.None);
+        var expanded = await _fixture.ExecuteScalarAsync<bool>(
+            $"SELECT TOP 1 IsExpanded FROM dbo.TermValueSet WHERE Canonical = '{url}'", CancellationToken.None);
 
-        expanded.ShouldBe(0);
-        (await _fixture.CreateTerminologyService().ExpandValueSetAsync(
-            new ExpansionParameters(url), CancellationToken.None)).ShouldBeNull();
+        expanded.ShouldBeTrue();
+
+        var expansion = await _fixture.CreateTerminologyService().ExpandValueSetAsync(
+            new ExpansionParameters(url), CancellationToken.None);
+
+        expansion.ShouldNotBeNull();
+        expansion.Total.ShouldBe(0);
+        expansion.Contains.ShouldBeEmpty();
+        expansion.Incomplete.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenAComposeWhoseExcludesRemoveEveryIncludedCode_WhenImported_ThenItExpandsToZeroRatherThanReadingAsNotFound()
+    {
+        // The empty answer here is the *correct* one -- every included code is excluded again -- and it is
+        // only reachable now that exclude filters are evaluated properly. Deriving IsExpanded from the row
+        // count made that correct answer indistinguishable from an unimported ValueSet: $expand returned
+        // not-found, and $validate-code reported "terminology not imported" for a ValueSet that was.
+        const string url = "http://example.org/fhir/ValueSet/ported-compose-emptied";
+
+        await SeedCodeSystemAsync();
+        await ImportValueSetAsync(url, ComposeValueSetJson(url,
+            "{\"include\":[{" + $"\"system\":\"{CodeSystemUrl}\"" + "}]," +
+            "\"exclude\":[{" + $"\"system\":\"{CodeSystemUrl}\"," +
+            "\"concept\":[{\"code\":\"vehicle\"},{\"code\":\"car\"},{\"code\":\"truck\"},{\"code\":\"building\"}]}]}"));
+
+        (await ExpansionRowCountAsync(url)).ShouldBe(0);
+
+        var expansion = await _fixture.CreateTerminologyService().ExpandValueSetAsync(
+            new ExpansionParameters(url), CancellationToken.None);
+
+        expansion.ShouldNotBeNull();
+        expansion.Total.ShouldBe(0);
+        expansion.Contains.ShouldBeEmpty();
+
+        // Empty because it was asked to be, not because anything went unresolved.
+        expansion.Incomplete.ShouldBeFalse();
+
+        var validation = await _fixture.CreateTerminologyService().ValidateCodeAsync(
+            CodeSystemUrl, "car", null, url, CancellationToken.None);
+
+        validation.IsValid.ShouldBeFalse();
+        validation.Message.ShouldNotBeNull().ShouldContain("not found in ValueSet");
     }
 
     [Fact]

@@ -46,8 +46,8 @@ public class TokenDateTimeCompositeRowGenerator : ISearchParameterRowGenerator
             new SqlMetaData("SystemId1", SqlDbType.Int),
             new SqlMetaData("Code1", SqlDbType.VarChar, Code1Width),
             new SqlMetaData("CodeOverflow1", SqlDbType.VarChar, -1),
-            new SqlMetaData("StartDateTime2", SqlDbType.DateTime),
-            new SqlMetaData("EndDateTime2", SqlDbType.DateTime),
+            new SqlMetaData("StartDateTime2", SqlDbType.DateTimeOffset),
+            new SqlMetaData("EndDateTime2", SqlDbType.DateTimeOffset),
             new SqlMetaData("IsLongerThanADay2", SqlDbType.Bit),
         };
 
@@ -86,6 +86,11 @@ public class TokenDateTimeCompositeRowGenerator : ISearchParameterRowGenerator
 
                 foreach (var tokenComponent in tokenComponents)
                 {
+                    // Code1 is NOT NULL in the TVP schema, so a text-only token (no coding) has nothing
+                    // to index here and the whole composite row is skipped rather than written as NULL
+                    if (string.IsNullOrEmpty(tokenComponent.Code))
+                        continue;
+
                     foreach (var dateTimeComponent in dateTimeComponents)
                     {
                         var record = new SqlDataRecord(metadata);
@@ -104,27 +109,26 @@ public class TokenDateTimeCompositeRowGenerator : ISearchParameterRowGenerator
                         }
                         else
                         {
-                            // System not found in cache - skip this record
+                            logger.LogWarning(
+                                "SystemId not found in cache for {System} on {SearchParameterUrl} while indexing {ResourceType}/{ResourceId} -- row skipped",
+                                tokenComponent.System, searchIndex.SearchParameter.Url, resource.ResourceType, resource.ResourceId);
                             continue;
                         }
 
-                        if (tokenComponent.Code != null && tokenComponent.Code.Length > Code1Width)
+                        if (tokenComponent.Code.Length > Code1Width)
                         {
                             record.SetString(4, tokenComponent.Code.Substring(0, Code1Width));
                             record.SetString(5, tokenComponent.Code.Substring(Code1Width));
                         }
                         else
                         {
-                            if (tokenComponent.Code != null)
-                                record.SetString(4, tokenComponent.Code);
-                            else
-                                record.SetDBNull(4);
+                            record.SetString(4, tokenComponent.Code);
                             record.SetDBNull(5);
                         }
 
-                        // DateTime component
-                        record.SetDateTime(6, dateTimeComponent.Start.UtcDateTime);
-                        record.SetDateTime(7, dateTimeComponent.End.UtcDateTime);
+                        // DateTime component -- DATETIMEOFFSET(7) columns, matching the leaf DateTimeSearchParam
+                        record.SetDateTimeOffset(6, dateTimeComponent.Start);
+                        record.SetDateTimeOffset(7, dateTimeComponent.End);
 
                         var duration = dateTimeComponent.End - dateTimeComponent.Start;
                         record.SetBoolean(8, duration.TotalDays > 1);
