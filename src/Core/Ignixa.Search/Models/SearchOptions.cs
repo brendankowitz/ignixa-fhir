@@ -46,6 +46,7 @@ public sealed class SearchOptions
         ArgumentNullException.ThrowIfNull(other);
 
         MaxItemCount = other.MaxItemCount;
+        ProbeExtraRow = other.ProbeExtraRow;
         ContinuationToken = other.ContinuationToken;
         Expression = other.Expression;
         Sort = other.Sort;
@@ -55,6 +56,7 @@ public sealed class SearchOptions
         Total = other.Total;
         Summary = other.Summary;
         UnsupportedParams = other.UnsupportedParams;
+        UnsupportedModifierParams = other.UnsupportedModifierParams;
         BundleIssues = other.BundleIssues;
         ResourceType = other.ResourceType;
         ResourceTypes = other.ResourceTypes;
@@ -71,6 +73,23 @@ public sealed class SearchOptions
     /// Gets or sets the maximum number of items to return per page.
     /// </summary>
     public int MaxItemCount { get; set; } = 10;
+
+    /// <summary>
+    /// Gets or sets whether the data layer should fetch one row beyond <see cref="MaxItemCount"/> so the
+    /// caller can detect a further page. That row is a lookahead the caller trims, never a member of the
+    /// page.
+    /// </summary>
+    /// <remarks>
+    /// The flag exists because the data layer cannot otherwise tell a page of N apart from a page of N-1
+    /// plus a probe row: both arrive as a single <see cref="MaxItemCount"/>. It used to guess, by assuming
+    /// every caller had pre-added the +1 and subtracting it back off — which was true of the paged search
+    /// handler and of nobody else, so $includes, $export, IPS, $everything, member-match and the
+    /// conditional handlers all silently lost a row's worth of page. Guessing wrong is not merely an
+    /// off-by-one in the row count: the guessed page size is what seeds <c>_include</c>/<c>_revinclude</c>
+    /// resolution, so an under-guess strands the last match row's included resources outside the bundle,
+    /// and an over-guess pulls in resources for a match row the caller is about to trim.
+    /// </remarks>
+    public bool ProbeExtraRow { get; set; }
 
     /// <summary>
     /// Gets or sets the continuation token for paging.
@@ -116,6 +135,20 @@ public sealed class SearchOptions
     /// Gets or sets any unsupported search parameters encountered.
     /// </summary>
     public IReadOnlyList<string> UnsupportedParams { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Gets or sets the search parameters that carried a modifier this server does not support for them,
+    /// for example <c>_id:above</c>. Always a subset of <see cref="UnsupportedParams"/>.
+    /// </summary>
+    /// <remarks>
+    /// Tracked apart from <see cref="UnsupportedParams"/> because FHIR R4 gives the two cases different
+    /// force: an unknown or unsupported <i>parameter</i> SHOULD be ignored, whereas a request suffixed by
+    /// an unsupported <i>modifier</i> SHALL be rejected with a 400. Both are dropped from
+    /// <see cref="Expression"/> either way, so a caller that chooses to honour <c>handling=lenient</c> can
+    /// keep serving the query; the list exists so the HTTP boundary can apply the stricter default without
+    /// this layer having to know about headers.
+    /// </remarks>
+    public IReadOnlyList<string> UnsupportedModifierParams { get; set; } = Array.Empty<string>();
 
     /// <summary>
     /// Gets or sets issues related to the search (e.g., unsupported parameters).

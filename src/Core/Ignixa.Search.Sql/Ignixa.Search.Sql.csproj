@@ -25,11 +25,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Resources\97.sql" />
+    <AdditionalFiles Include="..\..\DataLayer\Ignixa.DataLayer.SqlServer.Database\Tables\*.sql" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.Search.Sql.Tests" />
+    <!-- TokenCodeSplitPointGuardTests compares TokenColumnEquality.InlineCodeWidth against what the
+         SqlServer token row generators actually write. The constant stays internal: it is a storage
+         convention this compiler must match, not public API a consumer should depend on. -->
+    <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.Tests" />
   </ItemGroup>
 
 </Project>

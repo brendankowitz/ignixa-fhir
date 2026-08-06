@@ -164,6 +164,25 @@ public class LowerOptionsTests
     }
 
     [Fact]
+    public void GivenAZeroLimitOffsetSpecWithAProbeRow_WhenLowering_ThenItIsAcceptedBecauseTheFetchIsStillPositive()
+    {
+        // Arrange -- the two-phase sort executor's floor case: an earlier phase already filled the page, so
+        // this phase's entire budget is the has-more lookahead row. It fetches one row, which OFFSET/FETCH
+        // accepts; rejecting it on Limit alone would 400 an ordinary paged sort.
+        var (predicate, symbols) = NameQuery();
+
+        // Act
+        var plan = LowerHarness.Run(
+            predicate, symbols, targetResourceType: "Patient", includes: [], revIncludes: [], includeLimit: 0,
+            sort: [], sortPhase: SortPhase.Valued, page: null,
+            options: new LowerOptions { OffsetPage = new OffsetSpec(40, 0, ProbeExtraRow: true) }).Plan;
+
+        // Assert
+        plan.OffsetPage!.Limit.ShouldBe(0);
+        plan.OffsetPage!.FetchCount.ShouldBe(1);
+    }
+
+    [Fact]
     public void GivenANullOffsetSpec_WhenLowering_ThenThrowsRatherThanSilentlyUnpaging()
     {
         // Arrange -- a positional record parameter cannot enforce non-nullness against a caller who ignores the

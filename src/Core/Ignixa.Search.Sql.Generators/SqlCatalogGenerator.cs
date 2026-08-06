@@ -1,36 +1,53 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
 
 namespace Ignixa.Search.Sql.Generators;
 
 /// <summary>
-/// Reads 97.sql (via AdditionalFiles) and generates SqlCatalog.BuildFromDdl()'s implementation --
-/// table/column facts sourced directly from the real DDL, not hand-transcribed.
+/// Reads the decomposed table DDL files (via AdditionalFiles) and generates SqlCatalog.BuildFromDdl()'s
+/// implementation -- table/column facts sourced directly from the real DDL, not hand-transcribed.
 /// </summary>
 [Generator]
 public sealed class SqlCatalogGenerator : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var ddlFile = context.AdditionalTextsProvider
-            .Where(static file => file.Path.EndsWith("97.sql", StringComparison.OrdinalIgnoreCase))
+        var ddlFiles = context.AdditionalTextsProvider
+            .Where(static file => file.Path.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
             .Collect();
 
-        context.RegisterSourceOutput(ddlFile, static (spc, files) =>
+        context.RegisterSourceOutput(ddlFiles, static (spc, files) =>
         {
             if (files.Length == 0)
             {
                 return;
             }
 
-            var ddlText = files[0].GetText(spc.CancellationToken)?.ToString() ?? string.Empty;
+            var ddlText = string.Join(
+                "\n",
+                files.Select(f => f.GetText(spc.CancellationToken)?.ToString() ?? string.Empty));
+            // The search-index tables the compiler lowers against, plus the tables the data layer
+            // hand-writes SQL against (terminology, packages, background jobs, the event store) so those
+            // identifiers come from the real DDL -- a renamed column becomes a build failure rather than a
+            // runtime error 207.
+            //
+            // Deliberately a named set rather than every table. The parser handles the DDL vocabulary these
+            // tables use; the wider schema also contains computed columns (EventLog's PERSISTED
+            // PartitionId), which it does not model. Widening further means teaching it those constructs
+            // first -- worth doing when something needs them, not speculatively.
             var tables = DdlTableParser.ParseTables(ddlText,
                 name => name.EndsWith("SearchParam", StringComparison.Ordinal)
                     || name == "ResourceType"
                     || name == "Resource"
-                    || name == "TokenText");
+                    || name == "TokenText"
+                    || name.StartsWith("Term", StringComparison.Ordinal)
+                    || name == "SourceEvents"
+                    || name == "BackgroundJobs"
+                    || name == "PackageResource"
+                    || name == "System");
 
             spc.AddSource("SqlCatalog.g.cs", Emit(tables));
         });

@@ -55,6 +55,14 @@ internal sealed class SymbolCollectingVisitor : ExpressionRewriter<object?>
             TokenSystems.Add(tokenSystem);
         }
 
+        // :of-type's identifier type system is a System-table string too (the writers resolve it through the
+        // same map), but it hangs off OfTypeTokenSearchValue, which is not a TokenSearchValue -- so the arm
+        // above never sees it and lowering would throw KeyNotFoundException on the id lookup.
+        if (expression.Value is OfTypeTokenSearchValue { TypeSystem: { Length: > 0 } identifierTypeSystem })
+        {
+            TokenSystems.Add(identifierTypeSystem);
+        }
+
         if (expression.Value is QuantitySearchValue quantityValue)
         {
             if (quantityValue.System is { Length: > 0 } qSystem)
