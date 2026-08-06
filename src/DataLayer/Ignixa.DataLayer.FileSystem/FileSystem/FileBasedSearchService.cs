@@ -39,6 +39,15 @@ public partial class FileBasedSearchService : ISearchService
         _searchQueryInterpreter = new SearchQueryInterpreter();
     }
 
+    /// <summary>
+    /// Rows one page must read: the caller's page, plus a lookahead row when the caller asked for one via
+    /// <see cref="SearchOptions.ProbeExtraRow"/>. Returning exactly <see cref="SearchOptions.MaxItemCount"/>
+    /// unconditionally would leave a paged caller unable to tell a full last page from a full middle one,
+    /// since the probe row is the only signal it has that a further page exists.
+    /// </summary>
+    private static int FetchCount(SearchOptions options)
+        => options.MaxItemCount + (options.ProbeExtraRow ? 1 : 0);
+
     public async ValueTask<IReadOnlyList<SearchEntryResult>> SearchAsync<TSearchOptions>(
         TSearchOptions searchOptions,
         CancellationToken cancellationToken = default)
@@ -95,7 +104,7 @@ public partial class FileBasedSearchService : ISearchService
 
         // Step 3: Apply pagination
         int skip = 0; // TODO: Parse continuation token
-        int take = options.MaxItemCount;
+        int take = FetchCount(options);
 
         var pagedKeys = filteredMetadata
             .Skip(skip)
@@ -178,7 +187,7 @@ public partial class FileBasedSearchService : ISearchService
 
         // Step 3: Apply pagination
         int skip = 0; // TODO: Parse continuation token
-        int take = options.MaxItemCount;
+        int take = FetchCount(options);
 
         var pagedKeys = filteredMetadata
             .Skip(skip)

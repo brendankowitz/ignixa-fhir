@@ -125,6 +125,15 @@ public class SearchOptionsCopyConstructorTests
             return property.Name + "-value";
         }
 
+        if (type == typeof(bool))
+        {
+            // The negation of the default rather than a constant true: a bool has only two inhabitants, so
+            // this is the only value that can differ from the default whatever the default becomes. It also
+            // means a transposition between two bool properties would go unnoticed — unavoidable at this
+            // type, and the reason the caller's guard tests distinctness from the default specifically.
+            return !(bool)currentDefault!;
+        }
+
         if (type == typeof(int))
         {
             return 4242 + ordinal;

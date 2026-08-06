@@ -31,7 +31,9 @@ internal static class CompilationContextMapping
     public static FrozenDictionary<string, string> NotApplicable { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [nameof(SearchOptions.MaxItemCount)] =
-            "Callers transform it before a search runs — SearchResourcesHandler requests MaxItemCount + 1 to detect 'has more' — so forwarding it as a row cap would silently fight that transformation. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
+            "A page size, not a row cap: the adapter layer pairs it with ProbeExtraRow and a decoded continuation token to build the OffsetSpec on ResultShape.Matches. Forwarding it as a cap as well would apply the same number twice. Row capping is SearchPaging.Keyset.Top on ResultShape.Matches.",
+        [nameof(SearchOptions.ProbeExtraRow)] =
+            "Reaches the compiler as OffsetSpec.ProbeExtraRow, built by the adapter layer alongside MaxItemCount. The AST models the over-fetch structurally, so there is nothing left for a separate compilation input to say.",
         [nameof(SearchOptions.ContinuationToken)] =
             "Decoding it into a keyset or OFFSET page is adapter logic in a different layer. The decoded result arrives as the SearchPaging on ResultShape.Matches.",
         [nameof(SearchOptions.Elements)] =

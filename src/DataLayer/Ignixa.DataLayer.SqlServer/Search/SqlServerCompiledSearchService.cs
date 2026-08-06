@@ -168,27 +168,19 @@ public sealed class SqlServerCompiledSearchService(
             yield break;
         }
 
-        int requestedOffset;
-        int requestedCount;
-        if (!string.IsNullOrWhiteSpace(options.ContinuationToken)
-            && ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount))
-        {
-            requestedOffset = tokenOffset;
-            requestedCount = tokenCount + 1; // same +1-for-hasMore convention CompileAsync itself uses
-        }
-        else
-        {
-            requestedOffset = 0;
-            requestedCount = options.MaxItemCount;
-        }
+        // The same page an unsorted search would take, so the two paths cannot drift; the phase arithmetic
+        // below then splits it. requestedCount is the ROW count both phases together must produce (page plus
+        // any probe row), while requestedPage.Limit is the page proper -- the distinction the phases have to
+        // respect, since only page rows may seed includes.
+        var requestedPage = DefaultOffsetPage(options);
+        var requestedCount = requestedPage.FetchCount;
 
-        // requestedCount counts the probe row, so the Valued phase's TRUE page size is one less. A short
-        // Valued page loses nothing to that: it returns fewer rows than the seed's TOP admits, so every row
-        // it did return still seeds its own includes, and the probe row lands in the MissingPrimary phase
-        // below instead.
+        // A short Valued page loses nothing to running at the full page size: it returns fewer rows than the
+        // seed's TOP admits, so every row it did return still seeds its own includes, and whatever the page
+        // has left over -- including the probe row -- lands in the MissingPrimary phase below instead.
         var valuedCompiled = await CompileAsync(
             options, cancellationToken, sortPhase: SortPhase.Valued,
-            offsetPageOverride: new OffsetSpec(requestedOffset, requestedCount - 1, ProbeExtraRow: true));
+            offsetPageOverride: requestedPage);
 
         // Buffered, not streamed straight out: both phase compiles share the SAME options.Include/RevInclude
         // list, so each phase's own include stage is seeded ONLY from that phase's own match page (SqlBuilder's
@@ -278,17 +270,18 @@ public sealed class SqlServerCompiledSearchService(
                 _tenantId, countCommand, reader => reader.GetInt64(0), cancellationToken);
             var valuedTotal = checked((int)(countRows.Count > 0 ? countRows[0] : 0L));
 
-            missingPrimaryOffset = Math.Max(0, requestedOffset - valuedTotal);
+            missingPrimaryOffset = Math.Max(0, requestedPage.Offset - valuedTotal);
         }
 
-        // Reached only while valuedCount < requestedCount, so the fetch stays positive. Its floor case --
-        // Valued already filled the page and only the probe row remains -- is a page size of exactly zero
-        // with the probe still fetched, which is correct rather than degenerate: that single row is a
-        // lookahead the caller trims, so no include of it belongs in the bundle.
-        var missingPrimaryLimit = requestedCount - valuedCount;
+        // Whatever the Valued phase left of the page, carrying the probe row over unspent. Reached only
+        // while valuedCount < requestedCount, so the fetch stays positive. Its floor case -- Valued filled
+        // the page exactly and only a probe row remains -- is a page size of zero with the probe still
+        // fetched, which is correct rather than degenerate: that single row is a lookahead the caller
+        // trims, so no include of it belongs in the bundle.
         var missingCompiled = await CompileAsync(
             options, cancellationToken, sortPhase: SortPhase.MissingPrimary,
-            offsetPageOverride: new OffsetSpec(missingPrimaryOffset, missingPrimaryLimit - 1, ProbeExtraRow: true));
+            offsetPageOverride: new OffsetSpec(
+                missingPrimaryOffset, requestedPage.Limit - valuedCount, requestedPage.ProbeExtraRow));
 
         var missingResults = new List<SearchEntryResult>();
         await foreach (var result in ExecuteAndMaterializeAsync(missingCompiled, cancellationToken))
@@ -454,24 +447,22 @@ public sealed class SqlServerCompiledSearchService(
 
     /// <summary>
     /// The page a search takes when the two-phase sort loop has not dictated one. Both branches hand the
-    /// compiler the caller's TRUE page size and an explicit ProbeExtraRow, and the compiler owns the
-    /// "+1 for hasMore detection" arithmetic from there -- so the extra row is still fetched (the total row
-    /// count is unchanged from the convention this replaced) but it no longer seeds _include/_revinclude
-    /// stages, whose resolved resources would otherwise outlive the probe row the Application layer trims.
-    /// See <see cref="OffsetSpec"/>.
+    /// compiler the caller's page size verbatim and let <see cref="SearchOptions.ProbeExtraRow"/> say
+    /// whether a lookahead row is wanted on top of it; the compiler owns the "+1 for hasMore detection"
+    /// arithmetic from there (see <see cref="OffsetSpec"/>). Nothing here infers the over-fetch, because
+    /// nothing here can: a page of N and a page of N-1 plus a probe are the same
+    /// <see cref="SearchOptions.MaxItemCount"/>, and the guess decides which rows seed
+    /// _include/_revinclude, not merely how many rows come back.
     ///
-    /// Recovering N differs per branch because the two carry it differently. A decoded continuation token
-    /// stores the caller's ORIGINAL count, which IS N. Without one, options.MaxItemCount arrives from the
-    /// Application layer ALREADY "+1'd" (SearchResourcesHandler adds it before SearchOptions is built at
-    /// all), so N is one less. Callers that set MaxItemCount directly without that +1 -- $includes'
-    /// deliberately inflated match budget is the only one that also carries includes -- are read here as
-    /// over-fetching by one, costing the last match row of their over-fetch its includes.
+    /// The two branches differ only in where the page size comes from: a decoded continuation token
+    /// carries the caller's own count, and without one it is <see cref="SearchOptions.MaxItemCount"/>.
+    /// The probe flag is the caller's either way -- it describes the request, not the cursor.
     /// </summary>
-    private static OffsetSpec DefaultOffsetPage(SearchOptions options)
+    internal static OffsetSpec DefaultOffsetPage(SearchOptions options)
         => !string.IsNullOrWhiteSpace(options.ContinuationToken)
             && ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount)
-                ? new OffsetSpec(tokenOffset, tokenCount, ProbeExtraRow: true)
-                : new OffsetSpec(0, options.MaxItemCount - 1, ProbeExtraRow: true);
+                ? new OffsetSpec(tokenOffset, tokenCount, options.ProbeExtraRow)
+                : new OffsetSpec(0, options.MaxItemCount, options.ProbeExtraRow);
 
     private async IAsyncEnumerable<SearchEntryResult> ExecuteAndMaterializeAsync(
         CompiledSearch compiled,

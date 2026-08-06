@@ -362,7 +362,8 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
         {
             ResourceType = "Patient",
             Sort = [new SortExpression(IdParameter, SortOrder.Ascending)],
-            MaxItemCount = PageSize + 1,
+            MaxItemCount = PageSize,
+            ProbeExtraRow = true,
         };
 
         // Act
@@ -372,7 +373,8 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
         {
             ResourceType = "Patient",
             Sort = [new SortExpression(IdParameter, SortOrder.Ascending)],
-            MaxItemCount = PageSize + 1,
+            MaxItemCount = PageSize,
+            ProbeExtraRow = true,
             ContinuationToken = ContinuationToken.Encode(offset: PageSize, count: PageSize),
         };
         var page2Raw = await CollectAsync(page2Options);

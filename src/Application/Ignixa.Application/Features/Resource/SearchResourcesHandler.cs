@@ -89,19 +89,19 @@ public class SearchResourcesHandler : IRequestHandler<SearchResourcesQuery, Sear
                 SearchOptions: request.SearchOptions);
         }
 
-        // 2. Request pageSize + 1 results to detect if there are more (count-as-render pattern)
-        //    The serializer will render only pageSize items and use the +1 to detect hasMore
+        // 2. Ask the data layer for the caller's page plus a probe row (count-as-render pattern).
+        //    The page size stays the caller's own: the over-fetch is stated, not folded into the count,
+        //    so the data layer knows which rows are genuinely on the page and seeds _include from those.
         var searchOptionsWithExtra = new SearchOptions(request.SearchOptions)
         {
-            MaxItemCount = request.SearchOptions.MaxItemCount + 1,
+            ProbeExtraRow = true,
         };
 
         _logger.LogDebug(
-            "Requesting {RequestCount} results (pageSize={PageSize} + 1 for pagination detection)",
-            searchOptionsWithExtra.MaxItemCount,
-            request.SearchOptions.MaxItemCount);
+            "Requesting {PageSize} results plus a probe row for pagination detection",
+            searchOptionsWithExtra.MaxItemCount);
 
-        // 3. Execute query using IQueryExecutionStrategy with the +1 count
+        // 3. Execute query using IQueryExecutionStrategy
         //    - PassthroughExecutionStrategy: validates single partition, direct query
         //    - FanoutExecutionStrategy (future): can handle multiple partitions
         // This streams pageSize + 1 results (the serializer will count and detect hasMore)
