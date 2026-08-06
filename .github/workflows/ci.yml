@@ -283,10 +283,14 @@ jobs:
           TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=FhirTest;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
           IGNIXA_RUN_CONFORMANCE: "true"
           IGNIXA_CONFORMANCE_REPORT_PATH: ${{ runner.temp }}/ignixa-conformance/latest.json
+          # The API deploys the dacpac to each tenant database on first use. Without this it refuses
+          # to start against an empty database, and every E2E test fails in seconds with "Tenant 1's
+          # database is not initialized". Nothing else in this job creates the schema -- the
+          # DeployReport step above only diffs, it does not publish.
+          SqlServer__AutomaticSchemaDeploymentEnabled: "true"
           # Reduce log output in test host
           Logging__LogLevel__Default: "Warning"
           Logging__LogLevel__Microsoft: "Warning"
-          Logging__LogLevel__Microsoft.EntityFrameworkCore: "Error"
 
       - name: Upload E2E test results
         if: always()
