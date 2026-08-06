@@ -170,10 +170,10 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
     {
         // Arrange -- create 10 Patients with a sortable String parameter set (Valued), then 5 more Patients
         // WITHOUT that parameter set (MissingPrimary). Sort ascending by that parameter, page size 5,
-        // request offset=8. The token encodes count=5, but the +1-for-hasMore convention makes the real
-        // requestedCount 6: Valued has only 2 rows left from offset 8 (rows 8-9 of its 10), so Valued
-        // returns 2 and MissingPrimary fills the remaining 6-2=4 at its own offset 0 (rows 0-3 of its 5) --
-        // 2 + 4 = 6 rows total, straddling the phase boundary with no duplicate and no gap.
+        // request offset=8. ProbeExtraRow makes the real requestedCount 6: Valued has only 2 rows left
+        // from offset 8 (rows 8-9 of its 10), so Valued returns 2 and MissingPrimary fills the remaining
+        // 6-2=4 at its own offset 0 (rows 0-3 of its 5) -- 2 + 4 = 6 rows total, straddling the phase
+        // boundary with no duplicate and no gap.
         var tag = Guid.NewGuid().ToString("N");
         await CreateValuedAndMissingPatientsAsync(tag);
 
@@ -182,6 +182,7 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
             ResourceType = "Patient",
             Sort = [FamilyAscending],
             MaxItemCount = 5,
+            ProbeExtraRow = true,
             ContinuationToken = ContinuationToken.Encode(offset: 8, count: 5),
         };
 
@@ -193,7 +194,7 @@ public class SqlServerCompiledSearchServiceSortTests : IAsyncLifetime
         }
 
         // Assert -- exactly 6 rows (2 from the tail of Valued, 4 from the head of MissingPrimary, per the
-        // +1-for-hasMore arithmetic above), no duplicates against an adjacent page, no gap.
+        // probe-row arithmetic above), no duplicates against an adjacent page, no gap.
         results.Count.ShouldBe(6);
         results.Select(r => r.ResourceId).Distinct().Count().ShouldBe(6);
     }
