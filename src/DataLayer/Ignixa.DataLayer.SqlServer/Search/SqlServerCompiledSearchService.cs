@@ -182,9 +182,13 @@ public sealed class SqlServerCompiledSearchService(
             requestedCount = options.MaxItemCount;
         }
 
+        // requestedCount counts the probe row, so the Valued phase's TRUE page size is one less. A short
+        // Valued page loses nothing to that: it returns fewer rows than the seed's TOP admits, so every row
+        // it did return still seeds its own includes, and the probe row lands in the MissingPrimary phase
+        // below instead.
         var valuedCompiled = await CompileAsync(
             options, cancellationToken, sortPhase: SortPhase.Valued,
-            offsetPageOverride: new OffsetSpec(requestedOffset, requestedCount));
+            offsetPageOverride: new OffsetSpec(requestedOffset, requestedCount - 1, ProbeExtraRow: true));
 
         // Buffered, not streamed straight out: both phase compiles share the SAME options.Include/RevInclude
         // list, so each phase's own include stage is seeded ONLY from that phase's own match page (SqlBuilder's
@@ -277,10 +281,14 @@ public sealed class SqlServerCompiledSearchService(
             missingPrimaryOffset = Math.Max(0, requestedOffset - valuedTotal);
         }
 
+        // Reached only while valuedCount < requestedCount, so the fetch stays positive. Its floor case --
+        // Valued already filled the page and only the probe row remains -- is a page size of exactly zero
+        // with the probe still fetched, which is correct rather than degenerate: that single row is a
+        // lookahead the caller trims, so no include of it belongs in the bundle.
         var missingPrimaryLimit = requestedCount - valuedCount;
         var missingCompiled = await CompileAsync(
             options, cancellationToken, sortPhase: SortPhase.MissingPrimary,
-            offsetPageOverride: new OffsetSpec(missingPrimaryOffset, missingPrimaryLimit));
+            offsetPageOverride: new OffsetSpec(missingPrimaryOffset, missingPrimaryLimit - 1, ProbeExtraRow: true));
 
         var missingResults = new List<SearchEntryResult>();
         await foreach (var result in ExecuteAndMaterializeAsync(missingCompiled, cancellationToken))
@@ -445,19 +453,25 @@ public sealed class SqlServerCompiledSearchService(
     }
 
     /// <summary>
-    /// The page a search takes when the two-phase sort loop has not dictated one. Must match
-    /// SqlEntityFrameworkSearchService.BuildQueryAsync's exact pagination convention:
-    /// options.MaxItemCount arrives from the caller ALREADY "+1'd" for hasMore detection when there is no
-    /// continuation token (the handler layer adds that +1 before building SearchOptions at all) -- so the
-    /// no-token branch uses it as-is. A decoded continuation token, by contrast, stores the caller's
-    /// ORIGINAL (non-+1'd) count, so THIS branch must add the +1 back explicitly, or every page after the
-    /// first would come back one row short and the Application layer's hasMore detection would misfire.
+    /// The page a search takes when the two-phase sort loop has not dictated one. Both branches hand the
+    /// compiler the caller's TRUE page size and an explicit ProbeExtraRow, and the compiler owns the
+    /// "+1 for hasMore detection" arithmetic from there -- so the extra row is still fetched (the total row
+    /// count is unchanged from the convention this replaced) but it no longer seeds _include/_revinclude
+    /// stages, whose resolved resources would otherwise outlive the probe row the Application layer trims.
+    /// See <see cref="OffsetSpec"/>.
+    ///
+    /// Recovering N differs per branch because the two carry it differently. A decoded continuation token
+    /// stores the caller's ORIGINAL count, which IS N. Without one, options.MaxItemCount arrives from the
+    /// Application layer ALREADY "+1'd" (SearchResourcesHandler adds it before SearchOptions is built at
+    /// all), so N is one less. Callers that set MaxItemCount directly without that +1 -- $includes'
+    /// deliberately inflated match budget is the only one that also carries includes -- are read here as
+    /// over-fetching by one, costing the last match row of their over-fetch its includes.
     /// </summary>
     private static OffsetSpec DefaultOffsetPage(SearchOptions options)
         => !string.IsNullOrWhiteSpace(options.ContinuationToken)
             && ContinuationToken.TryDecode(options.ContinuationToken, out var tokenOffset, out var tokenCount)
-                ? new OffsetSpec(tokenOffset, tokenCount + 1)
-                : new OffsetSpec(0, options.MaxItemCount);
+                ? new OffsetSpec(tokenOffset, tokenCount, ProbeExtraRow: true)
+                : new OffsetSpec(0, options.MaxItemCount - 1, ProbeExtraRow: true);
 
     private async IAsyncEnumerable<SearchEntryResult> ExecuteAndMaterializeAsync(
         CompiledSearch compiled,

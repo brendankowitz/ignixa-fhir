@@ -14,6 +14,12 @@ public static class SqlRangeKind
     /// <summary>The match-page CTE that applies paging to the match CTE. No row is named for it.</summary>
     public const string MatchPage = "matchPage";
 
+    /// <summary>
+    /// The match-seed CTE that trims the has-more probe row off the match page before include stages seed
+    /// from it, labelled <see cref="SqlLabels.MatchSeed"/>. No row is named for it.
+    /// </summary>
+    public const string MatchSeed = "matchSeed";
+
     /// <summary>A WHERE clause body. No row is named for it.</summary>
     public const string Where = "where";
 

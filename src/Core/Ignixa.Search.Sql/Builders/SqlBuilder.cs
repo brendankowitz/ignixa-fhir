@@ -289,11 +289,14 @@ internal static class SqlBuilder
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
-        if (plan.OffsetPage is { } offsetSpec && (offsetSpec.Offset < 0 || offsetSpec.Limit <= 0))
+        // A zero Limit is legal only alongside a probe row: the page itself is empty but the lookahead row
+        // still makes the fetch positive. See OffsetSpec.
+        if (plan.OffsetPage is { } offsetSpec && (offsetSpec.Offset < 0 || offsetSpec.Limit < 0 || offsetSpec.FetchCount <= 0))
         {
             throw new NotSupportedException(
                 $"OffsetPage must skip a non-negative row count and fetch a positive one; got Offset " +
-                $"{offsetSpec.Offset} and Limit {offsetSpec.Limit}. OFFSET/FETCH rejects both at runtime.");
+                $"{offsetSpec.Offset}, Limit {offsetSpec.Limit} and ProbeExtraRow {offsetSpec.ProbeExtraRow}, " +
+                $"fetching {offsetSpec.FetchCount}. OFFSET/FETCH rejects both at runtime.");
         }
 
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface. Every node
@@ -524,7 +527,7 @@ internal static class SqlBuilder
 
         if (plan.OffsetPage is { } offsetPage)
         {
-            writer.Append($"\nOFFSET {EmitParam(new SqlParameterRef(offsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(offsetPage.Limit), parameters)} ROWS ONLY");
+            writer.Append($"\nOFFSET {EmitParam(new SqlParameterRef(offsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(offsetPage.FetchCount), parameters)} ROWS ONLY");
         }
     }
 
@@ -546,6 +549,17 @@ internal static class SqlBuilder
         writer.Append(",\n");
         WriteMatchPageCte(plan, writer, parameters);
 
+        // An over-fetched page's last row is a has-more probe the caller discards, so it must not seed
+        // includes; a page that did not over-fetch has no such row and seeds from the whole match page.
+        // Gated on SeedFromMatch too, so a plan whose every stage seeds off an earlier stage emits no
+        // unreferenced CTE. Binds no parameters, keeping the resume boundary below at the first stage-level
+        // ordinal.
+        var seedsFromTrimmedPage = plan.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch);
+        if (seedsFromTrimmedPage)
+        {
+            WriteMatchSeedCte(plan, writer);
+        }
+
         // Bind the boundary here — after the match-page CTE, before the stage loop — so it takes the first
         // stage-level @pN, preserving the leading-ordinal invariant EmitCteBlocks documents. Include CTEs bind
         // no parameters; the predicate it feeds is emitted later by EmitGlobalIncludesPage.
@@ -553,9 +567,11 @@ internal static class SqlBuilder
             ? (EmitParam(new SqlParameterRef(boundary.TypeId), parameters), EmitParam(new SqlParameterRef(boundary.SurrogateId), parameters))
             : null;
 
+        var matchSeedLabel = seedsFromTrimmedPage ? MatchSeed : MatchPage;
+
         for (var i = 0; i < includes.Count; i++)
         {
-            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly);
+            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly, matchSeedLabel);
         }
 
         writer.Append("\n");
@@ -707,10 +723,40 @@ internal static class SqlBuilder
 
             if (plan.OffsetPage is { } matchOffsetPage)
             {
-                writer.Append($"\n    OFFSET {EmitParam(new SqlParameterRef(matchOffsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(matchOffsetPage.Limit), parameters)} ROWS ONLY");
+                writer.Append($"\n    OFFSET {EmitParam(new SqlParameterRef(matchOffsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(matchOffsetPage.FetchCount), parameters)} ROWS ONLY");
             }
 
             writer.Append("\n)");
+        }
+    }
+
+    /// <summary>
+    /// Writes the cteMatchSeed CTE: the <see cref="MatchPage"/> rows that are genuinely ON the page, with
+    /// its has-more probe row trimmed off, in the match page's own order.
+    /// </summary>
+    /// <remarks>
+    /// An over-fetching page returns Limit + 1 rows so the caller can detect a further page, then discards
+    /// that last row. Seeding include stages from the full match page resolves includes for the discarded
+    /// row too, and nothing downstream can undo that: the assembled bundle records no link from an included
+    /// resource back to the match it came from, and an include reachable from BOTH a kept match and the
+    /// probe row must survive. Trimming has to happen here, where the ordering is still known.
+    ///
+    /// TOP over the already-paged CTE rather than a narrowed FETCH NEXT, because T-SQL rejects TOP and
+    /// OFFSET/FETCH in the same query (error 10741) and the match page must still return its probe row.
+    /// The ORDER BY repeats the match page's ordering through the SortValueN columns it projects — take
+    /// "first Limit rows" under any other ordering and the wrong row is dropped.
+    /// </remarks>
+    private static void WriteMatchSeedCte(QueryPlan plan, SqlTextWriter writer)
+    {
+        writer.Append(",\n");
+        using (writer.Section(MatchSeed, SqlRangeKind.MatchSeed))
+        {
+            writer.Append(
+                $"{MatchSeed} AS (\n" +
+                $"    SELECT TOP ({plan.OffsetPage!.Limit}) T1, Sid1\n" +
+                $"    FROM {MatchPage}\n" +
+                $"    ORDER BY {EmitSortValueOrderBy(plan.Sort)}\n" +
+                ")");
         }
     }
 
@@ -725,12 +771,13 @@ internal static class SqlBuilder
         IncludeStage stage,
         int index,
         ResourceVisibility visibility,
-        bool includesOnly)
+        bool includesOnly,
+        string matchSeedLabel)
     {
         writer.Append(",\n");
         using (writer.Section(IncludeLabel(index), SqlRangeKind.Include))
         {
-            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly)}\n)");
+            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly, matchSeedLabel)}\n)");
         }
 
         if (includesOnly)
@@ -1244,11 +1291,20 @@ internal static class SqlBuilder
     /// <see cref="EmitOrderBy"/>.
     /// </summary>
     private static string EmitOuterOrderByForIncludes(SortSpec? sort)
+        => $"IsMatch DESC, {EmitSortValueOrderBy(sort)}";
+
+    /// <summary>
+    /// Renders the match page's own ordering as read back through the SortValueN columns it projects, for
+    /// consumers that select from the CTE rather than build it — the includes assembly's ORDER BY (via
+    /// <see cref="EmitOuterOrderByForIncludes"/>) and the match-seed CTE's TOP (see
+    /// <see cref="WriteMatchSeedCte"/>). The single producer of that ordering, so "the first N rows of the
+    /// match page" cannot come to mean something different in one caller than the other.
+    /// </summary>
+    private static string EmitSortValueOrderBy(SortSpec? sort)
     {
         var activeIndices = ActiveKeyIndices(sort);
         var terms = activeIndices.Select((idx, ordinal) =>
-            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}")
-            .Prepend("IsMatch DESC");
+            $"SortValue{ordinal} {(sort!.Keys[idx].Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
         if (!HasCustomSortKey(sort))
         {
             terms = terms.Append("T1 ASC");
@@ -1464,7 +1520,8 @@ internal static class SqlBuilder
     private static string EmitIncludeStage(
         IncludeStage stage,
         ResourceVisibility visibility,
-        bool includesOnly)
+        bool includesOnly,
+        string matchSeedLabel)
     {
         var (selectColumns, seedTypeColumn, outputTypeColumn, outputSurrogateColumn, seedCorrelationAlias) = stage.Direction switch
         {
@@ -1490,7 +1547,7 @@ internal static class SqlBuilder
         }
 
         whereClauses.Add("rsp.BaseUri IS NULL");
-        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, includesOnly));
+        whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, includesOnly, matchSeedLabel));
 
         if (stage.Constraints is { Count: > 0 } constraints)
         {
@@ -1536,12 +1593,16 @@ internal static class SqlBuilder
     /// (<see cref="IncludeLimitLabel"/>); an IncludesOnly page seeds from the stage body (<see cref="IncludeLabel"/>),
     /// unfiltered by the resume boundary so an <c>:iterate</c> stage on page 2 still sees page-1 targets.
     /// </param>
-    private static string EmitSeedExists(IncludeStage stage, string correlationAlias, bool includesOnly)
+    /// <param name="matchSeedLabel">
+    /// Which label the match seed is read through: <see cref="MatchSeed"/> when the page over-fetches a
+    /// has-more probe row that must not pull includes of its own, otherwise <see cref="MatchPage"/> itself.
+    /// </param>
+    private static string EmitSeedExists(IncludeStage stage, string correlationAlias, bool includesOnly, string matchSeedLabel)
     {
         var branches = new List<string>();
         if (stage.SeedFromMatch)
         {
-            branches.Add($"SELECT 1 FROM {MatchPage} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
+            branches.Add($"SELECT 1 FROM {matchSeedLabel} m WHERE m.T1 = {correlationAlias}.ResourceTypeId AND m.Sid1 = {correlationAlias}.ResourceSurrogateId");
         }
 
         foreach (var seedStageIndex in stage.SeedStages)

@@ -60,11 +60,16 @@ internal static class Lower
                     "SearchPaging.Offset requires an OffsetSpec. Use SearchPaging.Keyset, or leave Paging null, " +
                     "to compile without an OFFSET/FETCH page.");
 
-            if (offsetPage.Offset < 0 || offsetPage.Limit <= 0)
+            // A zero Limit is legal only alongside a probe row: that is the phase-boundary case where the
+            // whole remaining budget IS the lookahead row (see the two-phase sort executor), and it still
+            // fetches one row.
+            if (offsetPage.Offset < 0 || offsetPage.Limit < 0 || offsetPage.FetchCount <= 0)
             {
                 throw new NotSupportedException(
                     $"OffsetSpec must skip a non-negative row count and fetch a positive one; got Offset " +
-                    $"{offsetPage.Offset} and Limit {offsetPage.Limit}. OFFSET/FETCH rejects both at runtime.");
+                    $"{offsetPage.Offset}, Limit {offsetPage.Limit} and ProbeExtraRow " +
+                    $"{offsetPage.ProbeExtraRow}, fetching {offsetPage.FetchCount}. OFFSET/FETCH rejects " +
+                    $"both at runtime.");
             }
         }
 
