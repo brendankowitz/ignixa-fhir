@@ -604,7 +604,7 @@ public static class FhirEndpoints
         // Build SearchOptions
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
         var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
         if (strictResult is not null)
         {
@@ -695,7 +695,7 @@ public static class FhirEndpoints
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
         var strictResult = CheckStrictHandling(context, searchOptions, resourceType, logger);
         if (strictResult is not null)
         {
@@ -1494,7 +1494,7 @@ public static class FhirEndpoints
         // This will search across all resource types (handled by SqlEntityFrameworkSearchService)
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
         var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
         if (strictResult is not null)
         {
@@ -1583,7 +1583,7 @@ public static class FhirEndpoints
         var schemaProvider = versionContext.GetSchemaProvider(fhirSpec, tenantId);
         var searchOptions = searchOptionsBuilder.Build(null, queryParameters, schemaProvider);
 
-        // Check for unsupported parameters with handling=strict
+        // Check for unsupported modifiers (always rejected) and unsupported parameters (handling=strict)
         var strictResult = CheckStrictHandling(context, searchOptions, null, logger);
         if (strictResult is not null)
         {
@@ -1685,20 +1685,35 @@ public static class FhirEndpoints
     }
 
     /// <summary>
-    /// Checks for unsupported search parameters when strict handling is requested.
-    /// Returns a BadRequest result if strict handling is enabled and unsupported parameters exist.
+    /// Checks for unsupported search parameters and modifiers.
+    /// Returns a BadRequest result if an unsupported modifier was used, or if strict handling is
+    /// requested and unsupported parameters exist.
     /// </summary>
     /// <param name="context">The HTTP context.</param>
     /// <param name="searchOptions">The search options containing unsupported params.</param>
     /// <param name="resourceType">Optional resource type for error message context.</param>
     /// <param name="logger">Logger for warnings.</param>
-    /// <returns>BadRequest result if strict handling fails, null otherwise.</returns>
+    /// <returns>BadRequest result if the request must be rejected, null otherwise.</returns>
     private static IResult? CheckStrictHandling(
         HttpContext context,
         SearchOptions searchOptions,
         string? resourceType,
         ILogger logger)
     {
+        // FHIR R4 SHALL rejects a search suffixed by a modifier the server does not support for that
+        // parameter (https://hl7.org/fhir/R4/search.html#modifiers), unlike an unsupported *parameter*,
+        // which only SHOULD be rejected and is opt-in via Prefer: handling=strict below. Silently
+        // dropping the modifier would widen the result set instead of narrowing it, so this check is
+        // unconditional -- it does not depend on the Prefer header.
+        if (searchOptions.UnsupportedModifierParams.Count > 0)
+        {
+            logger.LogWarning(
+                "Unsupported search modifier(s) found: {UnsupportedModifierParams}",
+                string.Join(", ", searchOptions.UnsupportedModifierParams.Select(p => p.SanitizeForLog())));
+
+            return BuildUnsupportedParametersResult(searchOptions.UnsupportedModifierParams, resourceType, isModifierRejection: true);
+        }
+
         if (!PreferHeaderParser.IsStrictHandling(context.Request.Headers) ||
             searchOptions.UnsupportedParams.Count == 0)
         {
@@ -1709,12 +1724,34 @@ public static class FhirEndpoints
             "Strict handling requested but unsupported parameters found: {UnsupportedParams}",
             string.Join(", ", searchOptions.UnsupportedParams.Select(p => p.SanitizeForLog())));
 
+        return BuildUnsupportedParametersResult(searchOptions.UnsupportedParams, resourceType, isModifierRejection: false);
+    }
+
+    /// <summary>
+    /// Builds the BadRequest <see cref="OperationOutcome"/> for a set of unsupported search parameters.
+    /// </summary>
+    /// <param name="unsupportedParams">The parameter (and, for modifiers, key) names to report.</param>
+    /// <param name="resourceType">Optional resource type for error message context.</param>
+    /// <param name="isModifierRejection">
+    /// True when rejecting a SHALL-mandated unsupported modifier (see <see cref="CheckStrictHandling"/>);
+    /// false for the opt-in, strict-handling unsupported-parameter case. Only affects the diagnostics
+    /// text, so the two are distinguishable to a client instead of reading as the same generic message.
+    /// </param>
+    private static IResult BuildUnsupportedParametersResult(
+        IReadOnlyList<string> unsupportedParams,
+        string? resourceType,
+        bool isModifierRejection)
+    {
         var operationOutcome = new OperationOutcome();
-        foreach (var param in searchOptions.UnsupportedParams)
+        foreach (var param in unsupportedParams)
         {
-            var diagnostics = resourceType is not null
-                ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
-                : $"Search parameter '{param}' is not supported";
+            var diagnostics = isModifierRejection
+                ? (resourceType is not null
+                    ? $"Search parameter '{param}' uses a modifier that is not supported for resource type '{resourceType}'"
+                    : $"Search parameter '{param}' uses a modifier that is not supported")
+                : (resourceType is not null
+                    ? $"Search parameter '{param}' is not supported for resource type '{resourceType}'"
+                    : $"Search parameter '{param}' is not supported");
 
             operationOutcome.Issue.Add(new Ignixa.Models.OperationOutcomeIssue
             {

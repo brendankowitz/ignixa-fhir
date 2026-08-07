@@ -554,6 +554,15 @@ internal static class SqlBuilder
         // Gated on SeedFromMatch too, so a plan whose every stage seeds off an earlier stage emits no
         // unreferenced CTE. Binds no parameters, keeping the resume boundary below at the first stage-level
         // ordinal.
+        //
+        // NOTE: only OffsetSpec.ProbeExtraRow is checked here -- a Top-capped (keyset) page has no equivalent
+        // flag, even though some Top callers use the same "ask for one more than the page size" convention to
+        // detect hasMore (see SearchPaging.Keyset's remarks). Until a caller in this repo actually drives
+        // Top-capped paging together with Include stages, extending this trim to Top would be speculative: it
+        // would either need every Top caller to follow the same convention, or a ProbeExtraRow-equivalent flag
+        // on SearchPaging.Keyset threaded through Lower/PlanExplainer. Tracked as a known gap, not silently
+        // missed -- see GivenAnUnpagedPlanWithAnInclude_WhenEmitted_ThenTheIncludeStageSeedsFromTheWholeMatchPage
+        // in EmitProbeRowIncludeSeedTests, which pins today's (unprotected) behavior for that combination.
         var seedsFromTrimmedPage = plan.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch);
         if (seedsFromTrimmedPage)
         {

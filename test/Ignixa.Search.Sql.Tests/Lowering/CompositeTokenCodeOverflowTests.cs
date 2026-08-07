@@ -24,7 +24,7 @@ public class CompositeTokenCodeOverflowTests
     /// token slot declares the same width as TokenSearchParam.Code, so one catalog lookup covers all the
     /// slots exercised here. That the row generators really split here — rather than at a literal that
     /// happens to agree — is pinned from the writers' side by TokenCodeOverflowSplitPointTests in
-    /// Ignixa.DataLayer.SqlServer.Tests.
+    /// Ignixa.DataLayer.SqlEntityFramework.IntegrationTests.
     /// </summary>
     private static readonly int SplitWidth =
         Sql.Catalog.SqlCatalog.Default.Table("TokenSearchParam").Column("Code").MaxLength!.Value;

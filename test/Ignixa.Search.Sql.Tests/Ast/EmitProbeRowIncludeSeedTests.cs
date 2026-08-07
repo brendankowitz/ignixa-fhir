@@ -77,7 +77,16 @@ public class EmitProbeRowIncludeSeedTests
     [Fact]
     public void GivenAnUnpagedPlanWithAnInclude_WhenEmitted_ThenTheIncludeStageSeedsFromTheWholeMatchPage()
     {
-        // Arrange -- a Top-capped plan has no OffsetSpec at all and therefore no probe row.
+        // Arrange -- a Top-capped plan has no OffsetSpec at all, so this trim never engages for it.
+        //
+        // KNOWN GAP: this pins today's behavior, not a guarantee it is safe. Some Top callers use the same
+        // "ask for Top+1 to detect hasMore" convention OffsetSpec used to rely on before ProbeExtraRow made it
+        // explicit (see SearchPaging.Keyset's remarks) -- if such a caller combines that convention with
+        // Include stages, the same probe-row-leaks-into-includes bug this PR fixes for OffsetSpec would still
+        // reproduce here, undetected. No caller in this repo drives that combination yet (Ignixa.Search.Sql has
+        // no consumer here besides its own generator/tests until the SqlServer data-layer migration lands), so
+        // extending the trim to Top is deferred rather than speculatively designed against a caller that
+        // doesn't exist yet. See the NOTE in SqlBuilder.EmitIncludesShape.
         var plan = new QueryPlan(
             [new CteDefinition.ResourceSource(103)],
             new CteRef(0),
