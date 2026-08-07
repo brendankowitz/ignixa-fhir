@@ -41,6 +41,32 @@ public class UnsupportedModifierTests : CapabilityDrivenTestBase
     }
 
     [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenSearchedWithNoPreferHeader_ThenTheDiagnosticsNameTheModifierNotTheParameter()
+    {
+        // The SHALL-reject case must read differently from an ignored/unsupported *parameter* (which this
+        // server only rejects when the client opts in via Prefer: handling=strict) -- a client parsing
+        // OperationOutcome.issue[].diagnostics needs to be able to tell "your modifier was rejected" apart
+        // from "your parameter was ignored," even though both currently map to the same severity/code.
+        var response = await Client.GetAsync("/Patient?_id:above=abc");
+        var body = await response.Content.ReadAsStringAsync();
+
+        body.ShouldContain("uses a modifier that is not supported");
+    }
+
+    [Fact]
+    public async Task GivenMultipleUnsupportedModifiers_WhenSearchedWithNoPreferHeader_ThenEveryOneIsReported()
+    {
+        // UnsupportedModifierParams is a list; this pins that the diagnostics loop reports every offending
+        // parameter, not just the first one it finds.
+        var response = await Client.GetAsync("/Patient?_id:above=abc&_lastUpdated:above=2020");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, body);
+        body.ShouldContain("_id:above");
+        body.ShouldContain("_lastUpdated:above");
+    }
+
+    [Fact]
     public async Task GivenASupportedModifierOnTheSameIntrinsicParameter_WhenSearchedWithNoPreferHeader_ThenNotRejected()
     {
         // Control: `_id:not` is a supported modifier on the same intrinsic parameter, so its presence
