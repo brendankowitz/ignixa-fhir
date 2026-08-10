@@ -1117,8 +1117,14 @@ internal static class SqlBuilder
         _ => throw new NotSupportedException($"Unknown ChainDirection '{direction}'."),
     };
 
-    /// <summary>Renders the joins to each sort key's search-param table (INNER for the primary key, LEFT for tie-breakers), filtered to the IsMin/IsMax row for the key's direction.</summary>
-    private static string EmitSortJoins(SortSpec? sort)
+    /// <summary>
+    /// Renders the joins to each sort key's search-param table (INNER for the primary key, LEFT for
+    /// tie-breakers), filtered to the IsMin/IsMax row for the key's direction. Internal (not private) so
+    /// PlanExplainer's matchPage row can check whether this actually emits anything -- LastUpdated/
+    /// ResourceType keys and the MissingPrimary phase's own primary key need no join, so "does the plan
+    /// sort" is not the same question as "does matchPage carry a sort join."
+    /// </summary>
+    internal static string EmitSortJoins(SortSpec? sort)
     {
         if (sort is null)
         {

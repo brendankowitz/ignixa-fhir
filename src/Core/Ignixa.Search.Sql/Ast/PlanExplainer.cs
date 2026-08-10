@@ -78,10 +78,55 @@ public static class PlanExplainer
             }
         }
 
-        // Emitted between the CTE graph and the include stages, matching where SqlBuilder binds it:
-        // EmitIncludesShape binds the two boundary values after the match-page CTE and before the stage
-        // loop, and include-stage CTEs bind nothing, so these are the first stage-level ordinals. Rendering
-        // this row after the inc rows would read the same but claim the wrong @pN.
+        if (plan.Sort is { } sort)
+        {
+            rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
+        }
+
+        // EmitCountOnlyShape never reads Page or OffsetPage -- COUNT_BIG has no page to seek or window, and
+        // SqlBuilder emits neither clause for it (pinned by GivenACountOnlyPlanWithOffsetPage_WhenEmitted_
+        // ThenOffsetFetchIsNotEmitted). Gate both rows the same way or Describe() claims ordinals Emit never
+        // binds for a CountOnly plan.
+        if (!plan.CountOnly && plan.Page is { } page)
+        {
+            rows.Add(new PlanExplainRow(
+                "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
+        }
+
+        // BuildMatchWhereClauses (EmitMatchOnlyShape/WriteMatchPageCte) and EmitCountOnlyShape both append
+        // these two, in this order, right after the page/seek predicate (when there is one) and before
+        // ORDER BY -- unlike Page/OffsetPage, CountOnly plans DO bind these, so no CountOnly gate here.
+        if (plan.SurrogateRange is { } surrogateRange)
+        {
+            rows.Add(new PlanExplainRow(
+                "surrogateRange", "surrogateRange", PlanRowKind.SurrogateRange, PrintSurrogateRange(ref parameterOrdinal), []));
+        }
+
+        if (plan.SearchParameterHash is not null)
+        {
+            rows.Add(new PlanExplainRow(
+                "searchParameterHash", "searchParameterHash", PlanRowKind.SearchParameterHash, PrintSearchParameterHash(ref parameterOrdinal), []));
+        }
+
+        // Mutually exclusive with Page (SqlBuilder rejects both) and, like Page, never bound for CountOnly.
+        // Consumes the same next two ordinals Emit binds for OFFSET/FETCH -- immediately after the seek/page
+        // predicate, whether or not the plan also carries Includes: WriteMatchPageCte binds them in the same
+        // relative order EmitMatchOnlyShape does at the top level, so this row's position holds for both shapes.
+        if (!plan.CountOnly && plan.OffsetPage is { } offsetPage)
+        {
+            rows.Add(new PlanExplainRow(
+                "offsetPage", "offsetPage", PlanRowKind.OffsetSpec, PrintOffsetSpec(offsetPage, ref parameterOrdinal), []));
+        }
+
+        // Bound last among the ordinal-consuming rows: EmitIncludesShape calls WriteMatchPageCte -- which
+        // binds everything above (OuterPredicate through OffsetPage) via BuildMatchWhereClauses plus its own
+        // ORDER BY/OFFSET-FETCH -- to completion BEFORE binding the resume boundary, and only then starts the
+        // stage loop. Rendering this row any earlier (it used to sit right after the CTE graph) claimed
+        // ordinals that page/surrogateRange/searchParameterHash/offsetPage hadn't consumed yet in the real
+        // SQL, so every row from here on named the wrong bound value whenever IncludesPage's Resume combined
+        // with SurrogateRange or SearchParameterHash -- exactly the combination SqlBuilder's own
+        // RejectUnsupportedCombinations guard message recommends ("bound the match set with SurrogateRange
+        // and page the include rows with ResultShape.IncludesPage.Resume").
         if (plan.IncludeBoundary is not null)
         {
             rows.Add(new PlanExplainRow(
@@ -99,42 +144,6 @@ public static class PlanExplainer
                 rows.Add(new PlanExplainRow(
                     IncludeLabel(i), IncludeLabel(i), PlanRowKind.IncludeStage, PrintIncludeStage(includes[i]), []));
             }
-        }
-
-        if (plan.Sort is { } sort)
-        {
-            rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
-        }
-
-        if (plan.Page is { } page)
-        {
-            rows.Add(new PlanExplainRow(
-                "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
-        }
-
-        // BuildMatchWhereClauses appends these two, in this order, right after the page/seek predicate and
-        // before ORDER BY -- both rows must sit here, between page and offsetPage, or their ordinals collide
-        // with whatever OFFSET/FETCH consumes next.
-        if (plan.SurrogateRange is { } surrogateRange)
-        {
-            rows.Add(new PlanExplainRow(
-                "surrogateRange", "surrogateRange", PlanRowKind.SurrogateRange, PrintSurrogateRange(ref parameterOrdinal), []));
-        }
-
-        if (plan.SearchParameterHash is not null)
-        {
-            rows.Add(new PlanExplainRow(
-                "searchParameterHash", "searchParameterHash", PlanRowKind.SearchParameterHash, PrintSearchParameterHash(ref parameterOrdinal), []));
-        }
-
-        // Mutually exclusive with Page (SqlBuilder rejects both), and consumes the same next two ordinals
-        // Emit binds for OFFSET/FETCH -- immediately after the seek/page predicate, whether or not the plan
-        // also carries Includes: WriteMatchPageCte binds them in the same relative order EmitMatchOnlyShape
-        // does at the top level, so this row's position holds for both shapes.
-        if (plan.OffsetPage is { } offsetPage)
-        {
-            rows.Add(new PlanExplainRow(
-                "offsetPage", "offsetPage", PlanRowKind.OffsetSpec, PrintOffsetSpec(offsetPage, ref parameterOrdinal), []));
         }
 
         if (plan.CountOnly)
@@ -226,14 +235,16 @@ public static class PlanExplainer
 
     /// <summary>
     /// Summarizes the synthetic cteMatchPage WriteMatchPageCte builds for an includes-shape plan: its own
-    /// TOP cap (a literal, never a bound parameter) and which joins it carries. Both booleans mirror
-    /// SqlBuilder's own decisions exactly (<see cref="SqlBuilder.NeedsResourceJoin"/> for the resource join;
-    /// sort joins follow whenever the plan sorts at all) so this label can't drift from what Emit does.
+    /// TOP cap (a literal, never a bound parameter) and which joins it carries. Both booleans call the exact
+    /// SqlBuilder decisions they report (<see cref="SqlBuilder.NeedsResourceJoin"/>, <see cref="SqlBuilder.EmitSortJoins"/>)
+    /// rather than approximating them, so this label can't drift from what Emit does. sortJoins is NOT simply
+    /// "does the plan sort" -- EmitSortJoins skips LastUpdated/ResourceType keys and the MissingPrimary
+    /// phase's own primary key, so a plan sorted only by one of those needs no join at all.
     /// </summary>
     private static string PrintMatchPageCte(QueryPlan plan)
     {
         var top = plan.Top is { } n ? n.ToString(CultureInfo.InvariantCulture) : "none";
-        var sortJoins = plan.Sort is not null;
+        var sortJoins = SqlBuilder.EmitSortJoins(plan.Sort).Length > 0;
         var resourceJoin = SqlBuilder.NeedsResourceJoin(plan, includesProjection: false);
         return $"MatchPageCte(top={top}, sortJoins={(sortJoins ? "true" : "false")}, resourceJoin={(resourceJoin ? "true" : "false")})";
     }

@@ -89,6 +89,11 @@ public class DdlSchemaParityGuardTests
         decomposed.ShouldNotBeEmpty();
         baseSchema.ShouldNotBeEmpty();
 
+        // TablesNotInBaseSchema only ever suppresses -- FindMismatches never asserts these parsed at all, so
+        // a table dropped or renamed to something DdlTableParser can't parse (e.g. a bracketed identifier)
+        // would silently vanish from `decomposed` and the guard would still pass. Assert presence directly.
+        TablesNotInBaseSchema.ShouldBeSubsetOf(decomposed.Keys);
+
         // Act
         var mismatches = FindMismatches(baseSchema, decomposed, KnownExtensionColumns, TablesNotInBaseSchema);
 
