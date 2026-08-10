@@ -93,6 +93,16 @@ public static class PlanExplainer
                 "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
         }
 
+        // Mutually exclusive with Page (SqlBuilder rejects both), and consumes the same next two ordinals
+        // Emit binds for OFFSET/FETCH -- immediately after the seek/page predicate, whether or not the plan
+        // also carries Includes: WriteMatchPageCte binds them in the same relative order EmitMatchOnlyShape
+        // does at the top level, so this row's position holds for both shapes.
+        if (plan.OffsetPage is { } offsetPage)
+        {
+            rows.Add(new PlanExplainRow(
+                "offsetPage", "offsetPage", PlanRowKind.OffsetSpec, PrintOffsetSpec(offsetPage, ref parameterOrdinal), []));
+        }
+
         if (plan.CountOnly)
         {
             rows.Add(new PlanExplainRow("countOnly", "countOnly", PlanRowKind.CountOnly, "true", []));
@@ -160,6 +170,19 @@ public static class PlanExplainer
         var typeParam = page.BoundaryResourceTypeId is null ? "none" : $"@p{parameterOrdinal++}";
         var sidParam = $"@p{parameterOrdinal++}";
         return $"PageSpec(boundary=[{string.Join(",", boundary)}], type={typeParam}, sid={sidParam})";
+    }
+
+    /// <summary>
+    /// Renders the OFFSET/FETCH clause Emit binds for <see cref="OffsetSpec"/> -- two ordinals, offset then
+    /// fetch count. Fetch count is <see cref="OffsetSpec.FetchCount"/> (the page size plus its probe row,
+    /// when <see cref="OffsetSpec.ProbeExtraRow"/> is set), matching what Emit actually binds, not the
+    /// caller-facing <see cref="OffsetSpec.Limit"/>.
+    /// </summary>
+    private static string PrintOffsetSpec(OffsetSpec offset, ref int parameterOrdinal)
+    {
+        var offsetParam = $"@p{parameterOrdinal++}";
+        var fetchParam = $"@p{parameterOrdinal++}";
+        return $"OffsetSpec(offset={offsetParam}, fetch={fetchParam})";
     }
 
     /// <summary>
