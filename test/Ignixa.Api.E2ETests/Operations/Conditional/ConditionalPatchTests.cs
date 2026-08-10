@@ -73,6 +73,28 @@ public class ConditionalPatchTests : CapabilityDrivenTestBase
     }
 
     /// <summary>
+    /// Tests conditional patch criteria carrying a modifier the server does not support.
+    /// Expected: Returns 400 Bad Request rather than silently widening the patch criteria.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 SHALL-rejects an unsupported modifier (see Search.Modifiers.UnsupportedModifierTests for
+    /// the plain-search case). Conditional patch must reject it too -- dropping the modifier would widen
+    /// the match set, which for a patch means the wrong resource could be modified.
+    /// </remarks>
+    [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenConditionalPatch_ThenReturnsBadRequest()
+    {
+        // Arrange
+        var patchDocument = CreateGenderPatchDocument("female");
+
+        // Act - PATCH /Patient?_id:above=abc (:above is not a supported modifier for _id)
+        var response = await Harness.PatchWithQueryAsync("Patient", "_id:above=abc", patchDocument);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen patch criteria");
+    }
+
+    /// <summary>
     /// Tests conditional patch when exactly one matching resource exists.
     /// Expected: Patches the existing resource and returns 200 OK with the updated resource.
     /// </summary>
