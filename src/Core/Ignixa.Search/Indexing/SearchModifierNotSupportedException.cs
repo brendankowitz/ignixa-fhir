@@ -3,6 +3,8 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using Ignixa.Search.Models;
+
 namespace Ignixa.Search.Indexing;
 
 /// <summary>
@@ -39,5 +41,28 @@ public class SearchModifierNotSupportedException : InvalidSearchOperationExcepti
     public SearchModifierNotSupportedException(string message)
         : base(message)
     {
+    }
+
+    /// <summary>
+    /// Throws when <paramref name="options"/> recorded a client search modifier the server does not
+    /// support for that parameter. Every caller that runs a client-supplied search against the
+    /// compiler -- not just the HTTP search endpoints -- must call this, because <see
+    /// cref="Parsing.SearchOptionsBuilder"/> never throws for this case on its own: it records the
+    /// modifier in <see cref="SearchOptions.UnsupportedModifierParams"/> and keeps building, so a
+    /// caller that skips this check silently executes the widened, unfiltered search instead of the
+    /// SHALL-mandated rejection.
+    /// </summary>
+    /// <param name="options">The options produced by <see cref="Parsing.SearchOptionsBuilder"/>.</param>
+    public static void ThrowIfAny(SearchOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.UnsupportedModifierParams.Count == 0)
+        {
+            return;
+        }
+
+        throw new SearchModifierNotSupportedException(
+            $"Search parameter(s) use a modifier that is not supported: {string.Join(", ", options.UnsupportedModifierParams)}");
     }
 }

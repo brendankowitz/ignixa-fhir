@@ -14,6 +14,7 @@ using Ignixa.Application.Features.Bundle.Serialization;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -248,6 +249,7 @@ public static class CompartmentEndpoints
 
         // Build SearchOptions
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters);
+        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
 
         // Create SearchCompartmentQuery
         var query = new SearchCompartmentQuery(
