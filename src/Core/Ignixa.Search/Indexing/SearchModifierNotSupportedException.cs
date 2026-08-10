@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Linq;
 using Ignixa.Search.Models;
 
 namespace Ignixa.Search.Indexing;
@@ -62,7 +63,11 @@ public class SearchModifierNotSupportedException : InvalidSearchOperationExcepti
             return;
         }
 
-        throw new SearchModifierNotSupportedException(
-            $"Search parameter(s) use a modifier that is not supported: {string.Join(", ", options.UnsupportedModifierParams)}");
+        var parameterList = string.Join(", ", options.UnsupportedModifierParams.Select(p => $"'{p}'"));
+        var message = string.IsNullOrEmpty(options.ResourceType)
+            ? $"Search parameter(s) use a modifier that is not supported: {parameterList}"
+            : $"Search parameter(s) use a modifier that is not supported for resource type '{options.ResourceType}': {parameterList}";
+
+        throw new SearchModifierNotSupportedException(message);
     }
 }

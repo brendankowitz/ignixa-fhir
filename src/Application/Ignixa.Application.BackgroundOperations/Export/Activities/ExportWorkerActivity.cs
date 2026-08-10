@@ -170,6 +170,7 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                         var groupQueryString = $"_id={Uri.EscapeDataString(input.GroupId)}&_include=Group:member&_include:iterate=Group:member";
                         var groupFilterParams = _parameterParser.Parse(groupQueryString);
                         var groupSearchOptions = _searchOptionsBuilder.Build("Group", groupFilterParams);
+                        SearchModifierNotSupportedException.ThrowIfAny(groupSearchOptions);
 
                         var patientIds = new List<string>();
                         await foreach (var resource in searchService.SearchStreamAsync(groupSearchOptions, CancellationToken.None))
