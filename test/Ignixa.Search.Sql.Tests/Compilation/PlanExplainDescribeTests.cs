@@ -27,6 +27,7 @@ public class PlanExplainDescribeTests
             "cte0 = StringSearchParam[103,202]  Text = @p0\n" +
             "cte1 = TokenSearchParam[103,44]  Code = @p1\n" +
             "root = Intersect(cte0, cte1) WHERE ResourceId = @p2\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=true, resourceJoin=true)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)\n" +
             "sort = SortSpec([String:202 ASC], Valued)\n" +
             "page = PageSpec(boundary=[@p3], type=none, sid=@p4)");
@@ -42,7 +43,7 @@ public class PlanExplainDescribeTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert
-        rows.Select(row => row.Label).ShouldBe(["cte0", "cte1", "root", "inc0", "sort", "page"]);
+        rows.Select(row => row.Label).ShouldBe(["cte0", "cte1", "root", "matchPage", "inc0", "sort", "page"]);
     }
 
     [Fact]
@@ -55,7 +56,7 @@ public class PlanExplainDescribeTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert -- "root" is cosmetic; cte2 is what the SQL and CteProvenance actually use.
-        rows.Select(row => row.CanonicalLabel).ShouldBe(["cte0", "cte1", "cte2", "inc0", "sort", "page"]);
+        rows.Select(row => row.CanonicalLabel).ShouldBe(["cte0", "cte1", "cte2", "matchPage", "inc0", "sort", "page"]);
         rows.Count(row => row.Label != row.CanonicalLabel).ShouldBe(1);
     }
 
@@ -73,6 +74,7 @@ public class PlanExplainDescribeTests
             PlanRowKind.ParamSource,
             PlanRowKind.ParamSource,
             PlanRowKind.Intersect,
+            PlanRowKind.MatchPageCte,
             PlanRowKind.IncludeStage,
             PlanRowKind.SortSpec,
             PlanRowKind.PageSpec,

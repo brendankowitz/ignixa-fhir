@@ -563,7 +563,7 @@ internal static class SqlBuilder
         // on SearchPaging.Keyset threaded through Lower/PlanExplainer. Tracked as a known gap, not silently
         // missed -- see GivenAnUnpagedPlanWithAnInclude_WhenEmitted_ThenTheIncludeStageSeedsFromTheWholeMatchPage
         // in EmitProbeRowIncludeSeedTests, which pins today's (unprotected) behavior for that combination.
-        var seedsFromTrimmedPage = plan.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch);
+        var seedsFromTrimmedPage = SeedsFromTrimmedMatchPage(plan, includes);
         if (seedsFromTrimmedPage)
         {
             WriteMatchSeedCte(plan, writer);
@@ -602,6 +602,15 @@ internal static class SqlBuilder
             writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
         }
     }
+
+    /// <summary>
+    /// Whether the trimmed cteMatchSeed CTE is emitted for an includes-shape plan -- see the NOTE above this
+    /// call site in <see cref="EmitIncludesShape"/> for why only <see cref="OffsetSpec.ProbeExtraRow"/> is
+    /// checked, not an equivalent Top-capped flag. Internal so PlanExplainer's matchSeed row uses the
+    /// identical condition rather than a second copy that can drift.
+    /// </summary>
+    internal static bool SeedsFromTrimmedMatchPage(QueryPlan plan, IReadOnlyList<IncludeStage> includes)
+        => plan.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch);
 
     /// <summary>The derived-table alias the global includes page wraps its stage union in.</summary>
     private const string IncludeUnionAlias = "includeUnion";
@@ -922,13 +931,14 @@ internal static class SqlBuilder
 
     /// <summary>
     /// Whether a shape must join dbo.Resource: true when any plan feature references an <c>r.</c> column.
-    /// Centralised so a missing shape is a runtime bind error, not a test failure.
+    /// Centralised so a missing shape is a runtime bind error, not a test failure. Internal (not private) so
+    /// PlanExplainer's matchPage row reads the identical decision instead of a second copy that can drift.
     /// </summary>
     /// <param name="plan">The query plan being emitted.</param>
     /// <param name="includesProjection">
     /// Whether the calling shape projects through this join. False for CountOnly and the includes match arm.
     /// </param>
-    private static bool NeedsResourceJoin(QueryPlan plan, bool includesProjection)
+    internal static bool NeedsResourceJoin(QueryPlan plan, bool includesProjection)
         => plan.OuterPredicate is not null
             || plan.SearchParameterHash is not null
             || (includesProjection && plan.Projection is { Columns.Count: > 0 });
