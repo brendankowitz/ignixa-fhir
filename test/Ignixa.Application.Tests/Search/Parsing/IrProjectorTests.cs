@@ -207,9 +207,11 @@ public class IrProjectorTests
     }
 
     [Fact]
-    public void GivenAnOfTypeModifier_WhenDescribed_ThenTheUntypedFieldShapesItBindsToStillProject()
+    public void GivenAnOfTypeModifier_WhenDescribed_ThenItProjectsAsASingleTypedPredicateRatherThanFlattenedFields()
     {
-        // Arrange
+        // Arrange -- of-type keeps its typed OfTypeTokenSearchValue instead of flattening into field-level
+        // AND expressions (see SearchExpressionBinder.BindOfType), so it projects like any other predicate
+        // rather than as an "and" of untyped field shapes.
         var ir = ParsePatient(
             ("identifier", SearchParamType.Token),
             ("identifier:of-type", "http://ignixa.test/v2-0203|MR|446053"));
@@ -218,10 +220,8 @@ public class IrProjectorTests
         var rows = IrProjector.Describe(ir);
 
         // Assert
-        rows[0].Kind.ShouldBe("param");
-        rows.ShouldContain(row => row.Kind == "and");
-        rows.Where(row => row.Kind == "stringField").ShouldNotBeEmpty();
-        rows[0].Depth.ShouldBe(0);
+        rows.Select(row => (row.Kind, row.Depth)).ShouldBe([("param", 0), ("predicate", 1)]);
+        rows[0].Text.ShouldBe("Param identifier");
     }
 
     [Fact]

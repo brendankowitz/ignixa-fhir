@@ -138,15 +138,21 @@ public class SearchOptionsCopyConstructorTests
         if (type.IsEnum)
         {
             // Rotated by ordinal so two properties sharing an enum type still get different members and a
-            // transposition between them is caught. The guard in the caller catches the case where the
-            // rotation lands on the property's default.
+            // transposition between them is caught. Index 0 is skipped: this codebase's enums use it for
+            // "unset/none", which is always the default, so landing there would trip the guard below.
             Array values = Enum.GetValues(type);
-            return values.GetValue((values.Length - 1 - ordinal % values.Length + values.Length) % values.Length)!;
+            int index = 1 + (ordinal % (values.Length - 1));
+            return values.GetValue(index)!;
         }
 
         if (type == typeof(Expression))
         {
             return new StringExpression(StringOperator.Equals, FieldName.String, componentIndex: null, "copy-ctor", ignoreCase: false);
+        }
+
+        if (type == typeof(bool))
+        {
+            return true;
         }
 
         // The strategy below assumes every remaining property is a collection; a fresh empty instance is a
