@@ -41,7 +41,7 @@ public class RunCommandTests
     [Fact]
     public void GivenBareTokenValue_WhenNormalizingAuthHeader_ThenUsesAuthorizationHeader()
     {
-        var (name, value) = RunCommand.ParseAuthHeader("Bearer abc123");
+        var (name, value) = AuthHeader.Parse("Bearer abc123");
 
         name.ShouldBe("Authorization");
         value.ShouldBe("Bearer abc123");
@@ -50,7 +50,7 @@ public class RunCommandTests
     [Fact]
     public void GivenExplicitHeaderValue_WhenNormalizingAuthHeader_ThenPreservesHeaderName()
     {
-        var (name, value) = RunCommand.ParseAuthHeader("X-Test: value");
+        var (name, value) = AuthHeader.Parse("X-Test: value");
 
         name.ShouldBe("X-Test");
         value.ShouldBe("value");
@@ -67,7 +67,7 @@ public class RunCommandTests
     public void GivenCustomAuthScheme_WhenNormalizingAuthHeader_ThenTreatsItAsBareCredential()
     {
         // Arrange: a scheme not on any hardcoded list, whose credential contains a colon.
-        var (name, value) = RunCommand.ParseAuthHeader("AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
+        var (name, value) = AuthHeader.Parse("AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
 
         name.ShouldBe("Authorization");
         value.ShouldBe("AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
@@ -80,7 +80,7 @@ public class RunCommandTests
         using var httpClient = new HttpClient();
 
         // Act
-        var error = RunCommand.ApplyAuthHeader(httpClient, null);
+        var error = AuthHeader.Apply(httpClient, null);
 
         // Assert
         error.ShouldBeNull();
@@ -99,7 +99,7 @@ public class RunCommandTests
         using var httpClient = new HttpClient();
 
         // Act
-        var error = RunCommand.ApplyAuthHeader(httpClient, authHeader);
+        var error = AuthHeader.Apply(httpClient, authHeader);
 
         // Assert
         error.ShouldNotBeNull();
@@ -114,7 +114,7 @@ public class RunCommandTests
         using var httpClient = new HttpClient();
 
         // Act
-        var error = RunCommand.ApplyAuthHeader(httpClient, "Api@Key: abc123");
+        var error = AuthHeader.Apply(httpClient, "Api@Key: abc123");
 
         // Assert
         error.ShouldNotBeNull();
@@ -128,7 +128,7 @@ public class RunCommandTests
         using var httpClient = new HttpClient();
 
         // Act
-        var error = RunCommand.ApplyAuthHeader(httpClient, "Bearer abc123");
+        var error = AuthHeader.Apply(httpClient, "Bearer abc123");
 
         // Assert
         error.ShouldBeNull();
@@ -143,7 +143,7 @@ public class RunCommandTests
         using var httpClient = new HttpClient();
 
         // Act
-        var error = RunCommand.ApplyAuthHeader(httpClient, "X-Api-Key: abc123");
+        var error = AuthHeader.Apply(httpClient, "X-Api-Key: abc123");
 
         // Assert
         error.ShouldBeNull();
@@ -157,7 +157,7 @@ public class RunCommandTests
         using var httpClient = new HttpClient();
 
         // Act
-        var error = RunCommand.ApplyAuthHeader(httpClient, "Authorization: AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
+        var error = AuthHeader.Apply(httpClient, "Authorization: AWS4-HMAC-SHA256 Credential=abc/20260714:xyz");
 
         // Assert
         error.ShouldBeNull();

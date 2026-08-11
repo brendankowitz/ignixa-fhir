@@ -1,5 +1,4 @@
 using System.CommandLine;
-using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.ConformanceMatrix.Cli.Reporting;
@@ -25,8 +24,8 @@ internal static class RunCommand
 
     // Distinguishes "nothing ran because the invocation was wrong" from "the suite ran and tests
     // failed" (ClassifyExitCode's 1), which a CI job otherwise cannot tell apart.
-    internal const int UsageErrorExitCode = 2;
-    internal const int InternalErrorExitCode = 3;
+    internal const int UsageErrorExitCode = ExitCodes.UsageError;
+    internal const int InternalErrorExitCode = ExitCodes.InternalError;
 
     public static Command Build()
     {
@@ -116,7 +115,7 @@ internal static class RunCommand
 
             var schema = new R4CoreSchemaProvider();
             using var httpClient = new HttpClient { BaseAddress = new Uri(server.TrimEnd('/') + '/') };
-            if (ApplyAuthHeader(httpClient, authHeader) is { } authError)
+            if (AuthHeader.Apply(httpClient, authHeader) is { } authError)
             {
                 Console.Error.WriteLine($"error: {authError}");
                 return UsageErrorExitCode;
@@ -286,26 +285,6 @@ internal static class RunCommand
         return $"{pass} passed, {fail} failed, {skipped} skipped, {error} error(s)";
     }
 
-    // An HTTP header name cannot contain whitespace, so text before the first colon that has none
-    // is a header name and anything else is a bare credential for Authorization. This holds for
-    // any scheme — Negotiate, NTLM, AWS4-HMAC-SHA256 — without enumerating them.
-    internal static (string Name, string Value) ParseAuthHeader(string input)
-    {
-        var trimmed = input.Trim();
-        if (trimmed.Length == 0)
-            return ("Authorization", string.Empty);
-
-        var separatorIndex = trimmed.IndexOf(':');
-        if (separatorIndex > 0)
-        {
-            var name = trimmed[..separatorIndex].Trim();
-            if (name.Length > 0 && !name.Any(char.IsWhiteSpace))
-                return (name, trimmed[(separatorIndex + 1)..].Trim());
-        }
-
-        return ("Authorization", trimmed);
-    }
-
     internal static string BuildPayload(
         ReportFormat format,
         string impl,
@@ -397,31 +376,6 @@ internal static class RunCommand
     /// null and means "no auth", while an explicit empty value is a mistake worth reporting — most
     /// often an environment variable that expanded to nothing.
     /// </remarks>
-    internal static string? ApplyAuthHeader(HttpClient httpClient, string? authHeader)
-    {
-        if (authHeader is null)
-            return null;
-
-        var (name, value) = ParseAuthHeader(authHeader);
-
-        if (string.IsNullOrWhiteSpace(value))
-            return $"--auth-header '{authHeader}' resolves to no header value; expected 'Bearer <token>' or 'Header-Name: <value>'. If an environment variable expands to empty, omit the flag instead of passing a blank value.";
-
-        if (name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
-            && AuthenticationHeaderValue.TryParse(value, out var parsed))
-        {
-            httpClient.DefaultRequestHeaders.Authorization = parsed;
-            return null;
-        }
-
-        // TryAddWithoutValidation returns false (it does not throw) when the name is not a valid
-        // HTTP token, which would otherwise drop the credential without a trace.
-        if (!httpClient.DefaultRequestHeaders.TryAddWithoutValidation(name, value))
-            return $"--auth-header name '{name}' is not a valid HTTP header name.";
-
-        return null;
-    }
-
     /// <summary>
     /// Fetches the target server's CapabilityStatement from <c>/metadata</c> once per run, so it
     /// can be passed to <see cref="TestScriptEvaluator.ExecuteAsync"/> for <c>requiresCapability</c>

@@ -79,4 +79,12 @@ ran" from "the suite ran and 3 tests failed":
 `--out` is validated **before** the suite runs, so a bad path fails fast rather than discarding a
 completed run against a live server.
 
+## Load-test runner mode
+
+Hosting TestScripts behind a local HTTP endpoint for load generation lives in the separate
+[`Ignixa.ConformanceMatrix.Runner`](../Ignixa.ConformanceMatrix.Runner/README.md) tool
+(`ignixa-matrix-runner serve`). It is packaged separately because its Kestrel host needs the
+ASP.NET Core runtime; keeping it out of this package lets `ignixa-matrix` keep running on machines
+with only the base .NET runtime.
+
 Built on the [Ignixa.TestScript](https://www.nuget.org/packages/Ignixa.TestScript) execution engine.
