@@ -109,6 +109,20 @@ public class OfTypeLoweringRuleTests
     }
 
     [Fact]
+    public void GivenAnOfTypeSearch_WhenLowered_ThenTypeCodeUsesCaseSensitiveCollation()
+    {
+        // Arrange
+        var cte = Lower(typeSystem: null, "MR", "12345");
+
+        // Act
+        var typeCodeEqual = cte.Predicate.ShouldBeOfType<Predicate.And>().Left.ShouldBeOfType<Predicate.Equal>();
+
+        // Assert
+        typeCodeEqual.Column.Column.ShouldBe("IdentifierTypeCode");
+        typeCodeEqual.Collation.ShouldBe("Latin1_General_100_CS_AS");
+    }
+
+    [Fact]
     public void GivenAnOfTypeSearchWithoutATypeSystem_WhenEvaluatedAgainstRowsFromAnySystem_ThenTheSystemIsUnconstrained()
     {
         // Arrange -- two rows with the same type code and value but different (and absent) type systems.
