@@ -33,7 +33,7 @@ public static class PlanExplainer
     /// </summary>
     public static IReadOnlyList<PlanExplainRow> Describe(QueryPlan plan)
     {
-        ArgumentNullException.ThrowIfNull(plan);
+        QueryPlanValidator.Validate(plan);
 
         var rows = new List<PlanExplainRow>();
 
@@ -97,7 +97,7 @@ public static class PlanExplainer
             }
         }
 
-        // Bound last among the ordinal-consuming rows: EmitIncludesShape calls WriteMatchPageCte -- which
+        // Bound last among the ordinal-consuming rows: EmitIncludesShape calls EmitMatchPage -- which
         // binds everything above (OuterPredicate through OffsetPage) via BuildMatchWhereClauses plus its own
         // ORDER BY/OFFSET-FETCH -- to completion BEFORE binding the resume boundary, and only then starts the
         // stage loop. Rendering this row any earlier (it used to sit right after the CTE graph) claimed

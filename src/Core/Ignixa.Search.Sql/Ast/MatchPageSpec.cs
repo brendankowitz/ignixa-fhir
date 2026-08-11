@@ -20,7 +20,7 @@ public sealed record MatchPageSpec(
     /// <summary>True when the statement returns a count rather than rows.</summary>
     public bool CountOnly => EffectiveShape is ResultShape.Count;
 
-    /// <summary>True when the statement omits the match page and returns include-stage rows only.</summary>
+    /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>
     public bool IncludesOnly => EffectiveShape is ResultShape.IncludesPage;
 
     /// <summary>

@@ -95,6 +95,23 @@ public class SqlTextRangeTests
     }
 
     [Fact]
+    public void GivenAnOffsetProbedIncludesPlan_WhenTracingSql_ThenWrapperRangesFollowTheSourceCteOrdinal()
+    {
+        var plan = IncludesPlan();
+        var ranges = SqlBuilder.Run(plan, new EmitOptions(IncludeTextRanges: true)).TextRanges!;
+
+        var source = ranges.Single(range => range.Label == SqlLabels.CteLabel(0));
+        var matchPage = ranges.Single(range => range.Label == SqlLabels.MatchPage);
+        var matchSeed = ranges.Single(range => range.Label == SqlLabels.MatchSeed);
+
+        source.Kind.ShouldBe(SqlRangeKind.Cte);
+        matchPage.Kind.ShouldBe(SqlRangeKind.MatchPage);
+        matchSeed.Kind.ShouldBe(SqlRangeKind.MatchSeed);
+        source.Start.ShouldBeLessThan(matchPage.Start);
+        matchPage.Start.ShouldBeLessThan(matchSeed.Start);
+    }
+
+    [Fact]
     public void GivenAnIncludesPlanWithMatchFilters_WhenTracingSql_ThenTheMatchPageWhereAndSeekRangesArePreserved()
     {
         var table = SqlCatalog.Default.Table("StringSearchParam");

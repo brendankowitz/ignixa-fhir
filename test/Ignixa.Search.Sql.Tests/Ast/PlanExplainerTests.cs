@@ -226,7 +226,7 @@ public class PlanExplainerTests
     {
         // Arrange -- exactly the combination SqlBuilder's own RejectUnsupportedCombinations guard message
         // recommends: bound the match set with SurrogateRange (an $export shard window) and page the include
-        // rows with ResultShape.IncludesPage.Resume. WriteMatchPageCte binds SurrogateRange and
+        // rows with ResultShape.IncludesPage.Resume. EmitMatchPage binds SurrogateRange and
         // SearchParameterHash INSIDE itself, before the resume boundary is bound after it returns -- a
         // regression that reorders includeBoundary back ahead of them would make every ordinal here wrong,
         // and previously did (the boundary row used to render right after the CTE graph, before this pair).
@@ -239,7 +239,7 @@ public class PlanExplainerTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert -- real bind order: cte0's own predicate, then SurrogateRange, then SearchParameterHash
-        // (both inside WriteMatchPageCte's BuildMatchWhereClauses call), then the resume boundary.
+        // (both inside EmitMatchPage's BuildMatchWhereClauses call), then the resume boundary.
         emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", 7000L, 8000L, "hashv", (short)111, 5000L]);
 
         var matchPage = rows.Single(r => r.Kind == PlanRowKind.MatchPageCte);
@@ -560,7 +560,7 @@ public class PlanExplainerTests
     {
         // Arrange -- EmitSortJoins skips LastUpdated/ResourceType keys entirely: the match set already
         // projects the surrogate id those sort on, no join needed. Before this test, PrintMatchPageCte
-        // computed sortJoins as `plan.Sort is not null`, which is true here even though WriteMatchPageCte
+        // computed sortJoins as `plan.Sort is not null`, which is true here even though EmitMatchPage
         // emits zero JOIN clauses for this exact plan -- a real divergence, not just an unlikely one:
         // `_sort=_lastUpdated&_include=...` is an ordinary, common query shape.
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending)], SortPhase.Valued)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)]);

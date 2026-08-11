@@ -230,9 +230,11 @@ public class LowerTests
             options: new LowerOptions { OffsetPage = new OffsetSpec(0, 5, ProbeExtraRow: true) }).Plan;
 
         plan.Match.ShouldBe(new CteRef(0));
-        plan.Ctes[^2].ShouldBeOfType<CteDefinition.MatchPage>();
-        plan.Ctes[^1].ShouldBeOfType<CteDefinition.MatchSeed>();
+        var matchPage = plan.Ctes[^2].ShouldBeOfType<CteDefinition.MatchPage>();
+        var matchSeed = plan.Ctes[^1].ShouldBeOfType<CteDefinition.MatchSeed>();
         plan.IncludeSeed.ShouldBe(new CteRef(2));
+        matchPage.Spec.ShouldBeSameAs(plan.MatchSpec);
+        matchSeed.Spec.ShouldBeSameAs(plan.MatchSpec);
     }
 
     [Fact]

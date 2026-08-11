@@ -480,20 +480,18 @@ public class EmitProbeRowIncludeSeedTests
     }
 
     [Fact]
-    public void GivenAnOverFetchingPageWhoseOnlyStageSeedsFromAnEarlierStage_WhenEmitted_ThenNoUnreferencedMatchSeedIsEmitted()
+    public void GivenAnIncludeStageWithoutAMatchOrStageSeed_WhenEmitted_ThenItRejectsTheMalformedPlan()
     {
-        // Arrange -- nothing reads the match page, so emitting a seed CTE would be dead SQL.
+        // Arrange
         var iterateOnly = ForwardIncludeStage(103, 111) with { SeedFromMatch = false, SeedStages = [], Iterate = false };
         var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
             new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true)),
             [iterateOnly]);
 
-        // Act
-        var sql = SqlBuilder.Run(plan).Sql;
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
 
-        // Assert
-        sql.ShouldNotContain("cteMatchSeed");
+        error.Message.ShouldContain("SeedFromMatch or SeedStages");
     }
 
     [Fact]

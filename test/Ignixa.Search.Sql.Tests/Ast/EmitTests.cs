@@ -2498,7 +2498,7 @@ public class EmitTests
     public void GivenAnIncludesPlanWithOffsetPage_WhenExplained_ThenTheMatchPageRowNamesTheSameOrdinalsEmitBinds()
     {
         // Arrange -- same fixture as GivenAnIncludesPlanWithOffsetPage_WhenEmitted_ThenMatchPageCteEmitsOrderByAndOffsetFetch.
-        // WriteMatchPageCte binds OFFSET/FETCH inside cteMatchPage, not the top-level SELECT, but at the same
+        // EmitMatchPage binds OFFSET/FETCH inside cteMatchPage, not the top-level SELECT, but at the same
         // ordinal position -- Explain()'s MatchPage row must not drift just because Includes moved the clause.
         var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10)), [ForwardIncludeStage(103, 111, 10)]);
 

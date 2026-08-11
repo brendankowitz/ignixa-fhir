@@ -8,8 +8,8 @@ namespace Ignixa.Search.Sql.Ast;
 /// <param name="Ctes">The CTE graph, in declaration order. Each entry becomes one named CTE.</param>
 /// <param name="MatchSpec">The canonical configuration for the pre-page match root and its page wrappers.</param>
 /// <param name="Includes">
-/// The _include/_revinclude stages, in dependency order. Null (never an empty list) when the plan includes
-/// nothing, so such a plan emits exactly what it emitted before includes existed.
+/// The _include/_revinclude stages, in dependency order. Null or empty when the plan includes nothing, so such a
+/// plan emits exactly what it emitted before includes existed.
 /// </param>
 /// <param name="Visibility">
 /// Which resource versions are in scope; null means <see cref="ResourceVisibility.Current"/>. Read it through
@@ -25,7 +25,7 @@ public sealed record QueryPlan(
     ProjectionSpec? Projection = null,
     CteRef? IncludeSeed = null)
 {
-    /// <summary>Which CTE the outer query joins to dbo.Resource to produce the pre-page match set.</summary>
+    /// <summary>Which CTE produces the pre-page match set.</summary>
     public CteRef Match => MatchSpec.Root;
 
     /// <summary>Row cap on the match page, or null when uncapped.</summary>
@@ -61,7 +61,7 @@ public sealed record QueryPlan(
     /// <summary>True when the statement returns a count rather than rows.</summary>
     public bool CountOnly => MatchSpec.CountOnly;
 
-    /// <summary>True when the statement omits the match page and returns include-stage rows only.</summary>
+    /// <summary>True when the statement omits match rows from its final result and returns include-stage rows only.</summary>
     public bool IncludesOnly => MatchSpec.IncludesOnly;
 
     /// <summary>
