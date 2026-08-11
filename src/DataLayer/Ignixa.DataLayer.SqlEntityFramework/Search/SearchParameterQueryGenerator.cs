@@ -1496,7 +1496,7 @@ public class SearchParameterQueryGenerator
 
         if (!string.IsNullOrEmpty(identifierTypeCode))
         {
-            query = query.Where(sp => EF.Functions.Collate(sp.IdentifierTypeCode, "Latin1_General_100_CI_AS") == identifierTypeCode);
+            query = query.Where(sp => EF.Functions.Collate(sp.IdentifierTypeCode, "Latin1_General_100_CS_AS") == identifierTypeCode);
         }
 
         _logger.LogDebug(
