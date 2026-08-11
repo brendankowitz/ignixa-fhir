@@ -32,7 +32,7 @@ public sealed class SqlExecutionService : ISqlExecutionService
                     _logger.LogWarning(
                         args.Outcome.Exception,
                         "Transient SQL error on attempt {AttemptNumber}, retrying after {RetryDelay}",
-                        args.AttemptNumber,
+                        args.AttemptNumber + 1,
                         args.RetryDelay);
                     return default;
                 },
@@ -103,7 +103,12 @@ public sealed class SqlExecutionService : ISqlExecutionService
         }
         catch (SqlException ex)
         {
-            _logger.LogError(ex, "SQL execution failed for tenant {TenantId} (SqlErrorNumber={SqlErrorNumber})", tenantId, ex.Number);
+            // Non-transient errors (e.g. constraint violations) reach here on the first attempt and
+            // are often expected control flow for callers (conditional create, optimistic
+            // concurrency) -- log at Warning, not Error, to avoid paging on-call for expected
+            // failures. Transient errors reaching here means every retry was exhausted.
+            var logLevel = IsTransient(ex.Number) ? LogLevel.Error : LogLevel.Warning;
+            _logger.Log(logLevel, ex, "SQL execution failed for tenant {TenantId} (SqlErrorNumber={SqlErrorNumber})", tenantId, ex.Number);
             throw;
         }
     }
@@ -129,7 +134,10 @@ public sealed class SqlExecutionService : ISqlExecutionService
         }
         catch (SqlException ex)
         {
-            _logger.LogError(ex, "SQL execution failed for tenant {TenantId} (SqlErrorNumber={SqlErrorNumber})", tenantId, ex.Number);
+            // See the comment in ExecuteReaderAsync -- non-transient errors are expected control
+            // flow for many callers and shouldn't page on-call at Error severity.
+            var logLevel = IsTransient(ex.Number) ? LogLevel.Error : LogLevel.Warning;
+            _logger.Log(logLevel, ex, "SQL execution failed for tenant {TenantId} (SqlErrorNumber={SqlErrorNumber})", tenantId, ex.Number);
             throw;
         }
     }

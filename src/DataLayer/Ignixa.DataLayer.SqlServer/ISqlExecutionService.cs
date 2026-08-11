@@ -26,7 +26,9 @@ public interface ISqlExecutionService
     /// Executes <paramref name="command"/> against <paramref name="tenantId"/>'s database as a
     /// non-query (INSERT/UPDATE/DELETE/DDL) and returns the affected row count.
     /// <paramref name="command"/>.Connection is overwritten by this call and must not be relied
-    /// upon by the caller afterward.
+    /// upon by the caller afterward. Transient SQL errors (including command timeouts) are
+    /// retried; because a timeout does not guarantee the server did not already commit the
+    /// statement, <paramref name="command"/> must be safe to execute more than once (idempotent).
     /// </summary>
     Task<int> ExecuteNonQueryAsync(
         int tenantId,
