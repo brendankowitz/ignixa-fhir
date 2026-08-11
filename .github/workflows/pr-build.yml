@@ -98,6 +98,12 @@ jobs:
       - name: Build Ignixa.DataLayer.SqlServer.Database
         run: dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
 
+      # NOTE: FhirSchemaReview is never created/seeded above, so DacFx will always report
+      # "everything gets created" here rather than an incremental diff against a real prior
+      # schema. This step is a build-verification signal (proves the dacpac is well-formed and
+      # sqlpackage can generate a report against it), not a change-detection signal -- it cannot
+      # demonstrate DeployReportClassifier catching anything. A "diff against base branch's
+      # deployed schema" version is a deliberate, tracked follow-up, not an oversight.
       - name: Generate schema DeployReport
         run: |
           sqlpackage /Action:DeployReport \

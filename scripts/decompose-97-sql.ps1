@@ -14,8 +14,8 @@
     this: one only matched plain "CREATE PROCEDURE" and summed the category
     counts to 125 in this comment; the next missed EventAgentCheckpoint
     entirely because it isn't column-1-anchored like everything else in the
-    file. Both were caught on real runs against 97.sql -- see
-    task-1-report.md.
+    file. Both were caught on real runs against 97.sql, not by inspection --
+    the 136 count above is empirically verified, not derived.
 #>
 [CmdletBinding()]
 param(
@@ -50,7 +50,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $OutputRoot "Scripts") | Ou
 #    "CREATE OR ALTER PROCEDURE" rather than plain "CREATE PROCEDURE" -- the
 #    optional "OR ALTER" must be matched here or those objects silently
 #    vanish into the tail of whatever object precedes them (caught via a
-#    real build failure on the first run of this script; see task-1-report.md).
+#    real build failure on the first run of this script).
 $objectPattern = '^CREATE\s+(?:OR ALTER\s+)?(TABLE|VIEW|PROCEDURE|PROC|TYPE|SEQUENCE|PARTITION FUNCTION|PARTITION SCHEME)\s+(.+)$'
 $objects = @()
 for ($i = 0; $i -lt $lines.Count; $i++) {
@@ -69,9 +69,9 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 #     than the rest of the column-1-anchored file). $objectPattern above
 #     can't see it -- it was silently swallowed into DateTimeSearchParam's
 #     block and broke that table's batch structure, caught via a real build
-#     failure (see task-1-report.md). Detect any such guarded table
-#     generically and insert it as its own TABLE object, anchored at the
-#     guard's own "IF NOT EXISTS" line so the boundary-computation loop
+#     failure. Detect any such guarded table generically and insert it as
+#     its own TABLE object, anchored at the guard's own "IF NOT EXISTS" line
+#     so the boundary-computation loop
 #     below naturally clips the preceding object before it. The guard
 #     wrapper itself is unwrapped when this object's content is written,
 #     below, for the same reason the file's main idempotency guard is
@@ -160,7 +160,7 @@ function Split-TableBlock([string[]]$blockLines) {
     # flattened every nested segment array back down to one-line-per-segment
     # when collected out of a `foreach(){...}` expression -- every line in
     # every table ended up GO-separated from every other line. Caught via a
-    # real build run (every single-statement table file broke); see task-1-report.md.
+    # real build run (every single-statement table file broke).
     $noGoLines = [System.Collections.Generic.List[string]]::new()
     foreach ($l in $blockLines) { if ($l.Trim() -ne "GO") { $noGoLines.Add($l) } }
 
@@ -220,7 +220,7 @@ $writtenCount = 0
 $seedDataByTable = [ordered]@{}
 foreach ($obj in $objects) {
     if ($obj.Kind -eq "TABLE" -and $obj.Name -eq "CurrentResource") {
-        Write-Host "Discarding throwaway CREATE TABLE dbo.CurrentResource (line $($obj.StartIndex + 1)) -- see plan Task 1."
+        Write-Host "Discarding throwaway CREATE TABLE dbo.CurrentResource (line $($obj.StartIndex + 1)) -- a scratch/debugging artifact left in 97.sql, not a real schema object."
         continue
     }
 
@@ -229,10 +229,10 @@ foreach ($obj in $objects) {
     # Six procedures use "CREATE OR ALTER PROCEDURE" in 97.sql (needed there
     # only because the monolith could be re-run against a non-empty
     # database). SSDT's build-time model parser rejects that form outright
-    # (SQL70001, caught via a real build run -- see task-1-report.md) and it
-    # is redundant under SSDT anyway: the deployment engine already diffs
-    # against the target and decides CREATE vs. ALTER itself. Normalizing to
-    # plain CREATE here does not change the deployed object definition.
+    # (SQL70001, caught via a real build run) and it is redundant under SSDT
+    # anyway: the deployment engine already diffs against the target and
+    # decides CREATE vs. ALTER itself. Normalizing to plain CREATE here does
+    # not change the deployed object definition.
     if (($obj.Kind -eq "PROCEDURE" -or $obj.Kind -eq "PROC") -and $blockLines[0] -match '^CREATE\s+OR ALTER\s+') {
         $blockLines[0] = $blockLines[0] -replace '^CREATE\s+OR ALTER\s+', 'CREATE '
     }

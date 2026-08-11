@@ -36,7 +36,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
     private readonly ISchemaDeployer _schemaDeployer;
     private readonly string _environment;
-    private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
+    private readonly ConcurrentDictionary<int, Lazy<TenantServiceFactory>> _factoryCache;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
     /// <summary>
@@ -75,7 +75,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
         _schemaDeployer = schemaDeployer ?? throw new ArgumentNullException(nameof(schemaDeployer));
         _environment = environment;
-        _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
+        _factoryCache = new ConcurrentDictionary<int, Lazy<TenantServiceFactory>>();
         _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
 
@@ -133,7 +133,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Check cache first
         if (_factoryCache.TryGetValue(tenantId, out var cachedFactory))
         {
-            return cachedFactory;
+            return cachedFactory.Value;
         }
 
         // Get tenant configuration
@@ -187,10 +187,34 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // SECURITY: Validate that connection string uses Managed Identity (Azure AD) authentication
         ValidateManagedIdentityAuthentication(connectionString, tenantId);
 
-        // Create factory and cache it
-        var factory = _factoryCache.GetOrAdd(tenantId, _ => CreateServiceFactory(tenantId, tenantConfig, connectionString));
+        // Create factory and cache it. Wrapped in Lazy<T> with ExecutionAndPublication so that
+        // concurrent first-access for the same not-yet-provisioned tenant (realistic on cold
+        // start under load) cannot race CreateServiceFactory's schema-provisioning section --
+        // ConcurrentDictionary.GetOrAdd's value-factory delegate is NOT guaranteed to run only
+        // once per key under concurrent callers, and CreateServiceFactory's DeployIfEmptyAsync
+        // issues a non-idempotent CREATE DATABASE. Lazy<T> guarantees the factory body itself
+        // executes exactly once even if multiple threads call .Value before the first completes.
+        var lazyFactory = _factoryCache.GetOrAdd(
+            tenantId,
+            _ => new Lazy<TenantServiceFactory>(
+                () => CreateServiceFactory(tenantId, tenantConfig, connectionString),
+                LazyThreadSafetyMode.ExecutionAndPublication));
 
-        return factory;
+        try
+        {
+            return lazyFactory.Value;
+        }
+        catch
+        {
+            // Don't let a transient failure (e.g. a schema deploy hiccup) permanently poison this
+            // tenant's cache entry -- Lazy<T> caches and rethrows the same exception on every
+            // subsequent .Value access. Remove the failed entry (only if it's still the exact
+            // instance that just failed, to avoid discarding a newer successful entry from a
+            // concurrent retry) so the next call attempts CreateServiceFactory fresh.
+            ((ICollection<KeyValuePair<int, Lazy<TenantServiceFactory>>>)_factoryCache)
+                .Remove(new KeyValuePair<int, Lazy<TenantServiceFactory>>(tenantId, lazyFactory));
+            throw;
+        }
     }
 
     /// <summary>

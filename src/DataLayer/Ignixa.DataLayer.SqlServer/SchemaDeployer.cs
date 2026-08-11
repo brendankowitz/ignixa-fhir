@@ -215,7 +215,15 @@ public sealed class SchemaDeployer : ISchemaDeployer
         return (int)result! == 1;
     }
 
-    private static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
+    /// <summary>
+    /// Records that a tenant's database has been stamped at <paramref name="version"/>. Public so
+    /// that Ignixa.SchemaUpgrade.Cli -- the operator-run escape hatch for diffs
+    /// <see cref="DeployReportClassifier"/> refuses to auto-apply -- can record the same history
+    /// this class's own automatic paths do after applying its manual deploy. Without this, a
+    /// CLI-applied upgrade would leave <see cref="ISchemaVersionResolver"/> reporting a stale
+    /// version until some later, unrelated call happened to no-op-redeploy and self-heal it.
+    /// </summary>
+    public static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);

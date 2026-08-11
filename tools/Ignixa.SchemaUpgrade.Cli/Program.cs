@@ -83,6 +83,7 @@ internal static class Program
 
         var deployOptions = new DacDeployOptions { BlockOnPossibleDataLoss = !allowDataLoss };
         dacServices.Deploy(package, databaseName, upgradeExisting: true, options: deployOptions, cancellationToken: cancellationToken);
+        await SchemaDeployer.StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
         output.WriteLine($"Applied. Tenant {tenantId}'s database is now on the current schema.");
         return 0;
     }
