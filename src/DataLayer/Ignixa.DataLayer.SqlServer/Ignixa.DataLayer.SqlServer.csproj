@@ -14,6 +14,12 @@
 
     <!-- Logging -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+
+    <!-- Schema deployment (SQL Database Project + DacFx-based deployer) -->
+    <PackageReference Include="Microsoft.SqlServer.DacFx" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,8 +28,25 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Ignixa.DataLayer.SqlServer.Database is a .sqlproj: it doesn't compose via <ProjectReference>
+         the normal way. Reference its built .dacpac directly and embed it; the explicit
+         ReferenceOutputAssembly="false" ProjectReference below only enforces build order. -->
+    <None Include="..\Ignixa.DataLayer.SqlServer.Database\bin\$(Configuration)\Ignixa.DataLayer.SqlServer.Database.dacpac">
+      <Link>Resources\Schema.dacpac</Link>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+    <EmbeddedResource Include="..\Ignixa.DataLayer.SqlServer.Database\bin\$(Configuration)\Ignixa.DataLayer.SqlServer.Database.dacpac">
+      <LogicalName>Ignixa.DataLayer.SqlServer.Schema.dacpac</LogicalName>
+    </EmbeddedResource>
+    <ProjectReference Include="..\Ignixa.DataLayer.SqlServer.Database\Ignixa.DataLayer.SqlServer.Database.sqlproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.Tests" />
     <InternalsVisibleTo Include="Ignixa.DataLayer.SqlServer.IntegrationTests" />
+    <!-- Ignixa.SchemaUpgrade.Cli re-uses SqlExecutionService.ResolveConnectionStringAsync
+         rather than duplicating tenant-storage-type/inheritance resolution logic. -->
+    <InternalsVisibleTo Include="Ignixa.SchemaUpgrade.Cli" />
   </ItemGroup>
 
 </Project>

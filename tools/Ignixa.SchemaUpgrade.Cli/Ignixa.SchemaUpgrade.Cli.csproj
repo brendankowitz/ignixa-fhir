@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Ignixa.SchemaUpgrade.Cli</RootNamespace>
+    <!-- AssemblyName deliberately left at the default (matches the project name): this assembly
+         consumes Ignixa.DataLayer.SqlServer's internal SqlExecutionService.ResolveConnectionStringAsync
+         via InternalsVisibleTo, which is granted by assembly name, not project name. -->
+    <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310,CA1849</NoWarn>
+  </PropertyGroup>
+
+  <!-- NuGet Package & Tool Configuration -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageStability>stable</PackageStability>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ignixa-schema-upgrade</ToolCommandName>
+    <PackageId>Ignixa.SchemaUpgrade.Cli</PackageId>
+    <Description>Operator-triggered CLI for reviewing and applying tenant database schema upgrades that SchemaDeployer's automatic path refused to apply.</Description>
+    <PackageTags>$(PackageTags);sqlserver;schema;dacfx;cli;tool</PackageTags>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.SchemaUpgrade.Cli.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DataLayer\Ignixa.DataLayer.SqlServer\Ignixa.DataLayer.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ignixa.Application\Ignixa.Application.csproj" />
+  </ItemGroup>
+
+</Project>

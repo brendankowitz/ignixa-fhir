@@ -10,6 +10,7 @@ using Microsoft.IO;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
+using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -33,6 +34,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly ILoggerFactory _loggerFactory;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
+    private readonly ISchemaDeployer _schemaDeployer;
     private readonly string _environment;
     private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
@@ -57,18 +59,21 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// <param name="loggerFactory">The logger factory.</param>
     /// <param name="memoryStreamManager">The recyclable memory stream manager for efficient memory management.</param>
     /// <param name="multiTenantCache">Singleton multi-tenant cache for search index reference data.</param>
+    /// <param name="schemaDeployer">Deploys the SSDT-built schema to brand-new, empty tenant databases.</param>
     /// <param name="environment">The environment name (e.g., Development, Production).</param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
         ILoggerFactory loggerFactory,
         RecyclableMemoryStreamManager memoryStreamManager,
         MultiTenantSearchIndexCache multiTenantCache,
+        ISchemaDeployer schemaDeployer,
         string environment = "Production")
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
+        _schemaDeployer = schemaDeployer ?? throw new ArgumentNullException(nameof(schemaDeployer));
         _environment = environment;
         _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
         _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
@@ -278,44 +283,31 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
 
         var dbContextOptions = optionsBuilder.Options;
 
-        // Create a TEMPORARY DbContext just for initialization (will be disposed)
-        var initDbContext = new FhirDbContext(dbContextOptions);
+        // Attempt to extract Managed Identity name from connection string (User ID parameter)
+        // If specified in connection string, use that for MI setup
+        // Otherwise, the running process identity is used (Managed Identity of App Service)
+        var managedIdentityName = ExtractManagedIdentityNameFromConnectionString(connectionString);
 
-        // CRITICAL: Apply pending migrations automatically on first access
-        // This ensures TVP types and stored procedures are created
-        // Also sets up Managed Identity database user (extracted from environment or configuration)
-        string? managedIdentityName = null;
+        // CRITICAL: Deploy the SSDT-built schema (.dacpac) on first access, but only if the tenant's
+        // database is currently empty -- never touches an existing/populated database.
         try
         {
-            logger.LogInformation("Ensuring database migrations are applied for tenant {TenantId}...", tenantId);
+            logger.LogInformation("Ensuring database schema is deployed for tenant {TenantId}...", tenantId);
 
-            // Attempt to extract Managed Identity name from connection string (User ID parameter)
-            // If specified in connection string, use that for MI setup
-            // Otherwise, the running process identity is used (Managed Identity of App Service)
-            managedIdentityName = ExtractManagedIdentityNameFromConnectionString(connectionString);
+            _schemaDeployer.DeployIfEmptyAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
+            logger.LogInformation("Database schema deployment completed for tenant {TenantId}", tenantId);
 
-            var initializer = new DatabaseInitializer(
-                initDbContext,
-                _loggerFactory.CreateLogger<DatabaseInitializer>(),
-                _environment);
-
-            // Initialize with optional MI setup (idempotent - safe to run multiple times)
-            initializer.InitializeAsync(managedIdentityName).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
-            logger.LogInformation("Database initialization completed for tenant {TenantId}", tenantId);
+            _schemaDeployer.UpgradeIfNeededAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
+            logger.LogInformation("Database schema upgrade check completed for tenant {TenantId}", tenantId);
         }
         catch (Exception ex)
         {
             logger.LogError(
                 ex,
-                "Failed to initialize database for tenant {TenantId}. Error: {Message}",
+                "Failed to deploy database schema for tenant {TenantId}. Error: {Message}",
                 tenantId,
                 ex.Message);
             throw;
-        }
-        finally
-        {
-            // Dispose the temporary initialization DbContext
-            initDbContext.Dispose();
         }
 
         // Convert FhirVersion string to FhirVersion enum using extension method

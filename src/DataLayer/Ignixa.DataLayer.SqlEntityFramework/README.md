@@ -59,7 +59,7 @@ containerBuilder.RegisterType<LegacySqlEfRepositoryFactory>()
 dotnet run --project src/Ignixa.Api
 ```
 
-The `DatabaseInitializer` automatically validates TVP types on startup and creates any missing types.
+`Ignixa.DataLayer.SqlServer`'s `SchemaDeployer` automatically deploys the SSDT-built schema to any brand-new, empty tenant database on startup.
 
 ## Database Requirements
 

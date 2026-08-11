@@ -66,6 +66,7 @@
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.FileSystem\Ignixa.DataLayer.FileSystem.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.BlobStorage\Ignixa.DataLayer.BlobStorage.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Ignixa.DataLayer.SqlEntityFramework.csproj" />
+    <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.SqlServer\Ignixa.DataLayer.SqlServer.csproj" />
     <ProjectReference Include="..\..\DataLayer\Ignixa.DataLayer.InMemoryIndex\Ignixa.DataLayer.InMemoryIndex.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />

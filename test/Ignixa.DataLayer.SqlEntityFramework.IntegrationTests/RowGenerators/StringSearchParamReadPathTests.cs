@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.DataLayer.SqlEntityFramework.Entities;
+using Ignixa.DataLayer.SqlEntityFramework.IntegrationTests;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Search.Expressions;
@@ -49,8 +50,7 @@ public class StringSearchParamReadPathTests
             .UseSqlServer(connectionString)
             .Options;
         await using var context = new FhirDbContext(options);
-        var initializer = new DatabaseInitializer(context, NullLogger<DatabaseInitializer>.Instance, "Development");
-        await initializer.InitializeAsync();
+        await TestSchemaInitializer.InitializeAsync(connectionString, CancellationToken.None);
 
         var parameter = new SearchParameterInfo(
             "name",

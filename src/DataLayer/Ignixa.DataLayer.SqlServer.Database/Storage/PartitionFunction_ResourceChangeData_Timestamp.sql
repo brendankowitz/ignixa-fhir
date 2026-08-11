@@ -1,0 +1,3 @@
+CREATE PARTITION FUNCTION PartitionFunction_ResourceChangeData_Timestamp(DATETIME2 (7))
+    AS RANGE RIGHT
+    FOR VALUES (N'1970-01-01T00:00:00.0000000');
