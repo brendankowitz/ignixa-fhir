@@ -83,6 +83,7 @@ public class OfTypeLoweringRuleTests
         var typeCodeEqual = inner.Left.ShouldBeOfType<Predicate.Equal>();
         typeCodeEqual.Column.Column.ShouldBe("IdentifierTypeCode");
         typeCodeEqual.Value.Value.ShouldBe("MR");
+        typeCodeEqual.Collation.ShouldBe("Latin1_General_100_CS_AS");
 
         var valueEqual = inner.Right.ShouldBeOfType<Predicate.Equal>();
         valueEqual.Column.Column.ShouldBe("Code");
