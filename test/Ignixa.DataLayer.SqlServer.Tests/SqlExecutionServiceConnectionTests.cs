@@ -1,5 +1,6 @@
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 
@@ -75,5 +76,65 @@ public class SqlExecutionServiceConnectionTests
         var ex = await Should.ThrowAsync<InvalidOperationException>(() =>
             service.OpenConnectionAsync(1, CancellationToken.None));
         ex.Message.ShouldContain("ConnectionString");
+    }
+
+    [Theory]
+    [InlineData(-2)]
+    [InlineData(1205)]
+    [InlineData(4060)]
+    [InlineData(10928)]
+    [InlineData(10929)]
+    [InlineData(40197)]
+    [InlineData(40501)]
+    [InlineData(40613)]
+    public void GivenADocumentedTransientSqlErrorNumber_WhenClassifiedByIsTransient_ThenReturnsTrue(int sqlErrorNumber)
+    {
+        // Act & Assert
+        SqlExecutionService.IsTransient(sqlErrorNumber).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(547)] // constraint violation
+    [InlineData(0)]
+    [InlineData(40614)] // just outside the documented Azure SQL throttling range
+    [InlineData(4059)] // just outside the documented "cannot open database" range
+    public void GivenANonTransientSqlErrorNumber_WhenClassifiedByIsTransient_ThenReturnsFalse(int sqlErrorNumber)
+    {
+        // Act & Assert
+        SqlExecutionService.IsTransient(sqlErrorNumber).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GivenANullCommand_WhenExecutingReaderAsync_ThenThrowsArgumentNullException()
+    {
+        // Arrange
+        var service = new SqlExecutionService(new FakeTenantConfigurationStore(), NullLogger<SqlExecutionService>.Instance);
+
+        // Act & Assert
+        await Should.ThrowAsync<ArgumentNullException>(() =>
+            service.ExecuteReaderAsync<int>(1, null!, reader => reader.GetInt32(0), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenANullReadRow_WhenExecutingReaderAsync_ThenThrowsArgumentNullException()
+    {
+        // Arrange
+        var service = new SqlExecutionService(new FakeTenantConfigurationStore(), NullLogger<SqlExecutionService>.Instance);
+        await using var command = new SqlCommand("SELECT 1");
+
+        // Act & Assert
+        await Should.ThrowAsync<ArgumentNullException>(() =>
+            service.ExecuteReaderAsync<int>(1, command, null!, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GivenANullCommand_WhenExecutingNonQueryAsync_ThenThrowsArgumentNullException()
+    {
+        // Arrange
+        var service = new SqlExecutionService(new FakeTenantConfigurationStore(), NullLogger<SqlExecutionService>.Instance);
+
+        // Act & Assert
+        await Should.ThrowAsync<ArgumentNullException>(() =>
+            service.ExecuteNonQueryAsync(1, null!, CancellationToken.None));
     }
 }

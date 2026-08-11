@@ -8,18 +8,9 @@ namespace Ignixa.DataLayer.SqlServer;
 
 public sealed class SqlExecutionService : ISqlExecutionService
 {
-    private static readonly ResiliencePipeline TransientFaultPipeline = new ResiliencePipelineBuilder()
-        .AddRetry(new RetryStrategyOptions
-        {
-            ShouldHandle = new PredicateBuilder().Handle<SqlException>(IsTransient),
-            MaxRetryAttempts = 3,
-            Delay = TimeSpan.FromMilliseconds(200),
-            BackoffType = DelayBackoffType.Exponential,
-        })
-        .Build();
-
     private readonly ITenantConfigurationStore _tenantConfigurationStore;
     private readonly ILogger<SqlExecutionService> _logger;
+    private readonly ResiliencePipeline _transientFaultPipeline;
 
     public SqlExecutionService(ITenantConfigurationStore tenantConfigurationStore, ILogger<SqlExecutionService> logger)
     {
@@ -27,6 +18,26 @@ public sealed class SqlExecutionService : ISqlExecutionService
         ArgumentNullException.ThrowIfNull(logger);
         _tenantConfigurationStore = tenantConfigurationStore;
         _logger = logger;
+
+        // Instance-scoped (not static) so OnRetry can log through this instance's logger.
+        _transientFaultPipeline = new ResiliencePipelineBuilder()
+            .AddRetry(new RetryStrategyOptions
+            {
+                ShouldHandle = new PredicateBuilder().Handle<SqlException>(IsTransient),
+                MaxRetryAttempts = 3,
+                Delay = TimeSpan.FromMilliseconds(200),
+                BackoffType = DelayBackoffType.Exponential,
+                OnRetry = args =>
+                {
+                    _logger.LogWarning(
+                        args.Outcome.Exception,
+                        "Transient SQL error on attempt {AttemptNumber}, retrying after {RetryDelay}",
+                        args.AttemptNumber,
+                        args.RetryDelay);
+                    return default;
+                },
+            })
+            .Build();
     }
 
     internal async Task<SqlConnection> OpenConnectionAsync(int tenantId, CancellationToken cancellationToken)
@@ -51,8 +62,16 @@ public sealed class SqlExecutionService : ISqlExecutionService
         }
 
         var connection = new SqlConnection(tenant.Storage.ConnectionString);
-        await connection.OpenAsync(cancellationToken);
-        return connection;
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<TResult>> ExecuteReaderAsync<TResult>(
@@ -64,21 +83,29 @@ public sealed class SqlExecutionService : ISqlExecutionService
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(readRow);
 
-        return await TransientFaultPipeline.ExecuteAsync(async ct =>
+        try
         {
-            await using var connection = await OpenConnectionAsync(tenantId, ct);
-            command.Connection = connection;
-
-            var results = new List<TResult>();
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct))
+            return await _transientFaultPipeline.ExecuteAsync(async ct =>
             {
-                results.Add(readRow(reader));
-            }
+                await using var connection = await OpenConnectionAsync(tenantId, ct);
+                command.Connection = connection;
 
-            _logger.LogDebug("Executed reader for tenant {TenantId}, {RowCount} row(s)", tenantId, results.Count);
-            return (IReadOnlyList<TResult>)results;
-        }, cancellationToken);
+                var results = new List<TResult>();
+                await using var reader = await command.ExecuteReaderAsync(ct);
+                while (await reader.ReadAsync(ct))
+                {
+                    results.Add(readRow(reader));
+                }
+
+                _logger.LogDebug("Executed reader for tenant {TenantId}, {RowCount} row(s)", tenantId, results.Count);
+                return (IReadOnlyList<TResult>)results;
+            }, cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "SQL execution failed for tenant {TenantId} (SqlErrorNumber={SqlErrorNumber})", tenantId, ex.Number);
+            throw;
+        }
     }
 
     public async Task<int> ExecuteNonQueryAsync(
@@ -88,23 +115,31 @@ public sealed class SqlExecutionService : ISqlExecutionService
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        return await TransientFaultPipeline.ExecuteAsync(async ct =>
+        try
         {
-            await using var connection = await OpenConnectionAsync(tenantId, ct);
-            command.Connection = connection;
+            return await _transientFaultPipeline.ExecuteAsync(async ct =>
+            {
+                await using var connection = await OpenConnectionAsync(tenantId, ct);
+                command.Connection = connection;
 
-            var affected = await command.ExecuteNonQueryAsync(ct);
-            _logger.LogDebug("Executed non-query for tenant {TenantId}, {AffectedRows} row(s) affected", tenantId, affected);
-            return affected;
-        }, cancellationToken);
+                var affected = await command.ExecuteNonQueryAsync(ct);
+                _logger.LogDebug("Executed non-query for tenant {TenantId}, {AffectedRows} row(s) affected", tenantId, affected);
+                return affected;
+            }, cancellationToken);
+        }
+        catch (SqlException ex)
+        {
+            _logger.LogError(ex, "SQL execution failed for tenant {TenantId} (SqlErrorNumber={SqlErrorNumber})", tenantId, ex.Number);
+            throw;
+        }
     }
 
     private static bool IsTransient(SqlException ex) => IsTransient(ex.Number);
 
     // Transient SQL Server error numbers: -2 (timeout), 4060 (cannot open database, may be
     // transient during failover), 40197/40501/40613 (Azure SQL throttling/failover), 10928/10929
-    // (Azure SQL resource limits), 1205 (deadlock victim). Internal (not private) so Task 4's test
-    // can assert on it directly without needing to construct a real SqlException, which has no
+    // (Azure SQL resource limits), 1205 (deadlock victim). Internal (not private) so tests can
+    // assert on it directly without needing to construct a real SqlException, which has no
     // public constructor with a settable Number.
     internal static bool IsTransient(int sqlErrorNumber)
         => sqlErrorNumber is -2 or 1205 or 4060 or 10928 or 10929 or 40197 or 40501 or 40613;
