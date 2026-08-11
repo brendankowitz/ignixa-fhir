@@ -27,11 +27,19 @@ public interface ISqlExecutionService
     /// non-query (INSERT/UPDATE/DELETE/DDL) and returns the affected row count.
     /// <paramref name="command"/>.Connection is overwritten by this call and must not be relied
     /// upon by the caller afterward. Transient SQL errors (including command timeouts) are
-    /// retried; because a timeout does not guarantee the server did not already commit the
-    /// statement, <paramref name="command"/> must be safe to execute more than once (idempotent).
+    /// retried by default; because a timeout does not guarantee the server did not already commit
+    /// the statement, <paramref name="command"/> must be safe to execute more than once
+    /// (idempotent) unless <paramref name="disableRetries"/> is set.
     /// </summary>
+    /// <param name="disableRetries">
+    /// When <c>true</c>, disables the transient-fault retry pipeline for this call. Set this for
+    /// commands whose side effects are not safe to execute more than once and that the caller
+    /// hasn't made idempotent (e.g. via an idempotency key); a transient failure then propagates
+    /// immediately instead of being retried.
+    /// </param>
     Task<int> ExecuteNonQueryAsync(
         int tenantId,
         SqlCommand command,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        bool disableRetries = false);
 }
