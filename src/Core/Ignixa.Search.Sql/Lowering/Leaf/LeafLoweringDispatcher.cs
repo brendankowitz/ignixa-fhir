@@ -58,6 +58,7 @@ internal static class LeafLoweringDispatcher
     {
         StringSearchValue s => StringLoweringRule.Lower(predicate, s, context, resourceTypeId),
         TokenSearchValue t => TokenLoweringRule.Lower(predicate, t, context, resourceTypeId),
+        OfTypeTokenSearchValue o => OfTypeLoweringRule.Lower(predicate, o, context, resourceTypeId),
         ReferenceSearchValue r => ReferenceLoweringRule.Lower(predicate, r, context, resourceTypeId),
         UriSearchValue u => UriLoweringRule.Lower(predicate, u, context, resourceTypeId),
         NumberSearchValue n => NumberLoweringRule.Lower(predicate, n, context, resourceTypeId),

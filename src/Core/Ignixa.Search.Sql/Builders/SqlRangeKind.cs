@@ -11,8 +11,20 @@ public static class SqlRangeKind
     /// <summary>A plan CTE's definition. Joins to the row whose canonical label is <see cref="SqlLabels.CteLabel"/>.</summary>
     public const string Cte = "cte";
 
-    /// <summary>The match-page CTE that applies paging to the match CTE. No row is named for it.</summary>
+    /// <summary>
+    /// The match-page CTE that applies paging to the match CTE, labelled <see cref="SqlLabels.MatchPage"/>.
+    /// Described by <see cref="Ast.PlanRowKind.MatchPageCte"/>'s row, whose own label ("matchPage") is a
+    /// plan-level pseudo-label like <c>sort</c>/<c>page</c>, not the SQL identifier this constant names --
+    /// the two aren't joined by string equality, the same as every other non-CTE row in this list.
+    /// </summary>
     public const string MatchPage = "matchPage";
+
+    /// <summary>
+    /// The match-seed CTE that trims the has-more probe row off the match page before include stages seed
+    /// from it, labelled <see cref="SqlLabels.MatchSeed"/>. Described by <see cref="Ast.PlanRowKind.MatchSeedCte"/>'s
+    /// row when SqlBuilder.SeedsFromTrimmedMatchPage decides it's needed; same pseudo-label caveat as <see cref="MatchPage"/>.
+    /// </summary>
+    public const string MatchSeed = "matchSeed";
 
     /// <summary>A WHERE clause body. No row is named for it.</summary>
     public const string Where = "where";

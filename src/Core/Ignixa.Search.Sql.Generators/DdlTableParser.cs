@@ -20,7 +20,19 @@ public static class DdlTableParser
         @"(\s+CONSTRAINT\s+\S+\s+DEFAULT\s+\S+)?" +
         @"(\s+DEFAULT\s+\S+)?" +
         @"(\s+IDENTITY\s*\([^)]*\))?" +
+        // Mandatory, not optional: ParseColumns only ever runs on catalog-filtered tables (the
+        // tableNameFilter check gates it before this regex sees a line), and those all declare
+        // nullability explicitly -- the 65 columns elsewhere that rely on SQL Server's implicit-nullable
+        // default live in non-catalog tables this parser never reaches. Making the group optional let a
+        // NOT NULL following any CONSTRAINT clause other than "CONSTRAINT name DEFAULT value" (e.g. a
+        // CHECK constraint, or a DEFAULT with a space in its literal) fall through to the trailing
+        // catch-all below and parse as nullable instead of throwing -- silently wrong, not silently
+        // absent, which this parser's own philosophy (throw on anything it can't confidently read)
+        // exists to prevent.
         @"\s+(?<nullability>NOT\s+NULL|NULL)" +
+        // IDENTITY appears on either side of the nullability clause across this schema
+        // (Resource declares it before, PackageResource after), so both positions are optional.
+        @"(\s+IDENTITY\s*\([^)]*\))?" +
         @"(\s+CONSTRAINT\s+.+)?$",
         RegexOptions.IgnoreCase);
 
@@ -151,8 +163,10 @@ public static class DdlTableParser
         }
 
         var collation = match.Groups["collation"].Success ? match.Groups["collation"].Value : null;
-        var isNullable = !match.Groups["nullability"].Value.Replace(" ", string.Empty)
-            .Equals("NOTNULL", StringComparison.OrdinalIgnoreCase);
+        // TrimStart + StartsWith rather than a literal-space Replace: the regex's \s+ between NOT and
+        // NULL accepts a tab, which a single-character space Replace would miss.
+        var isNullable = !match.Groups["nullability"].Value.TrimStart()
+            .StartsWith("NOT", StringComparison.OrdinalIgnoreCase);
 
         return new DdlColumn(name, sqlType, maxLength, collation, isNullable);
     }

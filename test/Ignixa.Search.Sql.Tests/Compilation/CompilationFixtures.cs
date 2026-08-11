@@ -609,6 +609,42 @@ internal static class CompilationFixtures
             "Patient", [new QueryParameter("_id", "123")], FullDiagnostics);
     }
 
+    /// <summary>Patient?_id=abc -- a resource-column parameter with a string value, built directly rather
+    /// than through ISearchOptionsBuilder -- for SearchCompilerCompileFromOptionsTests, which skips Build
+    /// entirely and constructs the SearchOptions it hands to CompileFromOptionsAsync by hand.</summary>
+    public static (SearchOptions Options, ISymbolResolver Resolver) BuildPatientIdAbcOptionsAndResolver()
+    {
+        var idParam = new SearchParameterInfo("_id", "_id", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Resource-id"));
+        var predicate = new SearchParameterPredicateExpression(idParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "abc", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 3),
+        };
+        var expression = new SearchParameterExpression(idParam, predicate);
+
+        var resolver = new FakeSymbolResolver();
+        resolver.ResourceTypeIds["Patient"] = 103;
+
+        return (new SearchOptions { ResourceType = "Patient", Expression = expression }, resolver);
+    }
+
+    /// <summary>?status=final with no resource type anywhere in the request -- a genuine system-level
+    /// search, built directly for SearchCompilerCompileFromOptionsTests' null/"" resourceType equivalence
+    /// test. Mirrors EndToEndCompilationTests.GivenABareStatusPredicateWithNoResourceType..., which proves
+    /// this same shape stays typeless all the way through Resolve, Lower, and Emit.</summary>
+    public static (SearchOptions Options, ISymbolResolver Resolver) BuildSystemLevelStatusFinalOptionsAndResolver()
+    {
+        var statusParam = new SearchParameterInfo("status", "status", SearchParamType.Token, new Uri("http://hl7.org/fhir/SearchParameter/Observation-status"));
+        var predicate = new SearchParameterPredicateExpression(statusParam, SearchComparator.Eq, modifier: null, new TokenSearchValue(system: null, code: "final", text: null))
+        {
+            Span = new SourceSpan(SourceOrigin.Value, 0, 5),
+        };
+
+        var resolver = new FakeSymbolResolver();
+        resolver.SearchParamIds[statusParam.Url!.ToString()] = 202;
+
+        return (new SearchOptions { ResourceType = null, Expression = predicate }, resolver);
+    }
+
     /// <summary>Patient?organization.name=Acme where the chain's own reference parameter is unregistered -- the
     /// unresolved parameter lives on the ChainedExpression, not on any leaf predicate.</summary>
     public static Task<SearchPlanResult> TraceUnresolvedChainReferenceParameterAsync()

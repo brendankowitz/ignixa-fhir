@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Net;
 using System.Text.Json.Nodes;
 using Shouldly;
 using Ignixa.Api.E2ETests._Infrastructure;
@@ -493,12 +494,15 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
     #region Edge Cases
 
     /// <summary>
-    /// Tests that invalid type modifier returns no results or OperationOutcome (server should handle gracefully).
-    /// For example, searching performer:InvalidType should return no results.
-    /// Per FHIR spec, servers MAY return OperationOutcome for unsupported search parameters.
+    /// Tests that a type modifier naming something other than a real FHIR resource type is rejected.
+    /// For example, searching performer:InvalidType is a modifier the server does not support for
+    /// that reference parameter, since "InvalidType" is not one of performer's valid target types.
+    /// Per FHIR R4 (https://hl7.org/fhir/R4/search.html#modifiers), a search suffixed by a modifier
+    /// the server does not support for that parameter SHALL be rejected with a 400, not silently
+    /// dropped or ignored -- dropping it would widen the result set instead of narrowing it.
     /// </summary>
     [Fact]
-    public async Task GivenObservationsWithValidPerformerTypes_WhenSearchedWithInvalidTypeModifier_ThenReturnsNoResults()
+    public async Task GivenObservationsWithValidPerformerTypes_WhenSearchedWithInvalidTypeModifier_ThenBadRequestReturned()
     {
         // Capability check
         RequireSearchParameter("Observation", "performer");
@@ -510,22 +514,11 @@ public class ReferenceTypeModifierTests : CapabilityDrivenTestBase
 
         var practitionerId = scenario.Practitioner.Id!;
 
-        // Act - Search with invalid type modifier (not a valid FHIR resource type for performer)
-        var results = await Harness.SearchAsync("Observation", $"performer:InvalidType={practitionerId}&_tag={tag}");
+        // Act - Search with a type modifier that names a nonexistent FHIR resource type.
+        var response = await Client.GetAsync($"/Observation?performer:InvalidType={practitionerId}&_tag={tag}");
 
         // Assert
-        // Servers may handle invalid type modifiers in different ways per FHIR spec:
-        // 1. Return empty results (strict interpretation)
-        // 2. Return OperationOutcome warning
-        // 3. Ignore the invalid modifier and return all matching resources (lenient interpretation)
-        // This test documents the current server behavior without enforcing a specific approach
-        if (results.Any(r => r.ResourceType == "OperationOutcome"))
-        {
-            // If OperationOutcome is present, it should indicate the parameter is not supported
-            results.ShouldContain(r => r.ResourceType == "OperationOutcome", "server returned a warning about unsupported parameter");
-        }
-        // Note: Test passes regardless of whether server returns empty, OperationOutcome, or resources
-        // This flexible assertion allows for different valid FHIR server implementations
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     /// <summary>

@@ -30,7 +30,7 @@ public class SearchOptionsCopyConstructorTests
 
         foreach ((PropertyInfo property, int ordinal) in properties.Select((p, i) => (p, i)))
         {
-            object distinct = DistinctValueFor(property, ordinal);
+            object distinct = DistinctValueFor(property, ordinal, property.GetValue(defaults));
 
             // Without this, a property whose distinct value happened to equal its default would be
             // reported as carried over even when the constructor never assigns it.
@@ -116,7 +116,7 @@ public class SearchOptionsCopyConstructorTests
     /// transposed one (<c>StartSurrogateId = other.EndSurrogateId</c>) does not slip through two properties
     /// that share a type.
     /// </summary>
-    private static object DistinctValueFor(PropertyInfo property, int ordinal)
+    private static object DistinctValueFor(PropertyInfo property, int ordinal, object? defaultValue)
     {
         Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
 
@@ -138,15 +138,22 @@ public class SearchOptionsCopyConstructorTests
         if (type.IsEnum)
         {
             // Rotated by ordinal so two properties sharing an enum type still get different members and a
-            // transposition between them is caught. The guard in the caller catches the case where the
-            // rotation lands on the property's default.
-            Array values = Enum.GetValues(type);
-            return values.GetValue((values.Length - 1 - ordinal % values.Length + values.Length) % values.Length)!;
+            // transposition between them is caught. The property's actual default is excluded from the
+            // rotation set rather than assuming it's the enum's zero value -- ResourceVersionTypes, for
+            // example, defaults to Latest, not None -- so this can't land on the default no matter which
+            // ordinal a future property change gives it.
+            object[] nonDefaultValues = Enum.GetValues(type).Cast<object>().Where(v => !Equals(v, defaultValue)).ToArray();
+            return nonDefaultValues[ordinal % nonDefaultValues.Length];
         }
 
         if (type == typeof(Expression))
         {
             return new StringExpression(StringOperator.Equals, FieldName.String, componentIndex: null, "copy-ctor", ignoreCase: false);
+        }
+
+        if (type == typeof(bool))
+        {
+            return true;
         }
 
         // The strategy below assumes every remaining property is a collection; a fresh empty instance is a

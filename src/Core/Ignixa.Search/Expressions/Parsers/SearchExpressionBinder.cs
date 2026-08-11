@@ -81,7 +81,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             if (searchParameter.Type != SearchParamType.Token ||
                 syntax is not AtomicValueSyntax text)
             {
-                throw new InvalidSearchOperationException(string.Format(
+                throw new SearchModifierNotSupportedException(string.Format(
                     CultureInfo.InvariantCulture,
                     Resources.ModifierNotSupported,
                     modifier,
@@ -167,7 +167,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
     {
         if (searchParameter.Type != SearchParamType.Token)
         {
-            throw new InvalidSearchOperationException(string.Format(
+            throw new SearchModifierNotSupportedException(string.Format(
                 CultureInfo.InvariantCulture,
                 Resources.ModifierNotSupported,
                 SearchModifierCode.OfType.ToString(),
@@ -181,12 +181,16 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
             syntax.IdentifierValue);
         OfTypeTokenSearchValue value = atomicValueParser.ParseOfType(raw);
 
-        return new SearchValueExpressionBuilderHelper().Build(
-            searchParameter.Code,
+        // Keep the typed value rather than flattening it into an AND of field-level StringExpressions. The
+        // flattened form loses the fact that the three conditions describe one Identifier: the SQL backend
+        // lowers an AND by intersecting its children as separate index sources, which would match a resource
+        // holding the type on one identifier and the value on another.
+        return new SearchPredicateExpressionBuilder().Build(
+            searchParameter,
             modifier: null,
             SearchComparator.Eq,
-            componentIndex: null,
-            value);
+            value,
+            syntax.Span);
     }
 
     private Expression BindComposite(
@@ -196,7 +200,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
     {
         if (modifier is not null)
         {
-            throw new InvalidSearchOperationException(string.Format(
+            throw new SearchModifierNotSupportedException(string.Format(
                 CultureInfo.InvariantCulture,
                 Resources.ModifierNotSupported,
                 modifier,
@@ -328,9 +332,10 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
 
         // Validate the modifier/comparator against the value type here, at parse time, by running the
         // value through the same builder the SQL backend uses and discarding the result. An unsupported
-        // combination (e.g. a comparator on a string, ':exact' on a date) throws
-        // InvalidSearchOperationException now, inside SearchOptionsBuilder's parse-time catch, so the
-        // parameter is gracefully ignored -- rather than surfacing later as a hard failure during lowering.
+        // combination surfaces now, inside SearchOptionsBuilder's parse-time catch, rather than later as a
+        // hard failure during lowering. An unsupported modifier throws SearchModifierNotSupportedException,
+        // which the builder records separately from an unsupported parameter: R4 says the former SHALL be
+        // rejected while the latter SHOULD be ignored.
         _ = new SearchValueExpressionBuilderHelper().Build(searchParameter.Code, modifier, syntax.Comparator, componentIndex, value);
 
         return new SearchPredicateExpressionBuilder().Build(
@@ -357,7 +362,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
                 return reference;
             }
 
-            throw new InvalidSearchOperationException(
+            throw new SearchModifierNotSupportedException(
                 string.Format(Resources.ModifierNotSupported, modifier, searchParameter.Code));
         }
 
@@ -371,7 +376,7 @@ internal sealed class SearchExpressionBinder(SearchAtomicValueParser atomicValue
         }
         catch (ArgumentException)
         {
-            throw new InvalidSearchOperationException(
+            throw new SearchModifierNotSupportedException(
                 string.Format(Resources.ModifierNotSupported, modifier, searchParameter.Code));
         }
     }

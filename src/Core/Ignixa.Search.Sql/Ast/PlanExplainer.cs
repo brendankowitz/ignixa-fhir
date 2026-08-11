@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Sql.Builders;
 using static Ignixa.Search.Sql.Builders.SqlLabels;
 
 namespace Ignixa.Search.Sql.Ast;
@@ -59,10 +60,73 @@ public static class PlanExplainer
                 label, CteLabel(i), KindOf(plan.Ctes[i]), body, ReferencedCteIndexesOf(plan.Ctes[i])));
         }
 
-        // Emitted between the CTE graph and the include stages, matching where SqlBuilder binds it:
-        // EmitIncludesShape binds the two boundary values after the match-page CTE and before the stage
-        // loop, and include-stage CTEs bind nothing, so these are the first stage-level ordinals. Rendering
-        // this row after the inc rows would read the same but claim the wrong @pN.
+        // EmitIncludesShape wraps the root CTE in a synthetic cteMatchPage (and, when trimming a probe row,
+        // a further cteMatchSeed) that plan.Ctes never lists -- SqlBuilder builds their SQL text ad hoc from
+        // plan fields rather than as CteDefinition entries. These rows are pure labels: matchPage's own
+        // where/order-by/offset content is already fully counted by the root row's WHERE splice above and
+        // the page/surrogateRange/searchParameterHash/offsetPage rows below (WriteMatchPageCte binds those
+        // in the same relative order EmitMatchOnlyShape does), so neither row advances parameterOrdinal.
+        if (!plan.CountOnly && plan.Includes is { Count: > 0 } matchPageIncludes)
+        {
+            rows.Add(new PlanExplainRow(
+                "matchPage", "matchPage", PlanRowKind.MatchPageCte, PrintMatchPageCte(plan), []));
+
+            if (SqlBuilder.SeedsFromTrimmedMatchPage(plan, matchPageIncludes))
+            {
+                rows.Add(new PlanExplainRow(
+                    "matchSeed", "matchSeed", PlanRowKind.MatchSeedCte, PrintMatchSeedCte(plan), []));
+            }
+        }
+
+        if (plan.Sort is { } sort)
+        {
+            rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
+        }
+
+        // EmitCountOnlyShape never reads Page or OffsetPage -- COUNT_BIG has no page to seek or window, and
+        // SqlBuilder emits neither clause for it (pinned by GivenACountOnlyPlanWithOffsetPage_WhenEmitted_
+        // ThenOffsetFetchIsNotEmitted). Gate both rows the same way or Describe() claims ordinals Emit never
+        // binds for a CountOnly plan.
+        if (!plan.CountOnly && plan.Page is { } page)
+        {
+            rows.Add(new PlanExplainRow(
+                "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
+        }
+
+        // BuildMatchWhereClauses (EmitMatchOnlyShape/WriteMatchPageCte) and EmitCountOnlyShape both append
+        // these two, in this order, right after the page/seek predicate (when there is one) and before
+        // ORDER BY -- unlike Page/OffsetPage, CountOnly plans DO bind these, so no CountOnly gate here.
+        if (plan.SurrogateRange is { } surrogateRange)
+        {
+            rows.Add(new PlanExplainRow(
+                "surrogateRange", "surrogateRange", PlanRowKind.SurrogateRange, PrintSurrogateRange(ref parameterOrdinal), []));
+        }
+
+        if (plan.SearchParameterHash is not null)
+        {
+            rows.Add(new PlanExplainRow(
+                "searchParameterHash", "searchParameterHash", PlanRowKind.SearchParameterHash, PrintSearchParameterHash(ref parameterOrdinal), []));
+        }
+
+        // Mutually exclusive with Page (SqlBuilder rejects both) and, like Page, never bound for CountOnly.
+        // Consumes the same next two ordinals Emit binds for OFFSET/FETCH -- immediately after the seek/page
+        // predicate, whether or not the plan also carries Includes: WriteMatchPageCte binds them in the same
+        // relative order EmitMatchOnlyShape does at the top level, so this row's position holds for both shapes.
+        if (!plan.CountOnly && plan.OffsetPage is { } offsetPage)
+        {
+            rows.Add(new PlanExplainRow(
+                "offsetPage", "offsetPage", PlanRowKind.OffsetSpec, PrintOffsetSpec(offsetPage, ref parameterOrdinal), []));
+        }
+
+        // Bound last among the ordinal-consuming rows: EmitIncludesShape calls WriteMatchPageCte -- which
+        // binds everything above (OuterPredicate through OffsetPage) via BuildMatchWhereClauses plus its own
+        // ORDER BY/OFFSET-FETCH -- to completion BEFORE binding the resume boundary, and only then starts the
+        // stage loop. Rendering this row any earlier (it used to sit right after the CTE graph) claimed
+        // ordinals that page/surrogateRange/searchParameterHash/offsetPage hadn't consumed yet in the real
+        // SQL, so every row from here on named the wrong bound value whenever IncludesPage's Resume combined
+        // with SurrogateRange or SearchParameterHash -- exactly the combination SqlBuilder's own
+        // RejectUnsupportedCombinations guard message recommends ("bound the match set with SurrogateRange
+        // and page the include rows with ResultShape.IncludesPage.Resume").
         if (plan.IncludeBoundary is not null)
         {
             rows.Add(new PlanExplainRow(
@@ -80,17 +144,6 @@ public static class PlanExplainer
                 rows.Add(new PlanExplainRow(
                     IncludeLabel(i), IncludeLabel(i), PlanRowKind.IncludeStage, PrintIncludeStage(includes[i]), []));
             }
-        }
-
-        if (plan.Sort is { } sort)
-        {
-            rows.Add(new PlanExplainRow("sort", "sort", PlanRowKind.SortSpec, PrintSortSpec(sort), []));
-        }
-
-        if (plan.Page is { } page)
-        {
-            rows.Add(new PlanExplainRow(
-                "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, ref parameterOrdinal), []));
         }
 
         if (plan.CountOnly)
@@ -160,6 +213,62 @@ public static class PlanExplainer
         var typeParam = page.BoundaryResourceTypeId is null ? "none" : $"@p{parameterOrdinal++}";
         var sidParam = $"@p{parameterOrdinal++}";
         return $"PageSpec(boundary=[{string.Join(",", boundary)}], type={typeParam}, sid={sidParam})";
+    }
+
+    /// <summary>
+    /// Renders the export-sharding surrogate-id window SqlBuilder's <c>AppendSurrogateRangeClauses</c> binds
+    /// -- always exactly two ordinals, start then end.
+    /// </summary>
+    private static string PrintSurrogateRange(ref int parameterOrdinal)
+    {
+        var startParam = $"@p{parameterOrdinal++}";
+        var endParam = $"@p{parameterOrdinal++}";
+        return $"SurrogateRange(start={startParam}, end={endParam})";
+    }
+
+    /// <summary>
+    /// Renders the reindex-eligibility hash comparison SqlBuilder's <c>EmitSearchParameterHashClause</c>
+    /// binds -- one ordinal, the hash a resource's own <c>SearchParamHash</c> must differ from.
+    /// </summary>
+    private static string PrintSearchParameterHash(ref int parameterOrdinal)
+        => $"SearchParameterHash(hash=@p{parameterOrdinal++})";
+
+    /// <summary>
+    /// Summarizes the synthetic cteMatchPage WriteMatchPageCte builds for an includes-shape plan: its own
+    /// TOP cap (a literal, never a bound parameter) and which joins it carries. Both booleans call the exact
+    /// SqlBuilder decisions they report (<see cref="SqlBuilder.NeedsResourceJoin"/>, <see cref="SqlBuilder.EmitSortJoins"/>)
+    /// rather than approximating them, so this label can't drift from what Emit does. sortJoins is NOT simply
+    /// "does the plan sort" -- EmitSortJoins skips LastUpdated/ResourceType keys and the MissingPrimary
+    /// phase's own primary key, so a plan sorted only by one of those needs no join at all.
+    /// </summary>
+    private static string PrintMatchPageCte(QueryPlan plan)
+    {
+        var top = plan.Top is { } n ? n.ToString(CultureInfo.InvariantCulture) : "none";
+        var sortJoins = SqlBuilder.EmitSortJoins(plan.Sort).Length > 0;
+        var resourceJoin = SqlBuilder.NeedsResourceJoin(plan, includesProjection: false);
+        return $"MatchPageCte(top={top}, sortJoins={(sortJoins ? "true" : "false")}, resourceJoin={(resourceJoin ? "true" : "false")})";
+    }
+
+    /// <summary>
+    /// Summarizes the synthetic cteMatchSeed WriteMatchSeedCte builds to trim an over-fetched match page's
+    /// probe row before include stages seed from it. <see cref="OffsetSpec.Limit"/>, not
+    /// <see cref="OffsetSpec.FetchCount"/> -- the seed keeps only the true page, not the lookahead row past
+    /// its end. A literal TOP, like matchPage's own; binds no ordinal.
+    /// </summary>
+    private static string PrintMatchSeedCte(QueryPlan plan)
+        => $"MatchSeedCte(limit={plan.OffsetPage!.Limit.ToString(CultureInfo.InvariantCulture)})";
+
+    /// <summary>
+    /// Renders the OFFSET/FETCH clause Emit binds for <see cref="OffsetSpec"/> -- two ordinals, offset then
+    /// fetch count. Fetch count is <see cref="OffsetSpec.FetchCount"/> (the page size plus its probe row,
+    /// when <see cref="OffsetSpec.ProbeExtraRow"/> is set), matching what Emit actually binds, not the
+    /// caller-facing <see cref="OffsetSpec.Limit"/>.
+    /// </summary>
+    private static string PrintOffsetSpec(OffsetSpec offset, ref int parameterOrdinal)
+    {
+        var offsetParam = $"@p{parameterOrdinal++}";
+        var fetchParam = $"@p{parameterOrdinal++}";
+        return $"OffsetSpec(offset={offsetParam}, fetch={fetchParam})";
     }
 
     /// <summary>

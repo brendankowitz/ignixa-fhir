@@ -77,6 +77,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
         var revIncludeParameters = new List<(string ParameterName, string Value)>();
         var elementsParameters = new List<string>();
         var unsupportedParameters = new List<string>();
+        var unsupportedModifierParameters = new List<string>();
         var typeFilterParameters = new List<string>();
 
         // For system-wide search (resourceType is null), we need to first extract _type parameters
@@ -251,6 +252,28 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         dataType: null));
                 }
             }
+            catch (SearchModifierNotSupportedException ex)
+            {
+                // R4 splits these two catches apart deliberately. An unsupported *parameter* SHOULD be
+                // ignored; a request suffixed by an unsupported *modifier* SHALL be rejected. Both are
+                // dropped from the expression here so a caller honouring handling=lenient can still serve
+                // the query, but the modifier case is also listed separately so the HTTP boundary can
+                // apply the stricter default.
+                unsupportedParameters.Add(param.Name);
+                unsupportedModifierParameters.Add(param.Name);
+                if (outcomes is not null && param.Category == ParameterCategory.Search)
+                {
+                    outcomes.Add(new ParameterTrace(
+                        ordinal: searchOrdinal++,
+                        key: param.Name,
+                        keySyntax: null,
+                        value: param.Value,
+                        valueSyntax: null,
+                        ir: null,
+                        outcome: new ParameterOutcome.Ignored(ex.Message, null),
+                        dataType: null));
+                }
+            }
             catch (InvalidSearchOperationException ex)
             {
                 unsupportedParameters.Add(param.Name);
@@ -362,6 +385,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
 
         // STEP 8: Record unsupported parameters and create Bundle issues
         options.UnsupportedParams = unsupportedParameters;
+        options.UnsupportedModifierParams = unsupportedModifierParameters;
         foreach (var param in unsupportedParameters)
         {
             var diagnostics = $"Search parameter '{param}' is not supported";

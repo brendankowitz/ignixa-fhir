@@ -2723,6 +2723,49 @@ public class EmitTests
         sql.ShouldNotContain("FETCH");
     }
 
+    [Fact]
+    public void GivenANoIncludesPlanWithOffsetPage_WhenExplained_ThenTheOffsetPageRowNamesTheSameOrdinalsEmitBinds()
+    {
+        // Arrange -- same fixture as GivenANoIncludesPlanWithOffsetPage_WhenEmitted_ThenEmitsOffsetFetchAfterOrderBy,
+        // whose emitted SQL binds OFFSET/FETCH at @p1/@p2 (cte0's own predicate takes @p0). Explain() must
+        // agree, or a plan trace built from it points a caller at the wrong bound value.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            OffsetPage: new OffsetSpec(20, 10));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var explained = plan.Explain();
+
+        // Assert
+        emitted.Sql.ShouldContain("OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY");
+        explained.ShouldContain("offsetPage = OffsetSpec(offset=@p1, fetch=@p2)");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithOffsetPage_WhenExplained_ThenTheOffsetPageRowStillMatchesEmitsOrdinals()
+    {
+        // Arrange -- same fixture as GivenAnIncludesPlanWithOffsetPage_WhenEmitted_ThenMatchPageCteEmitsOrderByAndOffsetFetch.
+        // WriteMatchPageCte binds OFFSET/FETCH inside cteMatchPage, not the top-level SELECT, but at the same
+        // ordinal position -- Explain()'s row must not drift just because Includes moved the clause.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [ForwardIncludeStage(103, 111, 10)],
+            OffsetPage: new OffsetSpec(20, 10));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var explained = plan.Explain();
+
+        // Assert
+        emitted.Sql.ShouldContain("OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY");
+        explained.ShouldContain("offsetPage = OffsetSpec(offset=@p1, fetch=@p2)");
+    }
+
     // ─── End OffsetPage tests ───────────────────────────────────────────────────────────────────────
 
     // ─── Phase-scoped count tests ───────────────────────────────────────────────────────────────────

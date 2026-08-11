@@ -301,7 +301,7 @@ public sealed class LegacyExpressionParser : IExpressionParser
 
             if (searchParameter.Type == SearchParamType.Reference && searchParameter.TargetResourceTypes.Contains(modifier, StringComparer.OrdinalIgnoreCase)) return new SearchModifier(SearchModifierCode.Type, modifier);
 
-            throw new InvalidSearchOperationException(
+            throw new SearchModifierNotSupportedException(
                 string.Format(Resources.ModifierNotSupported, modifier, searchParameter.Code));
         }
     }

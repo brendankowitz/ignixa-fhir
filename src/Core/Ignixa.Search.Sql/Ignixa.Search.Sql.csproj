@@ -25,7 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AdditionalFiles Include="..\..\DataLayer\Ignixa.DataLayer.SqlEntityFramework\Resources\97.sql" />
+    <AdditionalFiles Include="..\..\DataLayer\Ignixa.DataLayer.SqlServer.Database\Tables\*.sql" Link="DataLayerDdl\%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

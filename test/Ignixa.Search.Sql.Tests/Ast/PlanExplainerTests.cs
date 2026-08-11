@@ -174,6 +174,7 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe(
             "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
     }
 
@@ -192,6 +193,7 @@ public class PlanExplainerTests
         // Assert
         explained.ShouldBe(
             "root = StringSearchParam[103,202]  Text = @p0\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=*, seedTypes=*, outputTypes=*, seeds=[match], limit=500 iterate, Reverse)");
     }
 
@@ -233,6 +235,49 @@ public class PlanExplainerTests
         // The row sits where the emitter binds it: after the CTE graph, before the stage rows.
         rows.Select(r => r.CanonicalLabel).ToList().IndexOf("includeBoundary")
             .ShouldBeLessThan(rows.Select(r => r.CanonicalLabel).ToList().IndexOf("inc0"));
+    }
+
+    [Fact]
+    public void GivenAnIncludesOnlyPlanWithAResumeBoundaryAndSurrogateRangeAndHash_WhenExplained_ThenEveryRowNamesTheOrdinalsTheEmitterActuallyBinds()
+    {
+        // Arrange -- exactly the combination SqlBuilder's own RejectUnsupportedCombinations guard message
+        // recommends: bound the match set with SurrogateRange (an $export shard window) and page the include
+        // rows with ResultShape.IncludesPage.Resume. WriteMatchPageCte binds SurrogateRange and
+        // SearchParameterHash INSIDE itself, before the resume boundary is bound after it returns -- a
+        // regression that reorders includeBoundary back ahead of them would make every ordinal here wrong,
+        // and previously did (the boundary row used to render right after the CTE graph, before this pair).
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
+            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(7000L), new SqlParameterRef(8000L)),
+            SearchParameterHash: new SqlParameterRef("hashv"));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var rows = PlanExplainer.Describe(plan);
+
+        // Assert -- real bind order: cte0's own predicate, then SurrogateRange, then SearchParameterHash
+        // (both inside WriteMatchPageCte's BuildMatchWhereClauses call), then the resume boundary.
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", 7000L, 8000L, "hashv", (short)111, 5000L]);
+
+        var surrogateRow = rows.Single(r => r.CanonicalLabel == "surrogateRange");
+        surrogateRow.Body.ShouldBe("SurrogateRange(start=@p1, end=@p2)");
+
+        var hashRow = rows.Single(r => r.CanonicalLabel == "searchParameterHash");
+        hashRow.Body.ShouldBe("SearchParameterHash(hash=@p3)");
+
+        var boundaryRow = rows.Single(r => r.CanonicalLabel == "includeBoundary");
+        boundaryRow.Body.ShouldBe("IncludeBoundary(type=@p4, sid=@p5)");
+
+        // Ordering, not just individual correctness: surrogateRange and searchParameterHash must both
+        // precede includeBoundary.
+        var labels = rows.Select(r => r.CanonicalLabel).ToList();
+        labels.IndexOf("surrogateRange").ShouldBeLessThan(labels.IndexOf("includeBoundary"));
+        labels.IndexOf("searchParameterHash").ShouldBeLessThan(labels.IndexOf("includeBoundary"));
     }
 
     [Fact]
@@ -463,5 +508,159 @@ public class PlanExplainerTests
             "cte0 = MultiTypeResourceSource[103,104]\n" +
             "cte1 = StringSearchParam[103,202]  Text = @p0\n" +
             "root = Intersect(cte0, cte1)");
+    }
+
+    [Fact]
+    public void GivenASurrogateRangePlan_WhenExplained_ThenTheSurrogateRangeRowNamesTheSameOrdinalsEmitBinds()
+    {
+        // Arrange -- SurrogateRange is how $export shards its read window; BuildMatchWhereClauses binds it
+        // right after the seek/outer predicate and before ORDER BY, so its ordinals land after cte0's own.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var explained = plan.Explain();
+
+        // Assert
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", 5000L, 6000L]);
+        explained.ShouldContain("surrogateRange = SurrogateRange(start=@p1, end=@p2)");
+    }
+
+    [Fact]
+    public void GivenASearchParameterHashPlan_WhenExplained_ThenTheHashRowNamesTheSameOrdinalEmitBinds()
+    {
+        // Arrange -- SearchParameterHash gates reindex eligibility; its ordinal comes right after
+        // SurrogateRange's in BuildMatchWhereClauses, so combining both proves the rows don't collide.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
+            SearchParameterHash: new SqlParameterRef("abc123"));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var explained = plan.Explain();
+
+        // Assert
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", 5000L, 6000L, "abc123"]);
+        explained.ShouldContain("surrogateRange = SurrogateRange(start=@p1, end=@p2)");
+        explained.ShouldContain("searchParameterHash = SearchParameterHash(hash=@p3)");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanWithSortAndAnOuterPredicate_WhenExplained_ThenTheMatchPageRowReportsBothJoins()
+    {
+        // Arrange -- sortJoins and resourceJoin are false in every other matchPage fixture in this file;
+        // this one forces both true so PrintMatchPageCte's flags are proven on their true path too.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
+        var plan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            OuterPredicate: outer,
+            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
+            Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
+            Top: 25);
+
+        // Act
+        var explained = plan.Explain();
+
+        // Assert
+        explained.ShouldContain("matchPage = MatchPageCte(top=25, sortJoins=true, resourceJoin=true)");
+    }
+
+    [Fact]
+    public void GivenAProbeTrimmedIncludesPlanWithOffsetPage_WhenExplained_ThenTheMatchSeedRowReportsTheLimitNotTheFetchCountAndOrdinalsMatchEmit()
+    {
+        // Arrange -- ProbeExtraRow fetches Limit+1 rows so hasMore can be detected; cteMatchSeed trims that
+        // probe row back off before include stages seed from it. The row must show Limit (10), not
+        // FetchCount (11) -- reporting FetchCount here would misrepresent what include stages seed from.
+        // Also cross-checks against the real emitted SQL: this is the one combination (ProbeExtraRow: true)
+        // where matchSeed actually appears, and a prior version of this test only ever called plan.Explain(),
+        // never SqlBuilder.Run -- so the ordinal claim was unverified for the one case it exists to cover.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)],
+            OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var explained = plan.Explain();
+
+        // Assert -- @p0 is cte0's own ResourceSource type id; @p1/@p2 are Offset/FetchCount (11 = Limit + probe row).
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(short)103, 20, 11]);
+        explained.ShouldContain("matchSeed = MatchSeedCte(limit=10)");
+        explained.ShouldContain("offsetPage = OffsetSpec(offset=@p1, fetch=@p2)");
+    }
+
+    [Fact]
+    public void GivenAnIncludesPlanSortedOnlyByLastUpdated_WhenExplained_ThenTheMatchPageRowReportsNoSortJoin()
+    {
+        // Arrange -- EmitSortJoins skips LastUpdated/ResourceType keys entirely: the match set already
+        // projects the surrogate id those sort on, no join needed. Before this test, PrintMatchPageCte
+        // computed sortJoins as `plan.Sort is not null`, which is true here even though WriteMatchPageCte
+        // emits zero JOIN clauses for this exact plan -- a real divergence, not just an unlikely one:
+        // `_sort=_lastUpdated&_include=...` is an ordinary, common query shape.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103)],
+            new CteRef(0),
+            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
+            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending)], SortPhase.Valued));
+
+        // Act
+        var emitted = SqlBuilder.Run(plan);
+        var explained = plan.Explain();
+
+        // Assert -- "sk0" is EmitSortJoins' own alias for a sort-key join; the include stage still joins
+        // dbo.ReferenceSearchParam for its own reasons, so this checks for the absence of a sort join
+        // specifically, not every join in the emitted SQL.
+        emitted.Sql.ShouldNotContain("sk0");
+        explained.ShouldContain("matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)");
+    }
+
+    [Fact]
+    public void GivenACountOnlyPlanWithPageAndOffsetPageSet_WhenExplained_ThenNeitherRowAppears()
+    {
+        // Arrange -- EmitCountOnlyShape reads neither Page nor OffsetPage (COUNT_BIG has no page to seek or
+        // window), so a CountOnly plan that still carries either -- constructible directly against QueryPlan,
+        // a public surface -- must not claim ordinals Emit never binds for them. Page and OffsetPage are
+        // mutually exclusive with each other but each independently combinable with CountOnly, so two
+        // separate CountOnly plans, not one plan carrying both.
+        var table = SqlCatalog.Default.Table("StringSearchParam");
+        var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
+        var pagedCountPlan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Shape: new ResultShape.Count.AllMatches(),
+            Page: new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L)));
+        var offsetCountPlan = new QueryPlan(
+            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
+            new CteRef(0),
+            Shape: new ResultShape.Count.AllMatches(),
+            OffsetPage: new OffsetSpec(20, 10));
+
+        // Act
+        var pagedEmitted = SqlBuilder.Run(pagedCountPlan);
+        var offsetEmitted = SqlBuilder.Run(offsetCountPlan);
+        var pagedExplained = pagedCountPlan.Explain();
+        var offsetExplained = offsetCountPlan.Explain();
+
+        // Assert -- Emit binds only cte0's own predicate for both; Describe must claim exactly that, not more.
+        pagedEmitted.Parameters.Select(p => p.Value).ShouldBe(["Smith"]);
+        pagedExplained.ShouldNotContain("page = ");
+        pagedExplained.ShouldContain("countOnly = true");
+
+        offsetEmitted.Parameters.Select(p => p.Value).ShouldBe(["Smith"]);
+        offsetExplained.ShouldNotContain("offsetPage = ");
+        offsetExplained.ShouldContain("countOnly = true");
     }
 }

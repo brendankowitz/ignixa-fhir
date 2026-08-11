@@ -11,6 +11,7 @@ using Ignixa.Application.Features.Experimental.GraphQl.Models;
 using Ignixa.Application.Features.Resource;
 using Ignixa.Application.Infrastructure;
 using Ignixa.Domain.Models;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization.Abstractions;
@@ -32,12 +33,14 @@ public sealed class SearchResolver(
         IResolverContext graphQlContext,
         CancellationToken cancellationToken)
     {
-        var searchOptions = BuildSearchOptions(resourceType, graphQlContext);
-
         logger.LogDebug("GraphQL list search {ResourceType}", resourceType);
 
         try
         {
+            // Inside the try, not before it: BuildSearchOptions can throw SearchModifierNotSupportedException
+            // (a FhirException), and it needs the same catch/FhirGraphQlErrorMapping.Map treatment as every
+            // other FhirException this method can raise, not a raw, unmapped exception out of the resolver.
+            var searchOptions = BuildSearchOptions(resourceType, graphQlContext);
             var query = new SearchResourcesQuery(resourceType, searchOptions);
             var result = await mediator.SendAsync(query, cancellationToken);
 
@@ -62,12 +65,12 @@ public sealed class SearchResolver(
         IResolverContext graphQlContext,
         CancellationToken cancellationToken)
     {
-        var searchOptions = BuildSearchOptions(resourceType, graphQlContext, requestAccurateTotal: true);
-
         logger.LogDebug("GraphQL searching {ResourceType}", resourceType);
 
         try
         {
+            // Inside the try -- see the identical comment in SearchListAsync.
+            var searchOptions = BuildSearchOptions(resourceType, graphQlContext, requestAccurateTotal: true);
             var query = new SearchResourcesQuery(resourceType, searchOptions);
             var result = await mediator.SendAsync(query, cancellationToken);
 
@@ -97,7 +100,6 @@ public sealed class SearchResolver(
         CancellationToken cancellationToken)
     {
         var additionalParams = new[] { new QueryParameter(referenceParamName, $"{sourceResourceType}/{sourceResourceId}") };
-        var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams);
 
         logger.LogDebug(
             "GraphQL reverse search {TargetType} via {Param}={SourceType}/{SourceId}",
@@ -105,6 +107,8 @@ public sealed class SearchResolver(
 
         try
         {
+            // Inside the try -- see the identical comment in SearchListAsync.
+            var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams);
             var query = new SearchResourcesQuery(targetResourceType, searchOptions);
             var result = await mediator.SendAsync(query, cancellationToken);
 
@@ -133,7 +137,6 @@ public sealed class SearchResolver(
         CancellationToken cancellationToken)
     {
         var additionalParams = new[] { new QueryParameter(referenceParamName, $"{sourceResourceType}/{sourceResourceId}") };
-        var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams, requestAccurateTotal: true);
 
         logger.LogDebug(
             "GraphQL reverse connection search {TargetType} via {Param}={SourceType}/{SourceId}",
@@ -141,6 +144,8 @@ public sealed class SearchResolver(
 
         try
         {
+            // Inside the try -- see the identical comment in SearchListAsync.
+            var searchOptions = BuildSearchOptions(targetResourceType, graphQlContext, additionalParams, requestAccurateTotal: true);
             var query = new SearchResourcesQuery(targetResourceType, searchOptions);
             var result = await mediator.SendAsync(query, cancellationToken);
 
@@ -258,7 +263,16 @@ public sealed class SearchResolver(
             parameters.AddRange(additionalParameters);
 
         var builder = searchOptionsBuilderFactory.Create(fhirVersion, tenantId);
-        return builder.Build(resourceType, parameters);
+        var searchOptions = builder.Build(resourceType, parameters);
+
+        // GraphQL argument names can't carry the ':' a FHIR modifier needs (GraphQL's Name grammar forbids
+        // it), so today's four callers can't reach this through their per-field-argument loop. Guarding here
+        // anyway, once, for every caller of this method -- the same reasoning that put ThrowIfAny on every
+        // other client-input search path in this codebase: the invariant should not depend on a caller
+        // correctly reasoning about what a future argument source can or can't smuggle through.
+        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
+
+        return searchOptions;
     }
 }
 

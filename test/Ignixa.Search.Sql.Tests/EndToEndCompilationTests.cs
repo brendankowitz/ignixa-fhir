@@ -992,6 +992,7 @@ public class EndToEndCompilationTests
         // unmodified `name` predicate in this file (e.g. GivenAForwardChainQuery above) -- not a plain Equal.
         plan.Explain().ShouldBe(
             "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI top 50\n" +
+            "matchPage = MatchPageCte(top=50, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
         var emitted = SqlBuilder.Run(plan);
@@ -1025,6 +1026,7 @@ public class EndToEndCompilationTests
         // Assert -- same StringLoweringRule default-arm shape as the forward-include test above.
         plan.Explain().ShouldBe(
             "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=77, seedTypes=[103], outputTypes=[104], seeds=[match], limit=1000, Reverse)");
 
         var emitted = SqlBuilder.Run(plan);
@@ -1053,6 +1055,7 @@ public class EndToEndCompilationTests
         // Assert
         plan.Explain().ShouldBe(
             "root = ResourceSource[103] top 50\n" +
+            "matchPage = MatchPageCte(top=50, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
         var emitted = SqlBuilder.Run(plan);
@@ -1138,6 +1141,7 @@ public class EndToEndCompilationTests
         // Assert -- non-iterate always sorts first regardless of its position in the input list.
         plan.Explain().ShouldBe(
             "root = ResourceSource[103]\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)\n" +
             "inc1 = IncludeStage(ref=66, seedTypes=[105], outputTypes=[105], seeds=[inc0], limit=1000 iterate, Forward)");
 
