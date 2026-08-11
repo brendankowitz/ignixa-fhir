@@ -4,16 +4,78 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Ignixa.DataLayer.SqlServer.Tests;
 
 public class SqlExecutionServiceConnectionTests
 {
-    // Unreachable-but-non-blocking loopback endpoint: connecting fails fast (bounded by
-    // "Connect Timeout") without needing a live SQL Server, but still exercises a real
-    // Microsoft.Data.SqlClient connection attempt and a genuine SqlException end to end.
-    private const string UnreachableConnectionString =
-        "Data Source=127.0.0.1,1;Connect Timeout=1;TrustServerCertificate=True;Encrypt=False;Initial Catalog=test;User ID=sa;Password=x";
+    // Accepts TCP connections on loopback but never responds, so Microsoft.Data.SqlClient's own
+    // pre-login handshake timeout fires (SqlException.Number == -2) without needing a live SQL
+    // Server. Unlike pointing at a closed port (OS-dependent "connection refused" timing/error
+    // classification differs between Windows and Linux -- confirmed the hard way in CI), this is
+    // driven entirely by the client library's own timer once the TCP handshake itself succeeds,
+    // so it is deterministic across platforms.
+    private sealed class UnresponsiveTcpListener : IDisposable
+    {
+        private readonly TcpListener _listener;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly List<TcpClient> _acceptedClients = [];
+
+        public UnresponsiveTcpListener()
+        {
+            _listener = new TcpListener(IPAddress.Loopback, 0);
+            _listener.Start();
+            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            _ = AcceptAndIgnoreAsync(_cts.Token);
+        }
+
+        public int Port { get; }
+
+        public string ConnectionString =>
+            $"Data Source=127.0.0.1,{Port};Connect Timeout=1;TrustServerCertificate=True;Encrypt=False;Initial Catalog=test;User ID=sa;Password=x";
+
+        private async Task AcceptAndIgnoreAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    // Retain each accepted client (do not dispose it here) -- disposing/closing it
+                    // immediately would send a TCP reset/FIN, which produces a "connection reset"
+                    // style SqlException instead of the intended silent hang. All accepted clients
+                    // are disposed together when the listener itself is disposed.
+                    var client = await _listener.AcceptTcpClientAsync(cancellationToken);
+                    lock (_acceptedClients)
+                    {
+                        _acceptedClients.Add(client);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        public void Dispose()
+        {
+            _cts.Cancel();
+            _listener.Dispose();
+            lock (_acceptedClients)
+            {
+                foreach (var client in _acceptedClients)
+                {
+                    client.Dispose();
+                }
+            }
+
+            _cts.Dispose();
+        }
+    }
 
     private sealed class CountingLogger<T> : ILogger<T>
     {
@@ -184,18 +246,20 @@ public class SqlExecutionServiceConnectionTests
     [Fact]
     public async Task GivenATransientConnectionFailure_WhenExecutingReaderAsync_ThenThePipelineRetriesAndEventuallyFails()
     {
-        // Arrange -- points at an address that fails fast (bounded by Connect Timeout) rather than
-        // a live SQL Server, but still produces a genuine Microsoft.Data.SqlClient SqlException.
-        // This proves the retry pipeline is actually wired end-to-end (ShouldHandle -> OnRetry ->
-        // MaxRetryAttempts), not just that IsTransient(int) classifies correctly in isolation --
-        // the previous version of this class had zero coverage of that wiring.
+        // Arrange -- a fake listener that accepts the TCP connection but never responds, forcing
+        // Microsoft.Data.SqlClient's own pre-login handshake timeout (SqlException.Number == -2)
+        // without needing a live SQL Server. This proves the retry pipeline is actually wired
+        // end-to-end (ShouldHandle -> OnRetry -> MaxRetryAttempts), not just that IsTransient(int)
+        // classifies correctly in isolation -- the previous version of this class had zero
+        // coverage of that wiring.
+        using var listener = new UnresponsiveTcpListener();
         var store = new FakeTenantConfigurationStore();
         store.Tenants[1] = new TenantConfiguration
         {
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "4.0",
-            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = UnreachableConnectionString },
+            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = listener.ConnectionString },
         };
         var logger = new CountingLogger<SqlExecutionService>();
         var service = new SqlExecutionService(store, logger);
@@ -205,10 +269,10 @@ public class SqlExecutionServiceConnectionTests
         var ex = await Should.ThrowAsync<SqlException>(() =>
             service.ExecuteReaderAsync(1, command, reader => reader.GetInt32(0), CancellationToken.None));
 
-        // Assert -- the connection-establishment failure must be one this service classifies as
-        // transient (it is, by design of the connection string above), so it should have been
-        // retried MaxRetryAttempts (3) times before the pipeline finally rethrows and logs once.
-        SqlExecutionService.IsTransient(ex.Number).ShouldBeTrue();
+        // Assert -- a pre-login handshake timeout (-2) is transient by design, so it should have
+        // been retried MaxRetryAttempts (3) times before the pipeline finally rethrows and logs
+        // the final failure once.
+        ex.Number.ShouldBe(-2);
         logger.WarningCount.ShouldBe(3);
         logger.ErrorCount.ShouldBe(1);
     }
@@ -216,15 +280,16 @@ public class SqlExecutionServiceConnectionTests
     [Fact]
     public async Task GivenATransientConnectionFailureAndDisableRetriesIsTrue_WhenExecutingNonQueryAsync_ThenFailsOnFirstAttemptWithoutRetrying()
     {
-        // Arrange -- same unreachable endpoint as above, but with disableRetries: true. Proves the
+        // Arrange -- same unresponsive listener as above, but with disableRetries: true. Proves the
         // opt-out actually bypasses the pipeline rather than just being accepted and ignored.
+        using var listener = new UnresponsiveTcpListener();
         var store = new FakeTenantConfigurationStore();
         store.Tenants[1] = new TenantConfiguration
         {
             TenantId = 1,
             DisplayName = "Test Tenant",
             FhirVersion = "4.0",
-            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = UnreachableConnectionString },
+            Storage = new TenantStorageConfiguration { Type = "SqlServer", ConnectionString = listener.ConnectionString },
         };
         var logger = new CountingLogger<SqlExecutionService>();
         var service = new SqlExecutionService(store, logger);
@@ -236,7 +301,7 @@ public class SqlExecutionServiceConnectionTests
 
         // Assert -- no OnRetry firings at all: the pipeline was bypassed, not merely configured
         // with zero retries.
-        SqlExecutionService.IsTransient(ex.Number).ShouldBeTrue();
+        ex.Number.ShouldBe(-2);
         logger.WarningCount.ShouldBe(0);
         logger.ErrorCount.ShouldBe(1);
     }
