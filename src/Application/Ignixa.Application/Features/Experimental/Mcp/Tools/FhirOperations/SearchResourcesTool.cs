@@ -14,6 +14,7 @@ using Ignixa.Application.Infrastructure;
 using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Domain.Abstractions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -123,6 +124,12 @@ Example: resourceType='Patient', searchParams={'name': 'Smith'}, elements='id,na
         // Use SearchOptionsBuilder to parse all parameters and build expressions
         var builder = _builderFactory.Create(fhirVersion);
         var searchOptions = builder.Build(resourceType, queryParameters, schemaProvider);
+
+        // searchParams is a client-supplied Dictionary<string, string> with no key constraint, so an
+        // unsupported modifier (e.g. "identifier:above") reaches here the same way an HTTP query string
+        // does. Build() only classifies it; without this, the search would silently run widened/unfiltered
+        // instead of the FHIR R4 SHALL-mandated rejection every other client-input search path enforces.
+        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
 
         // Update the FHIR request context with the resolved tenant ID
         // The middleware has already created the context, we just need to update the tenant

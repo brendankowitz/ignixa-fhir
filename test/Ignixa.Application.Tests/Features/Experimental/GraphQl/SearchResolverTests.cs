@@ -671,6 +671,29 @@ public class SearchResolverTests
     }
 
     [Fact]
+    public async Task GivenSearchOptionsWithAnUnsupportedModifier_WhenListSearching_ThenRejectsWithACodedGraphQLExceptionInsteadOfWideningTheSearch()
+    {
+        // Arrange -- GraphQL argument names can't carry a FHIR modifier's ':' today (GraphQL's own Name
+        // grammar forbids it), so this exercises BuildSearchOptions' defensive guard directly via the
+        // builder mock rather than trying to smuggle a modifier through a real IResolverContext argument.
+        var searchOptions = new SearchOptions
+        {
+            ResourceType = "Patient",
+            MaxItemCount = 10,
+            UnsupportedModifierParams = ["identifier:above"],
+        };
+        var (mediator, builderFactory, _, contextAccessor, resolverContext) = CreateMocks(searchOptions);
+
+        var resolver = CreateResolver(mediator, builderFactory, contextAccessor);
+
+        // Act & Assert -- rejected before the mediator is ever called, not executed as a widened search.
+        var ex = await Should.ThrowAsync<GraphQLException>(
+            () => resolver.SearchListAsync("Patient", resolverContext, CancellationToken.None));
+        ex.Errors[0].Code.ShouldBe("INVALID_RESOURCE");
+        await mediator.DidNotReceive().SendAsync(Arg.Any<SearchResourcesQuery>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task GivenNonFhirException_WhenSearching_ThenPropagatesUncaught()
     {
         // Arrange — non-FHIR exceptions are left for the error filter to log and mask

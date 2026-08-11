@@ -12,7 +12,7 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <Description>Source generator for Ignixa.Search.Sql's SqlCatalog -- reads the real search-index DDL (97.sql) and generates the table/column facts SqlCatalog.Default exposes, instead of hand-transcribing them.</Description>
+    <Description>Source generator for Ignixa.Search.Sql's SqlCatalog -- reads the real search-index DDL (the decomposed table scripts under Ignixa.DataLayer.SqlServer.Database/Tables) and generates the table/column facts SqlCatalog.Default exposes, instead of hand-transcribing them.</Description>
   </PropertyGroup>
 
   <ItemGroup>

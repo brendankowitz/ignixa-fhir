@@ -46,7 +46,9 @@ public class DdlTableParserRealDdlTests
     [Fact]
     public void GivenRealTokenSearchParamDdl_WhenParsed_ThenCodeColumnMatchesHandVerifiedCatalog()
     {
-        // Arrange -- copied verbatim from 97.sql lines 883-890
+        // Arrange -- copied verbatim from
+        // src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TokenSearchParam.sql, plus the two
+        // IdentifierTypeCode/IdentifierTypeSystemId columns :of-type added
         var ddl = """
             CREATE TABLE dbo.TokenSearchParam (
                 ResourceTypeId      SMALLINT      NOT NULL,
@@ -54,7 +56,9 @@ public class DdlTableParserRealDdlTests
                 SearchParamId       SMALLINT      NOT NULL,
                 SystemId            INT           NULL,
                 Code                VARCHAR (256) COLLATE Latin1_General_100_CS_AS NOT NULL,
-                CodeOverflow        VARCHAR (MAX) COLLATE Latin1_General_100_CS_AS NULL
+                CodeOverflow        VARCHAR (MAX) COLLATE Latin1_General_100_CS_AS NULL,
+                IdentifierTypeCode      NVARCHAR (256) NULL,
+                IdentifierTypeSystemId  INT            NULL
             );
             """;
 
@@ -72,12 +76,22 @@ public class DdlTableParserRealDdlTests
         var systemId = table.Columns.Single(c => c.Name == "SystemId");
         systemId.SqlType.ShouldBe("int");
         systemId.IsNullable.ShouldBeTrue();
+
+        var identifierTypeCode = table.Columns.Single(c => c.Name == "IdentifierTypeCode");
+        identifierTypeCode.SqlType.ShouldBe("nvarchar");
+        identifierTypeCode.MaxLength.ShouldBe(256);
+        identifierTypeCode.IsNullable.ShouldBeTrue();
+
+        var identifierTypeSystemId = table.Columns.Single(c => c.Name == "IdentifierTypeSystemId");
+        identifierTypeSystemId.SqlType.ShouldBe("int");
+        identifierTypeSystemId.IsNullable.ShouldBeTrue();
     }
 
     [Fact]
     public void GivenRealTokenQuantityCompositeSearchParamDdl_WhenParsed_ThenDecimalColumnsParseCorrectly()
     {
-        // Arrange -- copied verbatim from 97.sql lines 848-860
+        // Arrange -- copied verbatim from
+        // src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/TokenQuantityCompositeSearchParam.sql
         var ddl = """
             CREATE TABLE dbo.TokenQuantityCompositeSearchParam (
                 ResourceTypeId      SMALLINT         NOT NULL,
@@ -115,7 +129,8 @@ public class DdlTableParserRealDdlTests
     [Fact]
     public void GivenRealReferenceSearchParamDdl_WhenParsed_ThenReferenceResourceIdColumnMatchesHandVerifiedCatalog()
     {
-        // Arrange -- copied verbatim from 97.sql lines 518-526
+        // Arrange -- copied verbatim from
+        // src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/ReferenceSearchParam.sql
         var ddl = """
             CREATE TABLE dbo.ReferenceSearchParam (
                 ResourceTypeId           SMALLINT      NOT NULL,
@@ -147,8 +162,10 @@ public class DdlTableParserRealDdlTests
     [Fact]
     public void GivenRealResourceTypeDdl_WhenParsed_ThenNameColumnMatchesHandVerifiedCatalog()
     {
-        // Arrange -- copied verbatim from 97.sql lines 681-686 (includes IDENTITY column and
-        // table-level UNIQUE/PRIMARY KEY CLUSTERED constraints that must be skipped, not parsed as columns)
+        // Arrange -- copied verbatim from
+        // src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/ResourceType.sql (includes IDENTITY
+        // column and table-level UNIQUE/PRIMARY KEY CLUSTERED constraints that must be skipped, not parsed
+        // as columns)
         var ddl = """
             CREATE TABLE dbo.ResourceType (
                 ResourceTypeId SMALLINT      IDENTITY (1, 1) NOT NULL,
@@ -174,7 +191,8 @@ public class DdlTableParserRealDdlTests
     [Fact]
     public void GivenRealSearchParamDdl_WhenParsed_ThenUriAndStatusColumnsMatchHandVerifiedCatalog()
     {
-        // Arrange -- copied verbatim from 97.sql lines 703-711
+        // Arrange -- copied verbatim from
+        // src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Tables/SearchParam.sql
         var ddl = """
             CREATE TABLE dbo.SearchParam (
                 SearchParamId        SMALLINT           IDENTITY (1, 1) NOT NULL,

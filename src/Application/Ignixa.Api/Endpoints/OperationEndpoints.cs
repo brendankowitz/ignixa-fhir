@@ -18,6 +18,7 @@ using Ignixa.Application.Operations.Features.Validate;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Models;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
 using Ignixa.Serialization.Models;
@@ -691,6 +692,7 @@ public static class OperationEndpoints
 
         var queryParameters = queryParser.Parse(context.Request.Query);
         var searchOptions = searchOptionsBuilder.Build(resourceType, queryParameters, schemaProvider);
+        SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
 
         searchOptions.IncludesContinuationToken = includesContinuationToken;
 

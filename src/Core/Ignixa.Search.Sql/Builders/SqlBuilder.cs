@@ -554,7 +554,16 @@ internal static class SqlBuilder
         // Gated on SeedFromMatch too, so a plan whose every stage seeds off an earlier stage emits no
         // unreferenced CTE. Binds no parameters, keeping the resume boundary below at the first stage-level
         // ordinal.
-        var seedsFromTrimmedPage = plan.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch);
+        //
+        // NOTE: only OffsetSpec.ProbeExtraRow is checked here -- a Top-capped (keyset) page has no equivalent
+        // flag, even though some Top callers use the same "ask for one more than the page size" convention to
+        // detect hasMore (see SearchPaging.Keyset's remarks). Until a caller in this repo actually drives
+        // Top-capped paging together with Include stages, extending this trim to Top would be speculative: it
+        // would either need every Top caller to follow the same convention, or a ProbeExtraRow-equivalent flag
+        // on SearchPaging.Keyset threaded through Lower/PlanExplainer. Tracked as a known gap, not silently
+        // missed -- see GivenAnUnpagedPlanWithAnInclude_WhenEmitted_ThenTheIncludeStageSeedsFromTheWholeMatchPage
+        // in EmitProbeRowIncludeSeedTests, which pins today's (unprotected) behavior for that combination.
+        var seedsFromTrimmedPage = SeedsFromTrimmedMatchPage(plan, includes);
         if (seedsFromTrimmedPage)
         {
             WriteMatchSeedCte(plan, writer);
@@ -593,6 +602,15 @@ internal static class SqlBuilder
             writer.Append(EmitOuterOrderByForIncludes(plan.Sort));
         }
     }
+
+    /// <summary>
+    /// Whether the trimmed cteMatchSeed CTE is emitted for an includes-shape plan -- see the NOTE above this
+    /// call site in <see cref="EmitIncludesShape"/> for why only <see cref="OffsetSpec.ProbeExtraRow"/> is
+    /// checked, not an equivalent Top-capped flag. Internal so PlanExplainer's matchSeed row uses the
+    /// identical condition rather than a second copy that can drift.
+    /// </summary>
+    internal static bool SeedsFromTrimmedMatchPage(QueryPlan plan, IReadOnlyList<IncludeStage> includes)
+        => plan.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch);
 
     /// <summary>The derived-table alias the global includes page wraps its stage union in.</summary>
     private const string IncludeUnionAlias = "includeUnion";
@@ -913,13 +931,14 @@ internal static class SqlBuilder
 
     /// <summary>
     /// Whether a shape must join dbo.Resource: true when any plan feature references an <c>r.</c> column.
-    /// Centralised so a missing shape is a runtime bind error, not a test failure.
+    /// Centralised so a missing shape is a runtime bind error, not a test failure. Internal (not private) so
+    /// PlanExplainer's matchPage row reads the identical decision instead of a second copy that can drift.
     /// </summary>
     /// <param name="plan">The query plan being emitted.</param>
     /// <param name="includesProjection">
     /// Whether the calling shape projects through this join. False for CountOnly and the includes match arm.
     /// </param>
-    private static bool NeedsResourceJoin(QueryPlan plan, bool includesProjection)
+    internal static bool NeedsResourceJoin(QueryPlan plan, bool includesProjection)
         => plan.OuterPredicate is not null
             || plan.SearchParameterHash is not null
             || (includesProjection && plan.Projection is { Columns.Count: > 0 });
@@ -1098,8 +1117,14 @@ internal static class SqlBuilder
         _ => throw new NotSupportedException($"Unknown ChainDirection '{direction}'."),
     };
 
-    /// <summary>Renders the joins to each sort key's search-param table (INNER for the primary key, LEFT for tie-breakers), filtered to the IsMin/IsMax row for the key's direction.</summary>
-    private static string EmitSortJoins(SortSpec? sort)
+    /// <summary>
+    /// Renders the joins to each sort key's search-param table (INNER for the primary key, LEFT for
+    /// tie-breakers), filtered to the IsMin/IsMax row for the key's direction. Internal (not private) so
+    /// PlanExplainer's matchPage row can check whether this actually emits anything -- LastUpdated/
+    /// ResourceType keys and the MissingPrimary phase's own primary key need no join, so "does the plan
+    /// sort" is not the same question as "does matchPage carry a sort join."
+    /// </summary>
+    internal static string EmitSortJoins(SortSpec? sort)
     {
         if (sort is null)
         {

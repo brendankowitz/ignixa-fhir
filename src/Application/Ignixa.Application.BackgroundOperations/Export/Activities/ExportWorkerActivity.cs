@@ -15,6 +15,7 @@ using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
 using Ignixa.Search.Parsing;
 using Ignixa.Serialization;
@@ -169,6 +170,7 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
                         var groupQueryString = $"_id={Uri.EscapeDataString(input.GroupId)}&_include=Group:member&_include:iterate=Group:member";
                         var groupFilterParams = _parameterParser.Parse(groupQueryString);
                         var groupSearchOptions = _searchOptionsBuilder.Build("Group", groupFilterParams);
+                        SearchModifierNotSupportedException.ThrowIfAny(groupSearchOptions);
 
                         var patientIds = new List<string>();
                         await foreach (var resource in searchService.SearchStreamAsync(groupSearchOptions, CancellationToken.None))
@@ -201,6 +203,7 @@ public class ExportWorkerActivity : AsyncTaskActivity<ExportWorkerInput, ExportW
 
                     // Use SearchOptionsBuilder to properly parse filters into expressions
                     var searchOptions = _searchOptionsBuilder.Build(input.ResourceType, filterParams);
+                    SearchModifierNotSupportedException.ThrowIfAny(searchOptions);
 
                     // Add partition boundaries (surrogate ID range)
                     searchOptions.MaxItemCount = 50_000;  // Large batches (memory-safe due to streaming)

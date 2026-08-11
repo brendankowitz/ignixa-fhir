@@ -313,6 +313,24 @@ public class IncludesOperationTests : IncludeTestBase
     }
 
     /// <summary>
+    /// Tests that $includes rejects a query string carrying a modifier the server does not support,
+    /// rather than silently widening the continuation search.
+    /// </summary>
+    /// <remarks>
+    /// FHIR R4 SHALL-rejects an unsupported modifier (see Search.Modifiers.UnsupportedModifierTests for
+    /// the plain-search case); the $includes continuation endpoint must reject it too.
+    /// </remarks>
+    [Fact]
+    public async Task GivenAnUnsupportedModifier_WhenCallingIncludesEndpoint_ThenReturnsBadRequest()
+    {
+        // Act - GET /Location/$includes?_includesContinuationToken=...&_id:above=abc
+        var response = await Client.GetAsync("/Location/$includes?_includesContinuationToken=any-token&_id:above=abc");
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest, "server should reject rather than silently widen the includes continuation search");
+    }
+
+    /// <summary>
     /// Tests that $includes endpoint returns error for invalid continuation token.
     /// </summary>
     [Fact]

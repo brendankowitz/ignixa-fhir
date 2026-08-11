@@ -35,9 +35,19 @@ public static class PlanRowKind
 
     public const string IncludeBoundary = "includeBoundary";
 
+    public const string MatchPageCte = "matchPageCte";
+
+    public const string MatchSeedCte = "matchSeedCte";
+
     public const string SortSpec = "sortSpec";
 
     public const string PageSpec = "pageSpec";
+
+    public const string SurrogateRange = "surrogateRange";
+
+    public const string SearchParameterHash = "searchParameterHash";
+
+    public const string OffsetSpec = "offsetSpec";
 
     public const string CountOnly = "countOnly";
 }
