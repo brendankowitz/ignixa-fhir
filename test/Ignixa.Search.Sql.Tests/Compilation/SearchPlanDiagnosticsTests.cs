@@ -7,6 +7,37 @@ namespace Ignixa.Search.Sql.Tests.Compilation;
 
 public class SearchPlanDiagnosticsTests
 {
+    [Fact]
+    public async Task GivenACompiledIncludePlan_WhenLowered_ThenMatchPageIsAppendedAndMatchStaysAtTheRoot()
+    {
+        var result = await CompilationFixtures.TracePatientActiveWithIncludeAsync();
+        var plan = result.Plan!.Query;
+
+        plan.Ctes[^1].ShouldBeOfType<CteDefinition.MatchPage>();
+        plan.Match.Index.ShouldBeLessThan(plan.Ctes.Count - 1);
+        plan.IncludeSeed.ShouldBe(new CteRef(plan.Ctes.Count - 1));
+    }
+
+    [Fact]
+    public async Task GivenACompiledIncludePlan_WhenTraced_ThenWrapperCtesContributeTheRootParameterOrdinal()
+    {
+        // Arrange
+        var result = await CompilationFixtures.TracePatientActiveWithIncludeAsync();
+        var trace = result.Plan!.Diagnostics!.PlanTrace.ShouldNotBeNull();
+        var parameter = result.Plan.Diagnostics.Parameters.ShouldHaveSingleItem();
+
+        // Act
+        var pageIndex = result.Plan.Query.Ctes
+            .Select((cte, index) => (cte, index))
+            .Single(x => x.cte is CteDefinition.MatchPage)
+            .index;
+        var page = trace.Ctes[pageIndex];
+
+        // Assert
+        page.ParameterOrdinal.ShouldBeNull();
+        page.ContributingOrdinals.ShouldBe([parameter.Ordinal]);
+    }
+
     public static TheoryData<string, Func<Task<SearchPlanResult>>, int[]> ChainCompletenessCases()
     {
         var data = new TheoryData<string, Func<Task<SearchPlanResult>>, int[]>();
@@ -63,7 +94,13 @@ public class SearchPlanDiagnosticsTests
                 ctes[i].ParameterOrdinal.ShouldBeNull($"{scenario}: cte{i} should be exempt from provenance");
             }
 
-            compiled.Diagnostics!.SqlTextRanges.ShouldContain(r => r.Label == SqlLabels.CteLabel(i), $"{scenario}: {SqlLabels.CteLabel(i)} has no SQL text range");
+            var expectedLabel = result.Plan.Query.Ctes[i] switch
+            {
+                CteDefinition.MatchPage => SqlLabels.MatchPage,
+                CteDefinition.MatchSeed => SqlLabels.MatchSeed,
+                _ => SqlLabels.CteLabel(i),
+            };
+            compiled.Diagnostics!.SqlTextRanges.ShouldContain(r => r.Label == expectedLabel, $"{scenario}: {expectedLabel} has no SQL text range");
         }
     }
 

@@ -15,6 +15,8 @@ namespace Ignixa.Search.Sql.Builders;
 /// </summary>
 internal static class SqlBuilder
 {
+    private sealed record CteBody(string Text, IReadOnlyList<SqlTextRange>? Ranges = null);
+
     /// <summary>
     /// Renders a plan to SQL and its bound parameters by selecting one of three terminal shapes and
     /// delegating to its emitter: a COUNT_BIG SELECT when CountOnly, a plain (T1, Sid1) select (with
@@ -29,19 +31,19 @@ internal static class SqlBuilder
         var parameters = new List<EmittedSqlParameter>();
         var writer = new SqlTextWriter(options?.IncludeTextRanges ?? false);
         var visibility = plan.EffectiveVisibility;
-        var cteBlocks = EmitCteBlocks(plan, parameters, visibility);
+        var cteBodies = EmitCteBodies(plan, parameters, visibility);
 
         if (plan.CountOnly)
         {
-            EmitCountOnlyShape(plan, writer, cteBlocks, parameters);
+            EmitCountOnlyShape(plan, writer, cteBodies, parameters);
         }
         else if (plan.Includes is { Count: > 0 } includes)
         {
-            EmitIncludesShape(plan, includes, writer, cteBlocks, parameters, visibility);
+            EmitIncludesShape(plan, includes, writer, cteBodies, parameters, visibility);
         }
         else
         {
-            EmitMatchOnlyShape(plan, writer, cteBlocks, parameters, visibility);
+            EmitMatchOnlyShape(plan, writer, cteBodies, parameters, visibility);
         }
 
         return new EmittedSql(writer.ToString(), parameters, writer.Ranges);
@@ -57,6 +59,10 @@ internal static class SqlBuilder
     private static void RejectDanglingReferences(QueryPlan plan)
     {
         RequireIndex(plan.Match.Index, plan.Ctes.Count, ReferenceBound.Defined, "QueryPlan.Match");
+        var matchPageCount = 0;
+        var matchPageIndex = -1;
+        var matchSeedCount = 0;
+        var matchSeedIndex = -1;
 
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
@@ -83,13 +89,143 @@ internal static class SqlBuilder
                 case CteDefinition.ReferencedTypeExpansion expansion:
                     RequireChild(expansion.Seed, i, "Seed");
                     break;
+                case CteDefinition.MatchPage page:
+                    RequireChild(page.Spec.Root, i, nameof(CteDefinition.MatchPage.Spec));
+                    RequireCanonicalSpec(page.Spec, plan.MatchSpec, i);
+                    matchPageCount++;
+                    matchPageIndex = i;
+                    break;
+                case CteDefinition.MatchSeed seed:
+                    RequireChild(seed.Page, i, nameof(CteDefinition.MatchSeed.Page));
+                    RequireCanonicalSpec(seed.Spec, plan.MatchSpec, i);
+                    RequireMatchPage(plan.Ctes[seed.Page.Index], i);
+                    matchSeedCount++;
+                    matchSeedIndex = i;
+                    break;
             }
         }
 
         RejectDanglingIncludeReferences(plan);
 
+        var hasWrapper = matchPageCount > 0 || matchSeedCount > 0;
+        if (plan.CountOnly && hasWrapper)
+        {
+            throw new NotSupportedException(
+                "CountOnly plans cannot carry MatchPage or MatchSeed wrapper CTEs; count rendering reads the pre-page match root directly.");
+        }
+
+        if (plan.Includes is { Count: > 0 } && !plan.CountOnly)
+        {
+            var canonicalIncludeSeed = RequireCanonicalWrapperTail(
+                plan,
+                matchPageCount,
+                matchPageIndex,
+                matchSeedCount,
+                matchSeedIndex);
+            RequireIncludeSeed(plan, canonicalIncludeSeed);
+        }
+        else
+        {
+            if (hasWrapper)
+            {
+                throw new NotSupportedException(
+                    "MatchPage and MatchSeed wrapper CTEs require at least one include stage on a non-count plan.");
+            }
+
+            if (plan.IncludeSeed is not null)
+            {
+                throw new NotSupportedException(
+                    "QueryPlan.IncludeSeed requires at least one include stage on a non-count plan.");
+            }
+        }
+
         static void RequireChild(CteRef reference, int ordinal, string member, int part = -1)
             => RequireIndex(reference.Index, ordinal, ReferenceBound.EarlierCte, "Ctes", ordinal, member, part);
+    }
+
+    private static CteRef RequireCanonicalWrapperTail(
+        QueryPlan plan,
+        int matchPageCount,
+        int matchPageIndex,
+        int matchSeedCount,
+        int matchSeedIndex)
+    {
+        if (matchPageCount != 1)
+        {
+            throw new NotSupportedException(
+                $"An include plan requires exactly one MatchPage wrapper CTE, but has {matchPageCount}.");
+        }
+
+        if (matchSeedCount > 1)
+        {
+            throw new NotSupportedException(
+                $"An include plan can carry at most one MatchSeed wrapper CTE, but has {matchSeedCount}.");
+        }
+
+        if (matchSeedCount == 0)
+        {
+            if (matchPageIndex != plan.Ctes.Count - 1)
+            {
+                throw new NotSupportedException(
+                    "MatchPage must be the final CTE in the canonical wrapper tail when MatchSeed is absent.");
+            }
+
+            return new CteRef(matchPageIndex);
+        }
+
+        if (matchPageIndex != plan.Ctes.Count - 2 || matchSeedIndex != matchPageIndex + 1)
+        {
+            throw new NotSupportedException(
+                "MatchPage and MatchSeed must form the final canonical wrapper tail in that order.");
+        }
+
+        if (plan.MatchSpec.OffsetPage is not { ProbeExtraRow: true })
+        {
+            throw new NotSupportedException(
+                "MatchSeed requires an OffsetPage with ProbeExtraRow enabled.");
+        }
+
+        if (!plan.Includes!.Any(stage => stage.SeedFromMatch))
+        {
+            throw new NotSupportedException(
+                "MatchSeed requires at least one include stage with SeedFromMatch enabled.");
+        }
+
+        return new CteRef(matchSeedIndex);
+    }
+
+    private static void RequireCanonicalSpec(MatchPageSpec candidate, MatchPageSpec canonical, int ordinal)
+    {
+        if (!ReferenceEquals(candidate, canonical))
+        {
+            throw new NotSupportedException(
+                $"Ctes[{ordinal}].Spec must reference the QueryPlan's canonical MatchPageSpec instance.");
+        }
+    }
+
+    private static void RequireMatchPage(CteDefinition target, int ordinal)
+    {
+        if (target is not CteDefinition.MatchPage)
+        {
+            throw new NotSupportedException(
+                $"Ctes[{ordinal}].Page must reference a MatchPage CTE.");
+        }
+    }
+
+    private static void RequireIncludeSeed(QueryPlan plan, CteRef canonicalIncludeSeed)
+    {
+        if (plan.IncludeSeed is not { } includeSeed)
+        {
+            throw new NotSupportedException(
+                "QueryPlan.IncludeSeed is required when a non-count plan has include stages.");
+        }
+        RequireIndex(includeSeed.Index, plan.Ctes.Count, ReferenceBound.Defined, "QueryPlan.IncludeSeed");
+
+        if (includeSeed.Index != canonicalIncludeSeed.Index)
+        {
+            throw new NotSupportedException(
+                $"QueryPlan.IncludeSeed must reference the canonical {(plan.Ctes[canonicalIncludeSeed.Index] is CteDefinition.MatchSeed ? "MatchSeed" : "MatchPage")} wrapper CTE.");
+        }
     }
 
     /// <summary>
@@ -399,28 +535,56 @@ internal static class SqlBuilder
         => sort is not null && sort.Keys.Any(k => IsCustomSortKey(k.Kind));
 
     /// <summary>
-    /// Renders every <see cref="CteDefinition"/> as a named "cteN AS (...)" block, in plan order. Runs before
-    /// any shape emits so the CTE's bound values take the leading @pN ordinals PlanExplainer reads back.
+    /// Renders every <see cref="CteDefinition"/> body in plan order. Runs before any shape emits so the CTE's
+    /// bound values take the leading @pN ordinals PlanExplainer reads back.
     /// </summary>
-    private static List<string> EmitCteBlocks(
+    private static List<CteBody> EmitCteBodies(
         QueryPlan plan,
         List<EmittedSqlParameter> parameters,
         ResourceVisibility visibility)
     {
-        var cteBlocks = new List<string>(plan.Ctes.Count);
+        var cteBodies = new List<CteBody>(plan.Ctes.Count);
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
-            cteBlocks.Add($"{CteLabel(i)} AS (\n{EmitCte(plan.Ctes[i], parameters, visibility)}\n)");
+            cteBodies.Add(EmitCte(plan.Ctes[i], parameters, visibility));
         }
 
-        return cteBlocks;
+        return cteBodies;
     }
 
+    private static string CteName(QueryPlan plan, int index) => plan.Ctes[index] switch
+    {
+        CteDefinition.MatchPage => MatchPage,
+        CteDefinition.MatchSeed => MatchSeed,
+        _ => CteLabel(index),
+    };
+
+    private static string CteRangeKind(CteDefinition cte) => cte switch
+    {
+        CteDefinition.MatchPage => SqlRangeKind.MatchPage,
+        CteDefinition.MatchSeed => SqlRangeKind.MatchSeed,
+        _ => SqlRangeKind.Cte,
+    };
+
     /// <summary>Writes the leading ";WITH " and the comma-separated CTE blocks, each in its own section.</summary>
-    private static void WriteCteHeader(SqlTextWriter writer, List<string> cteBlocks)
+    private static void WriteCteHeader(SqlTextWriter writer, QueryPlan plan, IReadOnlyList<CteBody> cteBodies)
     {
         writer.Append(";WITH ");
-        writer.AppendJoin(",\n", cteBlocks, CteLabel, SqlRangeKind.Cte);
+        for (var i = 0; i < cteBodies.Count; i++)
+        {
+            if (i > 0)
+            {
+                writer.Append(",\n");
+            }
+
+            var name = CteName(plan, i);
+            using (writer.Section(name, CteRangeKind(plan.Ctes[i])))
+            {
+                writer.Append($"{name} AS (\n");
+                writer.Append(cteBodies[i].Text, cteBodies[i].Ranges);
+                writer.Append("\n)");
+            }
+        }
     }
 
     /// <summary>Writes a WHERE clause at the given indent, or nothing when there are no clauses.</summary>
@@ -447,10 +611,10 @@ internal static class SqlBuilder
     private static void EmitCountOnlyShape(
         QueryPlan plan,
         SqlTextWriter writer,
-        List<string> cteBlocks,
+        List<CteBody> cteBodies,
         List<EmittedSqlParameter> parameters)
     {
-        WriteCteHeader(writer, cteBlocks);
+        WriteCteHeader(writer, plan, cteBodies);
         writer.Append("\n");
 
         var phaseSort = plan.EffectiveShape is ResultShape.Count.CurrentSortPhase ? plan.Sort : null;
@@ -495,7 +659,7 @@ internal static class SqlBuilder
     private static void EmitMatchOnlyShape(
         QueryPlan plan,
         SqlTextWriter writer,
-        List<string> cteBlocks,
+        List<CteBody> cteBodies,
         List<EmittedSqlParameter> parameters,
         ResourceVisibility visibility)
     {
@@ -505,9 +669,9 @@ internal static class SqlBuilder
         var sortJoins = EmitSortJoins(plan.Sort);
         var sortColumns = EmitSortSelectColumns(plan.Sort);
 
-        var whereClauses = BuildMatchWhereClauses(plan, parameters, out var seekClauseIndex);
+        var whereClauses = BuildMatchWhereClauses(plan.MatchSpec, parameters, out var seekClauseIndex);
 
-        WriteCteHeader(writer, cteBlocks);
+        WriteCteHeader(writer, plan, cteBodies);
         writer.Append("\n");
         writer.Append($"SELECT {top}m.T1, m.Sid1{sortColumns}{projectionCols} FROM {CteLabel(plan.Match.Index)} m{sortJoins}");
 
@@ -541,46 +705,24 @@ internal static class SqlBuilder
         QueryPlan plan,
         IReadOnlyList<IncludeStage> includes,
         SqlTextWriter writer,
-        List<string> cteBlocks,
+        List<CteBody> cteBodies,
         List<EmittedSqlParameter> parameters,
         ResourceVisibility visibility)
     {
-        WriteCteHeader(writer, cteBlocks);
-        writer.Append(",\n");
-        WriteMatchPageCte(plan, writer, parameters);
-
-        // An over-fetched page's last row is a has-more probe the caller discards, so it must not seed
-        // includes; a page that did not over-fetch has no such row and seeds from the whole match page.
-        // Gated on SeedFromMatch too, so a plan whose every stage seeds off an earlier stage emits no
-        // unreferenced CTE. Binds no parameters, keeping the resume boundary below at the first stage-level
-        // ordinal.
-        //
-        // NOTE: only OffsetSpec.ProbeExtraRow is checked here -- a Top-capped (keyset) page has no equivalent
-        // flag, even though some Top callers use the same "ask for one more than the page size" convention to
-        // detect hasMore (see SearchPaging.Keyset's remarks). Until a caller in this repo actually drives
-        // Top-capped paging together with Include stages, extending this trim to Top would be speculative: it
-        // would either need every Top caller to follow the same convention, or a ProbeExtraRow-equivalent flag
-        // on SearchPaging.Keyset threaded through Lower/PlanExplainer. Tracked as a known gap, not silently
-        // missed -- see GivenAnUnpagedPlanWithAnInclude_WhenEmitted_ThenTheIncludeStageSeedsFromTheWholeMatchPage
-        // in EmitProbeRowIncludeSeedTests, which pins today's (unprotected) behavior for that combination.
-        var seedsFromTrimmedPage = SeedsFromTrimmedMatchPage(plan, includes);
-        if (seedsFromTrimmedPage)
-        {
-            WriteMatchSeedCte(plan, writer);
-        }
+        WriteCteHeader(writer, plan, cteBodies);
 
         // Bind the boundary here — after the match-page CTE, before the stage loop — so it takes the first
-        // stage-level @pN, preserving the leading-ordinal invariant EmitCteBlocks documents. Include CTEs bind
+        // stage-level @pN, preserving the leading-ordinal invariant EmitCteBodies documents. Include CTEs bind
         // no parameters; the predicate it feeds is emitted later by EmitGlobalIncludesPage.
         (string Type, string Surrogate)? resumeParams = plan is { IncludesOnly: true, IncludeBoundary: { } boundary }
             ? (EmitParam(new SqlParameterRef(boundary.TypeId), parameters), EmitParam(new SqlParameterRef(boundary.SurrogateId), parameters))
             : null;
 
-        var matchSeedLabel = seedsFromTrimmedPage ? MatchSeed : MatchPage;
+        var matchSeedLabel = CteName(plan, plan.IncludeSeed!.Value.Index);
 
         for (var i = 0; i < includes.Count; i++)
         {
-            WriteIncludeStageCtes(writer, includes[i], i, visibility, plan.IncludesOnly, matchSeedLabel);
+            WriteIncludeStageCtes(writer, plan, includes[i], i, visibility, plan.IncludesOnly, matchSeedLabel);
         }
 
         writer.Append("\n");
@@ -702,55 +844,50 @@ internal static class SqlBuilder
             : ", " + string.Join(", ", projection.Columns.Select(c => $"[{c.Replace("]", "]]", StringComparison.Ordinal)}]"));
 
     /// <summary>
-    /// Writes the cteMatchPage CTE: the same match row set the no-includes shape selects directly, named so
-    /// the include stages and the UNION ALL can each reference it without re-deriving it.
+    /// Renders the cteMatchPage CTE body: the same match row set the no-includes shape selects directly,
+    /// named so the include stages and the UNION ALL can each reference it without re-deriving it.
     /// </summary>
-    private static void WriteMatchPageCte(QueryPlan plan, SqlTextWriter writer, List<EmittedSqlParameter> parameters)
+    private static CteBody EmitMatchPage(MatchPageSpec spec, List<EmittedSqlParameter> parameters)
     {
-        var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
-        var sortJoins = EmitSortJoins(plan.Sort);
+        var top = spec.Top is { } n ? $"TOP ({n}) " : string.Empty;
+        var sortJoins = EmitSortJoins(spec.Sort);
 
         // An includes-only page never orders by the sort key, so the match CTE projects no SortValueN columns.
         // The sort JOINs stay: the Valued phase's INNER join bounds the match set to rows that have the sort
         // value, and the include stages seed from that bounded set.
-        var sortColumns = plan.IncludesOnly ? string.Empty : EmitSortSelectColumns(plan.Sort);
+        var sortColumns = spec.IncludesOnly ? string.Empty : EmitSortSelectColumns(spec.Sort);
 
         // Projection is handled in the UNION ALL assembly, not here, so includesProjection is false.
-        var resourceJoin = NeedsResourceJoin(plan, includesProjection: false)
+        var resourceJoin = spec.OuterPredicate is not null || spec.SearchParameterHash is not null
             ? "\n    INNER JOIN dbo.Resource r ON r.ResourceTypeId = m.T1 AND r.ResourceSurrogateId = m.Sid1"
             : string.Empty;
 
         // A CTE's own ORDER BY is legal only alongside TOP or OFFSET/FETCH (SQL Server Msg 1033). The outer
         // UNION ALL's ORDER BY is a top-level SELECT and always legal regardless.
-        var cteOrderBy = plan.Top is not null || plan.OffsetPage is not null
-            ? $"\n    ORDER BY {EmitOrderBy(plan.Sort)}"
+        var cteOrderBy = spec.Top is not null || spec.OffsetPage is not null
+            ? $"\n    ORDER BY {EmitOrderBy(spec.Sort)}"
             : string.Empty;
 
-        var whereClauses = BuildMatchWhereClauses(plan, parameters, out var seekClauseIndex);
+        var whereClauses = BuildMatchWhereClauses(spec, parameters, out var seekClauseIndex);
 
-        using (writer.Section(MatchPage, SqlRangeKind.MatchPage))
-        {
-            writer.Append(
-                $"{MatchPage} AS (\n" +
-                $"    SELECT {top}m.T1, m.Sid1{sortColumns}\n" +
-                $"    FROM {CteLabel(plan.Match.Index)} m{sortJoins}{resourceJoin}");
+        var offsetClause = spec.OffsetPage is { } offsetPage
+            ? $"\n    OFFSET {EmitParam(new SqlParameterRef(offsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(offsetPage.FetchCount), parameters)} ROWS ONLY"
+            : string.Empty;
 
-            WriteWhereSection(writer, whereClauses, seekClauseIndex, indent: "    ");
+        var writer = new SqlTextWriter(recordRanges: true);
+        writer.Append(
+            $"    SELECT {top}m.T1, m.Sid1{sortColumns}\n" +
+            $"    FROM {CteLabel(spec.Root.Index)} m{sortJoins}{resourceJoin}");
+        WriteWhereSection(writer, whereClauses, seekClauseIndex, indent: "    ");
+        writer.Append(cteOrderBy);
+        writer.Append(offsetClause);
 
-            writer.Append(cteOrderBy);
-
-            if (plan.OffsetPage is { } matchOffsetPage)
-            {
-                writer.Append($"\n    OFFSET {EmitParam(new SqlParameterRef(matchOffsetPage.Offset), parameters)} ROWS FETCH NEXT {EmitParam(new SqlParameterRef(matchOffsetPage.FetchCount), parameters)} ROWS ONLY");
-            }
-
-            writer.Append("\n)");
-        }
+        return new CteBody(writer.ToString(), writer.Ranges);
     }
 
     /// <summary>
-    /// Writes the cteMatchSeed CTE: the <see cref="MatchPage"/> rows that are genuinely ON the page, with
-    /// its has-more probe row trimmed off, in the match page's own order.
+    /// Renders the cteMatchSeed CTE body: the <see cref="MatchPage"/> rows that are genuinely ON the page,
+    /// with its has-more probe row trimmed off, in the match page's own order.
     /// </summary>
     /// <remarks>
     /// An over-fetching page returns Limit + 1 rows so the caller can detect a further page, then discards
@@ -764,18 +901,15 @@ internal static class SqlBuilder
     /// The ORDER BY repeats the match page's ordering through the SortValueN columns it projects — take
     /// "first Limit rows" under any other ordering and the wrong row is dropped.
     /// </remarks>
-    private static void WriteMatchSeedCte(QueryPlan plan, SqlTextWriter writer)
+    private static CteBody EmitMatchSeed(CteDefinition.MatchSeed seed)
     {
-        writer.Append(",\n");
-        using (writer.Section(MatchSeed, SqlRangeKind.MatchSeed))
-        {
-            writer.Append(
-                $"{MatchSeed} AS (\n" +
-                $"    SELECT TOP ({plan.OffsetPage!.Limit}) T1, Sid1\n" +
-                $"    FROM {MatchPage}\n" +
-                $"    ORDER BY {EmitSortValueOrderBy(plan.Sort)}\n" +
-                ")");
-        }
+        var offsetPage = seed.Spec.OffsetPage
+            ?? throw new NotSupportedException("MatchSeed requires an OffsetPage.");
+
+        return new CteBody(
+            $"    SELECT TOP ({offsetPage.Limit}) T1, Sid1\n" +
+            $"    FROM {MatchPage}\n" +
+            $"    ORDER BY {EmitSortValueOrderBy(seed.Spec.Sort)}");
     }
 
     /// <summary>
@@ -786,6 +920,7 @@ internal static class SqlBuilder
     /// </summary>
     private static void WriteIncludeStageCtes(
         SqlTextWriter writer,
+        QueryPlan plan,
         IncludeStage stage,
         int index,
         ResourceVisibility visibility,
@@ -795,7 +930,7 @@ internal static class SqlBuilder
         writer.Append(",\n");
         using (writer.Section(IncludeLabel(index), SqlRangeKind.Include))
         {
-            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(stage, visibility, includesOnly, matchSeedLabel)}\n)");
+            writer.Append($"{IncludeLabel(index)} AS (\n{EmitIncludeStage(plan, stage, visibility, includesOnly, matchSeedLabel)}\n)");
         }
 
         if (includesOnly)
@@ -872,35 +1007,35 @@ internal static class SqlBuilder
     /// none: their rows are reached by reference, not surrogate id or hash.
     /// </summary>
     private static List<string> BuildMatchWhereClauses(
-        QueryPlan plan,
+        MatchPageSpec spec,
         List<EmittedSqlParameter> parameters,
         out int? seekClauseIndex)
     {
         var clauses = new List<string>();
         seekClauseIndex = null;
 
-        if (plan.OuterPredicate is not null)
+        if (spec.OuterPredicate is not null)
         {
-            clauses.Add(EmitPredicate(plan.OuterPredicate, parameters, ResourceJoinQualifier));
+            clauses.Add(EmitPredicate(spec.OuterPredicate, parameters, ResourceJoinQualifier));
         }
 
-        if (plan.Sort is { Phase: SortPhase.MissingPrimary } missingPhaseSort)
+        if (spec.Sort is { Phase: SortPhase.MissingPrimary } missingPhaseSort)
         {
             clauses.Add(EmitMissingPrimaryFilter(missingPhaseSort));
         }
 
-        if (plan.Page is { } page)
+        if (spec.Page is { } page)
         {
             seekClauseIndex = clauses.Count;
-            clauses.Add(EmitSeekPredicate(plan.Sort, page, parameters));
+            clauses.Add(EmitSeekPredicate(spec.Sort, page, parameters));
         }
 
-        if (plan.SurrogateRange is { } range)
+        if (spec.SurrogateRange is { } range)
         {
             AppendSurrogateRangeClauses(clauses, range, parameters);
         }
 
-        if (plan.SearchParameterHash is { } hash)
+        if (spec.SearchParameterHash is { } hash)
         {
             clauses.Add(EmitSearchParameterHashClause(hash, parameters));
         }
@@ -971,29 +1106,33 @@ internal static class SqlBuilder
     }
 
     /// <summary>Renders one CTE definition's inner SELECT by its node kind.</summary>
-    private static string EmitCte(CteDefinition cte, List<EmittedSqlParameter> parameters, ResourceVisibility visibility) => cte switch
+    private static CteBody EmitCte(CteDefinition cte, List<EmittedSqlParameter> parameters, ResourceVisibility visibility) => cte switch
     {
-        CteDefinition.ParamSource p => EmitParamSource(p, parameters, visibility),
+        CteDefinition.ParamSource p => new(EmitParamSource(p, parameters, visibility)),
         CteDefinition.Intersect x =>
-            $"    SELECT {CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1\n" +
-            $"    FROM {CteLabel(x.Left.Index)}\n" +
-            $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1",
+            new(
+                $"    SELECT {CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1\n" +
+                $"    FROM {CteLabel(x.Left.Index)}\n" +
+                $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1"),
         CteDefinition.Union u =>
-            string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM {CteLabel(r.Index)}")),
-        CteDefinition.ResourceSource rs => EmitResourceSource(rs, parameters, visibility),
+            new(string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM {CteLabel(r.Index)}"))),
+        CteDefinition.ResourceSource rs => new(EmitResourceSource(rs, parameters, visibility)),
         CteDefinition.Except ex =>
-            $"    SELECT {CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1\n" +
-            $"    FROM {CteLabel(ex.Left.Index)}\n" +
-            $"    WHERE NOT EXISTS (\n" +
-            $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
-            $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
-        CteDefinition.ChainJoin cj => EmitChainJoin(cj, parameters, visibility),
-        CteDefinition.CompartmentSource cs => EmitCompartmentSource(cs, parameters),
-        CteDefinition.NotReferencedSource nr => EmitNotReferencedSource(nr, parameters, visibility),
-        CteDefinition.MultiTypeResourceSource mts => EmitMultiTypeResourceSource(mts, parameters, visibility),
-        CteDefinition.TableExistsPredicate tep => EmitTableExistsPredicate(tep, parameters, visibility),
-        CteDefinition.VisibleSinceFilter vsf => EmitVisibleSinceFilter(vsf, parameters, visibility),
-        CteDefinition.ReferencedTypeExpansion re => EmitReferencedTypeExpansion(re, visibility),
+            new(
+                $"    SELECT {CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1\n" +
+                $"    FROM {CteLabel(ex.Left.Index)}\n" +
+                $"    WHERE NOT EXISTS (\n" +
+                $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
+                $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)"),
+        CteDefinition.ChainJoin cj => new(EmitChainJoin(cj, parameters, visibility)),
+        CteDefinition.CompartmentSource cs => new(EmitCompartmentSource(cs, parameters)),
+        CteDefinition.NotReferencedSource nr => new(EmitNotReferencedSource(nr, parameters, visibility)),
+        CteDefinition.MultiTypeResourceSource mts => new(EmitMultiTypeResourceSource(mts, parameters, visibility)),
+        CteDefinition.TableExistsPredicate tep => new(EmitTableExistsPredicate(tep, parameters, visibility)),
+        CteDefinition.VisibleSinceFilter vsf => new(EmitVisibleSinceFilter(vsf, parameters, visibility)),
+        CteDefinition.ReferencedTypeExpansion re => new(EmitReferencedTypeExpansion(re, visibility)),
+        CteDefinition.MatchPage page => EmitMatchPage(page.Spec, parameters),
+        CteDefinition.MatchSeed seed => EmitMatchSeed(seed),
         _ => throw new NotSupportedException($"No Emit for {cte.GetType().Name}."),
     };
 
@@ -1322,7 +1461,7 @@ internal static class SqlBuilder
     /// Renders the match page's own ordering as read back through the SortValueN columns it projects, for
     /// consumers that select from the CTE rather than build it — the includes assembly's ORDER BY (via
     /// <see cref="EmitOuterOrderByForIncludes"/>) and the match-seed CTE's TOP (see
-    /// <see cref="WriteMatchSeedCte"/>). The single producer of that ordering, so "the first N rows of the
+    /// <see cref="EmitMatchSeed"/>). The single producer of that ordering, so "the first N rows of the
     /// match page" cannot come to mean something different in one caller than the other.
     /// </summary>
     private static string EmitSortValueOrderBy(SortSpec? sort)
@@ -1543,6 +1682,7 @@ internal static class SqlBuilder
     /// never filtered by the resume boundary — it seeds downstream <c>:iterate</c> stages (<see cref="EmitSeedExists"/>).
     /// </summary>
     private static string EmitIncludeStage(
+        QueryPlan plan,
         IncludeStage stage,
         ResourceVisibility visibility,
         bool includesOnly,
@@ -1578,7 +1718,7 @@ internal static class SqlBuilder
         {
             foreach (var constraint in constraints)
             {
-                whereClauses.Add(EmitConstraintGuard(constraint, outputTypeColumn, outputSurrogateColumn));
+                whereClauses.Add(EmitConstraintGuard(plan, constraint, outputTypeColumn, outputSurrogateColumn));
             }
         }
 
@@ -1644,9 +1784,13 @@ internal static class SqlBuilder
     /// the constraint CTE, while a row of any other type passes untouched. The leading "type &lt;&gt; id OR"
     /// keeps a multi-type or wildcard stage from dropping rows the constraint does not govern.
     /// </summary>
-    private static string EmitConstraintGuard(IncludeConstraint constraint, string outputTypeColumn, string outputSurrogateColumn)
+    private static string EmitConstraintGuard(
+        QueryPlan plan,
+        IncludeConstraint constraint,
+        string outputTypeColumn,
+        string outputSurrogateColumn)
         => $"({outputTypeColumn} <> {constraint.ConstraintTypeId} OR EXISTS (" +
-           $"SELECT 1 FROM {CteLabel(constraint.ConstraintCteIndex)} ac " +
+           $"SELECT 1 FROM {CteName(plan, constraint.ConstraintCteIndex)} ac " +
            $"WHERE ac.T1 = {outputTypeColumn} AND ac.Sid1 = {outputSurrogateColumn}))";
 
     /// <summary>Renders a predicate tree to a WHERE fragment, fully parenthesizing And/Or so precedence never depends on context.</summary>

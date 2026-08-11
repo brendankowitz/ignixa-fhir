@@ -991,7 +991,7 @@ public class EndToEndCompilationTests
         // `name` means StringLoweringRule's default arm applies (StartsWith, CI_AI), same as every other
         // unmodified `name` predicate in this file (e.g. GivenAForwardChainQuery above) -- not a plain Equal.
         plan.Explain().ShouldBe(
-            "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI top 50\n" +
+            "root = StringSearchParam[103,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
             "matchPage = MatchPageCte(top=50, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 
@@ -1054,7 +1054,7 @@ public class EndToEndCompilationTests
 
         // Assert
         plan.Explain().ShouldBe(
-            "root = ResourceSource[103] top 50\n" +
+            "root = ResourceSource[103]\n" +
             "matchPage = MatchPageCte(top=50, sortJoins=false, resourceJoin=false)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
 

@@ -16,9 +16,7 @@ public class SqlBuilderCountPhaseScopedTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase()));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -42,9 +40,7 @@ public class SqlBuilderCountPhaseScopedTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Sort: sort, Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Shape: new ResultShape.Count.AllMatches()));
 
         // Act
         var emitted = SqlBuilder.Run(plan);

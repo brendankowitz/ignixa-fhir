@@ -12,14 +12,287 @@ namespace Ignixa.Search.Sql.Tests.Ast;
 public class EmitProbeRowIncludeSeedTests
 {
     [Fact]
+    public void GivenAnOverFetchingIncludePlan_WhenConstructed_ThenMatchSeedFollowsMatchPage()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        plan.Ctes[^2].ShouldBeOfType<CteDefinition.MatchPage>();
+        plan.Ctes[^1].ShouldBeOfType<CteDefinition.MatchSeed>();
+        plan.IncludeSeed.ShouldBe(new CteRef(plan.Ctes.Count - 1));
+    }
+
+    [Fact]
+    public void GivenAnOverFetchingIncludePlan_WhenEmittedFromWrapperCtes_ThenItsSqlAndParametersMatchThePinnedGolden()
+    {
+        var emitted = SqlBuilder.Run(OverFetchingIncludePlan());
+
+        emitted.Sql.ShouldContain("cteMatchPage AS (\n    SELECT");
+        emitted.Sql.ShouldContain("cteMatchSeed AS (\n    SELECT TOP (10) T1, Sid1");
+        emitted.Parameters.Select(p => p.Name).ShouldBe(["@p0", "@p1", "@p2"]);
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(short)103, 20, 11]);
+    }
+
+    [Fact]
+    public void GivenAnIncludeConstraintTargetingMatchSeed_WhenEmitted_ThenItsGuardReferencesTheWrapperLabel()
+    {
+        var plan = OverFetchingIncludePlan();
+        var constrainedStage = plan.Includes![0] with
+        {
+            Constraints = [new IncludeConstraint(ConstraintTypeId: 111, ConstraintCteIndex: plan.IncludeSeed!.Value.Index)],
+        };
+        plan = plan with { Includes = [constrainedStage] };
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("r.ResourceTypeId <> 111 OR EXISTS (SELECT 1 FROM cteMatchSeed ac");
+        sql.ShouldNotContain("EXISTS (SELECT 1 FROM cte2 ac");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithADanglingMatchSeed_WhenEmitted_ThenItThrowsBeforeWritingSql()
+    {
+        var spec = new MatchPageSpec(new CteRef(0));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(2), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("Ctes[2].Page");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithACopiedMatchPageSpec_WhenEmitted_ThenItThrowsBeforeWritingSql()
+    {
+        var spec = new MatchPageSpec(new CteRef(0));
+        var copiedSpec = new MatchPageSpec(new CteRef(0));
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103), new CteDefinition.MatchPage(copiedSpec)],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(1));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("canonical MatchPageSpec");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithAMatchSeedTargetingANonPageCte_WhenEmitted_ThenItThrowsBeforeWritingSql()
+    {
+        var spec = new MatchPageSpec(new CteRef(0));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(0), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("MatchPage");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithoutAnIncludeSeed_WhenEmitted_ThenItThrowsBeforeWritingSql()
+    {
+        var spec = new MatchPageSpec(new CteRef(0));
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103), new CteDefinition.MatchPage(spec)],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)]);
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("IncludeSeed");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithAnIncludeSeedOutsideTheWrappers_WhenEmitted_ThenItThrowsBeforeWritingSql()
+    {
+        var spec = new MatchPageSpec(new CteRef(0));
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103), new CteDefinition.MatchPage(spec)],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(0));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("IncludeSeed");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithMultipleMatchPages_WhenEmitted_ThenItRejectsTheNonCanonicalWrapperTail()
+    {
+        var spec = new MatchPageSpec(new CteRef(0));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchPage(spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("exactly one MatchPage");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithANonAdjacentMatchSeed_WhenEmitted_ThenItRejectsTheNonCanonicalWrapperTail()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.ResourceSource(111),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(3));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("canonical wrapper tail");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithMultipleMatchSeeds_WhenEmitted_ThenItRejectsTheNonCanonicalWrapperTail()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(3));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("at most one MatchSeed");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithMatchSeedButPageIncludeSeed_WhenEmitted_ThenItRejectsTheWrongSeed()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(1));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("MatchSeed");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithMatchSeedWithoutAProbeRow_WhenEmitted_ThenItRejectsTheSeed()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5));
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("ProbeExtraRow");
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithMatchSeedButNoMatchSeedingStage_WhenEmitted_ThenItRejectsTheSeed()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+        var stage = ForwardIncludeStage(103, 111) with { SeedFromMatch = false };
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [stage],
+            IncludeSeed: new CteRef(2));
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain("SeedFromMatch");
+    }
+
+    [Fact]
+    public void GivenNoIncludeStages_WhenCreateIsCalled_ThenItRejectsTheInvalidFixture()
+    {
+        var error = Should.Throw<ArgumentException>(() => IncludePlanFactory.Create(
+            [new CteDefinition.ResourceSource(103)],
+            new MatchPageSpec(new CteRef(0)),
+            []));
+
+        error.ParamName.ShouldBe("includes");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GivenANonIncludeOrCountPlanWithMatchPageWrapper_WhenEmitted_ThenItThrowsBeforeWritingSql(bool countOnly)
+    {
+        var spec = new MatchPageSpec(
+            new CteRef(0),
+            Shape: countOnly ? new ResultShape.Count.AllMatches() : null);
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103), new CteDefinition.MatchPage(spec)],
+            spec);
+
+        var error = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
+
+        error.Message.ShouldContain(countOnly ? "CountOnly" : "include");
+    }
+
+    [Fact]
     public void GivenAnOverFetchingPageWithAnInclude_WhenEmitted_ThenTheIncludeStageSeedsFromTheProbeFreeMatchSeed()
     {
         // Arrange
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -40,11 +313,10 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- the probe row is what hasMore detection reads, so trimming the include seed must not
         // shrink the match page itself.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -59,11 +331,10 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- no probe row means every fetched row is a genuine page member, so narrowing the seed
         // would drop a legitimate match's includes.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            OffsetPage: new OffsetSpec(20, 10));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -87,11 +358,10 @@ public class EmitProbeRowIncludeSeedTests
         // no consumer here besides its own generator/tests until the SqlServer data-layer migration lands), so
         // extending the trim to Top is deferred rather than speculatively designed against a caller that
         // doesn't exist yet. See the NOTE in SqlBuilder.EmitIncludesShape.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [ForwardIncludeStage(103, 111)]);
+            new MatchPageSpec(new CteRef(0), Top: 50),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -106,11 +376,10 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- a reverse stage correlates through r, not rsp, so it reaches the seed by a different
         // alias and would regress independently of the forward direction.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ReverseIncludeStage(103, 112)],
-            OffsetPage: new OffsetSpec(0, 1, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 1, ProbeExtraRow: true)),
+            [ReverseIncludeStage(103, 112)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -126,11 +395,10 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- the sharing case cannot be resolved by dropping include rows after the fact: an
         // included resource reachable from BOTH a kept match and the probe row belongs in the page.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -154,11 +422,10 @@ public class EmitProbeRowIncludeSeedTests
         // Arrange -- only the SEED narrows. The match arm must still emit the probe row (hasMore reads it),
         // and the anti-join must still exclude every match-page row from the include arm, or the probe row
         // would surface twice: once as a Match and once as an Include.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -175,12 +442,10 @@ public class EmitProbeRowIncludeSeedTests
         // Arrange -- "the first N rows" is only well defined under the match page's own ordering. A custom
         // sort key drops the T1 tiebreak, so the seed must drop it too or it takes a different N rows.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Descending)], SortPhase.Valued);
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            Sort: sort,
-            OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), Sort: sort, OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -200,11 +465,10 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- the two-phase sort executor's floor case: the earlier phase already filled the page, so
         // this phase's only row is the lookahead. It is fetched, but nothing on it may pull includes.
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111)],
-            OffsetPage: new OffsetSpec(7, 0, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(7, 0, ProbeExtraRow: true)),
+            [ForwardIncludeStage(103, 111)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -220,11 +484,10 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- nothing reads the match page, so emitting a seed CTE would be dead SQL.
         var iterateOnly = ForwardIncludeStage(103, 111) with { SeedFromMatch = false, SeedStages = [], Iterate = false };
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [iterateOnly],
-            OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 5, ProbeExtraRow: true)),
+            [iterateOnly]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -240,11 +503,10 @@ public class EmitProbeRowIncludeSeedTests
         // page, so the two seed labels coexist in one statement.
         var stage0 = ForwardIncludeStage(103, 111);
         var stage1 = ForwardIncludeStage(111, 112) with { SeedStages = [0], Iterate = true };
-        var plan = new QueryPlan(
+        var plan = IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [stage0, stage1],
-            OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)),
+            [stage0, stage1]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -260,10 +522,7 @@ public class EmitProbeRowIncludeSeedTests
     public void GivenAnOverFetchingPageWithNoIncludes_WhenEmitted_ThenTheFetchStillCountsTheProbeRow()
     {
         // Arrange -- the no-includes shape has no seed to narrow, but must still fetch the probe row.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -279,10 +538,7 @@ public class EmitProbeRowIncludeSeedTests
     {
         // Arrange -- a zero fetch is what OFFSET/FETCH rejects; a zero page WITH a probe row still fetches
         // one and is legal, so the guard has to test the fetch count rather than the limit.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OffsetPage: new OffsetSpec(0, 0));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, 0)));
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
@@ -291,6 +547,20 @@ public class EmitProbeRowIncludeSeedTests
     private static IncludeStage ForwardIncludeStage(short seedType, short outputType)
         => new(IncludeDirection.Forward, ReferenceSearchParamId: 210, SeedTypeIds: [seedType], OutputTypeIds: [outputType],
                SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: 1000);
+
+    private static QueryPlan OverFetchingIncludePlan()
+    {
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+        return new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+    }
 
     private static IncludeStage ReverseIncludeStage(short seedType, short outputType)
         => new(IncludeDirection.Reverse, ReferenceSearchParamId: 211, SeedTypeIds: [seedType], OutputTypeIds: [outputType],

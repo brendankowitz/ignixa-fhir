@@ -13,7 +13,7 @@ public class EmitTableExistsPredicateTests
     {
         // Arrange -- "does this resource have any date-typed search-index row at all"
         var table = SqlCatalog.Default.Table("DateTimeSearchParam");
-        var plan = new QueryPlan([new CteDefinition.TableExistsPredicate(table)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.TableExistsPredicate(table)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -35,7 +35,7 @@ public class EmitTableExistsPredicateTests
         // Arrange -- "does this resource have a date-typed row matching this range"
         var table = SqlCatalog.Default.Table("DateTimeSearchParam");
         var predicate = new Predicate.GreaterThanOrEqual(new SqlColumnRef(table.TableName, "StartDateTime"), new SqlParameterRef("2020-01-01T00:00:00.0000000"));
-        var plan = new QueryPlan([new CteDefinition.TableExistsPredicate(table, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.TableExistsPredicate(table, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);

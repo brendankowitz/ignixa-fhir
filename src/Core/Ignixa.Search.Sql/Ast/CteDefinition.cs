@@ -119,4 +119,16 @@ public abstract record CteDefinition
             return new(resourceTypeIds, predicate);
         }
     }
+
+    /// <summary>
+    /// Materializes the canonical match page for include stages. The specification is the exact instance owned
+    /// by the containing <see cref="QueryPlan"/>.
+    /// </summary>
+    public sealed record MatchPage(MatchPageSpec Spec) : CteDefinition;
+
+    /// <summary>
+    /// Removes an offset probe row from a materialized <see cref="MatchPage"/> before it seeds include stages.
+    /// The specification is the exact instance owned by the containing <see cref="QueryPlan"/>.
+    /// </summary>
+    public sealed record MatchSeed(CteRef Page, MatchPageSpec Spec) : CteDefinition;
 }
