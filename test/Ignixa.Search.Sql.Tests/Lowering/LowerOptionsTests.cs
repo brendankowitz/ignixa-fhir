@@ -21,11 +21,7 @@ public class LowerOptionsTests
         var match = new CteRef(0);
 
         // Act -- named arguments are mandatory for the tail; this test exists to pin the order
-        var plan = new QueryPlan(
-            ctes,
-            match,
-            Shape: new ResultShape.Count.AllMatches(),
-            OffsetPage: new OffsetSpec(5, 10));
+        var plan = new QueryPlan(ctes, new MatchPageSpec(match, Shape: new ResultShape.Count.AllMatches(), OffsetPage: new OffsetSpec(5, 10)));
 
         // Assert
         plan.CountOnly.ShouldBeTrue();

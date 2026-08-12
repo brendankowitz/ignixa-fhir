@@ -190,8 +190,11 @@ public class LowerTests
         var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [include], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
 
         // Assert
-        plan.Ctes.Count.ShouldBe(1);
+        plan.Ctes.Count.ShouldBe(2);
         plan.Ctes[0].ShouldBeOfType<CteDefinition.ResourceSource>();
+        plan.Ctes[^1].ShouldBeOfType<CteDefinition.MatchPage>();
+        plan.Match.ShouldBe(new CteRef(0));
+        plan.IncludeSeed.ShouldBe(new CteRef(1));
         plan.Includes.ShouldNotBeNull();
         plan.Includes!.Count.ShouldBe(1);
         plan.Includes[0].Direction.ShouldBe(IncludeDirection.Forward);
@@ -200,6 +203,38 @@ public class LowerTests
         plan.Includes[0].OutputTypeIds.ShouldBe([(short)105]);
         plan.Includes[0].SeedFromMatch.ShouldBeTrue();
         plan.Includes[0].SeedStages.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenAnOverFetchingIncludeSearch_WhenLowered_ThenMatchSeedFollowsMatchPage()
+    {
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"),
+            targetResourceTypes: ["Organization"]);
+        var include = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: false);
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        var plan = LowerHarness.Run(
+            expression: null,
+            symbols,
+            targetResourceType: "Patient",
+            includes: [include],
+            revIncludes: [],
+            includeLimit: 1000,
+            sort: [],
+            sortPhase: SortPhase.Valued,
+            page: null,
+            options: new LowerOptions { OffsetPage = new OffsetSpec(0, 5, ProbeExtraRow: true) }).Plan;
+
+        plan.Match.ShouldBe(new CteRef(0));
+        var matchPage = plan.Ctes[^2].ShouldBeOfType<CteDefinition.MatchPage>();
+        var matchSeed = plan.Ctes[^1].ShouldBeOfType<CteDefinition.MatchSeed>();
+        plan.IncludeSeed.ShouldBe(new CteRef(2));
+        matchPage.Spec.ShouldBeSameAs(plan.MatchSpec);
+        matchSeed.Spec.ShouldBeSameAs(plan.MatchSpec);
     }
 
     [Fact]

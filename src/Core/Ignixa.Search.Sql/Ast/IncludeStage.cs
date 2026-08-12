@@ -2,9 +2,10 @@ namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// One _include/_revinclude/:iterate stage. Not a <see cref="CteDefinition"/> (includes aren't predicates):
-/// they occupy their own index space, emitted as an incN/incNlim CTE pair. SeedStages holds the indices of
-/// earlier stages this one seeds from (topo-sorted by Lower); SeedFromMatch adds the match page as a seed. A
-/// stage with neither seed can never produce rows and is never constructed.
+/// they occupy their own index space, emitted as an incN/incNlim CTE pair for ordinary includes or an incN CTE
+/// for includes-only pages. SeedStages holds the indices of earlier stages this one seeds from (topo-sorted by
+/// Lower); SeedFromMatch adds the plan's canonical include seed as a source. A stage with neither seed is invalid
+/// and rejected before SQL is emitted.
 /// </summary>
 public sealed record IncludeStage(
     IncludeDirection Direction,

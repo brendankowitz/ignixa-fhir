@@ -28,7 +28,7 @@ public class TokenDateTimeLoweringRuleTests
             approximationReferenceTime);
 
     private static EmittedSql EmitSql(CteDefinition.ParamSource cte)
-        => SqlBuilder.Run(new QueryPlan([cte], new CteRef(0)));
+        => SqlBuilder.Run(new QueryPlan([cte], new MatchPageSpec(new CteRef(0))));
 
     private static SearchParameterInfo CompositeParameter()
         => new("code-value-date", "code-value-date", SearchParamType.Composite,

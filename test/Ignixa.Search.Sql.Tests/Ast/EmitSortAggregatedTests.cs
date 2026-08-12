@@ -22,11 +22,7 @@ public class EmitSortAggregatedTests
         var sort = new SortSpec(
             [new SortKey(77, SortKeyKind.Aggregated, SortOrder.Ascending, sortTable, sortColumn)],
             SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -69,11 +65,7 @@ public class EmitSortAggregatedTests
                 new SortKey(88, SortKeyKind.Aggregated, SortOrder.Descending, secondaryTable, secondaryColumn),
             ],
             SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -100,11 +92,7 @@ public class EmitSortAggregatedTests
         var sort = new SortSpec(
             [new SortKey(77, SortKeyKind.Aggregated, SortOrder.Ascending, sortTable, sortColumn)],
             SortPhase.MissingPrimary);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -123,11 +111,7 @@ public class EmitSortAggregatedTests
         var predicateTable = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(predicateTable.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceId, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(predicateTable, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -147,11 +131,7 @@ public class EmitSortAggregatedTests
         // grammatically valid -- so only an explicit assertion on the qualifier catches this.
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceId, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OuterPredicate: outerPredicate,
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OuterPredicate: outerPredicate, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);

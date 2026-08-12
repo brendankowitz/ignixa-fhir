@@ -25,7 +25,7 @@ public class SearchPlanTests
     {
         var plan = new SearchPlan { Query = await PlanFixtures.SimplePatientSearchAsync() };
 
-        var rewritten = plan with { Query = plan.Query with { Top = 5 } };
+        var rewritten = plan with { Query = plan.Query with { MatchSpec = plan.Query.MatchSpec with { Top = 5 } } };
 
         rewritten.Query.Top.ShouldBe(5);
         plan.Query.Top.ShouldBeNull();
@@ -38,7 +38,7 @@ public class SearchPlanTests
         // in between and have the change reach the SQL. Asserting the `with` alone would only test the
         // compiler's record semantics.
         var plan = new SearchPlan { Query = await PlanFixtures.SimplePatientSearchAsync() };
-        var rewritten = plan with { Query = plan.Query with { Top = 5 } };
+        var rewritten = plan with { Query = plan.Query with { MatchSpec = plan.Query.MatchSpec with { Top = 5 } } };
 
         var original = plan.Compile();
         var capped = rewritten.Compile();

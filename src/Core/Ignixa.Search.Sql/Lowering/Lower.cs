@@ -294,9 +294,40 @@ internal static class Lower
                 "transition.");
         }
 
-        return new LoweredPlan(
-            new QueryPlan(lowerContext.Ctes, match, top, outerPredicate, includeStages, sortSpec, page, shape, context.Visibility, SurrogateRange: context.SurrogateRange, SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null, OffsetPage: offsetPage),
-            new PlanProvenance(lowerContext.Origins));
+        var matchSpec = new MatchPageSpec(
+            match,
+            Top: top,
+            OuterPredicate: outerPredicate,
+            Sort: sortSpec,
+            Page: page,
+            Shape: shape,
+            SurrogateRange: context.SurrogateRange,
+            SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null,
+            OffsetPage: offsetPage);
+        List<CteDefinition> ctes = [.. lowerContext.Ctes];
+        CteRef? includeSeed = null;
+
+        if (!matchSpec.CountOnly && includeStages is { Count: > 0 })
+        {
+            var matchPage = new CteRef(ctes.Count);
+            ctes.Add(new CteDefinition.MatchPage(matchSpec));
+            includeSeed = matchPage;
+
+            if (offsetPage is { ProbeExtraRow: true } && includeStages.Any(stage => stage.SeedFromMatch))
+            {
+                includeSeed = new CteRef(ctes.Count);
+                ctes.Add(new CteDefinition.MatchSeed(matchPage, matchSpec));
+            }
+        }
+
+        var query = new QueryPlan(
+            ctes,
+            matchSpec,
+            Includes: includeStages,
+            Visibility: context.Visibility,
+            IncludeSeed: includeSeed);
+
+        return new LoweredPlan(query, new PlanProvenance(lowerContext.Origins));
     }
 
     /// <summary>True when the sort has any search-parameter-backed key (String/Date or an Aggregated leaf) rather
