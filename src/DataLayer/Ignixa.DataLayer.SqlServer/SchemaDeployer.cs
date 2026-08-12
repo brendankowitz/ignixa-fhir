@@ -39,7 +39,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
 
     public async Task DeployIfEmptyAsync(int tenantId, CancellationToken cancellationToken)
     {
-        var connectionString = await SqlExecutionService.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantConfigurationStore, tenantId, cancellationToken);
 
         if (_environment.IsDevelopment() && !await CanConnectAsync(connectionString, cancellationToken))
@@ -92,7 +92,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
 
     public async Task UpgradeIfNeededAsync(int tenantId, CancellationToken cancellationToken)
     {
-        var connectionString = await SqlExecutionService.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantConfigurationStore, tenantId, cancellationToken);
 
         if (await IsDatabaseEmptyAsync(connectionString, cancellationToken))
