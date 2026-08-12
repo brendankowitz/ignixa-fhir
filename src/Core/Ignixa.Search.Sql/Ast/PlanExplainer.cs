@@ -226,7 +226,7 @@ public static class PlanExplainer
     private static string PrintMatchPageCte(MatchPageSpec spec, ref int parameterOrdinal)
     {
         var top = spec.Top is { } n ? n.ToString(CultureInfo.InvariantCulture) : "none";
-        var sortJoins = SqlBuilder.EmitSortJoins(spec.Sort).Length > 0;
+        var sortJoins = SortEmitter.EmitSortJoins(spec.Sort).Length > 0;
         var resourceJoin = spec.OuterPredicate is not null || spec.SearchParameterHash is not null;
         var body = $"MatchPageCte(top={top}, sortJoins={(sortJoins ? "true" : "false")}, resourceJoin={(resourceJoin ? "true" : "false")})";
 
