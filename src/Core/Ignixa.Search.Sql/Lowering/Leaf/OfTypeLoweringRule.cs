@@ -18,6 +18,8 @@ namespace Ignixa.Search.Sql.Lowering.Leaf;
 /// </summary>
 internal static class OfTypeLoweringRule
 {
+    private const string CaseSensitiveCollation = "Latin1_General_100_CS_AS";
+
     public static CteDefinition.ParamSource Lower(SearchParameterPredicateExpression predicate, OfTypeTokenSearchValue value, LeafContext context, short? resourceTypeId)
     {
         ArgumentNullException.ThrowIfNull(predicate);
@@ -40,7 +42,7 @@ internal static class OfTypeLoweringRule
                 "An :of-type search carried no identifier value -- a type alone selects every identifier of that type, which is not what the modifier means.");
 
         Predicate typed = new Predicate.And(
-            new Predicate.Equal(new SqlColumnRef(table.TableName, "IdentifierTypeCode"), context.Parameter(value.TypeCode)),
+            new Predicate.Equal(new SqlColumnRef(table.TableName, "IdentifierTypeCode"), context.Parameter(value.TypeCode), CaseSensitiveCollation),
             valueEquality);
 
         // The |code|value form omits the type system deliberately (FHIR allows it), so IdentifierTypeSystemId
