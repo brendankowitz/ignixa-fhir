@@ -4,8 +4,7 @@
     root: pwsh scripts/decompose-97-sql.ps1
 
     97.sql's object inventory at the time this script was written (verified
-    by direct count -- see docs/superpowers/plans/2026-07-19-ignixa-datalayer-sqlserver-phase-b.md
-    Global Constraints): 37 tables (1 discarded, see below) + 1 more
+    by direct count): 37 tables (1 discarded, see below) + 1 more
     (EventAgentCheckpoint, hidden inside an IF NOT EXISTS guard -- see step
     1b below) = 38 tables, 1 view, 59 "CREATE PROCEDURE" + 6 "CREATE OR ALTER
     PROCEDURE" = 65 stored procedures, 23 TVP types, 1 sequence, 4 partition

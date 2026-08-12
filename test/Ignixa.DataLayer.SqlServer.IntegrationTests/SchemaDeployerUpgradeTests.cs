@@ -171,14 +171,16 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
-    // Built from commit 0db642e3 (Phase B, before Task 9's terminology tables) via:
-    //   git worktree add /tmp/ignixa-phase-c-old-schema 0db642e3
-    //   dotnet build /tmp/ignixa-phase-c-old-schema/src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
-    // then copied into this project's Fixtures directory so the test is runnable without git
-    // history archaeology or a scratch worktree still being present. Structurally missing
-    // TermCodeSystem/TermConcept/etc and the SchemaVersion table itself (both predate this
-    // commit) -- a real schema gap, not a synthetic fixture, used to prove the upgrade
-    // *mechanism* works, not a genuine version-1-to-version-2 transition (none exists yet).
+    // A Phase-B-era build of this project's .sqlproj, committed as a binary fixture so the test is
+    // runnable without git archaeology or a scratch worktree still being present. It is structurally
+    // missing the terminology tables (TermCodeSystem/TermConcept/etc) and the SchemaVersion table
+    // itself -- a real schema gap, not a synthetic fixture, used to prove the upgrade *mechanism*
+    // works, not a genuine version-1-to-version-2 transition (none exists yet).
+    //
+    // To regenerate: delete the terminology .sql files and Tables/SchemaVersion.sql from a scratch
+    // copy of Ignixa.DataLayer.SqlServer.Database, build it --configuration Release, and copy the
+    // resulting .dacpac here. (Deliberately described by content rather than by a commit hash: this
+    // branch has been rebased, so any hash cited here would not survive.)
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
     [Fact]

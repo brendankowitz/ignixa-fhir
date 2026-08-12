@@ -54,7 +54,20 @@ public static class DeployReportClassifier
                 "Refusing to classify as auto-safe.");
         }
 
-        var operations = operationsElement.Elements(ReportNamespace + "Operation");
+        var operations = operationsElement.Elements(ReportNamespace + "Operation").ToList();
+
+        // Assert non-emptiness at each level we descend. The root/Operations guards above only
+        // validate the envelope; without these, an unrecognized *payload* (e.g. a future DacFx
+        // version renaming or re-namespacing Operation/Item) yields an empty sequence, the loop
+        // body never runs, and we fall through to "auto-safe" -- reintroducing the exact fail-open
+        // this gate exists to prevent, just one level deeper. A genuinely empty <Operations />
+        // (no children at all) remains the legitimate "no pending changes" signal and stays safe.
+        if (operationsElement.HasElements && operations.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Unrecognized DeployReport shape: '{{{ReportNamespace}}}Operations' has child elements but none " +
+                $"named '{{{ReportNamespace}}}Operation'. Refusing to classify as auto-safe.");
+        }
 
         foreach (var operation in operations)
         {
@@ -64,13 +77,40 @@ public static class DeployReportClassifier
                 continue;
             }
 
-            foreach (var item in operation.Elements(ReportNamespace + "Item"))
+            var items = operation.Elements(ReportNamespace + "Item").ToList();
+            if (operation.HasElements && items.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Unrecognized DeployReport shape: operation '{operationName}' has child elements but none " +
+                    $"named '{{{ReportNamespace}}}Item'. Refusing to classify as auto-safe.");
+            }
+
+            foreach (var item in items)
             {
                 if (item.Element(ReportNamespace + "Issue") is not null)
                 {
                     return false;
                 }
             }
+        }
+
+        // Cross-check the <Alerts> block against what we found inline. DacFx raises a DataIssue
+        // alert and marks the corresponding Item with a child <Issue> that cross-references it;
+        // this class's whole premise is that those two signals agree. If a report declares a
+        // DataIssue alert but no non-exempt Item carried an Issue child, the premise doesn't hold
+        // for this document and we cannot prove it's safe -- fail closed rather than trusting the
+        // inline signal we happen to understand.
+        var hasDataIssueAlert = root.Element(ReportNamespace + "Alerts")
+            ?.Elements(ReportNamespace + "Alert")
+            .Any(alert => string.Equals(alert.Attribute("Name")?.Value, "DataIssue", StringComparison.Ordinal))
+            ?? false;
+
+        if (hasDataIssueAlert)
+        {
+            throw new InvalidOperationException(
+                "Unrecognized DeployReport shape: the report declares a DataIssue alert, but no non-exempt Item " +
+                $"carried a child '{{{ReportNamespace}}}Issue' element cross-referencing it. Refusing to classify " +
+                "as auto-safe.");
         }
 
         return true;

@@ -45,12 +45,11 @@ public class DeployReportClassifierTests
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
     }
 
-    // synthetic-safe-table-alter-no-issue.xml and synthetic-safe-alter-unrecognized-table.xml
-    // are structurally identical (a single no-Issue Alter/SqlTable item, differing only by table
-    // name) since this classifier no longer references any table-name allow-list -- both exercise
-    // the exact same "item has no Issue child" branch. Kept as one test; see
-    // GivenACreateOperationWithAnIssueMarker_WhenClassified_ThenIsStillAutoSafe below for the
-    // exemption-specific coverage this consolidation makes room for.
+    // A near-duplicate fixture (synthetic-safe-alter-unrecognized-table.xml) was removed: it was
+    // structurally identical to this one, differing only by table name, and since this classifier
+    // no longer consults any table-name allow-list both drove the exact same "item has no Issue
+    // child" branch. See GivenANeverDestructiveOperationWithAnIssueMarker... below for the
+    // exemption-specific coverage that consolidation made room for.
     [Fact]
     public void GivenATableAlterWithNoIssueMarker_WhenClassified_ThenIsAutoSafe()
     {
@@ -70,11 +69,13 @@ public class DeployReportClassifierTests
     // refactor that "simplifies" NeverDestructiveOperations handling could silently start
     // treating a Create's Issue marker as destructive (or vice versa drop the exemption) with no
     // red test to catch it.
-    [Fact]
-    public void GivenACreateOperationWithAnIssueMarker_WhenClassified_ThenIsStillAutoSafe()
+    [Theory]
+    [InlineData("Create")]
+    [InlineData("Refresh")]
+    public void GivenANeverDestructiveOperationWithAnIssueMarker_WhenClassified_ThenIsStillAutoSafe(string operationName)
     {
-        const string xml = """
-            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations><Operation Name="Create"><Item Value="[dbo].[SomeNewTable]" Type="SqlTable"><Issue Id="1" /></Item></Operation></Operations></DeploymentReport>
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations><Operation Name="{operationName}"><Item Value="[dbo].[SomeNewTable]" Type="SqlTable"><Issue Id="1" /></Item></Operation></Operations></DeploymentReport>
             """;
         DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
     }
@@ -110,5 +111,51 @@ public class DeployReportClassifierTests
     {
         Should.Throw<ArgumentException>(() => DeployReportClassifier.IsAutoSafe(string.Empty));
         Should.Throw<ArgumentException>(() => DeployReportClassifier.IsAutoSafe(null!));
+    }
+
+    // The root/Operations guards above only validate the report's ENVELOPE. These three pin the
+    // payload guards: an unrecognized Operation/Item element (e.g. a future DacFx version renaming
+    // or re-namespacing them) previously yielded an empty sequence, skipped the inspection loop
+    // entirely, and fell through to "auto-safe" -- the same fail-open class as the namespace bug,
+    // just one level deeper.
+    [Fact]
+    public void GivenOperationsWithUnrecognizedChildElements_WhenClassified_ThenThrows()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations><Renamed Name="Alter"><Item Value="[dbo].[BackgroundJobs]" Type="SqlTable"><Issue Id="1" /></Item></Renamed></Operations></DeploymentReport>
+            """;
+        Should.Throw<InvalidOperationException>(() => DeployReportClassifier.IsAutoSafe(xml));
+    }
+
+    [Fact]
+    public void GivenAnOperationWithUnrecognizedChildElements_WhenClassified_ThenThrows()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations><Operation Name="Alter"><Renamed Value="[dbo].[BackgroundJobs]" Type="SqlTable"><Issue Id="1" /></Renamed></Operation></Operations></DeploymentReport>
+            """;
+        Should.Throw<InvalidOperationException>(() => DeployReportClassifier.IsAutoSafe(xml));
+    }
+
+    // A genuinely empty <Operations /> (no children at all) is the legitimate "no pending changes"
+    // signal and must stay safe -- proving the HasElements guards above discriminate on
+    // "unrecognized children" rather than just "no Operation elements found".
+    [Fact]
+    public void GivenAnOperationsElementWithNoChildrenAtAll_WhenClassified_ThenIsAutoSafe()
+    {
+        const string xml = """<?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Operations /></DeploymentReport>""";
+        DeployReportClassifier.IsAutoSafe(xml).ShouldBeTrue();
+    }
+
+    // DacFx raises a DataIssue alert and marks the corresponding Item with a child <Issue> that
+    // cross-references it. This class's premise is that those two signals agree; a report carrying
+    // a "data loss could occur" alert with no corresponding inline Issue breaks that premise, so
+    // we can't prove it's safe and must fail closed rather than trusting the half we understand.
+    [Fact]
+    public void GivenADataIssueAlertWithNoCorrespondingItemIssue_WhenClassified_ThenThrows()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02"><Alerts><Alert Name="DataIssue"><Issue Value="The column [dbo].[BackgroundJobs].[Gone] is being dropped, data loss could occur." Id="1" /></Alert></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[BackgroundJobs]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Should.Throw<InvalidOperationException>(() => DeployReportClassifier.IsAutoSafe(xml));
     }
 }

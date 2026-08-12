@@ -222,13 +222,20 @@ public sealed class SchemaDeployer : ISchemaDeployer
     /// this class's own automatic paths do after applying its manual deploy. Without this, a
     /// CLI-applied upgrade would leave <see cref="ISchemaVersionResolver"/> reporting a stale
     /// version until some later, unrelated call happened to no-op-redeploy and self-heal it.
+    /// Idempotent: dbo.SchemaVersion has PRIMARY KEY (Version), so a bare INSERT would throw
+    /// (SQL error 2627) whenever an already-stamped version is re-stamped -- which is the norm,
+    /// not the exception, on the CLI's re-run path and when two app instances cold-start the same
+    /// tenant concurrently.
     /// </summary>
     public static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
-        command.CommandText = "INSERT dbo.SchemaVersion (Version) VALUES (@version)";
+        command.CommandText = """
+            IF NOT EXISTS (SELECT 1 FROM dbo.SchemaVersion WHERE Version = @version)
+                INSERT dbo.SchemaVersion (Version) VALUES (@version);
+            """;
         command.Parameters.AddWithValue("@version", version);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }

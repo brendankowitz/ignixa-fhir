@@ -133,7 +133,7 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Check cache first
         if (_factoryCache.TryGetValue(tenantId, out var cachedFactory))
         {
-            return cachedFactory.Value;
+            return MaterializeOrEvict(tenantId, cachedFactory);
         }
 
         // Get tenant configuration
@@ -200,19 +200,28 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
                 () => CreateServiceFactory(tenantId, tenantConfig, connectionString),
                 LazyThreadSafetyMode.ExecutionAndPublication));
 
+        return MaterializeOrEvict(tenantId, lazyFactory);
+    }
+
+    /// <summary>
+    /// Materializes a cached <see cref="Lazy{T}"/> factory, evicting it if construction failed so a
+    /// transient failure (e.g. a schema deploy hiccup) doesn't permanently poison the tenant --
+    /// <see cref="Lazy{T}"/> caches and rethrows the identical exception on every subsequent
+    /// <c>.Value</c> access. Shared by both cache access paths so the eviction invariant can't be
+    /// silently lost if they're ever reordered.
+    /// </summary>
+    private TenantServiceFactory MaterializeOrEvict(int tenantId, Lazy<TenantServiceFactory> lazyFactory)
+    {
         try
         {
             return lazyFactory.Value;
         }
         catch
         {
-            // Don't let a transient failure (e.g. a schema deploy hiccup) permanently poison this
-            // tenant's cache entry -- Lazy<T> caches and rethrows the same exception on every
-            // subsequent .Value access. Remove the failed entry (only if it's still the exact
-            // instance that just failed, to avoid discarding a newer successful entry from a
-            // concurrent retry) so the next call attempts CreateServiceFactory fresh.
-            ((ICollection<KeyValuePair<int, Lazy<TenantServiceFactory>>>)_factoryCache)
-                .Remove(new KeyValuePair<int, Lazy<TenantServiceFactory>>(tenantId, lazyFactory));
+            // TryRemove's KeyValuePair overload removes only if the cached value is still this
+            // exact Lazy instance (Lazy<T> doesn't override Equals, so this is reference equality),
+            // so a newer successful entry from a concurrent retry is never discarded.
+            _factoryCache.TryRemove(new KeyValuePair<int, Lazy<TenantServiceFactory>>(tenantId, lazyFactory));
             throw;
         }
     }
@@ -545,7 +554,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     }
 
     /// <summary>
-    /// Gets the current number of cached tenant service factories.
+    /// Gets the current number of tenants with a cached or in-flight service factory. Entries are
+    /// added before their <see cref="Lazy{T}"/> value is materialized, so this counts tenants whose
+    /// factory construction is still running as well as completed ones.
     /// </summary>
     public int CachedServicesCount => _factoryCache.Count;
 }

@@ -148,8 +148,8 @@ public class SchemaVersionResolverTests
     {
         // Arrange -- a real, empty, freshly-created database that has NEVER had any schema deployed
         // to it, so dbo.SchemaVersion does not exist at all. This is the exact shape of an
-        // un-versioned pre-Phase-C tenant (deployed before Task 1 introduced the SchemaVersion
-        // table): confirmed empirically that the naive "SELECT ISNULL(MAX(Version), 0) FROM
+        // un-versioned pre-Phase-C tenant (deployed before the SchemaVersion table existed):
+        // confirmed empirically that the naive "SELECT ISNULL(MAX(Version), 0) FROM
         // dbo.SchemaVersion" throws SqlException "Invalid object name 'dbo.SchemaVersion'" against
         // a database like this one, rather than returning 0 -- GetCurrentVersionAsync must tolerate
         // "table doesn't exist" as equivalent to "version 0".

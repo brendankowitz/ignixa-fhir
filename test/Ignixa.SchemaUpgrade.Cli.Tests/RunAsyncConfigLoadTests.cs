@@ -60,9 +60,9 @@ public class RunAsyncConfigLoadTests
     // configOption's DefaultValueFactory) resolved against wherever the operator happens to run
     // the packaged tool from -- NOT the CLI assembly's own bin directory. Without SetBasePath,
     // AddJsonFile resolves a relative path against AppContext.BaseDirectory instead, so this test
-    // would throw FileNotFoundException if the fix were reverted (verified manually: see
-    // .superpowers/sdd/task-9-fix-report.md). A rooted/absolute --config path (the test above)
-    // resolves correctly with or without SetBasePath, so it can't stand in for this scenario.
+    // would throw FileNotFoundException if the fix were reverted. A rooted/absolute --config path
+    // (the test above) resolves correctly with or without SetBasePath, so it can't stand in for
+    // this scenario.
     [Fact]
     public async Task GivenARelativeConfigPathAndAnOperatorWorkingDirectory_WhenRunAsyncCalled_ThenConfigLoadsRelativeToCurrentDirectory()
     {
