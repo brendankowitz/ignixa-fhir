@@ -240,6 +240,36 @@ public class TreeContextScopingTests
     }
 
     [Fact]
+    public void GivenBareHashAtRootScope_WhenConstraintUsesResolve_ThenResolvesToTheResourceItself()
+    {
+        // Arrange — bare '#' always resolves to the container resource (R4 references.html §2.3.0.8:
+        // "there is only one container resource"). At root scope the resource is its own container, so
+        // this locks in that a root-level invariant calling resolve() on '#' sees the resource itself,
+        // via the same RootResource/Resource seeding used by FhirPathInvariantCheck and SlicingCheck.
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "resolve-bare-hash",
+            Severity = ConstraintSeverity.Error,
+            Human = "'#' resolves to the resource itself at root scope",
+            Expression = "'#'.resolve().id = id",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var element = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""example"" }");
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState().EnterRootResource(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void GivenBundleWithDanglingLocalReference_WhenReferenceResolutionCheck_ThenReportsIssue()
     {
         // Arrange

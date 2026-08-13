@@ -22,6 +22,10 @@ namespace Ignixa.FhirPath.Evaluation;
 /// Locked because a caller can legitimately evaluate the same <see cref="EvaluationContext"/>
 /// concurrently from multiple threads (e.g. a cached compiled expression reused across requests);
 /// the lock only guards the one-time build, so steady-state contention is negligible.
+/// Identity-keying means an <see cref="IElement"/> mutated in place after being indexed would leave
+/// this cache serving a stale index for that same reference - safe only because a cache instance is
+/// scoped to a single evaluation over what is expected to be a read-only instance, never reused
+/// across a mutation of the same root.
 /// </remarks>
 internal sealed class ReferenceIndexCache
 {

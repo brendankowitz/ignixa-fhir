@@ -96,8 +96,11 @@ internal static class FhirSpecificFunctions
 
         var results = new List<IElement>();
 
+        // Bare '#' resolves to this root per R4 §2.3.0.8 (Contained Resources): "there is only one
+        // container resource", so inside a contained resource's own scope (RootResource is then the
+        // parent) '#' correctly yields the parent, not the contained resource being evaluated.
         var root = context.RootResource ?? context.Resource;
-        var referenceIndex = context.ReferenceIndexCache.GetOrBuild(root);
+        var referenceIndex = TryBuildReferenceIndex(context.ReferenceIndexCache, root);
         var elementResolver = (context as FhirEvaluationContext)?.ElementResolver;
 
         if (referenceIndex == null && elementResolver == null)
@@ -160,7 +163,7 @@ internal static class FhirSpecificFunctions
         ReferenceIndex? referenceIndex,
         Func<string, IElement?>? elementResolver)
     {
-        var resolved = referenceIndex?.Resolve(referenceValue);
+        var resolved = TryResolveInInstance(referenceIndex, referenceValue);
         if (resolved != null || elementResolver == null)
         {
             return resolved;
@@ -169,6 +172,47 @@ internal static class FhirSpecificFunctions
         try
         {
             return elementResolver(referenceValue);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Builds the in-instance <see cref="ReferenceIndex"/> for <paramref name="root"/>, swallowing a
+    /// build failure so resolve() keeps its never-throws contract even against a pathological
+    /// <see cref="IElement.Children"/> implementation; a failed build still leaves the
+    /// <see cref="FhirEvaluationContext.ElementResolver"/> fallback available.
+    /// </summary>
+    private static ReferenceIndex? TryBuildReferenceIndex(ReferenceIndexCache cache, IElement? root)
+    {
+        try
+        {
+            return cache.GetOrBuild(root);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Looks up <paramref name="referenceValue"/> in the in-instance index, swallowing a lookup
+    /// failure for the same never-throws reason as <see cref="TryBuildReferenceIndex"/> so a
+    /// pathological instance falls through to the <see cref="FhirEvaluationContext.ElementResolver"/>
+    /// fallback instead of propagating.
+    /// </summary>
+    private static IElement? TryResolveInInstance(ReferenceIndex? referenceIndex, string referenceValue)
+    {
+        if (referenceIndex == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return referenceIndex.Resolve(referenceValue);
         }
         catch
         {

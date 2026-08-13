@@ -5,6 +5,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
@@ -230,5 +231,117 @@ public class ResolveFunctionTests
 
         // Assert
         result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenRootWhoseChildrenThrows_WhenResolving_ThenReturnsEmptyWithoutThrowing()
+    {
+        // Arrange
+        var root = new ThrowingElement();
+        var expr = _parser.Parse("'#'.resolve()");
+        var context = new EvaluationContext { Resource = root };
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenReferenceElementWhoseValueIsTheReferenceString_WhenResolving_ThenInInstanceResolutionFindsIt()
+    {
+        // Arrange
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("Observation.subject.reference.resolve().id");
+        var context = new EvaluationContext { Resource = observation };
+
+        // Act
+        var result = _evaluator.Evaluate(observation, expr, context).Single();
+
+        // Assert
+        result.Value.ShouldBe("p1");
+    }
+
+    [Theory]
+    [InlineData("canonical")]
+    [InlineData("uri")]
+    [InlineData("url")]
+    public void GivenBarePrimitiveReferenceValue_WhenResolving_ThenInInstanceResolutionFindsIt(string primitiveType)
+    {
+        // Arrange
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var reference = new PrimitiveElement("#p1", primitiveType);
+        var context = new EvaluationContext { Resource = observation };
+
+        // Act
+        var result = FhirSpecificFunctions.Resolve(new[] { reference }, context).Single();
+
+        // Assert
+        result.Children("id").Single().Value.ShouldBe("p1");
+    }
+
+    [Fact]
+    public void GivenBareHashFromInsideAContainedResourceScope_WhenResolving_ThenReturnsTheParentNotTheContainedResource()
+    {
+        // Arrange
+        // R4 references.html §2.3.0.8: "there is only one container resource" - resolving '#' from
+        // inside the contained resource's own scope still yields the parent (RootResource), because
+        // resolution is scoped to the single container, not to whichever element is being evaluated.
+        // This mirrors ValidationState.EnterContainedResource, which sets RootResource to the parent
+        // while Resource becomes the contained resource being validated.
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var containedPatient = observation.Children("contained").Single();
+        var expr = _parser.Parse("'#'.resolve()");
+        var context = new EvaluationContext { Resource = containedPatient, RootResource = observation };
+
+        // Act
+        var result = _evaluator.Evaluate(containedPatient, expr, context).Single();
+
+        // Assert
+        result.ShouldBeSameAs(observation);
+    }
+
+    /// <summary>
+    /// Minimal <see cref="IElement"/> whose <see cref="Children"/> always throws, used to prove that
+    /// a pathological instance cannot make <c>resolve()</c> throw while building its in-instance index.
+    /// </summary>
+    private sealed class ThrowingElement : IElement
+    {
+        public string Name => "root";
+        public object? Value => null;
+        public string InstanceType => "Observation";
+        public string Location => "Observation";
+        public IType? Type => null;
+        public bool HasPrimitiveValue => false;
+
+        public IReadOnlyList<IElement> Children(string? name = null) =>
+            throw new InvalidOperationException("simulated corrupt instance");
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    /// <summary>
+    /// Minimal <see cref="IElement"/> for a bare primitive reference value
+    /// (<c>string</c>/<c>uri</c>/<c>canonical</c>/<c>url</c>), with no <c>reference</c> child.
+    /// </summary>
+    private sealed class PrimitiveElement : IElement
+    {
+        public PrimitiveElement(object value, string instanceType)
+        {
+            Value = value;
+            InstanceType = instanceType;
+        }
+
+        public string Name => string.Empty;
+        public object? Value { get; }
+        public string InstanceType { get; }
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public bool HasPrimitiveValue => true;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
     }
 }
