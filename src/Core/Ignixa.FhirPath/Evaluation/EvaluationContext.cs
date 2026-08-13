@@ -158,6 +158,17 @@ public record EvaluationContext
     public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
 
     /// <summary>
+    /// Cache holder for the in-instance <see cref="ReferenceIndex"/> that <c>resolve()</c> uses to
+    /// look up contained resources and, for a Bundle/Parameters root, sibling entries, before
+    /// falling back to <see cref="FhirEvaluationContext.ElementResolver"/>. A single holder
+    /// instance is shared by every <c>with</c>-derived copy of this context, so the index is built
+    /// at most once per root even though the context itself is copied on every
+    /// <see cref="PushThis"/> / <see cref="WithFocus"/> / etc. Internal: an implementation detail
+    /// of <c>resolve()</c>, not part of the public evaluation API.
+    /// </summary>
+    internal ReferenceIndexCache ReferenceIndexCache { get; init; } = new();
+
+    /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).
     /// The forked context has its own copy of DefinedVariables so that variables defined
     /// in one branch don't leak to sibling branches.

@@ -70,7 +70,10 @@ internal static class FhirSpecificFunctions
 
     /// <summary>
     /// resolve() - Takes a Reference element and resolves it to the actual resource.
-    /// Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
+    /// Tries in-instance resolution first (contained resources by <c>#id</c>, sibling Bundle/Parameters
+    /// entries by <c>fullUrl</c> or <c>Type/id</c>, and bare <c>#</c> for the containing resource), then
+    /// falls back to the caller-supplied <see cref="FhirEvaluationContext.ElementResolver"/>.
+    /// Returns empty if the reference cannot be resolved by either path.
     /// Per FHIR spec: resolve() returns empty on failure (does not throw).
     /// </summary>
     [FhirPathFunction("resolve",
@@ -86,68 +89,91 @@ internal static class FhirSpecificFunctions
     {
         // resolve() : collection
         // Takes a Reference element and resolves it to the actual resource.
-        // Returns empty if the reference cannot be resolved or if ElementResolver is not configured.
+        // In-instance resolution (contained/bundle/parameters, via ReferenceIndex) is tried first,
+        // matching Firely's ScopedNode.Resolve<T>; the host ElementResolver is a fallback, not the
+        // only path, so contained and intra-Bundle references resolve with no external resolver at all.
         // Per FHIR spec: resolve() returns empty on failure (does not throw).
 
         var results = new List<IElement>();
 
-        if (context is not FhirEvaluationContext fhirContext || fhirContext.ElementResolver == null)
+        var root = context.RootResource ?? context.Resource;
+        var referenceIndex = context.ReferenceIndexCache.GetOrBuild(root);
+        var elementResolver = (context as FhirEvaluationContext)?.ElementResolver;
+
+        if (referenceIndex == null && elementResolver == null)
         {
-            // No resolver available - return empty (this is expected during indexing)
             return results;
         }
 
         foreach (var element in focus)
         {
-            string? referenceValue = null;
-
-            // resolve() works on Reference types
-            if (element.InstanceType == "Reference" || element.InstanceType == "ResourceReference")
-            {
-                // Try to extract the reference string from the "reference" child element
-                referenceValue = element.Scalar("reference") as string;
-
-                // If no nested child, check if Value is the reference string directly
-                // This happens when navigating to .reference which returns the Reference with its value
-                if (string.IsNullOrEmpty(referenceValue) && element.Value is string valueStr)
-                {
-                    referenceValue = valueStr;
-                }
-            }
-            // Also handle string values directly (common in FHIRPath expressions like entry.reference.where(resolve() is ...))
-            else if (element.InstanceType is "string" or "uri" or "canonical" or "url" && element.Value is string strValue)
-            {
-                referenceValue = strValue;
-            }
-            else
-            {
-                // Not a reference - skip
-                continue;
-            }
+            var referenceValue = ExtractReferenceValue(element);
             if (string.IsNullOrEmpty(referenceValue))
             {
-                // No reference value - skip
                 continue;
             }
 
-            // Call the ElementResolver to resolve the reference
-            try
+            var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver);
+            if (resolved != null)
             {
-                var resolved = fhirContext.ElementResolver(referenceValue);
-                if (resolved != null)
-                {
-                    results.Add(resolved);
-                }
-                // If resolved is null, the reference couldn't be resolved - skip silently
-            }
-            catch
-            {
-                // If resolution fails, skip silently (FHIR spec: resolve() returns empty on failure)
-                continue;
+                results.Add(resolved);
             }
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Extracts the reference string that <c>resolve()</c> should look up from a focus element,
+    /// covering a <c>Reference</c>/<c>ResourceReference</c> with a <c>reference</c> child, a
+    /// <c>Reference</c> whose <see cref="IElement.Value"/> is the string directly (navigating to
+    /// <c>.reference</c> yields the Reference with its value), and a bare
+    /// <c>string</c>/<c>uri</c>/<c>canonical</c>/<c>url</c> value.
+    /// </summary>
+    private static string? ExtractReferenceValue(IElement element)
+    {
+        if (element.InstanceType is "Reference" or "ResourceReference")
+        {
+            var referenceValue = element.Scalar("reference") as string;
+            if (string.IsNullOrEmpty(referenceValue) && element.Value is string valueStr)
+            {
+                referenceValue = valueStr;
+            }
+
+            return referenceValue;
+        }
+
+        if (element.InstanceType is "string" or "uri" or "canonical" or "url" && element.Value is string strValue)
+        {
+            return strValue;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves a single reference value: in-instance first, then the host resolver. Per FHIR spec,
+    /// a host resolver failure is swallowed rather than propagated - resolve() returns empty on failure.
+    /// </summary>
+    private static IElement? ResolveReferenceValue(
+        string referenceValue,
+        ReferenceIndex? referenceIndex,
+        Func<string, IElement?>? elementResolver)
+    {
+        var resolved = referenceIndex?.Resolve(referenceValue);
+        if (resolved != null || elementResolver == null)
+        {
+            return resolved;
+        }
+
+        try
+        {
+            return elementResolver(referenceValue);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
