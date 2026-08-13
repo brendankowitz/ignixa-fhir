@@ -245,6 +245,53 @@ omits `time` and `integer64` entirely. Serialization must be verified untouched;
 reads `ISourceNavigator`, not `IElement.Value`, so it should be, but "should be" is not evidence.
 Needs a migration shim and a full `dotnet test All.sln` gate.
 
+### Option 4 — Keep `string`, but delete the ambiguity
+
+Leave temporals as `string`, and make that a *commitment* rather than a default: strike the
+`DateTimeOffset` arm from the `IElement.Value` contract, remove the code paths that produce it, and
+require every adapter boundary to normalize inbound typed values (the PR #398 pattern, applied as a
+rule rather than case-by-case).
+
+This is Option 1's cost with Option 3's main *contract* benefit. It does not remove the ~500 lines of
+compensation, does not merge the divergent `GetDateTimePrecision` copies, and does not retire the
+Finding (d) bug class — a helper can still receive a bare `object` without its `instanceType`. What it
+does remove is the `or`: consumers stop having to handle two shapes, so the silent-empty failure mode
+loses its ambiguity at the public boundary.
+
+Relevant because Option 1 ("do nothing") and Option 4 are *not* the same choice once the contract is
+frozen — see [Timing](#timing-the-pre-10-window).
+
+## Timing: the pre-1.0 window
+
+The options above weigh benefit against cost as if cost were constant. It is not.
+
+`IElement` ships in `Ignixa.Abstractions`, which sets `IsPackable=true`
+(`src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj:12`), overriding the repo-wide
+`IsPackable=false` in `Directory.Build.props:60`. `IElement.Value` is therefore public API, not an
+internal detail. The latest release tag is `release/0.6.41` — pre-1.0.
+
+That makes the cost of an `IElement.Value` change a **step function**, not a constant:
+
+- **Before 1.0** — a changelog entry and an internal audit of temporal consumers.
+- **After 1.0** — a major version bump plus downstream migration for every package consumer and
+  extension author.
+
+Three consequences:
+
+1. **The trigger conditions below are mis-specified in isolation.** Each is a "wait for more pain"
+   condition, which is only the right call if the pain arrives *before* the version boundary. Waiting
+   past 1.0 means paying materially more for an identical fix.
+2. **Reversibility is asymmetric.** Shipping the typed shape and getting the details wrong is a patch
+   fix — the shape is right. Shipping `string` and later wanting typed is a breaking change. Per
+   `CLAUDE.md`'s reversibility principle ("can we undo this decision in 2 weeks?"), the asymmetry
+   favours acting inside the window.
+3. **"Do nothing" is not available for 1.0.** The contract today reads `dateTime/date/instant →
+   DateTimeOffset or string`. Shipping 1.0 with that `or` freezes an *ambiguous* value contract at a
+   public boundary, obliging every consumer to handle both shapes forever or carry a latent
+   silent-empty bug (Finding (d)). Option 1 stops being a null action the moment the contract is
+   frozen. Options 3 and 4 are the two ways to resolve the ambiguity; they differ in how much of the
+   compensation cost they also retire.
+
 ## Tradeoffs
 
 | Pros | Cons |
@@ -301,6 +348,11 @@ Read on `main` at `ca5c65b7` unless noted.
   returning a typed object from `Value`
 - `src/Core/Ignixa.FhirPath/Types/Quantity.cs:23-50` — `Types.Quantity` with a `Precision` field
 
+**Versioning surface**
+- `src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj:12` — `IsPackable=true`, overriding
+  `Directory.Build.props:60` (`IsPackable=false`); `IElement` is shipped public API
+- `git tag --list "release/*"` → latest `release/0.6.41`; pre-1.0 as of this investigation
+
 **Firely, verified against decompiled `Hl7.Fhir.Base` 6.0.1 / 5.13.1**
 - `P.DateTime.ToString()` → `OriginalParsedString ?? ToStringWithPrecision(...)` — typed *and*
   lossless
@@ -332,15 +384,29 @@ four instances with one still open.
 - **Now**: land [PR #398](https://github.com/brendankowitz/ignixa-fhir/pull/398) (Option 2). It is
   the correct tactical fix and independent of this question.
 - **Next**: fix the Quantity instance (Finding (d4)) as a bug, not as part of a refactor.
-- **Option 3 is the right long-term shape** — and Finding (g) means it's an extension of an existing
-  Ignixa pattern, not a new architecture. But I would not spend the refactor on today's evidence.
+- **Before 1.0**: resolve the `IElement.Value` contract ambiguity — Option 3 or Option 4, but not
+  Option 1. See [Timing](#timing-the-pre-10-window) for why deferral is not neutral here.
+- **Option 3 is the right long-term shape**, and Finding (g) means it is an extension of an existing
+  Ignixa pattern rather than a new architecture. Scope it to temporals (`date`, `dateTime`,
+  `instant`, `time`); leave `Quantity` alone, since it already works.
 
-**Trigger conditions for escalating to Option 3** — any one is sufficient:
+**On sequencing**: if the 1.0 schedule does not allow doing Option 3 carefully, take Option 4. A
+hastily-designed typed model, frozen at 1.0, is worse than a frozen `string` — temporal semantics are
+subtler than `Quantity`'s, and the Tradeoffs table lists "easy to get wrong" for good reason. The
+thing that must not ship is the `or`.
+
+**Trigger conditions for escalating to Option 3** — any one is sufficient, and all are now bounded by
+the 1.0 boundary rather than open-ended:
 
 1. A **fifth** instance of the Finding (d) bug class appears.
 2. The two `GetDateTimePrecision` implementations produce a **user-visible disagreement**.
 3. A new FHIRPath temporal function is required that would add materially to the ~500 lines
    (`lowBoundary`/`highBoundary` on new types, timezone-aware comparison, calendar-duration `between`).
 4. A second interop adapter is added, requiring a third copy of the PR #398 translation layer.
+5. **1.0 is scheduled.** This is a deadline, not a symptom: it closes the window in which conditions
+   1–4 can be answered cheaply.
 
-Absent those, Option 1 + the PR #398 boundary fix is the correct allocation of effort.
+Note that an earlier revision of this investigation concluded "I would not spend the refactor on
+today's evidence," with conditions 1–4 as open-ended waits. The benefit evidence has not changed;
+the *cost* side has. Conditions 1–4 assumed a constant refactor cost, which the packability and
+version facts above disprove.
