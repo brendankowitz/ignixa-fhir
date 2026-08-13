@@ -24,6 +24,8 @@ public class IgnixaElementAdapter : IElement
     private readonly Hl7.Fhir.ElementModel.ITypedElement _firelyElement;
     private IReadOnlyList<IElement>? _cachedAllChildren;
     private Dictionary<string, IReadOnlyList<IElement>>? _childrenByName;
+    private object? _translatedValue;
+    private bool _translatedValueResolved;
 
     /// <summary>
     /// Creates a new adapter wrapping a Firely SDK ITypedElement.
@@ -39,10 +41,27 @@ public class IgnixaElementAdapter : IElement
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Translated into Ignixa's representation — Firely surfaces the temporal primitives as
+    /// <inheritdoc path="/remarks/node()"/>
+    /// <para>
+    /// Translated into Ignixa's representation - Firely surfaces the temporal primitives as
     /// <c>Hl7.Fhir.ElementModel.Types</c> instances, which Ignixa's evaluators do not recognise.
+    /// Memoized so that repeated reads return the same instance rather than re-rendering the
+    /// wire-format string each time.
+    /// </para>
     /// </remarks>
-    public object? Value => FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value);
+    public object? Value
+    {
+        get
+        {
+            if (!_translatedValueResolved)
+            {
+                _translatedValue = FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value);
+                _translatedValueResolved = true;
+            }
+
+            return _translatedValue;
+        }
+    }
 
     /// <inheritdoc/>
     public string InstanceType => _firelyElement.InstanceType ?? string.Empty;

@@ -25,6 +25,8 @@ namespace Ignixa.Extensions.FirelySdk;
 public class TypedElementAdapter : ITypedElement
 {
     private readonly IElement _coreElement;
+    private object? _translatedValue;
+    private bool _translatedValueResolved;
 
     /// <summary>
     /// Creates a new adapter wrapping an Ignixa IElement.
@@ -56,10 +58,30 @@ public class TypedElementAdapter : ITypedElement
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Translated into Firely's representation — Ignixa carries the temporal primitives as FHIR
+    /// <inheritdoc path="/remarks/node()"/>
+    /// <para>
+    /// Translated into Firely's representation - Ignixa carries the temporal primitives as FHIR
     /// wire-format strings, where Firely expects <c>Hl7.Fhir.ElementModel.Types</c> instances.
+    /// </para>
+    /// <para>
+    /// Memoized because the translation parses, and Firely's engines read <c>Value</c> repeatedly
+    /// on the same element - and because <see cref="Children"/> hands out a fresh adapter per call,
+    /// so nothing upstream would amortise it.
+    /// </para>
     /// </remarks>
-    public object? Value => FirelyPrimitiveValues.ToFirely(_coreElement.Value, _coreElement.InstanceType);
+    public object? Value
+    {
+        get
+        {
+            if (!_translatedValueResolved)
+            {
+                _translatedValue = FirelyPrimitiveValues.ToFirely(_coreElement.Value, _coreElement.InstanceType);
+                _translatedValueResolved = true;
+            }
+
+            return _translatedValue;
+        }
+    }
 
     /// <inheritdoc/>
     public string InstanceType => _coreElement.InstanceType;
