@@ -147,6 +147,23 @@ public class TenantConnectionStringResolverTests
         ex.Message.ShouldContain("no database name");
     }
 
+    // A malformed connection string is the most likely appsettings typo. SqlConnectionStringBuilder
+    // throws ArgumentException for it, which would otherwise escape this method with no tenant
+    // named -- breaking the "failures are InvalidOperationException naming the tenant" contract
+    // every other guard here upholds.
+    [Fact]
+    public async Task GivenAMalformedConnectionString_WhenResolved_ThenThrowsInvalidOperationNamingTheTenant()
+    {
+        var store = new FakeTenantConfigurationStore();
+        store.Tenants[3] = Tenant(3, connectionString: "this is not a=valid;;;connection=string=======x");
+
+        var ex = await Should.ThrowAsync<InvalidOperationException>(
+            () => TenantConnectionStringResolver.ResolveAsync(store, 3, CancellationToken.None));
+
+        ex.Message.ShouldContain("Tenant 3");
+        ex.InnerException.ShouldBeOfType<ArgumentException>();
+    }
+
     // A whitespace-only ConnectionString is a realistic config typo; it must hit the same clear
     // guard as null/empty rather than producing an unusable connection string downstream.
     [Fact]

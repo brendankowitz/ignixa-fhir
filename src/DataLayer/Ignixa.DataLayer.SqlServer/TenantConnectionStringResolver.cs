@@ -83,10 +83,25 @@ public static class TenantConnectionStringResolver
         }
 
         // Every caller immediately does new SqlConnectionStringBuilder(cs).InitialCatalog and hands
-        // the result to DacFx as the target database name. An empty catalog would surface as
-        // "CREATE DATABASE []" or an opaque DacFx error; catching it at this single shared choke
-        // point gives one actionable message naming the tenant instead of three obscure ones.
-        if (string.IsNullOrWhiteSpace(new SqlConnectionStringBuilder(connectionString).InitialCatalog))
+        // the result to DacFx as the target database name. A malformed string, or one with no
+        // catalog, would surface as "CREATE DATABASE []" or an opaque parser error naming no
+        // tenant; catching both at this single shared choke point gives one actionable message.
+        SqlConnectionStringBuilder builder;
+        try
+        {
+            builder = new SqlConnectionStringBuilder(connectionString);
+        }
+        catch (ArgumentException ex)
+        {
+            // SqlConnectionStringBuilder throws ArgumentException for a malformed string -- the most
+            // likely appsettings typo. Translate it so this method's contract stays "failures are
+            // InvalidOperationException naming the tenant", rather than leaking a different
+            // exception type with no tenant in the message.
+            throw new InvalidOperationException(
+                $"Tenant {tenantId}'s connection string could not be parsed. Check the tenant's Storage.ConnectionString value.", ex);
+        }
+
+        if (string.IsNullOrWhiteSpace(builder.InitialCatalog))
         {
             throw new InvalidOperationException(
                 $"Tenant {tenantId}'s connection string specifies no database name (Initial Catalog/Database). " +

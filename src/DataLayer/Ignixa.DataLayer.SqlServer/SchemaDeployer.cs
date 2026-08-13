@@ -108,6 +108,18 @@ public sealed class SchemaDeployer : ISchemaDeployer
             return;
         }
 
+        // Cheap config gate before the expensive DacFx work below. A deployment that has explicitly
+        // opted out of automatic schema changes shouldn't pay for full deploy-report generation on
+        // every uncached factory creation, nor be taken down by a report-shape problem it has no
+        // interest in -- it needs to be told to use the CLI, and nothing more.
+        if (!_options.Value.AutomaticSchemaDeploymentEnabled)
+        {
+            throw new InvalidOperationException(
+                $"Tenant {tenantId}'s database is behind schema version {SchemaVersionConstants.CurrentVersion} " +
+                $"and {SqlServerOptions.SectionName}:{nameof(SqlServerOptions.AutomaticSchemaDeploymentEnabled)} is false. " +
+                "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
+        }
+
         using var dacpacStream = typeof(SchemaDeployer).Assembly.GetManifestResourceStream(DacpacResourceName)
             ?? throw new InvalidOperationException($"Embedded resource '{DacpacResourceName}' not found in {typeof(SchemaDeployer).Assembly.FullName}.");
         using var package = DacPackage.Load(dacpacStream);
@@ -116,21 +128,14 @@ public sealed class SchemaDeployer : ISchemaDeployer
 
         var deployReportXml = dacServices.GenerateDeployReport(package, databaseName, cancellationToken: cancellationToken);
 
-        if (!DeployReportClassifier.IsAutoSafe(deployReportXml))
+        var classification = DeployReportClassifier.Classify(deployReportXml);
+        if (!classification.IsAutoSafe)
         {
             throw new InvalidOperationException(
                 $"Tenant {tenantId}'s database is at schema version {currentVersion}, behind the current " +
-                $"version {SchemaVersionConstants.CurrentVersion}, and the pending diff contains changes " +
-                "that are not safe to apply automatically. Review the diff and apply it explicitly using " +
-                "the schema-upgrade CLI tool (tools/Ignixa.SchemaUpgrade.Cli).");
-        }
-
-        if (!_options.Value.AutomaticSchemaDeploymentEnabled)
-        {
-            throw new InvalidOperationException(
-                $"Tenant {tenantId}'s database is behind schema version {SchemaVersionConstants.CurrentVersion} " +
-                $"and {SqlServerOptions.SectionName}:{nameof(SqlServerOptions.AutomaticSchemaDeploymentEnabled)} is false. " +
-                "Apply the upgrade manually using the schema-upgrade CLI tool, or enable automatic deployment.");
+                $"version {SchemaVersionConstants.CurrentVersion}, and the pending diff is classified as " +
+                $"{classification.Outcome} rather than auto-safe ({classification.ReasonSummary}). Review the diff " +
+                "and apply it explicitly using the schema-upgrade CLI tool (tools/Ignixa.SchemaUpgrade.Cli).");
         }
 
         dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: cancellationToken);
@@ -222,10 +227,12 @@ public sealed class SchemaDeployer : ISchemaDeployer
     /// this class's own automatic paths do after applying its manual deploy. Without this, a
     /// CLI-applied upgrade would leave <see cref="ISchemaVersionResolver"/> reporting a stale
     /// version until some later, unrelated call happened to no-op-redeploy and self-heal it.
-    /// Idempotent: dbo.SchemaVersion has PRIMARY KEY (Version), so a bare INSERT would throw
-    /// (SQL error 2627) whenever an already-stamped version is re-stamped -- which is the norm,
-    /// not the exception, on the CLI's re-run path and when two app instances cold-start the same
-    /// tenant concurrently.
+    /// Idempotent and safe under concurrency: dbo.SchemaVersion has PRIMARY KEY (Version), so a
+    /// bare INSERT throws (SQL error 2627) whenever an already-stamped version is re-stamped --
+    /// which is the norm, not the exception, on the CLI's re-run path. A plain IF NOT EXISTS guard
+    /// would fix only the sequential case; two connections can both pass it before either inserts,
+    /// so the check takes a range lock (UPDLOCK, HOLDLOCK) inside an explicit transaction to also
+    /// cover two app instances cold-starting the same tenant concurrently.
     /// </summary>
     public static async Task StampSchemaVersionAsync(string connectionString, int version, CancellationToken cancellationToken)
     {
@@ -233,8 +240,11 @@ public sealed class SchemaDeployer : ISchemaDeployer
         await connection.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            IF NOT EXISTS (SELECT 1 FROM dbo.SchemaVersion WHERE Version = @version)
+            SET XACT_ABORT ON;
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM dbo.SchemaVersion WITH (UPDLOCK, HOLDLOCK) WHERE Version = @version)
                 INSERT dbo.SchemaVersion (Version) VALUES (@version);
+            COMMIT TRANSACTION;
             """;
         command.Parameters.AddWithValue("@version", version);
         await command.ExecuteNonQueryAsync(cancellationToken);

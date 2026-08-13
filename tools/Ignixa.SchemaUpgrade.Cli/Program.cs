@@ -71,9 +71,22 @@ internal static class Program
         output.WriteLine($"Pending schema diff for tenant {tenantId} ({databaseName}):");
         output.WriteLine(deployReportXml);
         output.WriteLine();
-        output.WriteLine(DeployReportClassifier.IsAutoSafe(deployReportXml)
-            ? "This diff IS classified as auto-safe -- SchemaDeployer's automatic path should have applied it. Applying it here anyway is redundant but harmless."
-            : "This diff is NOT classified as auto-safe -- at least one item is flagged by SqlPackage/DacFx as a DataIssue (carries a child <Issue> element). Review the XML above carefully before proceeding. If you proceed and DacFx still blocks the deploy citing possible data loss, re-run with --allow-data-loss.");
+
+        var classification = DeployReportClassifier.Classify(deployReportXml);
+        output.WriteLine(classification.Outcome switch
+        {
+            DeployClassification.AutoSafe =>
+                "This diff IS classified as auto-safe -- SchemaDeployer's automatic path should have applied it. Applying it here anyway is redundant but harmless.",
+            DeployClassification.Unsafe =>
+                $"This diff is NOT auto-safe -- DacFx flagged: {classification.ReasonSummary}. Review the XML above carefully before proceeding. " +
+                "If you proceed and DacFx still blocks the deploy citing possible data loss, re-run with --allow-data-loss.",
+            // Unclassifiable is deliberately a prompt, not a crash: this tool exists precisely to
+            // let an operator apply what the automatic path refused, so a report the classifier
+            // can't read must still reach a human decision rather than terminating here.
+            _ =>
+                $"This diff could NOT be classified: {classification.ReasonSummary}. The automatic path will refuse it. " +
+                "Review the XML above especially carefully -- the usual data-loss signal could not be verified.",
+        });
 
         if (!ConfirmApply(autoConfirm, input, output))
         {
@@ -83,7 +96,27 @@ internal static class Program
 
         var deployOptions = new DacDeployOptions { BlockOnPossibleDataLoss = !allowDataLoss };
         dacServices.Deploy(package, databaseName, upgradeExisting: true, options: deployOptions, cancellationToken: cancellationToken);
-        await SchemaDeployer.StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
+
+        // The schema is applied from here on. A failure stamping dbo.SchemaVersion must NOT be
+        // reported the same way as "aborted, nothing applied" (exit 1) -- an operator who sees that
+        // after a destructive --allow-data-loss run would reasonably conclude their change didn't
+        // land and re-run it. Report the partial state explicitly with its own exit code.
+        try
+        {
+            await SchemaDeployer.StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            output.WriteLine(
+                $"WARNING: the schema WAS applied to tenant {tenantId}'s database, but recording schema version " +
+                $"{SchemaVersionConstants.CurrentVersion} in dbo.SchemaVersion failed: {ex.Message}");
+            output.WriteLine(
+                "The database is up to date; only the version record is missing. Do NOT re-run this tool expecting " +
+                "the schema change to be re-applied -- instead re-run it once the underlying error is resolved, or " +
+                "insert the version row manually.");
+            return 2;
+        }
+
         output.WriteLine($"Applied. Tenant {tenantId}'s database is now on the current schema.");
         return 0;
     }
