@@ -201,4 +201,78 @@ public class ReferenceIndexTests
         // Act & Assert
         index.Resolve("#unknown").ShouldBeNull();
     }
+
+    [Fact]
+    public void GivenParametersRoot_WhenResolvingTopLevelParameterResourceByTypeAndId_ThenReturnsResource()
+    {
+        // Arrange
+        var element = BuildParametersWithNestedResources();
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("Patient/1");
+
+        // Assert
+        resolved.ShouldNotBeNull();
+        resolved!.InstanceType.ShouldBe("Patient");
+    }
+
+    [Fact]
+    public void GivenParametersRoot_WhenResolvingResourceNestedUnderPart_ThenRecursionFindsResource()
+    {
+        // Arrange - the resource lives under parameter.part.resource, one level deeper than the
+        // top-level parameter.resource case; this only resolves if IndexParameterList's recursive
+        // call into "part" actually runs.
+        var element = BuildParametersWithNestedResources();
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("Practitioner/2");
+
+        // Assert
+        resolved.ShouldNotBeNull();
+        resolved!.InstanceType.ShouldBe("Practitioner");
+    }
+
+    [Fact]
+    public void GivenParametersRoot_WhenResolvingByFullUrl_ThenReturnsNull()
+    {
+        // Arrange - a Parameters entry has no fullUrl, unlike a Bundle entry, so no Type/id
+        // resource should ever be reachable through a fullUrl-shaped key.
+        var element = BuildParametersWithNestedResources();
+        var index = ReferenceIndex.Build(element);
+
+        // Act & Assert
+        index.Resolve("http://example.org/fhir/Patient/1").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenParametersRoot_WhenResolvingUnknownTypeAndId_ThenReturnsNull()
+    {
+        // Arrange
+        var element = BuildParametersWithNestedResources();
+        var index = ReferenceIndex.Build(element);
+
+        // Act & Assert
+        index.Resolve("Patient/999").ShouldBeNull();
+    }
+
+    private IElement BuildParametersWithNestedResources() => ToElement(@"{
+        ""resourceType"": ""Parameters"",
+        ""parameter"": [
+            {
+                ""name"": ""topLevel"",
+                ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" }
+            },
+            {
+                ""name"": ""group"",
+                ""part"": [
+                    {
+                        ""name"": ""nested"",
+                        ""resource"": { ""resourceType"": ""Practitioner"", ""id"": ""2"" }
+                    }
+                ]
+            }
+        ]
+    }");
 }

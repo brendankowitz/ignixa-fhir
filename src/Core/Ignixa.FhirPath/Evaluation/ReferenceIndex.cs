@@ -10,9 +10,10 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <summary>
 /// Scoped reference index that resolves FHIRPath <c>resolve()</c> targets within a single
 /// resource root. Indexes contained resources (by <c>#id</c>) and, when the root is a Bundle,
-/// sibling entry resources (by <c>fullUrl</c>, <c>Type/id</c>, and <c>Type/id/_history/versionId</c>).
-/// A bare <c>#</c> always resolves to the root itself, the resource that directly contains the
-/// reference.
+/// sibling entry resources (by <c>fullUrl</c>, <c>Type/id</c>, and <c>Type/id/_history/versionId</c>);
+/// when the root is a Parameters resource, nested <c>parameter</c>/<c>part</c> resources (by
+/// <c>Type/id</c> only - a Parameters entry has no <c>fullUrl</c>). A bare <c>#</c> always resolves
+/// to the root itself, the resource that directly contains the reference.
 /// </summary>
 /// <remarks>
 /// Built once per resource root (O(entries)); the closure injected as the FHIRPath element
