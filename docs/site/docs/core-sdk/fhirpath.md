@@ -275,7 +275,7 @@ In-instance resolution always wins when a reference could be resolved both ways 
 No `ElementResolver` needed. It covers:
 
 - Contained resources by `#id` (`"reference": "#p1"` finds the matching entry in `contained`).
-- A bare `#`, which always resolves to the resource that directly contains the reference.
+- A bare `#`, which resolves to the containing resource only when evaluated from inside one of the root's contained resources; at root scope or Bundle-entry scope it resolves to empty (matching Firely's `ScopedNode`, measured against 5.13.1/6.0.1).
 - For a `Bundle` root, sibling entries by `fullUrl`, `Type/id`, and `Type/id/_history/versionId`.
 - For a `Parameters` root, resources nested under `parameter`/`part` (at any depth), keyed by `Type/id` only — Parameters entries have no `fullUrl`.
 

@@ -240,18 +240,20 @@ public class TreeContextScopingTests
     }
 
     [Fact]
-    public void GivenBareHashAtRootScope_WhenConstraintUsesResolve_ThenResolvesToTheResourceItself()
+    public void GivenBareHashAtRootScope_WhenConstraintUsesResolve_ThenResolvesToEmpty()
     {
-        // Arrange — bare '#' always resolves to the container resource (R4 references.html §2.3.0.8:
-        // "there is only one container resource"). At root scope the resource is its own container, so
-        // this locks in that a root-level invariant calling resolve() on '#' sees the resource itself,
-        // via the same RootResource/Resource seeding used by FhirPathInvariantCheck and SlicingCheck.
+        // Arrange — measured against Firely 5.13.1/6.0.1 (ScopedNodeOnBaseTests asserts
+        // Resolve("#") is null for a non-contained root): bare '#' only resolves to the container
+        // from inside a contained resource's own scope, not at root scope, where the resource is
+        // not contained in anything. This locks in that a root-level invariant calling resolve() on
+        // '#' sees nothing, via the same RootResource/Resource seeding used by
+        // FhirPathInvariantCheck and SlicingCheck.
         var constraint = new Ignixa.Specification.ConstraintDefinition
         {
             Key = "resolve-bare-hash",
             Severity = ConstraintSeverity.Error,
-            Human = "'#' resolves to the resource itself at root scope",
-            Expression = "'#'.resolve().id = id",
+            Human = "'#' resolves to nothing at root scope",
+            Expression = "'#'.resolve().empty()",
             Xpath = null,
             AppliesTo = new[] { "Patient" }
         };

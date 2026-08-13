@@ -71,8 +71,9 @@ internal static class FhirSpecificFunctions
     /// <summary>
     /// resolve() - Takes a Reference element and resolves it to the actual resource.
     /// Tries in-instance resolution first (contained resources by <c>#id</c>, sibling Bundle/Parameters
-    /// entries by <c>fullUrl</c> or <c>Type/id</c>, and bare <c>#</c> for the containing resource), then
-    /// falls back to the caller-supplied <see cref="FhirEvaluationContext.ElementResolver"/>.
+    /// entries by <c>fullUrl</c> or <c>Type/id</c>, and bare <c>#</c> when currently evaluating from
+    /// inside one of the root's contained resources - see <see cref="ReferenceIndex.ResolveContainerScope"/>),
+    /// then falls back to the caller-supplied <see cref="FhirEvaluationContext.ElementResolver"/>.
     /// Returns empty if the reference cannot be resolved by either path.
     /// Per FHIR spec: resolve() returns empty on failure (does not throw).
     /// </summary>
@@ -96,9 +97,12 @@ internal static class FhirSpecificFunctions
 
         var results = new List<IElement>();
 
-        // Bare '#' resolves to this root per R4 §2.3.0.8 (Contained Resources): "there is only one
-        // container resource", so inside a contained resource's own scope (RootResource is then the
-        // parent) '#' correctly yields the parent, not the contained resource being evaluated.
+        // The root the in-instance index is built from. Bare '#' does NOT resolve to this
+        // unconditionally: it resolves relative to context.Resource's containment scope (see
+        // ReferenceIndex.ResolveContainerScope). Firely's ScopedNode returns the container only
+        // from inside a contained resource's own scope, and null at root/Bundle-entry scope - its
+        // ScopedNodeOnBaseTests asserts Resolve("#") is null for both a Bundle and a Bundle entry
+        // resource (measured against Firely 5.13.1/6.0.1).
         var root = context.RootResource ?? context.Resource;
         var referenceIndex = TryBuildReferenceIndex(context.ReferenceIndexCache, root);
         var elementResolver = (context as FhirEvaluationContext)?.ElementResolver;
@@ -116,7 +120,7 @@ internal static class FhirSpecificFunctions
                 continue;
             }
 
-            var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver);
+            var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver, context.Resource);
             if (resolved != null)
             {
                 results.Add(resolved);
@@ -157,13 +161,19 @@ internal static class FhirSpecificFunctions
     /// <summary>
     /// Resolves a single reference value: in-instance first, then the host resolver. Per FHIR spec,
     /// a host resolver failure is swallowed rather than propagated - resolve() returns empty on failure.
+    /// A bare <c>#</c> is scope-dependent (see <see cref="ReferenceIndex.ResolveContainerScope"/>) so
+    /// it is dispatched separately from every other reference shape, which is a plain index lookup.
     /// </summary>
     private static IElement? ResolveReferenceValue(
         string referenceValue,
         ReferenceIndex? referenceIndex,
-        Func<string, IElement?>? elementResolver)
+        Func<string, IElement?>? elementResolver,
+        IElement? currentResource)
     {
-        var resolved = TryResolveInInstance(referenceIndex, referenceValue);
+        var resolved = referenceValue == "#"
+            ? TryResolveContainerScope(referenceIndex, currentResource)
+            : TryResolveInInstance(referenceIndex, referenceValue);
+
         if (resolved != null || elementResolver == null)
         {
             return resolved;
@@ -213,6 +223,27 @@ internal static class FhirSpecificFunctions
         try
         {
             return referenceIndex.Resolve(referenceValue);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a bare '#' against the current containment scope, swallowing a lookup failure for
+    /// the same never-throws reason as <see cref="TryResolveInInstance"/>.
+    /// </summary>
+    private static IElement? TryResolveContainerScope(ReferenceIndex? referenceIndex, IElement? currentResource)
+    {
+        if (referenceIndex == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return referenceIndex.ResolveContainerScope(currentResource);
         }
         catch
         {

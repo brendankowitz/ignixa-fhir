@@ -145,18 +145,21 @@ public class ResolveFunctionTests
     }
 
     [Fact]
-    public void GivenContainingResource_WhenResolvingBareHash_ThenReturnsTheContainingResource()
+    public void GivenRootResourceItself_WhenResolvingBareHash_ThenReturnsEmpty()
     {
-        // Arrange
+        // Arrange - Firely's ScopedNodeOnBaseTests asserts Resolve("#") is null for a
+        // non-contained root (measured against Firely 5.13.1/6.0.1); bare '#' only resolves to the
+        // container from inside a contained resource's own scope (see the sibling test below), not
+        // at root/self scope.
         var observation = ToElement(ObservationWithContainedPatientJson);
         var expr = _parser.Parse("'#'.resolve()");
         var context = new EvaluationContext { Resource = observation };
 
         // Act
-        var result = _evaluator.Evaluate(observation, expr, context).Single();
+        var result = _evaluator.Evaluate(observation, expr, context).ToList();
 
         // Assert
-        result.ShouldBeSameAs(observation);
+        result.ShouldBeEmpty();
     }
 
     [Fact]
@@ -285,11 +288,11 @@ public class ResolveFunctionTests
     public void GivenBareHashFromInsideAContainedResourceScope_WhenResolving_ThenReturnsTheParentNotTheContainedResource()
     {
         // Arrange
-        // R4 references.html §2.3.0.8: "there is only one container resource" - resolving '#' from
-        // inside the contained resource's own scope still yields the parent (RootResource), because
-        // resolution is scoped to the single container, not to whichever element is being evaluated.
-        // This mirrors ValidationState.EnterContainedResource, which sets RootResource to the parent
-        // while Resource becomes the contained resource being validated.
+        // Measured against Firely 5.13.1/6.0.1 (ScopedNode): resolving '#' from inside a contained
+        // resource's own scope yields the parent (RootResource), never the contained resource being
+        // evaluated - consistent with R4 references.html §2.3.0.8 ("there is only one container
+        // resource"). This mirrors ValidationState.EnterContainedResource, which sets RootResource
+        // to the parent while Resource becomes the contained resource being validated.
         var observation = ToElement(ObservationWithContainedPatientJson);
         var containedPatient = observation.Children("contained").Single();
         var expr = _parser.Parse("'#'.resolve()");
@@ -300,6 +303,32 @@ public class ResolveFunctionTests
 
         // Assert
         result.ShouldBeSameAs(observation);
+    }
+
+    [Fact]
+    public void GivenBareHashFromInsideABundleEntryResourceScope_WhenResolving_ThenReturnsEmpty()
+    {
+        // Arrange - Firely's ScopedNodeOnBaseTests asserts Resolve("#") is null for a Bundle entry
+        // resource too, not just the Bundle root itself. This is exactly the case the naive
+        // "RootResource != Resource" proxy would get wrong (it would misread this as a contained
+        // scope and return the Bundle); the correct check is containment membership, not identity
+        // inequality.
+        var bundle = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                { ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" } }
+            ]
+        }");
+        var entryResource = bundle.Children("entry").Single().Children("resource").Single();
+        var expr = _parser.Parse("'#'.resolve()");
+        var context = new EvaluationContext { Resource = entryResource, RootResource = bundle };
+
+        // Act
+        var result = _evaluator.Evaluate(entryResource, expr, context).ToList();
+
+        // Assert
+        result.ShouldBeEmpty();
     }
 
     /// <summary>

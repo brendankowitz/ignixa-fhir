@@ -15,7 +15,8 @@ using Xunit;
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 /// <summary>
-/// Unit tests for <see cref="ReferenceIndex"/> contained, bundle, and miss resolution.
+/// Unit tests for <see cref="ReferenceIndex"/> contained, bundle, container-scope, and miss
+/// resolution.
 /// </summary>
 public class ReferenceIndexTests
 {
@@ -128,9 +129,10 @@ public class ReferenceIndexTests
     }
 
     [Fact]
-    public void GivenResourceRoot_WhenResolvingBareHash_ThenReturnsRootElement()
+    public void GivenResourceRoot_WhenResolvingBareHashViaResolve_ThenReturnsNull()
     {
-        // Arrange
+        // Arrange - Resolve(string) has no notion of the current evaluation scope, so it can
+        // never decide what bare '#' means; ResolveContainerScope handles that instead.
         var element = ToElement(@"{
             ""resourceType"": ""Patient"",
             ""id"": ""example"",
@@ -142,11 +144,11 @@ public class ReferenceIndexTests
         var resolved = index.Resolve("#");
 
         // Assert
-        resolved.ShouldBeSameAs(element);
+        resolved.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenBundleRoot_WhenResolvingBareHash_ThenReturnsBundleItself()
+    public void GivenBundleRoot_WhenResolvingBareHashViaResolve_ThenReturnsNull()
     {
         // Arrange
         var element = ToElement(@"{
@@ -164,27 +166,104 @@ public class ReferenceIndexTests
         var resolved = index.Resolve("#");
 
         // Assert
-        resolved.ShouldBeSameAs(element);
-        resolved!.InstanceType.ShouldBe("Bundle");
+        resolved.ShouldBeNull();
     }
 
     [Fact]
-    public void GivenBareHash_WhenResolving_ThenDoesNotCollideWithContainedResourceHavingEmptyId()
+    public void GivenContainedResource_WhenResolvingContainerScope_ThenReturnsRoot()
     {
         // Arrange
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": ""p1"" } ]
+        }");
+        var index = ReferenceIndex.Build(element);
+        var contained = element.Children("contained").Single();
+
+        // Act
+        var resolved = index.ResolveContainerScope(contained);
+
+        // Assert
+        resolved.ShouldBeSameAs(element);
+    }
+
+    [Fact]
+    public void GivenContainedResourceWithEmptyId_WhenResolvingContainerScope_ThenStillReturnsRoot()
+    {
+        // Arrange - IndexContained skips empty ids for the #id lookup table, but containment
+        // membership must not depend on whether the contained resource has an id at all.
         var element = ToElement(@"{
             ""resourceType"": ""Patient"",
             ""id"": ""example"",
             ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": """" } ]
         }");
         var index = ReferenceIndex.Build(element);
+        var contained = element.Children("contained").Single();
 
         // Act
-        var resolved = index.Resolve("#");
+        var resolved = index.ResolveContainerScope(contained);
 
         // Assert
         resolved.ShouldBeSameAs(element);
-        resolved!.InstanceType.ShouldBe("Patient");
+    }
+
+    [Fact]
+    public void GivenRootItself_WhenResolvingContainerScope_ThenReturnsNull()
+    {
+        // Arrange - the root is not one of its own contained resources, so evaluating '#' at root
+        // scope must not resolve to the root; matches Firely's ScopedNodeOnBaseTests, which asserts
+        // Resolve("#") is null for a non-contained root.
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": ""p1"" } ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.ResolveContainerScope(element);
+
+        // Assert
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenBundleEntryResource_WhenResolvingContainerScope_ThenReturnsNull()
+    {
+        // Arrange - a Bundle entry resource is indexed by fullUrl/Type-id, not as a contained
+        // resource, so it must not be recognized as being in containment scope of the Bundle.
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" }
+                }
+            ]
+        }");
+        var index = ReferenceIndex.Build(element);
+        var entryResource = element.Children("entry").Single().Children("resource").Single();
+
+        // Act
+        var resolved = index.ResolveContainerScope(entryResource);
+
+        // Assert
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenNullCurrentResource_WhenResolvingContainerScope_ThenReturnsNull()
+    {
+        // Arrange
+        var element = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""example"" }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.ResolveContainerScope(null);
+
+        // Assert
+        resolved.ShouldBeNull();
     }
 
     [Fact]
