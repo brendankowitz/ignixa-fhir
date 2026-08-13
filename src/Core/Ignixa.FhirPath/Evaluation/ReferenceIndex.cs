@@ -5,28 +5,33 @@
 
 using Ignixa.Abstractions;
 
-namespace Ignixa.Validation;
+namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
 /// Scoped reference index that resolves FHIRPath <c>resolve()</c> targets within a single
 /// resource root. Indexes contained resources (by <c>#id</c>) and, when the root is a Bundle,
 /// sibling entry resources (by <c>fullUrl</c>, <c>Type/id</c>, and <c>Type/id/_history/versionId</c>).
+/// A bare <c>#</c> always resolves to the root itself, the resource that directly contains the
+/// reference.
 /// </summary>
 /// <remarks>
 /// Built once per resource root (O(entries)); the closure injected as the FHIRPath element
 /// resolver chains a contained-of-current scope to its parent scope. Mirrors the
 /// contained + bundle resolution algorithm of Firely's <c>ScopedNode.BundledResources()</c> /
-/// <c>ContainedResources()</c> without per-node parent pointers.
+/// <c>ContainedResources()</c> / <c>locateContainer()</c> without per-node parent pointers.
 /// </remarks>
 public sealed class ReferenceIndex
 {
+    private readonly IElement _root;
     private readonly Dictionary<string, IElement> _byContainedId;
     private readonly Dictionary<string, IElement> _byBundleKey;
 
     private ReferenceIndex(
+        IElement root,
         Dictionary<string, IElement> byContainedId,
         Dictionary<string, IElement> byBundleKey)
     {
+        _root = root;
         _byContainedId = byContainedId;
         _byBundleKey = byBundleKey;
     }
@@ -36,7 +41,7 @@ public sealed class ReferenceIndex
     /// for a Bundle root, its entry resources.
     /// </summary>
     /// <param name="root">The resource element to index. Must not be null.</param>
-    /// <returns>An index that resolves contained and intra-Bundle references for this root.</returns>
+    /// <returns>An index that resolves contained, intra-Bundle, and bare <c>#</c> references for this root.</returns>
     public static ReferenceIndex Build(IElement root)
     {
         ArgumentNullException.ThrowIfNull(root);
@@ -55,19 +60,27 @@ public sealed class ReferenceIndex
             IndexParametersEntries(root, byBundleKey);
         }
 
-        return new ReferenceIndex(byContainedId, byBundleKey);
+        return new ReferenceIndex(root, byContainedId, byBundleKey);
     }
 
     /// <summary>
     /// Resolves a reference to its target element within this index.
     /// </summary>
-    /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle key (<c>fullUrl</c> / <c>Type/id</c>).</param>
+    /// <param name="reference">
+    /// A fragment reference (<c>#id</c>), a bare <c>#</c> (the resource that contains the
+    /// reference, i.e. this index's root), or a Bundle key (<c>fullUrl</c> / <c>Type/id</c>).
+    /// </param>
     /// <returns>The matching element, or null when the reference is not present in this index.</returns>
     public IElement? Resolve(string reference)
     {
         if (string.IsNullOrEmpty(reference))
         {
             return null;
+        }
+
+        if (reference == "#")
+        {
+            return _root;
         }
 
         return reference.StartsWith('#')

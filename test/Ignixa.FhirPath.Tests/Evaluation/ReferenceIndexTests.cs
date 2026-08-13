@@ -3,25 +3,26 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
-using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
-using Ignixa.Validation.Tests.TestHelpers;
+using Ignixa.Specification;
+using Ignixa.Specification.Extensions;
 using Shouldly;
 using Xunit;
 
-namespace Ignixa.Validation.Tests;
+namespace Ignixa.FhirPath.Tests.Evaluation;
 
 /// <summary>
 /// Unit tests for <see cref="ReferenceIndex"/> contained, bundle, and miss resolution.
 /// </summary>
 public class ReferenceIndexTests
 {
-    private static IElement ToElement(string json)
-    {
-        var node = JsonNode.Parse(json);
-        return JsonNodeSourceNode.Create(node!).ToElement(TestSchemaProvider.GetR4Schema());
-    }
+    private readonly IFhirSchemaProvider _r4Provider = FhirVersion.R4.GetSchemaProvider();
+
+    private IElement ToElement(string json) =>
+        ResourceJsonNode.Parse(json).ToElement(_r4Provider);
 
     [Fact]
     public void GivenContainedResource_WhenResolvingFragment_ThenReturnsContained()
@@ -124,5 +125,80 @@ public class ReferenceIndexTests
 
         // Act & Assert
         index.Resolve("Patient/1").ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenResourceRoot_WhenResolvingBareHash_ThenReturnsRootElement()
+    {
+        // Arrange
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": ""p1"" } ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("#");
+
+        // Assert
+        resolved.ShouldBeSameAs(element);
+    }
+
+    [Fact]
+    public void GivenBundleRoot_WhenResolvingBareHash_ThenReturnsBundleItself()
+    {
+        // Arrange
+        var element = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": { ""resourceType"": ""Patient"", ""id"": ""1"" }
+                }
+            ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("#");
+
+        // Assert
+        resolved.ShouldBeSameAs(element);
+        resolved!.InstanceType.ShouldBe("Bundle");
+    }
+
+    [Fact]
+    public void GivenBareHash_WhenResolving_ThenDoesNotCollideWithContainedResourceHavingEmptyId()
+    {
+        // Arrange
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": """" } ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("#");
+
+        // Assert
+        resolved.ShouldBeSameAs(element);
+        resolved!.InstanceType.ShouldBe("Patient");
+    }
+
+    [Fact]
+    public void GivenUnknownFragment_WhenResolving_ThenStillReturnsNull()
+    {
+        // Arrange
+        var element = ToElement(@"{
+            ""resourceType"": ""Patient"",
+            ""id"": ""example"",
+            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": ""p1"" } ]
+        }");
+        var index = ReferenceIndex.Build(element);
+
+        // Act & Assert
+        index.Resolve("#unknown").ShouldBeNull();
     }
 }
