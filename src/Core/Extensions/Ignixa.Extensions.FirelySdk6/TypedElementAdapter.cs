@@ -55,7 +55,11 @@ public class TypedElementAdapter : ITypedElement
     }
 
     /// <inheritdoc/>
-    public object? Value => _coreElement.Value;
+    /// <remarks>
+    /// Translated into Firely's representation — Ignixa carries the temporal primitives as FHIR
+    /// wire-format strings, where Firely expects <c>Hl7.Fhir.ElementModel.Types</c> instances.
+    /// </remarks>
+    public object? Value => FirelyPrimitiveValues.ToFirely(_coreElement.Value, _coreElement.InstanceType);
 
     /// <inheritdoc/>
     public string InstanceType => _coreElement.InstanceType;

@@ -38,7 +38,11 @@ public class IgnixaElementAdapter : IElement
     public string Name => _firelyElement.Name;
 
     /// <inheritdoc/>
-    public object? Value => _firelyElement.Value;
+    /// <remarks>
+    /// Translated into Ignixa's representation — Firely surfaces the temporal primitives as
+    /// <c>Hl7.Fhir.ElementModel.Types</c> instances, which Ignixa's evaluators do not recognise.
+    /// </remarks>
+    public object? Value => FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value);
 
     /// <inheritdoc/>
     public string InstanceType => _firelyElement.InstanceType ?? string.Empty;
