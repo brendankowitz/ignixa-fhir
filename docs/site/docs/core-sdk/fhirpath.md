@@ -268,7 +268,7 @@ The `resolve()` function follows a `Reference` from one resource to another. Res
 1. **In-instance resolution** — looks inside the resource under evaluation for a contained resource, a sibling Bundle entry, or a bare `#`. This needs no configuration at all.
 2. **`ElementResolver` fallback** — only runs when in-instance resolution misses, and only when an `ElementResolver` is configured on a `FhirEvaluationContext`. This is the extension point for genuinely external references (a different server, a database, a cache).
 
-In-instance resolution always wins when a reference could be resolved both ways — it matches Firely's `ScopedNode` resolution order. Both stages require `Resource` (or `RootResource`) to be set on the evaluation context; `resolve()` has nothing to look inside otherwise and falls straight through to the `ElementResolver` (or to empty, if none is configured).
+In-instance resolution always wins when a reference could be resolved both ways — it matches Firely's `ScopedNode` resolution order. In-instance resolution requires a root to index: `RootResource` if set, otherwise `Resource` (the two can differ — for example, validation sets them to different elements while inside a contained resource's own scope). Without either, there's nothing to index, so `resolve()` falls straight through to the `ElementResolver` fallback — which has no such requirement — or to empty if that isn't configured either.
 
 #### In-instance resolution
 
@@ -277,7 +277,7 @@ No `ElementResolver` needed. It covers:
 - Contained resources by `#id` (`"reference": "#p1"` finds the matching entry in `contained`).
 - A bare `#`, which always resolves to the resource that directly contains the reference.
 - For a `Bundle` root, sibling entries by `fullUrl`, `Type/id`, and `Type/id/_history/versionId`.
-- For a `Parameters` root, resources nested under `parameter`/`part`, at any depth.
+- For a `Parameters` root, resources nested under `parameter`/`part` (at any depth), keyed by `Type/id` only — Parameters entries have no `fullUrl`.
 
 ```csharp
 using Ignixa.Abstractions;
@@ -313,7 +313,7 @@ var isPatient = observation
 // isPatient.Value == true
 ```
 
-The same applies to a `Bundle` root: `Bundle.entry.resource.ofType(Observation).subject.resolve()` finds a sibling `entry` by `fullUrl` or `Type/id` with no resolver configured, as long as `Resource` (or `RootResource`) points at the Bundle.
+The same applies to a `Bundle` root: `Bundle.entry.resource.ofType(Observation).subject.resolve()` finds a sibling `entry` by `fullUrl` or `Type/id` with no resolver configured, as long as `RootResource` (or `Resource`) points at the Bundle.
 
 #### External resolver (fallback)
 
