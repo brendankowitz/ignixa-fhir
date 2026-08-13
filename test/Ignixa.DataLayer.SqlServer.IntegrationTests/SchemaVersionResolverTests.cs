@@ -115,7 +115,7 @@ public class SchemaVersionResolverTests
             new ThrowingSchemaVersionResolver(),
             NullLogger<SchemaDeployer>.Instance);
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenATenantWithAStampedVersion_WhenGetCurrentVersionAsyncCalled_ThenReturnsIt()
     {
         // Arrange -- a real, empty, freshly-created database (unique name per test run), deployed
@@ -143,7 +143,7 @@ public class SchemaVersionResolverTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenATenantWithNoSchemaVersionTableAtAll_WhenGetCurrentVersionAsyncCalled_ThenReturnsZero()
     {
         // Arrange -- a real, empty, freshly-created database that has NEVER had any schema deployed

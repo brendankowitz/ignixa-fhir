@@ -101,7 +101,7 @@ public class RunAsyncDataLossTests
             """);
     }
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenAGenuinelyDestructiveDiffWithARowPresent_WhenRunAsyncCalled_ThenAllowDataLossIsRequiredToApplyAndDropTheColumn()
     {
         var databaseName = $"SchemaUpgradeCliDataLossTest_{Guid.NewGuid():N}";

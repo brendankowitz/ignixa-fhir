@@ -3,7 +3,11 @@
   <Sdk Name="Microsoft.Build.Sql" Version="2.2.0" />
   <PropertyGroup>
     <Name>Ignixa.DataLayer.SqlServer.Database</Name>
-    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql170DatabaseSchemaProvider</DSP>
+    <!-- SQL Server 2022. Deliberately not Sql170 (SQL Server 2025): DacFx refuses to publish a
+         2025-targeted project to an older server, and both the CI test container
+         (docker-compose.test.yml: mssql/server:2022) and Azure SQL are on 2022-era engines. The
+         schema uses no 2025-only features, so the lower target is strictly more portable. -->
+    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql160DatabaseSchemaProvider</DSP>
     <ModelCollation>1033, CI</ModelCollation>
     <ProjectGuid>0D46D298-89F4-43E1-B6B6-4F560D86D637</ProjectGuid>
   </PropertyGroup>

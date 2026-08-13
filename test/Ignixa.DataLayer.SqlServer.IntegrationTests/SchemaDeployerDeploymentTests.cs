@@ -132,7 +132,7 @@ public class SchemaDeployerDeploymentTests
             new ThrowingSchemaVersionResolver(),
             NullLogger<SchemaDeployer>.Instance);
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenAnEmptyDatabase_WhenDeployIfEmptyAsyncCalled_ThenCreatesTheExpectedTables()
     {
         // Arrange -- a real, empty, freshly-created database (unique name per test run).
@@ -166,7 +166,7 @@ public class SchemaDeployerDeploymentTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenANonEmptyDatabase_WhenDeployIfEmptyAsyncCalled_ThenDoesNotAttemptDeploy()
     {
         // Arrange -- a database that already has the Resource table (deploy once, then call again).
@@ -196,7 +196,7 @@ public class SchemaDeployerDeploymentTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenAnEmptyDatabaseAndTheToggleDisabled_WhenDeployIfEmptyAsyncCalled_ThenThrowsAnActionableError()
     {
         // Arrange -- AutomaticSchemaDeploymentEnabled = false, a real empty database.

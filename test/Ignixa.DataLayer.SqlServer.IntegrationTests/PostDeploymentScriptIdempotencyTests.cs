@@ -8,7 +8,7 @@ public class PostDeploymentScriptIdempotencyTests
 {
     private const string DacpacResourceName = "Ignixa.DataLayer.SqlServer.Schema.dacpac";
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenAnAlreadyDeployedDatabase_WhenPublishedAgain_ThenSucceedsWithoutError()
     {
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")

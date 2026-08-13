@@ -136,7 +136,7 @@ public class SchemaDeployerUpgradeTests
             new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenATenantAlreadyAtCurrentVersion_WhenUpgradeIfNeededAsyncCalled_ThenDoesNothing()
     {
         // Arrange -- deploy fresh via DeployIfEmptyAsync (stamps CurrentVersion per Task 1).
@@ -183,7 +183,7 @@ public class SchemaDeployerUpgradeTests
     // branch has been rebased, so any hash cited here would not survive.)
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion()
     {
         // Arrange -- a real, empty, freshly-created database.
@@ -239,7 +239,7 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
     public async Task GivenATenantWithAGenuinelyDestructiveDiffPending_WhenUpgradeIfNeededAsyncCalled_ThenThrowsAndDoesNotModifySchema()
     {
         // Arrange -- a real, empty, freshly-created database, deployed to the current dacpac's
