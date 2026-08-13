@@ -55,7 +55,7 @@ public class SelectBlockTests
     {
         var sql = new SelectBlock
         {
-            Top = "TOP (10) ",
+            Top = 10,
             Columns = "T1",
             From = "cte0 m",
             Joins = ["    INNER JOIN cte1 x ON x.T1 = m.T1"],

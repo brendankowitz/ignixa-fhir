@@ -46,7 +46,7 @@ internal static class Lower
 
         var offsetPage = paging is SearchPaging.Offset offset ? RequireOffsetSpec(offset) : null;
 
-        RejectUnsupportedOptions(top, includeLimit, sortPhase, shape, sort);
+        RejectUnsupportedOptions(top, keyset?.TopIncludesProbeRow ?? false, includeLimit, sortPhase, shape, sort);
 
         var accessConstraintApplier = new AccessConstraintApplier(context.AccessConstraints);
         var allowedResourceTypeFilter = new AllowedResourceTypeFilter(context.AllowedResourceTypes, symbols);
@@ -159,6 +159,7 @@ internal static class Lower
     /// not have. The guards fire in the order written, which the messages depend on.</summary>
     private static void RejectUnsupportedOptions(
         int? top,
+        bool topIncludesProbeRow,
         int includeLimit,
         SortPhase sortPhase,
         ResultShape shape,
@@ -169,6 +170,29 @@ internal static class Lower
             throw new NotSupportedException(
                 $"Top must not be negative; got {top}. A negative TOP is not a smaller page, it is a SQL Server " +
                 "runtime error, so it is reported at compile time instead.");
+        }
+
+        // The plan-level mirror of this lives in QueryPlanValidator.RequireCoherentProbeRow, which names
+        // MatchPageSpec. Checked here too, in options vocabulary, because that is the type this caller wrote
+        // -- the pattern KeysetPageInvariants describes for every other shared paging invariant.
+        if (topIncludesProbeRow)
+        {
+            if (top is not { } probeCap)
+            {
+                throw new NotSupportedException(
+                    $"{nameof(SearchPaging)}.{nameof(SearchPaging.Keyset)}." +
+                    $"{nameof(SearchPaging.Keyset.TopIncludesProbeRow)} requires a Top cap: it states that the " +
+                    "cap is the page size plus one has-more lookahead row, which says nothing about an " +
+                    "uncapped page. Set Top, or clear the flag.");
+            }
+
+            if (probeCap < 1)
+            {
+                throw new NotSupportedException(
+                    $"Top must be at least 1 when {nameof(SearchPaging.Keyset.TopIncludesProbeRow)} is set; got " +
+                    $"{probeCap}. The cap covers the page and its probe row, so the include stages seed from " +
+                    "Top - 1 rows and a smaller cap leaves nothing to seed from.");
+            }
         }
 
         if (includeLimit is < 0 or int.MaxValue)

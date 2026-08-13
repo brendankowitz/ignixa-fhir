@@ -44,7 +44,14 @@ internal static class PredicateEmitter
     /// </summary>
     internal static SqlParameterRef EscapeLike(Predicate.Like like)
     {
-        var raw = (string)like.Value.Value;
+        // Stated rather than cast: Predicate is a public construction surface, so a Like carrying a non-string
+        // value is caller input. An InvalidCastException here would escape both TryCompile's filter and the
+        // plan-trace guard, surfacing as an unhandled exception out of a Try* method.
+        var raw = like.Value.Value as string
+            ?? throw new NotSupportedException(
+                $"Predicate.Like requires a string value; got " +
+                $"{like.Value.Value?.GetType().Name ?? "null"}. LIKE escaping is defined over text only.");
+
         var escaped = raw.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("%", "\\%", StringComparison.Ordinal)
             .Replace("_", "\\_", StringComparison.Ordinal)

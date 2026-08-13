@@ -380,6 +380,29 @@ raised — precisely the action the message invites ("raise this threshold delib
 overwritten in the `else` branch; the initial assignment is live only when `expression is null`, where it is
 never read. Harmless, but it obscures the control flow.
 
+**9. `TopIncludesProbeRow` is a flag whose precondition is not in the type.** `SearchPaging.Keyset` and
+`MatchPageSpec` both carry `int? Top` plus `bool TopIncludesProbeRow`, so "the flag requires a cap" is enforced
+at runtime — by `Lower.RejectUnsupportedOptions` and `QueryPlanValidator.RequireCoherentProbeRow` — rather than
+being unrepresentable. The concrete symptom this cost us: `TrimmedPageSize` computes `cap - 1`, so `Top: 0` with
+the flag set returned **−1** from a member whose own summary calls it a row count, and `Lower` would have built
+a `MatchSeed` from it before any validator ran. That is now clamped to null, but the underlying shape is still
+a flag beside an unrelated optional int.
+
+The fix is `TopSpec(int PageSize, bool ProbeExtraRow)` mirroring `OffsetSpec`, which makes `PageSize` a stored
+non-negative field on both paging branches, deletes `RequireCoherentProbeRow` and its options-level twin, and
+removes the `?? throw` in `MatchPageEmitter` and `PlanExplainer`. Explain output is unaffected — render
+`PageSize + (ProbeExtraRow ? 1 : 0)` — so no golden moves. Deferred because `Top` is public API on a public
+construction surface and `README.md` documents `Keyset(Top: 51, TopIncludesProbeRow: true)` as the calling
+convention; that belongs in a deliberate API-change PR, not bolted onto an otherwise behaviour-preserving one.
+
+**10. Include arms anti-join the untrimmed match page while seeding from the trimmed one.** `ShapeEmitter`'s
+include arms emit `WHERE NOT EXISTS (SELECT 1 FROM cteMatchPage …)` while the stages seed from `cteMatchSeed`.
+A resource that is both an include target of a kept match *and* the probe match row is therefore excluded from
+the include arms, and disappears entirely once the caller drops the probe row — leaving a dangling reference
+from a kept match. The duplication rationale pinned in `EmitProbeRowIncludeSeedTests` is sound for the case it
+describes but does not cover this sharing case. Pre-dates this work (arrived with upstream `480ea416`) and has
+no in-repo consumer, so it is recorded rather than changed.
+
 **8. [FIXED] `Describe` and `Run` validate to different standards.** Surfaced after the rebase onto `480ea416`.
 `SqlBuilder.Run` calls `QueryPlanValidator.Validate` then `PlanValidator.Validate`; `PlanExplainer.Describe`
 calls only the first. `QueryPlanValidator` holds no equivalent of the second's guards, so `Describe` accepts and
@@ -401,7 +424,7 @@ from the P0–P4 work.
 
 | # | Item | Outcome |
 |---|------|---------|
-| 2 | `Top`-capped keyset page + `_include` seeds includes from the probe row | The over-fetch is now a property of the page rather than of one paging mechanism. `SearchPaging.Keyset` gained `TopIncludesProbeRow`, `MatchPageSpec` derives `OverFetchesProbeRow` and `TrimmedPageSize` from whichever mechanism is in play, and both `Lower` and the emitter ask the page. Deriving rather than storing means the two mechanisms cannot disagree. `QueryPlanValidator` now also rejects the flag without a usable cap, which `TrimmedPageSize` would otherwise turn into `SELECT TOP (-1)`. |
+| 2 | `Top`-capped keyset page + `_include` seeds includes from the probe row | The over-fetch is now a property of the page rather than of one paging mechanism. `SearchPaging.Keyset` gained `TopIncludesProbeRow`, and `MatchPageSpec` derives a single `TrimmedPageSize` from whichever mechanism is in play — one member rather than a flag plus a size, so there is no state in which the two could disagree. Both `Lower` and the emitter ask the page. The flag's precondition (a cap of at least 1) is rejected at both layers, in each layer's own vocabulary: `Lower` names `SearchPaging.Keyset`, `QueryPlanValidator` names `MatchPageSpec`. |
 | 4 | Two wildcard `:iterate` includes report a cycle | `TopologicalSort` inspects the nodes Kahn's algorithm could not place; if any carries a wildcard set it names wildcard iteration as the limitation instead of blaming a cycle the caller did not write. The genuine-cycle message is unchanged and still covered. |
 | 8 | `Describe` and `Run` validated to different standards | `PlanValidator` moved to `Ast/PlanShapeValidator.cs` and is now reached only through `QueryPlanValidator.Validate`, so a plan is validated through exactly one entry point and no caller can apply half the guards. This immediately caught a golden fixture that paired a keyset boundary with an OFFSET page — a plan `Run` always rejected, so its pinned ordinals described SQL that could never be emitted. |
 
@@ -443,14 +466,20 @@ not. All are fixed; they are recorded because each says something about where th
   divergence escaped as an unhandled exception rather than a compilation failure. Now `NotSupportedException`.
 - **Diagnostics could fail a compile.** `BuildPlanTrace` was unguarded, so `DiagnosticsLevel.Full` turned any
   emit-stage refusal into a thrown search — and the trace is exactly what a caller wants when a plan will not
-  emit. Now degrades to a recorded diagnostic.
+  emit. Now carries the refusal on `SearchCompilationDiagnostics.PlanTraceFailure` rather than dropping it:
+  an absent trace at `Full` has to be able to say why, and an explain/emit disagreement shows up nowhere else
+  because it never affects the SQL.
 - **The probe-row bug was still constructible.** The validator rejected a `MatchSeed` on a page that does not
   over-fetch, but not the reverse: an over-fetching page whose include stages seed from the untrimmed
   `MatchPage` emitted the original defect, reachable through the documented `plan with { Query = … }` rewrite.
   Now guarded symmetrically.
-- **`MatchPageSpec` could contradict itself.** `Top: null, TopIncludesProbeRow: true` reported "over-fetches"
-  and "no page size" simultaneously — the state its own remarks called unrepresentable. The two members
-  collapsed into `TrimmedPageSize` alone, which also removed a `?? throw` and a null-forgiving dereference.
+- **`MatchPageSpec` published two answers to one question.** It derived both `OverFetchesProbeRow` and
+  `TrimmedPageSize`, and `Top: null, TopIncludesProbeRow: true` made them disagree — "over-fetches" with "no
+  page size" — the state its own remarks called unrepresentable. The two *derived* members are now one:
+  every caller asks `TrimmedPageSize`. The stored pair (`Top` plus the flag) can still disagree, which is
+  what `RequireCoherentProbeRow` and its options-level twin exist for, and what deferred finding 9 proposes
+  making unrepresentable. The collapse also removed a null-forgiving `spec.OffsetPage!.Limit` from the
+  explainer.
 - **Three emitters had no test pinning their SQL at all.** Mutation testing showed a space appended to
   `ChainJoin` (both directions) or `ReferencedTypeExpansion`'s `FROM` passed the entire suite — and these are
   the only emitters whose whitespace P6 restructured non-trivially. Now pinned under both visibility branches.

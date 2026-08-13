@@ -99,12 +99,12 @@ internal static class QueryPlanValidator
             }
         }
 
-        static void RequireChild(CteRef reference, int ordinal, string member, int part = -1)
-            => RequireIndex(reference.Index, ordinal, ReferenceBound.EarlierCte, "Ctes", ordinal, member, part);
-
         // Last, and inside this method rather than beside it at the call sites: a plan is validated through
         // exactly one entry point, so no caller can apply the structural guards without the shape guards.
         PlanShapeValidator.Validate(plan);
+
+        static void RequireChild(CteRef reference, int ordinal, string member, int part = -1)
+            => RequireIndex(reference.Index, ordinal, ReferenceBound.EarlierCte, "Ctes", ordinal, member, part);
     }
 
     /// <summary>
@@ -168,9 +168,10 @@ internal static class QueryPlanValidator
             // match set must seed from the trimmed MatchSeed. Without this, a plan that simply omits the
             // wrapper emits include rows for a resource that is not on the returned page -- the exact defect
             // the wrapper exists to prevent, and reachable through the documented `plan with { … }` rewrite.
-            // The SeedFromMatch test is always true for a valid plan (stage 0 has no earlier stage to seed
-            // from, so RequireIncludeSeed already forces it) and is kept to mirror the guard below and to
-            // stay correct if that ever changes.
+            // The SeedFromMatch test is always true for a valid plan -- stage 0 has no earlier stage to seed
+            // from, and RejectDanglingIncludeReferences (run above) requires every stage to set SeedFromMatch
+            // or name an earlier one, with RequireIndex's EarlierStage bound rejecting every SeedStages entry
+            // at stage 0. Kept to mirror the guard below and to stay correct if that ever changes.
             if (plan.MatchSpec.TrimmedPageSize is not null && plan.Includes!.Any(stage => stage.SeedFromMatch))
             {
                 throw new NotSupportedException(

@@ -604,6 +604,7 @@ public class PlanExplainerTests
         offsetExplained.ShouldNotContain("offsetPage = ");
         offsetExplained.ShouldContain("countOnly = true");
     }
+
     [Fact]
     public void GivenAParameterBindingCteAfterTheMatchRoot_WhenExplained_ThenTheOuterPredicateTakesTheOrdinalEmissionBoundIt()
     {
@@ -628,6 +629,7 @@ public class PlanExplainerTests
             "root = ResourceSource[103] WHERE IsDeleted = @p2\n" +
             "cte1 = ResourceSource[105]");
     }
+
     [Fact]
     public void GivenAMultiTypeResourceSourceCarryingAPredicate_WhenExplained_ThenItNamesTheParameterEmissionBinds()
     {
@@ -644,6 +646,7 @@ public class PlanExplainerTests
         emitted.Parameters.Select(p => p.Value).ShouldBe(["abc"]);
         plan.Explain().ShouldBe("root = MultiTypeResourceSource[*]  ResourceId = @p0");
     }
+
     [Fact]
     public void GivenAResourceSourceCarryingAPredicate_WhenEmittedAndExplained_ThenBothAgreeOnWhichValueTakesWhichOrdinal()
     {

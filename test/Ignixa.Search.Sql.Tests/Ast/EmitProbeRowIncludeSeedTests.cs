@@ -86,7 +86,7 @@ public class EmitProbeRowIncludeSeedTests
             IncludeSeed: new CteRef(2));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
-            .Message.ShouldContain("over-fetches");
+            .Message.ShouldContain("either an OffsetPage with ProbeExtraRow enabled");
     }
 
     [Theory]
@@ -101,6 +101,19 @@ public class EmitProbeRowIncludeSeedTests
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
             .Message.ShouldContain("TopIncludesProbeRow");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public void GivenTopIncludesProbeRowWithoutAUsableCap_WhenAsked_ThenTheSpecReportsNoTrimmedPageRatherThanANegativeOne(int? top)
+    {
+        // TrimmedPageSize subtracts one from the cap, and its own summary calls the result a row count. A cap
+        // of 0 must therefore answer "no trimmed page" rather than "-1 rows are on it" -- the incoherent spec
+        // is still rejected, by QueryPlanValidator, but no caller sees a negative row count on the way there.
+        var spec = new MatchPageSpec(new CteRef(0), Top: top, TopIncludesProbeRow: true);
+
+        spec.TrimmedPageSize.ShouldBeNull();
     }
 
     [Fact]

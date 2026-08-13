@@ -36,9 +36,15 @@ public sealed record MatchPageSpec(
     /// Deliberately one member rather than a flag plus a size: those could disagree (a probe flag with no
     /// cap to subtract from), and every caller would have had to know which to trust.
     /// </summary>
+    /// <remarks>
+    /// A cap too small to contain both a page and its probe row yields null rather than a negative count, so
+    /// this never reports a row count it could not mean. The incoherent spec is still rejected — by
+    /// <c>QueryPlanValidator</c>, which names the flag and the cap — but it is rejected there rather than
+    /// silently seeding a wrapper from a negative size on the way.
+    /// </remarks>
     public int? TrimmedPageSize => OffsetPage is { ProbeExtraRow: true } offset
         ? offset.Limit
-        : TopIncludesProbeRow && Top is { } cap ? cap - 1 : null;
+        : TopIncludesProbeRow && Top is { } cap && cap >= 1 ? cap - 1 : null;
 
     /// <summary>
     /// The keyset boundary for later pages of an <see cref="ResultShape.IncludesPage"/> stream, or null for

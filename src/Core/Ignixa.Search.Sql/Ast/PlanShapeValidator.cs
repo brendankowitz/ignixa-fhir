@@ -158,6 +158,9 @@ internal static class PlanShapeValidator
                 CteDefinition.ChainJoin { OutputResourceTypeIds.Count: 0 } => nameof(CteDefinition.ChainJoin.OutputResourceTypeIds),
                 CteDefinition.ReferencedTypeExpansion { OutputResourceTypeIds.Count: 0 } => nameof(CteDefinition.ReferencedTypeExpansion.OutputResourceTypeIds),
                 CteDefinition.CompartmentSource { ResourceTypeIds.Count: 0 } => nameof(CteDefinition.CompartmentSource.ResourceTypeIds),
+                // Not a type list, but the same failure: the parts are joined with UNION, so joining zero of
+                // them leaves the CTE body empty and "cteN AS (\n\n)" does not parse either.
+                CteDefinition.Union { Parts.Count: 0 } => nameof(CteDefinition.Union.Parts),
                 _ => null,
             };
 

@@ -389,11 +389,11 @@ public class LowerTests
     {
         // The discriminating half of the wildcard diagnosis. Kahn's algorithm leaves behind everything it
         // could not place, including nodes merely downstream of a loop, so a wildcard stranded behind a real
-        // A<->B cycle must NOT be blamed for it. A REVERSE wildcard is the shape that exposes this: it
-        // resolves Requires to null (so everything depends on it, and it gets stuck behind the cycle) while
-        // its Produces stays concrete (so it depends on nothing here, and is in no cycle of its own). A
-        // forward wildcard cannot show this -- its null Produces points it at every stage, so being stuck
-        // always implies a mutual pair.
+        // A<->B cycle must NOT be blamed for it. The shape that exposes this is a wildcard whose REQUIRES
+        // resolves to null: everything depends on it, so it gets stuck behind the cycle, while its concrete
+        // Produces means it depends on nothing here and is in no cycle of its own. A wildcard whose PRODUCES
+        // is null cannot show it -- that side points at every stage, so being stuck always implies a mutual
+        // pair. (Which parser input yields which null side is direction-dependent; that is not what this pins.)
         var aParam = new SearchParameterInfo(
             "a", "a", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/A-a"), targetResourceTypes: ["B"]);
         var bParam = new SearchParameterInfo(
@@ -410,6 +410,95 @@ public class LowerTests
 
         var error = Should.Throw<NotSupportedException>(() =>
             LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [], revIncludes: [includeA, includeB, wildcard], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null));
+
+        error.Message.ShouldContain("cycle");
+        error.Message.ShouldNotContain("wildcard");
+    }
+
+    [Fact]
+    public void GivenTwoDependentIterateIncludesListedConsumerFirst_WhenLowered_ThenTheTopologicalSortReordersThem()
+    {
+        // Patient?_include:iterate=Organization:partof&_include:iterate=Patient:organization, listed with the
+        // CONSUMER first. Without the topological sort the consumer is planned before its producer, finds
+        // nothing to seed from, and is dropped as degenerate -- no error, no SQL, the :iterate silently
+        // returns nothing. Every other ordering test here has either one iterate stage or two independent
+        // ones, so Kahn's edge relaxation never ran under test.
+        var orgParam = new SearchParameterInfo(
+            "organization", "organization", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Patient-organization"), targetResourceTypes: ["Organization"]);
+        var partOfParam = new SearchParameterInfo(
+            "partof", "partof", SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/Organization-partof"), targetResourceTypes: ["Organization"]);
+
+        var producer = new IncludeExpression(["Patient"], orgParam, "Patient", "Organization", null, wildCard: false, reversed: false, iterate: true);
+        var consumer = new IncludeExpression(["Organization"], partOfParam, "Organization", "Organization", null, wildCard: false, reversed: false, iterate: true);
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [orgParam.Url.ToString()] = 55, [partOfParam.Url.ToString()] = 66 },
+            new Dictionary<string, short> { ["Patient"] = 103, ["Organization"] = 105 });
+
+        // Act -- consumer listed first.
+        var plan = LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [consumer, producer], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null).Plan;
+
+        // Assert -- the producer sorts first and the consumer seeds from it; neither is dropped.
+        plan.Includes!.Count.ShouldBe(2);
+        plan.Includes[0].ReferenceSearchParamId.ShouldBe((short)55);
+        plan.Includes[0].SeedFromMatch.ShouldBeTrue();
+        plan.Includes[1].ReferenceSearchParamId.ShouldBe((short)66);
+        plan.Includes[1].SeedStages.ShouldBe([0]);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public void GivenTopIncludesProbeRowWithoutAUsableCap_WhenLowered_ThenItIsRejectedInOptionsVocabulary(int? top)
+    {
+        // The plan-level guard names MatchPageSpec, a type an options-level caller never touched. Every other
+        // shared paging invariant is checked at both layers in each layer's own vocabulary (see
+        // KeysetPageInvariants); this one used to be checked only at the plan level.
+        var symbols = new SymbolTable(
+            new Dictionary<string, short>(),
+            new Dictionary<string, short> { ["Patient"] = 103 });
+
+        var error = Should.Throw<NotSupportedException>(() =>
+            LowerHarness.Run(
+                expression: null,
+                symbols,
+                targetResourceType: "Patient",
+                includes: [],
+                revIncludes: [],
+                includeLimit: 1000,
+                sort: [],
+                sortPhase: SortPhase.Valued,
+                page: null,
+                options: new LowerOptions { Top = top, TopIncludesProbeRow = true }));
+
+        error.Message.ShouldContain(nameof(SearchPaging.Keyset.TopIncludesProbeRow));
+        error.Message.ShouldNotContain(nameof(MatchPageSpec));
+    }
+
+    [Fact]
+    public void GivenAGenuineCycleAlongsideAForwardWildcardIterate_WhenLowered_ThenTheCycleWinsTheDiagnosis()
+    {
+        // A wildcard whose Produces resolves to null points at every stage, so a caller-written A<->B cycle
+        // drags it into the stuck set AND into a mutual pair. Blaming it would tell the caller to delete an
+        // expression that was never the cause, after which they would hit the real cycle anyway. The
+        // diagnosis is decided by whether a cycle survives removing the wildcards, not by whether one is
+        // involved.
+        var aParam = new SearchParameterInfo(
+            "a", "a", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/A-a"), targetResourceTypes: ["B"]);
+        var bParam = new SearchParameterInfo(
+            "b", "b", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/B-b"), targetResourceTypes: ["A"]);
+        var includeA = new IncludeExpression(["A"], aParam, "A", "B", null, wildCard: false, reversed: false, iterate: true);
+        var includeB = new IncludeExpression(["B"], bParam, "B", "A", null, wildCard: false, reversed: false, iterate: true);
+        var wildcard = new IncludeExpression(["B"], null!, "B", null!, ["*"], wildCard: true, reversed: false, iterate: true);
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [aParam.Url.ToString()] = 1, [bParam.Url.ToString()] = 2 },
+            new Dictionary<string, short> { ["A"] = 10, ["B"] = 11, ["Patient"] = 103 });
+
+        var error = Should.Throw<NotSupportedException>(() =>
+            LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, includeB, wildcard], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null));
 
         error.Message.ShouldContain("cycle");
         error.Message.ShouldNotContain("wildcard");

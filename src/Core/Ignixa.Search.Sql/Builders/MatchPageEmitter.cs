@@ -1,3 +1,4 @@
+using System.Globalization;
 using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
 using static Ignixa.Search.Sql.Builders.PredicateEmitter;
@@ -16,7 +17,7 @@ internal static class MatchPageEmitter
     /// </summary>
     internal static CteBody EmitMatchPage(MatchPageSpec spec, List<EmittedSqlParameter> parameters)
     {
-        var top = spec.Top is { } n ? $"TOP ({n}) " : string.Empty;
+        var top = SelectBlock.RenderTop(spec.Top);
         var sortJoins = EmitSortJoins(spec.Sort);
 
         // An includes-only page never orders by the sort key, so the match CTE projects no SortValueN columns.
@@ -71,11 +72,15 @@ internal static class MatchPageEmitter
     internal static CteBody EmitMatchSeed(CteDefinition.MatchSeed seed)
     {
         var trimmedSize = seed.Spec.TrimmedPageSize
-            ?? throw new NotSupportedException("MatchSeed requires a page that over-fetches a probe row.");
+            ?? throw new NotSupportedException(
+                $"MatchSeed reached emission on a page that does not over-fetch (Top {seed.Spec.Top?.ToString(CultureInfo.InvariantCulture) ?? "none"}, " +
+                $"TopIncludesProbeRow {seed.Spec.TopIncludesProbeRow}, OffsetPage " +
+                $"{(seed.Spec.OffsetPage is null ? "none" : "present")}). QueryPlanValidator rejects this plan " +
+                "before any SQL is written, so reaching here means a caller bypassed QueryPlanValidator.Validate.");
 
         return new CteBody(new SelectBlock
         {
-            Top = $"TOP ({trimmedSize}) ",
+            Top = trimmedSize,
             Columns = "T1, Sid1",
             From = MatchPage,
             OrderBy = EmitSortValueOrderBy(seed.Spec.Sort),

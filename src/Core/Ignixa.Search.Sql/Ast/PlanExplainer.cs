@@ -104,16 +104,16 @@ public static class PlanExplainer
                     "page", "page", PlanRowKind.PageSpec, PrintPageSpec(page, cursor), []));
             }
 
-            if (plan.MatchSpec.SurrogateRange is not null)
+            if (plan.MatchSpec.SurrogateRange is { } surrogateRange)
             {
                 rows.Add(new PlanExplainRow(
-                    "surrogateRange", "surrogateRange", PlanRowKind.SurrogateRange, PrintSurrogateRange(plan.MatchSpec.SurrogateRange!, cursor), []));
+                    "surrogateRange", "surrogateRange", PlanRowKind.SurrogateRange, PrintSurrogateRange(surrogateRange, cursor), []));
             }
 
-            if (plan.MatchSpec.SearchParameterHash is not null)
+            if (plan.MatchSpec.SearchParameterHash is { } parameterHash)
             {
                 rows.Add(new PlanExplainRow(
-                    "searchParameterHash", "searchParameterHash", PlanRowKind.SearchParameterHash, PrintSearchParameterHash(plan.MatchSpec.SearchParameterHash!, cursor), []));
+                    "searchParameterHash", "searchParameterHash", PlanRowKind.SearchParameterHash, PrintSearchParameterHash(parameterHash, cursor), []));
             }
 
             // Offset paging is mutually exclusive with Page and is not bound for CountOnly.
@@ -133,13 +133,13 @@ public static class PlanExplainer
         // with SurrogateRange or SearchParameterHash -- exactly the combination PlanShapeValidator's own
         // RejectUnsupportedCombinations guard message recommends ("bound the match set with SurrogateRange
         // and page the include rows with ResultShape.IncludesPage.Resume").
-        if (plan.MatchSpec.IncludeBoundary is not null)
+        if (plan.MatchSpec.IncludeBoundary is { } includeBoundary)
         {
             rows.Add(new PlanExplainRow(
                 "includeBoundary",
                 "includeBoundary",
                 PlanRowKind.IncludeBoundary,
-                PrintIncludeBoundary(plan.MatchSpec.IncludeBoundary!, cursor),
+                PrintIncludeBoundary(includeBoundary, cursor),
                 []));
         }
 
@@ -216,7 +216,7 @@ public static class PlanExplainer
     private static string PrintSortSpec(SortSpec sort)
     {
         var keys = sort.Keys.Select(k =>
-            $"{k.Kind}:{(k.SearchParamId is { } id ? id.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")} {(k.Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
+            $"{k.Kind}:{(k.SearchParamId is { } id ? id.ToString(CultureInfo.InvariantCulture) : "-")} {(k.Direction == SortOrder.Ascending ? "ASC" : "DESC")}");
         return $"SortSpec([{string.Join(", ", keys)}], {sort.Phase})";
     }
 
@@ -271,14 +271,14 @@ public static class PlanExplainer
             body += $" {PrintPageSpec(page, cursor)}";
         }
 
-        if (spec.SurrogateRange is not null)
+        if (spec.SurrogateRange is { } specSurrogateRange)
         {
-            body += $" {PrintSurrogateRange(spec.SurrogateRange!, cursor)}";
+            body += $" {PrintSurrogateRange(specSurrogateRange, cursor)}";
         }
 
-        if (spec.SearchParameterHash is not null)
+        if (spec.SearchParameterHash is { } specParameterHash)
         {
-            body += $" {PrintSearchParameterHash(spec.SearchParameterHash!, cursor)}";
+            body += $" {PrintSearchParameterHash(specParameterHash, cursor)}";
         }
 
         if (spec.OffsetPage is { } offsetPage)
@@ -292,7 +292,10 @@ public static class PlanExplainer
     private static string PrintMatchSeedCte(MatchPageSpec spec)
         => spec.TrimmedPageSize is { } trimmed
             ? $"MatchSeedCte(limit={trimmed.ToString(CultureInfo.InvariantCulture)})"
-            : throw new NotSupportedException("MatchSeed requires a page that over-fetches a probe row.");
+            : throw new NotSupportedException(
+                "MatchSeed reached explain on a page that does not over-fetch. QueryPlanValidator rejects " +
+                "this plan before Describe walks it, so reaching here means a caller bypassed " +
+                "QueryPlanValidator.Validate.");
 
     /// <summary>
     /// Renders the OFFSET/FETCH clause Emit binds for <see cref="OffsetSpec"/> -- two ordinals, offset then
@@ -395,7 +398,8 @@ public static class PlanExplainer
         return $"MultiTypeResourceSource[{typeList}]{predicate}{PrintTop(top)}";
     }
 
-    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, EmittedParameterCursor cursor)    {
+    private static string PrintResourceSource(CteDefinition.ResourceSource rs, int? top, EmittedParameterCursor cursor)
+    {
         // Emit binds the predicate's values BEFORE ResourceTypeId, even though the emitted WHERE renders
         // ResourceTypeId first, so they are consumed in that order here. The hand-maintained explainer had
         // this backwards and printed the wrong @pN for a ResourceSource carrying a predicate; nothing caught

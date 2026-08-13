@@ -160,26 +160,26 @@ internal static class IncludeStagePlanner
             var stuck = Enumerable.Range(0, n).Where(i => !ordered[i]).ToList();
 
             // A wildcard resolves one side of its type sets to null, and Overlaps treats null as matching
-            // anything, so every other stage depends on it. When some stage it depends on ALSO depends back
-            // on it, the two are mutually dependent and no order exists between them. That is a limitation
-            // of wildcard iteration rather than a cycle the caller wrote, and saying "cycle" sends them
-            // looking for a mutual dependency that is not there. The back-edge test matters: a wildcard
-            // stranded downstream of a genuine cycle between two concrete stages is not the cause of it, and
-            // reporting it as one would point at the wrong expression.
-            var wildcardInACycle = stuck.Any(w =>
-                (entries[w].Produces is null || entries[w].Requires is null)
-                && stuck.Any(other => other != w && edges[w].Contains(other) && edges[other].Contains(w)));
+            // anything, so on that side it matches every other stage. That makes a wildcard mutually
+            // dependent with whatever it is stuck behind, which is a limitation of wildcard iteration rather
+            // than a cycle the caller wrote. But a wildcard being in a mutual pair does not mean it is the
+            // only problem: a caller-written cycle between two concrete stages drags every wildcard into the
+            // stuck set too. So the question is not "is a wildcard involved" but "does a cycle survive
+            // without the wildcards" -- if one does, that is what the caller has to fix, and saying
+            // otherwise sends them to delete an expression that was never the cause.
+            var wildcards = stuck.Where(i => entries[i].Produces is null || entries[i].Requires is null).ToHashSet();
+            var concreteOnly = stuck.Where(i => !wildcards.Contains(i)).ToList();
 
-            if (wildcardInACycle)
+            if (wildcards.Count > 0 && !HasCycle(concreteOnly, edges))
             {
                 throw new NotSupportedException(
                     "A wildcard :iterate include (_include:iterate=* or _revinclude:iterate=*) cannot be " +
                     "ordered against another :iterate include it is mutually dependent with. A wildcard " +
-                    "leaves one side of its type set unbounded, so every other iterate stage depends on it; " +
-                    "where one of those also produces what the wildcard needs, the two depend on each other " +
-                    "and neither can run first. This is a limitation of wildcard iteration, not a cycle in " +
-                    "the search itself. Name the resource types the iterate should traverse, or drop the " +
-                    "other :iterate expressions.");
+                    "leaves one side of its type set unbounded, which makes it match every other iterate " +
+                    "stage on that side; where a stage matches back on the other side, the two depend on " +
+                    "each other and neither can run first. This is a limitation of wildcard iteration, not " +
+                    "a cycle in the search itself. Name the resource types the iterate should traverse, or " +
+                    "drop the other :iterate expressions.");
             }
 
             throw new NotSupportedException(
@@ -189,5 +189,41 @@ internal static class IncludeStagePlanner
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Whether the subgraph induced on <paramref name="nodes"/> still contains a cycle — Kahn's algorithm
+    /// again, counting only edges whose both ends are in the subset, so edges to and from the excluded nodes
+    /// cannot keep a node stuck.
+    /// </summary>
+    private static bool HasCycle(IReadOnlyList<int> nodes, List<int>[] edges)
+    {
+        var members = nodes.ToHashSet();
+        var inDegree = nodes.ToDictionary(node => node, _ => 0);
+
+        foreach (var node in nodes)
+        {
+            foreach (var next in edges[node].Where(members.Contains))
+            {
+                inDegree[next]++;
+            }
+        }
+
+        var ready = new Queue<int>(nodes.Where(node => inDegree[node] == 0));
+        var placed = 0;
+        while (ready.Count > 0)
+        {
+            var node = ready.Dequeue();
+            placed++;
+            foreach (var next in edges[node].Where(members.Contains))
+            {
+                if (--inDegree[next] == 0)
+                {
+                    ready.Enqueue(next);
+                }
+            }
+        }
+
+        return placed != nodes.Count;
     }
 }

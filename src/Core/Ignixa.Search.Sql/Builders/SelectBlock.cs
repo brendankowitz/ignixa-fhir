@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace Ignixa.Search.Sql.Builders;
@@ -34,8 +35,8 @@ internal sealed record SelectBlock
     /// <summary>Whether to emit <c>SELECT DISTINCT</c>.</summary>
     public bool Distinct { get; init; }
 
-    /// <summary>A row cap rendered between <c>SELECT</c> and the columns, e.g. <c>"TOP (10) "</c>.</summary>
-    public string? Top { get; init; }
+    /// <summary>A row cap, rendered between <c>SELECT</c> and the columns as <c>TOP (n) </c>.</summary>
+    public int? Top { get; init; }
 
     /// <summary>Pre-rendered join blocks, each already indented and free of a trailing newline.</summary>
     public IReadOnlyList<string> Joins { get; init; } = [];
@@ -55,6 +56,14 @@ internal sealed record SelectBlock
     /// <summary>The indentation every top-level keyword sits at.</summary>
     public string Indent { get; init; } = "    ";
 
+    /// <summary>
+    /// The <c>TOP (n) </c> fragment, trailing space included, or empty. Shared with the match-page emitter,
+    /// which assembles its SELECT through <see cref="SqlTextWriter"/> rather than this type but must render
+    /// the cap identically — the trailing space is stated here once instead of at each call site.
+    /// </summary>
+    internal static string RenderTop(int? top)
+        => top is { } n ? string.Create(CultureInfo.InvariantCulture, $"TOP ({n}) ") : string.Empty;
+
     /// <summary>Renders the statement. No trailing newline: the caller decides what follows.</summary>
     public string Render()
     {
@@ -65,7 +74,7 @@ internal sealed record SelectBlock
             sql.Append("DISTINCT ");
         }
 
-        sql.Append(Top).Append(Columns);
+        sql.Append(RenderTop(Top)).Append(Columns);
         sql.Append('\n').Append(Indent).Append("FROM ").Append(From);
 
         foreach (var join in Joins)
