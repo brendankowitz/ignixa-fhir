@@ -30,13 +30,29 @@ public interface IElement
     /// Primitive value for primitive types, null for complex types.
     /// </summary>
     /// <remarks>
-    /// Type mapping:
-    /// - boolean → bool
-    /// - integer → int
-    /// - string/code/id/markdown/url/canonical/uuid → string
-    /// - decimal → decimal
-    /// - dateTime/date/instant → DateTimeOffset or string
-    /// - base64Binary → byte[] or string
+    /// <para>
+    /// Canonical mapping, as produced by <c>SchemaAwareElement</c>:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>boolean → bool</description></item>
+    /// <item><description>integer/unsignedInt/positiveInt → int</description></item>
+    /// <item><description>decimal → decimal</description></item>
+    /// <item><description>every other primitive, including date/dateTime/instant/time,
+    /// integer64, and base64Binary → its FHIR wire-format string</description></item>
+    /// </list>
+    /// <para>
+    /// Consumers must additionally tolerate these alternatives, which other implementations do
+    /// produce: <c>DateTimeOffset</c> or <c>DateTime</c> for date/dateTime/instant/time,
+    /// <c>byte[]</c> for base64Binary, and <c>long</c> for integer64. Note that
+    /// <c>SchemaAwareElement</c> does not yet emit <c>long</c> for integer64 even though the
+    /// FHIRPath evaluator treats it as a first-class numeric, so the two differ for that type.
+    /// </para>
+    /// <para>
+    /// This is a real contract, not documentation: <c>Ignixa.Extensions.FirelySdk</c> translates
+    /// against it when crossing into the Firely SDK, and the FHIRPath comparison helpers narrow
+    /// their operands to exactly these types. A value outside the list is not rejected - it falls
+    /// through to an empty collection, which FHIRPath's empty-propagation then hides.
+    /// </para>
     /// </remarks>
     object? Value { get; }
 

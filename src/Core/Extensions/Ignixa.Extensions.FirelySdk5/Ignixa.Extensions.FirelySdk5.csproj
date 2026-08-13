@@ -19,6 +19,7 @@
 
   <!-- Link all source files from FirelySdk6 project (zero duplication) -->
   <ItemGroup>
+    <Compile Include="..\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs" Link="FirelyPrimitiveValues.cs" />
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\FirelySdkExtensions.cs" Link="FirelySdkExtensions.cs" />
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs" Link="IgnixaElementAdapter.cs" />
     <Compile Include="..\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs" Link="IgnixaExtensions.cs" />

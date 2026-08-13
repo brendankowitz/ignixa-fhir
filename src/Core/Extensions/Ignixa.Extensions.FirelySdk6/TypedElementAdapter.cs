@@ -25,6 +25,8 @@ namespace Ignixa.Extensions.FirelySdk;
 public class TypedElementAdapter : ITypedElement
 {
     private readonly IElement _coreElement;
+    private object? _translatedValue;
+    private volatile bool _translatedValueResolved;
 
     /// <summary>
     /// Creates a new adapter wrapping an Ignixa IElement.
@@ -55,7 +57,35 @@ public class TypedElementAdapter : ITypedElement
     }
 
     /// <inheritdoc/>
-    public object? Value => _coreElement.Value;
+    /// <remarks>
+    /// <inheritdoc path="/remarks/node()"/>
+    /// <para>
+    /// Translated into Firely's representation - Ignixa carries the temporal primitives as FHIR
+    /// wire-format strings, where Firely expects <c>Hl7.Fhir.ElementModel.Types</c> instances.
+    /// </para>
+    /// <para>
+    /// Memoized because the translation parses, and Firely's engines read <c>Value</c> repeatedly
+    /// on the same element - and because <see cref="Children"/> hands out a fresh adapter per call,
+    /// so nothing upstream would amortise it. The value and the instance type are both captured on
+    /// first read: this adapter is a snapshot of the wrapped element, not a live view of it, so
+    /// re-create it after mutating the element underneath. The resolved flag is
+    /// <c>volatile</c> so a concurrent reader cannot see it set before the value it guards; the
+    /// translation is pure, so racing readers at worst repeat the work.
+    /// </para>
+    /// </remarks>
+    public object? Value
+    {
+        get
+        {
+            if (!_translatedValueResolved)
+            {
+                _translatedValue = FirelyPrimitiveValues.ToFirely(_coreElement.Value, _coreElement.InstanceType);
+                _translatedValueResolved = true;
+            }
+
+            return _translatedValue;
+        }
+    }
 
     /// <inheritdoc/>
     public string InstanceType => _coreElement.InstanceType;
