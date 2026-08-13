@@ -97,7 +97,8 @@ internal static class Lower
             Shape: shape,
             SurrogateRange: context.SurrogateRange,
             SearchParameterHash: context.Options.SearchParameterHash is { } hash ? new SqlParameterRef(hash) : null,
-            OffsetPage: offsetPage);
+            OffsetPage: offsetPage,
+            TopIncludesProbeRow: keyset?.TopIncludesProbeRow ?? false);
         List<CteDefinition> ctes = [.. lowerContext.Ctes];
         CteRef? includeSeed = null;
 
@@ -107,7 +108,10 @@ internal static class Lower
             ctes.Add(new CteDefinition.MatchPage(matchSpec));
             includeSeed = matchPage;
 
-            if (offsetPage is { ProbeExtraRow: true } && includeStages.Any(stage => stage.SeedFromMatch))
+            // Either paging mechanism can over-fetch, so this asks the page rather than the mechanism: a
+            // Top-capped keyset page built as MaxItemCount + 1 needs its probe row trimmed off the include
+            // seed exactly as an OFFSET/FETCH probe does.
+            if (matchSpec.TrimmedPageSize is not null && includeStages.Any(stage => stage.SeedFromMatch))
             {
                 includeSeed = new CteRef(ctes.Count);
                 ctes.Add(new CteDefinition.MatchSeed(matchPage, matchSpec));

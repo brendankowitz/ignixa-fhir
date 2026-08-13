@@ -42,6 +42,103 @@ public class EmitProbeRowIncludeSeedTests
     }
 
     [Fact]
+    public void GivenATopCappedOverFetchingIncludePlan_WhenEmitted_ThenTheMatchSeedTrimsTheProbeRowFromTheCap()
+    {
+        // A keyset page carries its over-fetch on the Top cap rather than an OffsetSpec, but the consequence
+        // for include seeding is identical: the seed must trim to Top - 1. Before TopIncludesProbeRow existed
+        // this plan emitted no cteMatchSeed at all and stages seeded from the probe row.
+        var spec = new MatchPageSpec(new CteRef(0), Top: 11, TopIncludesProbeRow: true);
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        var sql = SqlBuilder.Run(plan).Sql;
+
+        sql.ShouldContain("cteMatchPage AS (\n    SELECT TOP (11) m.T1, m.Sid1");
+        sql.ShouldContain("cteMatchSeed AS (\n    SELECT TOP (10) T1, Sid1");
+        sql.ShouldContain("SELECT 1 FROM cteMatchSeed m");
+
+        // The Top - 1 arithmetic is reachable only on this path; the offset path's explain golden pins the
+        // same row via OffsetSpec.Limit, so without this the subtraction is unpinned on the explain side.
+        plan.Explain().ShouldContain("matchSeed = MatchSeedCte(limit=10)");
+    }
+
+    [Fact]
+    public void GivenAMatchSeedOnAPageThatDoesNotOverFetch_WhenEmitted_ThenItIsRejectedBeforeWritingSql()
+    {
+        // The seed exists to trim a probe row; without one there is nothing to trim, and emitting it would
+        // silently drop a genuine match row from the include seed.
+        var spec = new MatchPageSpec(new CteRef(0), Top: 11);
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+                new CteDefinition.MatchSeed(new CteRef(1), spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(2));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
+            .Message.ShouldContain("over-fetches");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    public void GivenTopIncludesProbeRowWithoutAUsableCap_WhenEmitted_ThenItIsRejectedBeforeWritingSql(int? top)
+    {
+        // TrimmedPageSize subtracts one from the cap, so an absent cap has nothing to subtract from and a
+        // cap of 0 would emit SELECT TOP (-1).
+        var spec = new MatchPageSpec(new CteRef(0), Top: top, TopIncludesProbeRow: true);
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], spec);
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
+            .Message.ShouldContain("TopIncludesProbeRow");
+    }
+
+    [Fact]
+    public void GivenTopIncludesProbeRowWithNoCapToSubtractFrom_WhenAsked_ThenTheSpecReportsNoTrimmedPage()
+    {
+        // Before the two members collapsed into one, this state answered "yes, over-fetches" and "no page
+        // size" simultaneously -- the exact contradiction the type claimed was unrepresentable. One member
+        // means one answer; RequireCoherentProbeRow then rejects the plan outright.
+        var spec = new MatchPageSpec(new CteRef(0), TopIncludesProbeRow: true);
+
+        spec.TrimmedPageSize.ShouldBeNull();
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(new QueryPlan([new CteDefinition.ResourceSource(103)], spec)))
+            .Message.ShouldContain("TopIncludesProbeRow");
+    }
+
+    [Fact]
+    public void GivenAnOverFetchingPageWhoseIncludeStagesBypassTheMatchSeed_WhenEmitted_ThenItIsRejected()
+    {
+        // The original bug, reconstructed: a page that over-fetches, an include stage seeding from the match
+        // set, and no MatchSeed to trim the probe row. Emitting this resolves includes for a resource the
+        // caller is about to discard. Reachable through the documented `plan with { Query = rewritten }`
+        // rewrite, so it has to be rejected as data rather than assumed away.
+        var spec = new MatchPageSpec(new CteRef(0), Top: 11, TopIncludesProbeRow: true);
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.MatchPage(spec),
+            ],
+            spec,
+            Includes: [ForwardIncludeStage(103, 111)],
+            IncludeSeed: new CteRef(1));
+
+        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
+            .Message.ShouldContain("requires a MatchSeed wrapper CTE");
+    }
+
+    [Fact]
     public void GivenAnIncludeConstraintTargetingMatchSeed_WhenEmitted_ThenItsGuardReferencesTheWrapperLabel()
     {
         var plan = OverFetchingIncludePlan();

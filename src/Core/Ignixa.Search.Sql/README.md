@@ -189,6 +189,13 @@ both default to *not fetching*:
 | `?_count=10` | an **uncapped** statement — `SearchOptions.MaxItemCount` is deliberately not forwarded, because callers transform it (`MaxItemCount + 1`, to detect "has more") before a search runs | `Shape = new ResultShape.Matches(new SearchPaging.Keyset(Top: n))` |
 | `?_include=…` | **zero** include rows — `IncludeLimit` defaults to `0`, which emits `TOP (1)` per stage: enough to report *whether* includes exist, not to return any | `IncludeLimit = n` |
 
+> **If you pre-incremented `Top` for has-more detection, say so.** A cap built as `MaxItemCount + 1` must be
+> paired with `TopIncludesProbeRow: true`, i.e. `new SearchPaging.Keyset(Top: n + 1, TopIncludesProbeRow: true)`.
+> The compiler cannot infer it — `Top: 11` meaning eleven rows and `Top: 11` meaning ten rows plus a lookahead
+> are indistinguishable — and without the flag, `_include`/`_revinclude` stages seed from the probe row, so the
+> bundle carries included resources for a match you are about to trim. The OFFSET/FETCH equivalent is
+> `OffsetSpec.ProbeExtraRow`.
+
 `IncludeLimit` always over-fetches one row so truncation is detectable: the extra row comes back flagged
 `IsPartial` and the caller trims it. There is no uncapped setting.
 
@@ -205,6 +212,7 @@ meaning cannot be written down:
 ```csharp
 new ResultShape.Matches();                          // default -- the match set, unpaged
 new ResultShape.Matches(new SearchPaging.Keyset(Top: 50));                 // TOP and/or a keyset seek
+new ResultShape.Matches(new SearchPaging.Keyset(Top: 51, TopIncludesProbeRow: true)); // ...50 rows plus a has-more probe
 new ResultShape.Matches(new SearchPaging.Offset(new OffsetSpec(100, 50))); // OFFSET/FETCH, if you need it
 new ResultShape.Count.AllMatches();                 // one COUNT_BIG, no ORDER BY, no TOP
 new ResultShape.Count.CurrentSortPhase();           // ...restricted to the segment the sort names

@@ -1,15 +1,15 @@
-using Ignixa.Search.Sql.Ast;
-
-namespace Ignixa.Search.Sql.Builders;
+namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
-/// Rejects the plan shapes that have no coherent SQL rendering, before any text is emitted. Complements
-/// <see cref="QueryPlanValidator"/>, which guards the CTE graph's structure: this one judges the shape-level
-/// combinations that only the emitter can render.
+/// Rejects the plan shapes that have no coherent SQL rendering. Complements <see cref="QueryPlanValidator"/>,
+/// which guards the CTE graph's structure: this one judges the shape, paging and sort combinations. Reached
+/// only through <see cref="QueryPlanValidator.Validate"/>, so every entry point that validates a plan applies
+/// both — the two were previously separate entry points and <c>Describe</c> ran only the structural half,
+/// explaining plans that <c>Run</c> refused.
 /// </summary>
-internal static class PlanValidator
+internal static class PlanShapeValidator
 {
-    /// <summary>Runs every emitter-side guard. Structural guards run first, in <see cref="QueryPlanValidator"/>.</summary>
+    /// <summary>Runs every shape-level guard.</summary>
     internal static void Validate(QueryPlan plan)
     {
         RejectUnsupportedCombinations(plan);

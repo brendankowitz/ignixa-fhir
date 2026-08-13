@@ -72,20 +72,30 @@ internal static class CteEmitter
     {
         CteDefinition.ParamSource p => new(EmitParamSource(p, parameters, visibility)),
         CteDefinition.Intersect x =>
-            new(
-                $"    SELECT {CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1\n" +
-                $"    FROM {CteLabel(x.Left.Index)}\n" +
-                $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1"),
+            new(new SelectBlock
+            {
+                Columns = $"{CteLabel(x.Left.Index)}.T1, {CteLabel(x.Left.Index)}.Sid1",
+                From = CteLabel(x.Left.Index),
+                Joins =
+                [
+                    $"    INNER JOIN {CteLabel(x.Right.Index)} ON {CteLabel(x.Left.Index)}.T1 = {CteLabel(x.Right.Index)}.T1 AND {CteLabel(x.Left.Index)}.Sid1 = {CteLabel(x.Right.Index)}.Sid1",
+                ],
+            }.Render()),
         CteDefinition.Union u =>
             new(string.Join("\n    UNION\n", u.Parts.Select(r => $"    SELECT T1, Sid1 FROM {CteLabel(r.Index)}"))),
         CteDefinition.ResourceSource rs => new(EmitResourceSource(rs, parameters, visibility)),
         CteDefinition.Except ex =>
-            new(
-                $"    SELECT {CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1\n" +
-                $"    FROM {CteLabel(ex.Left.Index)}\n" +
-                $"    WHERE NOT EXISTS (\n" +
-                $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
-                $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)"),
+            new(new SelectBlock
+            {
+                Columns = $"{CteLabel(ex.Left.Index)}.T1, {CteLabel(ex.Left.Index)}.Sid1",
+                From = CteLabel(ex.Left.Index),
+                Where =
+                [
+                    "NOT EXISTS (\n" +
+                    $"        SELECT 1 FROM {CteLabel(ex.Right.Index)}\n" +
+                    $"        WHERE {CteLabel(ex.Right.Index)}.T1 = {CteLabel(ex.Left.Index)}.T1 AND {CteLabel(ex.Right.Index)}.Sid1 = {CteLabel(ex.Left.Index)}.Sid1)",
+                ],
+            }.Render()),
         CteDefinition.ChainJoin cj => new(EmitChainJoin(cj, parameters, visibility)),
         CteDefinition.CompartmentSource cs => new(EmitCompartmentSource(cs, parameters)),
         CteDefinition.NotReferencedSource nr => new(EmitNotReferencedSource(nr, parameters, visibility)),
@@ -108,12 +118,11 @@ internal static class CteEmitter
             : ", " + string.Join(", ", projection.Columns.Select(c => $"r.[{c.Replace("]", "]]", StringComparison.Ordinal)}]"));
 
     /// <summary>
-    /// The current-row filter for a dbo.Resource scan under a given visibility, prefixed with " AND " and the
-    /// caller's column qualifier, or empty when neither axis is constrained. The leading space is load-bearing
-    /// for inline callers; own-line callers trim it. Each axis is tri-state (<see cref="ResourceVisibility"/>):
-    /// null emits no clause, false emits <c>= 0</c> (current/live), true emits <c>= 1</c> (superseded/deleted).
+    /// The current-row filter for a dbo.Resource scan under a given visibility, as separate clauses. Each
+    /// axis is tri-state (<see cref="ResourceVisibility"/>): null contributes nothing, false emits
+    /// <c>= 0</c> (current/live), true emits <c>= 1</c> (superseded/deleted).
     /// </summary>
-    internal static string ResourceRowFilter(ResourceVisibility visibility, string qualifier)
+    internal static List<string> ResourceRowClauses(ResourceVisibility visibility, string qualifier)
     {
         var clauses = new List<string>(2);
         if (visibility.IsHistory is { } isHistory)
@@ -126,6 +135,17 @@ internal static class CteEmitter
             clauses.Add($"{qualifier}IsDeleted = {(isDeleted ? 1 : 0)}");
         }
 
+        return clauses;
+    }
+
+    /// <summary>
+    /// <see cref="ResourceRowClauses"/> flattened for the join-block callers that splice it into text they
+    /// assemble themselves, prefixed with " AND " or empty. The leading space is load-bearing for inline
+    /// callers; own-line callers trim it.
+    /// </summary>
+    internal static string ResourceRowFilter(ResourceVisibility visibility, string qualifier)
+    {
+        var clauses = ResourceRowClauses(visibility, qualifier);
         return clauses.Count == 0 ? string.Empty : " AND " + string.Join(" AND ", clauses);
     }
 
@@ -143,19 +163,34 @@ internal static class CteEmitter
     /// <summary>Renders a ParamSource: distinct (type, surrogate id) rows from one search-param table filtered by SearchParamId and its optional predicate.</summary>
     private static string EmitParamSource(CteDefinition.ParamSource p, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
-        var predicateClause = p.Predicate is null ? string.Empty : $" AND {EmitPredicate(p.Predicate, parameters)}";
-
-        var historyClause = SearchParamTableHistoryClause(p.Table, visibility) is { Length: > 0 } clause
-            ? $" AND {clause}"
-            : string.Empty;
+        var clauses = new List<string>(4);
 
         // A null ResourceTypeId is a system-level (cross-type) search: emit no type filter. The requested
         // types are narrowed by the plan's MultiTypeResourceSource base set this CTE is intersected with.
-        var typeFilter = p.ResourceTypeId is { } typeId ? $"ResourceTypeId = {typeId} AND " : string.Empty;
+        if (p.ResourceTypeId is { } typeId)
+        {
+            clauses.Add($"ResourceTypeId = {typeId}");
+        }
 
-        return $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-               $"    FROM {p.Table.SchemaName}.{p.Table.TableName}\n" +
-               $"    WHERE {typeFilter}SearchParamId = {p.SearchParamId}{historyClause}{predicateClause}";
+        clauses.Add($"SearchParamId = {p.SearchParamId}");
+
+        if (SearchParamTableHistoryClause(p.Table, visibility) is { Length: > 0 } historyClause)
+        {
+            clauses.Add(historyClause);
+        }
+
+        if (p.Predicate is not null)
+        {
+            clauses.Add(EmitPredicate(p.Predicate, parameters));
+        }
+
+        return new SelectBlock
+        {
+            Distinct = true,
+            Columns = "ResourceTypeId AS T1, ResourceSurrogateId AS Sid1",
+            From = $"{p.Table.SchemaName}.{p.Table.TableName}",
+            Where = clauses,
+        }.Render();
     }
 
     /// <summary>Renders a chain as a join through dbo.ReferenceSearchParam and dbo.Resource, correlated to the inner match set, in the forward or reverse direction.</summary>
@@ -174,38 +209,56 @@ internal static class CteEmitter
 
         var rowFilter = ResourceRowFilter(visibility, "r.");
 
-        // Own-line placement, so the helper's leading space is replaced by this line's indentation.
-        // An inline caller must not trim it; see ResourceRowFilter's remarks.
-        var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
+        // Continues the join's own ON/AND ladder, so it carries a leading newline and the ladder's
+        // indentation in place of the helper's leading space. See ResourceRowFilter's remarks.
+        var rowFilterLine = rowFilter.Length > 0 ? $"\n       {rowFilter.TrimStart()}" : string.Empty;
 
         return cj.Direction switch
         {
-            ChainDirection.Forward =>
-                $"    SELECT DISTINCT rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1\n" +
-                $"    FROM dbo.ReferenceSearchParam rsp\n" +
-                $"    INNER JOIN dbo.Resource r\n" +
-                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
-                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
-                rowFilterLine +
-                $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
-                $"        ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId\n" +
-                $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
-                $"      AND rsp.ReferenceResourceTypeId = {cj.InnerResourceTypeId}\n" +
-                $"      AND {outputFilter}\n" +
-                $"      AND rsp.BaseUri IS NULL",
-            ChainDirection.Reverse =>
-                $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
-                $"    FROM dbo.ReferenceSearchParam rsp\n" +
-                $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
-                $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
-                $"    INNER JOIN dbo.Resource r\n" +
-                $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
-                $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
-                rowFilterLine +
-                $"    WHERE rsp.SearchParamId = {cj.ReferenceSearchParamId}\n" +
-                $"      AND rsp.ResourceTypeId = {cj.InnerResourceTypeId}\n" +
-                $"      AND {outputFilter}\n" +
-                $"      AND rsp.BaseUri IS NULL",
+            ChainDirection.Forward => new SelectBlock
+            {
+                Distinct = true,
+                Columns = "rsp.ResourceTypeId AS T1, rsp.ResourceSurrogateId AS Sid1",
+                From = "dbo.ReferenceSearchParam rsp",
+                Joins =
+                [
+                    "    INNER JOIN dbo.Resource r\n" +
+                    "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+                    "       AND r.ResourceId = rsp.ReferenceResourceId" + rowFilterLine,
+                    $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
+                    "        ON m.T1 = r.ResourceTypeId AND m.Sid1 = r.ResourceSurrogateId",
+                ],
+                WhereLayout = WhereLayout.Stacked,
+                Where =
+                [
+                    $"rsp.SearchParamId = {cj.ReferenceSearchParamId}",
+                    $"rsp.ReferenceResourceTypeId = {cj.InnerResourceTypeId}",
+                    outputFilter,
+                    "rsp.BaseUri IS NULL",
+                ],
+            }.Render(),
+            ChainDirection.Reverse => new SelectBlock
+            {
+                Distinct = true,
+                Columns = "r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1",
+                From = "dbo.ReferenceSearchParam rsp",
+                Joins =
+                [
+                    $"    INNER JOIN {CteLabel(cj.InnerMatch.Index)} m\n" +
+                    "        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId",
+                    "    INNER JOIN dbo.Resource r\n" +
+                    "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+                    "       AND r.ResourceId = rsp.ReferenceResourceId" + rowFilterLine,
+                ],
+                WhereLayout = WhereLayout.Stacked,
+                Where =
+                [
+                    $"rsp.SearchParamId = {cj.ReferenceSearchParamId}",
+                    $"rsp.ResourceTypeId = {cj.InnerResourceTypeId}",
+                    outputFilter,
+                    "rsp.BaseUri IS NULL",
+                ],
+            }.Render(),
             _ => throw new NotSupportedException($"Unknown ChainDirection '{cj.Direction}'."),
         };
     }
@@ -220,11 +273,19 @@ internal static class CteEmitter
 
     /// <summary>Renders a CompartmentSource: rows of dbo.ReferenceSearchParam for the membership SearchParamId, any of the member resource types, and the fixed compartment reference.</summary>
     private static string EmitCompartmentSource(CteDefinition.CompartmentSource cs, List<EmittedSqlParameter> parameters)
-        => $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-           $"    FROM dbo.ReferenceSearchParam\n" +
-           $"    WHERE SearchParamId = {cs.SearchParamId}\n" +
-           $"      AND {EmitTypeInFilter("ResourceTypeId", cs.ResourceTypeIds)}\n" +
-           $"      AND {EmitPredicate(cs.Predicate, parameters)}";
+        => new SelectBlock
+        {
+            Distinct = true,
+            Columns = "ResourceTypeId AS T1, ResourceSurrogateId AS Sid1",
+            From = "dbo.ReferenceSearchParam",
+            WhereLayout = WhereLayout.Stacked,
+            Where =
+            [
+                $"SearchParamId = {cs.SearchParamId}",
+                EmitTypeInFilter("ResourceTypeId", cs.ResourceTypeIds),
+                EmitPredicate(cs.Predicate, parameters),
+            ],
+        }.Render();
 
     /// <summary>
     /// Renders a NotReferencedSource: current, non-deleted rows of dbo.Resource for the target type that no
@@ -244,14 +305,21 @@ internal static class CteEmitter
             innerFilters += $"\n          AND rsp.SearchParamId = {refParamId}";
         }
 
-        return $"    SELECT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
-               $"    FROM dbo.Resource r\n" +
-               $"    WHERE r.ResourceTypeId = {EmitParam(new SqlParameterRef(nr.TargetResourceTypeId), parameters)}{ResourceRowFilter(visibility, "r.")}\n" +
-               $"      AND NOT EXISTS (\n" +
-               $"        SELECT 1\n" +
-               $"        FROM dbo.ReferenceSearchParam rsp\n" +
-               $"        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
-               $"          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId{innerFilters})";
+        return new SelectBlock
+        {
+            Columns = "r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1",
+            From = "dbo.Resource r",
+            WhereLayout = WhereLayout.Stacked,
+            Where =
+            [
+                $"r.ResourceTypeId = {EmitParam(new SqlParameterRef(nr.TargetResourceTypeId), parameters)}{ResourceRowFilter(visibility, "r.")}",
+                "NOT EXISTS (\n" +
+                "        SELECT 1\n" +
+                "        FROM dbo.ReferenceSearchParam rsp\n" +
+                "        WHERE rsp.ReferenceResourceId = r.ResourceId\n" +
+                $"          AND rsp.ReferenceResourceTypeId = r.ResourceTypeId{innerFilters})",
+            ],
+        }.Render();
     }
 
     /// <summary>
@@ -262,49 +330,71 @@ internal static class CteEmitter
     /// </summary>
     private static string EmitTableExistsPredicate(CteDefinition.TableExistsPredicate tep, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
-        var clauses = new List<string>(2);
+        var whereClauses = new List<string>(2);
         if (SearchParamTableHistoryClause(tep.Table, visibility) is { Length: > 0 } historyClause)
         {
-            clauses.Add(historyClause);
+            whereClauses.Add(historyClause);
         }
 
         if (tep.Predicate is not null)
         {
-            clauses.Add(EmitPredicate(tep.Predicate, parameters));
+            whereClauses.Add(EmitPredicate(tep.Predicate, parameters));
         }
 
-        var whereClause = clauses.Count == 0 ? string.Empty : $"\n    WHERE {string.Join(" AND ", clauses)}";
-        return
-            $"    SELECT DISTINCT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-            $"    FROM {tep.Table.SchemaName}.{tep.Table.TableName}{whereClause}";
+        return new SelectBlock
+        {
+            Distinct = true,
+            Columns = "ResourceTypeId AS T1, ResourceSurrogateId AS Sid1",
+            From = $"{tep.Table.SchemaName}.{tep.Table.TableName}",
+            Where = whereClauses,
+        }.Render();
     }
 
     /// <summary>Renders a VisibleSinceFilter: resources visible in a transaction on or after Since, joined through dbo.Resource and dbo.Transactions on VisibleDate.</summary>
     private static string EmitVisibleSinceFilter(CteDefinition.VisibleSinceFilter vsf, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
-        => "    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
-           "    FROM dbo.Resource r\n" +
-           "    INNER JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue\n" +
-           $"    WHERE t.VisibleDate >= {EmitParam(vsf.Since, parameters)}{ResourceRowFilter(visibility, "r.")}";
+    {
+        var clauses = new List<string>(3) { $"t.VisibleDate >= {EmitParam(vsf.Since, parameters)}" };
+        clauses.AddRange(ResourceRowClauses(visibility, "r."));
+
+        return new SelectBlock
+        {
+            Distinct = true,
+            Columns = "r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1",
+            From = "dbo.Resource r",
+            Joins = ["    INNER JOIN dbo.Transactions t ON r.TransactionId = t.SurrogateIdRangeFirstValue"],
+            Where = clauses,
+        }.Render();
+    }
 
     /// <summary>Renders a ReferencedTypeExpansion: the referenced resources reachable via any outbound internal reference from the seed set, restricted to the output resource types. Mirrors ChainJoin's reverse topology but with no SearchParamId/source-type filter (all reference parameters, any source type).</summary>
     private static string EmitReferencedTypeExpansion(CteDefinition.ReferencedTypeExpansion re, ResourceVisibility visibility)
     {
         var rowFilter = ResourceRowFilter(visibility, "r.");
 
-        // Own-line placement, so the helper's leading space is replaced by this line's indentation.
-        // An inline caller must not trim it; see ResourceRowFilter's remarks.
-        var rowFilterLine = rowFilter.Length > 0 ? $"       {rowFilter.TrimStart()}\n" : string.Empty;
+        // Continues the join's own ON/AND ladder, so it carries a leading newline and the ladder's
+        // indentation in place of the helper's leading space. See ResourceRowFilter's remarks.
+        var rowFilterLine = rowFilter.Length > 0 ? $"\n       {rowFilter.TrimStart()}" : string.Empty;
 
-        return $"    SELECT DISTINCT r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1\n" +
-               $"    FROM dbo.ReferenceSearchParam rsp\n" +
-               $"    INNER JOIN {CteLabel(re.Seed.Index)} m\n" +
-               $"        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId\n" +
-               $"    INNER JOIN dbo.Resource r\n" +
-               $"        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
-               $"       AND r.ResourceId = rsp.ReferenceResourceId\n" +
-               rowFilterLine +
-               $"    WHERE {EmitTypeInFilter("rsp.ReferenceResourceTypeId", re.OutputResourceTypeIds)}\n" +
-               $"      AND rsp.BaseUri IS NULL";
+        return new SelectBlock
+        {
+            Distinct = true,
+            Columns = "r.ResourceTypeId AS T1, r.ResourceSurrogateId AS Sid1",
+            From = "dbo.ReferenceSearchParam rsp",
+            Joins =
+            [
+                $"    INNER JOIN {CteLabel(re.Seed.Index)} m\n" +
+                "        ON m.T1 = rsp.ResourceTypeId AND m.Sid1 = rsp.ResourceSurrogateId",
+                "    INNER JOIN dbo.Resource r\n" +
+                "        ON r.ResourceTypeId = rsp.ReferenceResourceTypeId\n" +
+                "       AND r.ResourceId = rsp.ReferenceResourceId" + rowFilterLine,
+            ],
+            WhereLayout = WhereLayout.Stacked,
+            Where =
+            [
+                EmitTypeInFilter("rsp.ReferenceResourceTypeId", re.OutputResourceTypeIds),
+                "rsp.BaseUri IS NULL",
+            ],
+        }.Render();
     }
 
     /// <summary>
@@ -314,10 +404,28 @@ internal static class CteEmitter
     /// </summary>
     private static string EmitResourceSource(CteDefinition.ResourceSource rs, List<EmittedSqlParameter> parameters, ResourceVisibility visibility)
     {
-        var predicateClause = rs.Predicate is null ? string.Empty : $" AND {EmitPredicate(rs.Predicate, parameters)}";
-        return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-               $"    FROM dbo.Resource\n" +
-               $"    WHERE ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)}{ResourceRowFilter(visibility, string.Empty)}{predicateClause}";
+        // Bound before ResourceTypeId, though it renders after it: EmitParam names by side effect, so this
+        // order is the @pN numbering. Historically the predicate clause was built into a local first and the
+        // numbering is pinned by goldens, so the binding order and the text order genuinely differ here.
+        var predicateClause = rs.Predicate is null ? null : EmitPredicate(rs.Predicate, parameters);
+
+        var clauses = new List<string>(4)
+        {
+            $"ResourceTypeId = {EmitParam(new SqlParameterRef(rs.ResourceTypeId), parameters)}",
+        };
+        clauses.AddRange(ResourceRowClauses(visibility, string.Empty));
+
+        if (predicateClause is not null)
+        {
+            clauses.Add(predicateClause);
+        }
+
+        return new SelectBlock
+        {
+            Columns = "ResourceTypeId AS T1, ResourceSurrogateId AS Sid1",
+            From = "dbo.Resource",
+            Where = clauses,
+        }.Render();
     }
 
     /// <summary>Renders a MultiTypeResourceSource: a dbo.Resource scan across a set of types, or every type when the set is empty.</summary>
@@ -335,26 +443,19 @@ internal static class CteEmitter
             clauses.Add($"ResourceTypeId IN ({string.Join(", ", mts.ResourceTypeIds)})");
         }
 
-        if (visibility.IsHistory is { } isHistory)
-        {
-            clauses.Add($"IsHistory = {(isHistory ? 1 : 0)}");
-        }
-
-        if (visibility.IsDeleted is { } isDeleted)
-        {
-            clauses.Add($"IsDeleted = {(isDeleted ? 1 : 0)}");
-        }
+        clauses.AddRange(ResourceRowClauses(visibility, string.Empty));
 
         if (mts.Predicate is not null)
         {
             clauses.Add(EmitPredicate(mts.Predicate, parameters));
         }
 
-        var whereClause = clauses.Count == 0 ? string.Empty : $"    WHERE {string.Join(" AND ", clauses)}";
-
-        return $"    SELECT ResourceTypeId AS T1, ResourceSurrogateId AS Sid1\n" +
-               $"    FROM dbo.Resource\n" +
-               whereClause;
+        return new SelectBlock
+        {
+            Columns = "ResourceTypeId AS T1, ResourceSurrogateId AS Sid1",
+            From = "dbo.Resource",
+            Where = clauses,
+        }.Render();
     }
 
     /// <summary>Renders a "column = a OR column = b ..." type-id filter, parenthesized when there is more than one id.</summary>

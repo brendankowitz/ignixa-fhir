@@ -169,7 +169,18 @@ public sealed class SearchSqlCompiler(
         QueryPlanTrace? planTrace = null;
         if (options.DiagnosticsLevel == SearchDiagnosticsLevel.Full)
         {
-            planTrace = CompilationDiagnosticsBuilder.BuildPlanTrace(lowered, outcomes);
+            // Diagnostics must not be able to fail a compile that would otherwise succeed. Building the trace
+            // renders the plan, which runs the emitter, so every emit-stage refusal can now surface here --
+            // and for a plan that will not emit, the trace is the thing the caller most wants. Record the
+            // refusal and continue without a trace rather than throwing out of Compile.
+            try
+            {
+                planTrace = CompilationDiagnosticsBuilder.BuildPlanTrace(lowered, outcomes);
+            }
+            catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
+            {
+                CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Emit, ex);
+            }
         }
 
         if (traced)

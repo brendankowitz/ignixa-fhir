@@ -24,7 +24,6 @@ internal static class SqlBuilder
     public static EmittedSql Run(QueryPlan plan, EmitOptions? options = null)
     {
         QueryPlanValidator.Validate(plan);
-        PlanValidator.Validate(plan);
 
         var parameters = new List<EmittedSqlParameter>();
         var writer = new SqlTextWriter(options?.IncludeTextRanges ?? false);

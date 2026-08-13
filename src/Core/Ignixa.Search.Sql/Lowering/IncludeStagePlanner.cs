@@ -137,11 +137,13 @@ internal static class IncludeStagePlanner
 
         var ready = new SortedSet<int>(Enumerable.Range(0, n).Where(i => inDegree[i] == 0));
         var result = new List<ResolvedInclude>();
+        var ordered = new bool[n];
         while (ready.Count > 0)
         {
             var node = ready.Min;
             ready.Remove(node);
             result.Add(entries[node]);
+            ordered[node] = true;
             foreach (var next in edges[node])
             {
                 if (--inDegree[next] == 0)
@@ -153,6 +155,33 @@ internal static class IncludeStagePlanner
 
         if (result.Count != n)
         {
+            // Kahn's algorithm leaves behind the nodes in a dependency loop AND any node merely downstream
+            // of one, so being stuck is not on its own evidence of what went wrong.
+            var stuck = Enumerable.Range(0, n).Where(i => !ordered[i]).ToList();
+
+            // A wildcard resolves one side of its type sets to null, and Overlaps treats null as matching
+            // anything, so every other stage depends on it. When some stage it depends on ALSO depends back
+            // on it, the two are mutually dependent and no order exists between them. That is a limitation
+            // of wildcard iteration rather than a cycle the caller wrote, and saying "cycle" sends them
+            // looking for a mutual dependency that is not there. The back-edge test matters: a wildcard
+            // stranded downstream of a genuine cycle between two concrete stages is not the cause of it, and
+            // reporting it as one would point at the wrong expression.
+            var wildcardInACycle = stuck.Any(w =>
+                (entries[w].Produces is null || entries[w].Requires is null)
+                && stuck.Any(other => other != w && edges[w].Contains(other) && edges[other].Contains(w)));
+
+            if (wildcardInACycle)
+            {
+                throw new NotSupportedException(
+                    "A wildcard :iterate include (_include:iterate=* or _revinclude:iterate=*) cannot be " +
+                    "ordered against another :iterate include it is mutually dependent with. A wildcard " +
+                    "leaves one side of its type set unbounded, so every other iterate stage depends on it; " +
+                    "where one of those also produces what the wildcard needs, the two depend on each other " +
+                    "and neither can run first. This is a limitation of wildcard iteration, not a cycle in " +
+                    "the search itself. Name the resource types the iterate should traverse, or drop the " +
+                    "other :iterate expressions.");
+            }
+
             throw new NotSupportedException(
                 "Two or more :iterate include expressions form a cycle -- the FHIR spec does not define an " +
                 "ordering for this case, and fhir-server rejects it too (PR #1391, " +

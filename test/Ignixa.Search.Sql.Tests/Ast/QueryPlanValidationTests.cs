@@ -1,3 +1,4 @@
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Sql.Ast;
 using Ignixa.Search.Sql.Builders;
 
@@ -149,6 +150,48 @@ public class QueryPlanValidationTests
         var matchSeed = rows.Single(row => row.Kind == PlanRowKind.MatchSeedCte);
         matchSeed.ReferencedCteIndexes.ShouldBe([1]);
     }
+
+    [Theory]
+    [MemberData(nameof(ShapeLevelViolations))]
+    public void GivenAShapeLevelViolation_WhenRunOrExplained_ThenBothRejectItRatherThanOnlyRun(
+        MatchPageSpec spec,
+        string expectedMessage)
+    {
+        // Shape, paging and sort guards used to live behind a second entry point that only SqlBuilder.Run
+        // called, so Explain happily described plans that could never be emitted -- and a golden fixture
+        // drifted onto exactly such a plan. Validation now has one entry point; this pins that.
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], spec);
+
+        AssertRejectedBySqlBuilderAndExplain(plan, expectedMessage);
+    }
+
+    public static TheoryData<MatchPageSpec, string> ShapeLevelViolations() => new()
+    {
+        { new MatchPageSpec(new CteRef(0), Top: -1), "Top must not be negative" },
+        {
+            new MatchPageSpec(new CteRef(0), Sort: new SortSpec(
+                [
+                    new SortKey(1, SortKeyKind.String, SortOrder.Ascending),
+                    new SortKey(2, SortKeyKind.String, SortOrder.Ascending),
+                    new SortKey(3, SortKeyKind.String, SortOrder.Ascending),
+                    new SortKey(4, SortKeyKind.String, SortOrder.Ascending),
+                ],
+                SortPhase.Valued)),
+            "at most 3 keys"
+        },
+        {
+            new MatchPageSpec(new CteRef(0), Top: 5, OffsetPage: new OffsetSpec(0, 5)),
+            "OffsetPage cannot be combined with Top"
+        },
+        {
+            new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(-1, 5)),
+            "non-negative row count"
+        },
+        {
+            new MatchPageSpec(new CteRef(0), Sort: new SortSpec([], (SortPhase)99)),
+            "is not a phase this compiler recognises"
+        },
+    };
 
     private static void AssertRejectedBySqlBuilderAndExplain(QueryPlan plan, string expectedMessage)
     {

@@ -160,7 +160,7 @@ internal static class SortEmitter
     /// Renders the keyset-seek WHERE predicate that skips everything up to the page boundary: an OR of
     /// lexicographic branches over the active sort keys, then the surrogate-id tiebreak, in step with the
     /// ORDER BY. A typed <see cref="PageSpec"/> breaks the final tie on (T1, Sid1); a typeless one on Sid1 alone.
-    /// The boundary's value count is checked against the phase by <see cref="PlanValidator"/>.
+    /// The boundary's value count is checked against the phase by <see cref="Ast.PlanShapeValidator"/>.
     /// </summary>
     internal static string EmitSeekPredicate(SortSpec? sort, PageSpec page, List<EmittedSqlParameter> parameters)
     {

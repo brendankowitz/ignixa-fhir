@@ -70,13 +70,16 @@ internal static class MatchPageEmitter
     /// </remarks>
     internal static CteBody EmitMatchSeed(CteDefinition.MatchSeed seed)
     {
-        var offsetPage = seed.Spec.OffsetPage
-            ?? throw new NotSupportedException("MatchSeed requires an OffsetPage.");
+        var trimmedSize = seed.Spec.TrimmedPageSize
+            ?? throw new NotSupportedException("MatchSeed requires a page that over-fetches a probe row.");
 
-        return new CteBody(
-            $"    SELECT TOP ({offsetPage.Limit}) T1, Sid1\n" +
-            $"    FROM {MatchPage}\n" +
-            $"    ORDER BY {EmitSortValueOrderBy(seed.Spec.Sort)}");
+        return new CteBody(new SelectBlock
+        {
+            Top = $"TOP ({trimmedSize}) ",
+            Columns = "T1, Sid1",
+            From = MatchPage,
+            OrderBy = EmitSortValueOrderBy(seed.Spec.Sort),
+        }.Render());
     }
 
     /// <summary>

@@ -216,8 +216,10 @@ The same pattern appears in emission:
 
 - Type-id set filters render three ways — `EmitTypeInFilter`, the hand-rolled OR-join in `EmitChainJoin`, and
   `IN (...)` in `EmitMultiTypeResourceSource`.
-- Visibility filtering exists twice — `ResourceRowFilter` returning a `" AND …"` string, versus inline
-  `IsHistory`/`IsDeleted` clause-list appends in `EmitMultiTypeResourceSource`.
+- ~~Visibility filtering exists twice — `ResourceRowFilter` returning a `" AND …"` string, versus inline
+  `IsHistory`/`IsDeleted` clause-list appends in `EmitMultiTypeResourceSource`.~~ **Done by P6**:
+  `ResourceRowClauses` is now the single definition, and `ResourceRowFilter` is its flattened form for the
+  callers that splice it into text they assemble themselves. The type-id item above is what remains of P5.
 
 ### P6 — Replace string concatenation with a clause model
 
@@ -227,15 +229,58 @@ apologetically ("the helper's leading space is replaced by this line's indentati
 trim it"). The empty-type-list guard in `RejectUnsupportedCombinations` exists solely because an empty clause list
 interpolates to invalid SQL.
 
-A small `SelectStatement { Columns, From, Joins, Where[], OrderBy, Top }` with one renderer removes ~200 lines of
-duplicated formatting and makes "empty clause list emits broken SQL" unrepresentable rather than guarded.
+**Implemented as `SelectBlock` + `WhereLayout`.** Twelve CTE emitters now state their parts (columns, from,
+joins, where, order by, offset) and one renderer owns the layout; the pre-existing goldens stayed
+byte-identical. Named `SelectBlock` rather than `SelectStatement` because the grammar tests use ScriptDom,
+which already owns that name.
+
+Two things the implementation learned that the plan did not anticipate:
+
+- **The emitters' formatting is less uniform than assumed.** There are two genuine WHERE layouts — inline
+  `" AND "` and one clause per line — so the model states which, rather than pretending there is one. Join
+  blocks stay pre-rendered: their `ON`/`AND` continuations line up under their own join, and forcing them into
+  the model needed more escape hatches than it removed. `Union` (a join of SELECTs) and the match page (which
+  records text ranges for tooling) keep their own assembly.
+- **The formatting really was hiding a defect.** `EmitMultiTypeResourceSource` was the one emitter that put the
+  newline *after* `FROM` rather than before `WHERE`, so an unconstrained scan emitted a dangling blank line. No
+  golden covered the unconstrained case. Fixed by construction and pinned.
 
 ### P7 — Unify the parameter-ordinal traversal
 
 `PlanExplainer` re-implements `SqlBuilder`'s traversal to reproduce identical `@pN` ordinals, held together by
-long synchronisation comments, and already reaches into `SqlBuilder.SeedsFromTrimmedMatchPage` to avoid one copy.
-The correct fix is for emission to yield explain rows as a by-product of a single traversal. This is the deepest
-coupling and the most invasive change; it is recorded here but ranked last.
+long synchronisation comments. The correct fix is for emission to yield explain rows as a by-product of a single
+traversal.
+
+**Re-scoped after upstream `480ea416`,** which did roughly half of it incidentally: MatchPage and MatchSeed
+became real `CteDefinition` entries, so `PlanExplainer` walks them like any other CTE and the
+`SqlBuilder.SeedsFromTrimmedMatchPage` reach-through this section originally cited no longer exists.
+
+**Implemented as `EmittedParameterCursor`.** `EmittedSqlParameter` already carries the `@pN` *name*, and
+`SqlBuilder.Run` already returns the parameters in bind order — so the emitters were always the single source
+of truth for which value takes which name, and explain simply was not asking. `Describe` now runs the emitter
+and quotes the names it bound, rather than maintaining a counter alongside it.
+
+The counter did not merely move: every read states the value it expects to be naming, so a traversal that
+drifts fails at the first disagreeing row with both values in the message, instead of printing a plausible but
+wrong `@pN`. `RequireFullyConsumed` covers the opposite direction. This is what the ordinals-by-side-effect
+invariant needed — it was previously enforced only by comments, and had already drifted once.
+
+One coupling this exposed and closed: a `LIKE` predicate binds its *escaped* pattern, not its raw value, so
+`PredicateEmitter.EscapeLike` became internal and is now the single definition of that value for both paths.
+The hand-maintained explainer never noticed, because consuming an ordinal did not require knowing the value.
+
+**It also caught a live drift immediately.** `EmitResourceSource` binds its predicate *before* its
+`ResourceTypeId`, even though the emitted WHERE renders the type id first — the two were assigned in that
+order because the predicate clause was built into a local first. The explainer consumed them the other way
+round, so any `ResourceSource` carrying a predicate printed the wrong `@pN`. Four goldens had that wrong
+output baked in, including one named `…ThenEveryParameterOrdinalMatchesTheEmittedSql`. Nothing could catch it
+while explain only counted ordinals; the cursor's value check surfaces it on the first such plan.
+
+A note on how it was found: the P6 migration initially "fixed" this by reordering the emitter to bind in
+textual order, which silently changed emitted SQL and so broke P6's byte-identity constraint without any
+golden noticing (no golden pinned the with-predicate shape). Code review caught it. The emitter was restored
+to its original bind order and the *explainer* corrected instead, which keeps P6 a pure formatting refactor
+and leaves the behavioural fix where it belongs, in P7. A golden now pins the with-predicate shape.
 
 ## Tradeoffs
 
@@ -267,8 +312,8 @@ coupling and the most invasive change; it is recorded here but ranked last.
 | P4 `StructuralContext` split | Low | `PatientEverythingLoweringTests.cs` | Done |
 | P2 sort strategy | Low | Golden tests unchanged | Done |
 | P5 schema map | Medium — touches literals used in emitted text | Golden tests | Deferred |
-| P6 clause model | Medium-high — changes how SQL text is assembled | Golden tests | Deferred |
-| P7 ordinal unification | High — changes traversal | `PlanExplainer` plan-shape tests | Deferred |
+| P6 clause model | Medium-high — changes how SQL text is assembled | Golden tests | Done |
+| P7 ordinal unification | High — changes traversal | `PlanExplainer` plan-shape tests | Done |
 
 P2 was resequenced behind P3/P4 during implementation: `SortEmitter.cs` came out of the P1 split at 289 lines, so
 P2 no longer serves the file-size goal and is now purely the polymorphism item. P3 and P4 target the only two
@@ -279,8 +324,10 @@ once the earlier steps land.
 
 ## Deferred findings
 
-Surfaced while implementing P0–P1. None are regressions — all predate this work. Recorded here rather than fixed,
-because each changes emitted SQL or observable behaviour and so does not belong in a byte-identical refactor.
+Surfaced while implementing P0–P1. None are regressions — all predate this work. Findings 2, 4 and 8 have since
+been **fixed** (see Recommendations); they are kept here in their original wording, marked, because the
+reasoning is what justified the fix. The rest remain open, because each changes emitted SQL or observable
+behaviour and so did not belong in a byte-identical refactor.
 
 **1. Inconsistent binding of schema ids (cosmetic, plan-cache cost).** `EmitResourceSource` binds `ResourceTypeId`
 as a `@pN` parameter, while sibling emitters inline the same class of schema id as a literal — as does
@@ -289,11 +336,24 @@ user input, the parameterised form buys nothing and costs a distinct plan-cache 
 literals would shift every downstream parameter ordinal, forcing a golden-test rebaseline; that is a deliberate
 change, not a refactor.
 
-**2. Latent correctness gap: `Top`-capped keyset page combined with `_include`.** `EmitIncludesShape` decides
-whether the match seed excludes the has-more probe row by checking `OffsetSpec.ProbeExtraRow` only. A keyset page
-capped by `Top` also fetches one extra row to detect has-more, but is not covered by that test, so its include
-stages will seed from the probe row — pulling includes for a resource that is not in the returned page. Today's
-unprotected behaviour is pinned by a test, so fixing it is a deliberate behavioural change with a test update.
+**2. [FIXED] Correctness gap: a `Top`-capped keyset page combined with `_include` seeds includes from the probe row.**
+Only an `OffsetSpec.ProbeExtraRow` causes a `MatchSeed` (the probe-trimmed seed) to be built — in `Lower.Run`,
+and identically in `IncludePlanFactory` on the test side. A keyset page capped by `Top` also over-fetches one row
+to detect has-more, and is not covered by that test, so its include stages seed from the probe row and pull
+includes for a resource that is not in the returned page.
+
+This is not hypothetical: `README.md` documents the very usage that triggers it — "`SearchOptions.MaxItemCount`
+is deliberately not forwarded, because callers transform it (`MaxItemCount + 1`, to detect 'has more')" and then
+pass the result as `SearchPaging.Keyset(Top: n)`. The over-fetching keyset page is the documented calling
+convention.
+
+**Severity raised by upstream `480ea416`.** The gap used to be an emitter omission. It is now an enforced plan
+invariant: `QueryPlanValidator` throws `"MatchSeed requires an OffsetPage with ProbeExtraRow enabled."`, so the
+*correct* plan — a `Top`-capped page with a trimmed include seed — is no longer constructible at all. The fix is
+therefore no longer a one-line emitter condition. It needs the over-fetch to be modelled independently of which
+paging mechanism produced it (the natural move: hoist `ProbeExtraRow` onto `MatchPageSpec`, or give
+`SearchPaging.Keyset` its own probe flag), then widen the validator precondition to match. Existing tests pin
+today's unprotected behaviour, so this is a deliberate behavioural change with a test update.
 
 **3. `CteDefinition` exhaustiveness is weaker than it appears.** The `_ => throw` arm in `CteEmitter.EmitCte` is
 unreachable today, and reads as a compile-time completeness check. It is not: C# cannot prove exhaustiveness for a
@@ -302,7 +362,7 @@ The same caveat applies to the enum switches in P2 — C# never checks enum swit
 "keep the switch, it is compiler-checked" argument used above, and correspondingly strengthens the case for P2:
 a strategy registry with a static all-values-mapped assertion fails earlier than four runtime-throwing arms.
 
-**4. Wildcard `:iterate` includes are mutually dependent, producing a misleading cycle error.**
+**4. [FIXED] Wildcard `:iterate` includes are mutually dependent, producing a misleading cycle error.**
 `IncludeStagePlanner.Overlaps` treats a null (wildcard) `Produces`/`Requires` as matching anything. Two wildcard
 `:iterate` includes therefore each depend on the other, so `TopologicalSort` reports a cycle. The user-facing
 error talks about cycles rather than about unsupported wildcard iteration, which points at the wrong thing. This
@@ -320,11 +380,98 @@ raised — precisely the action the message invites ("raise this threshold delib
 overwritten in the `else` branch; the initial assignment is live only when `expression is null`, where it is
 never read. Harmless, but it obscures the control flow.
 
+**8. [FIXED] `Describe` and `Run` validate to different standards.** Surfaced after the rebase onto `480ea416`.
+`SqlBuilder.Run` calls `QueryPlanValidator.Validate` then `PlanValidator.Validate`; `PlanExplainer.Describe`
+calls only the first. `QueryPlanValidator` holds no equivalent of the second's guards, so `Describe` accepts and
+renders plans that `Run` refuses: a negative `Top`, more than three sort keys, `OffsetPage` combined with `Top`
+(SQL Server error 10741), an out-of-range `OffsetSpec`, an empty `OutputResourceTypeIds`, an
+`IncludeStage.Limit` of `int.MaxValue`, an undefined `SortPhase`, and every unsound keyset page/sort pairing.
+
+Some asymmetry is defensible — a diagnostic tool that refuses to explain a broken plan is less useful for
+diagnosing it. But the split is not currently drawn on that principle; it is an artifact of where each guard
+happened to live when the two files were written. Upstream's own tests assert a shared standard
+(`AssertRejectedBySqlBuilderAndExplain`), which suggests the intent is symmetry for anything structural.
+
+## Recommendations
+
+Researched and prioritised after the rebase onto `480ea416`, then implemented. Nothing here was a regression
+from the P0–P4 work.
+
+### Fixed
+
+| # | Item | Outcome |
+|---|------|---------|
+| 2 | `Top`-capped keyset page + `_include` seeds includes from the probe row | The over-fetch is now a property of the page rather than of one paging mechanism. `SearchPaging.Keyset` gained `TopIncludesProbeRow`, `MatchPageSpec` derives `OverFetchesProbeRow` and `TrimmedPageSize` from whichever mechanism is in play, and both `Lower` and the emitter ask the page. Deriving rather than storing means the two mechanisms cannot disagree. `QueryPlanValidator` now also rejects the flag without a usable cap, which `TrimmedPageSize` would otherwise turn into `SELECT TOP (-1)`. |
+| 4 | Two wildcard `:iterate` includes report a cycle | `TopologicalSort` inspects the nodes Kahn's algorithm could not place; if any carries a wildcard set it names wildcard iteration as the limitation instead of blaming a cycle the caller did not write. The genuine-cycle message is unchanged and still covered. |
+| 8 | `Describe` and `Run` validated to different standards | `PlanValidator` moved to `Ast/PlanShapeValidator.cs` and is now reached only through `QueryPlanValidator.Validate`, so a plan is validated through exactly one entry point and no caller can apply half the guards. This immediately caught a golden fixture that paired a keyset boundary with an OFFSET page — a plan `Run` always rejected, so its pinned ordinals described SQL that could never be emitted. |
+
+### Decided
+
+**`SortKeyEmitter.For` throws on an undefined `SortKeyKind`** — kept. Precedent supports it (`ChainDirection`
+×2 and `IncludeDirection` already throw), and finding 3 explains why the alternative is weaker than it looks:
+C# does not check enum switch exhaustiveness, so the old silent fallthrough to Date was an unreported bug
+rather than a safety net.
+
+**`PlanValidator` and `QueryPlanValidator` did not merge.** They have genuinely different jobs — one guards the
+CTE graph's structure, the other judges shape, paging and sort combinations — and merging them would have put
+a ~510-line file back into a project whose whole point here was that nothing exceeds ~500. The defect was never
+that there were two types; it was that there were two *entry points*. Fixing the entry point fixed the bug and
+kept the cohesion.
+
+### Note only — minor
+
+Findings 1 (inconsistent schema-id binding), 3 (`CteDefinition` exhaustiveness is weaker than it reads), 5
+(`PlanProvenance` cannot attribute set-operation or structural CTEs), 6 (chain depth-guard message hardcodes its
+threshold) and 7 (dead assignment). None affect correctness of emitted SQL. Finding 5 is the one worth an
+explicit product decision: if provenance is meant to map every CTE back to source IR, it covers roughly half of
+them today.
+
+### Found by review, after the work above
+
+A `/pr-review-toolkit` pass over the finished change (five specialist agents, two of which reproduced findings
+against the built assembly and one of which mutation-tested the suite) surfaced defects the 1219-test suite did
+not. All are fixed; they are recorded because each says something about where this compiler's coverage is thin.
+
+- **`Explain()` threw on plans that emit valid SQL.** `Describe` read the root's `OuterPredicate` inside the CTE
+  loop, but emission binds every CTE body first, so any parameter-binding CTE after the match root diverged.
+  Pre-existing drift that the cursor converted from a wrong name into a hard failure. Reachable from `Lower`.
+- **`Explain()` threw on a shape lowering produces.** `PrintMultiTypeResourceSource` never rendered its
+  predicate, so `RequireFullyConsumed` fired on the system-level SMART compartment union leg — a shape an
+  existing test builds and emits, but never explains.
+- **The cursor threw the one exception type nothing catches.** `InvalidOperationException` is not matched by the
+  `NotSupportedException or KeyNotFoundException` filters in `SearchPlan` and `SearchSqlCompiler`, so an explain
+  divergence escaped as an unhandled exception rather than a compilation failure. Now `NotSupportedException`.
+- **Diagnostics could fail a compile.** `BuildPlanTrace` was unguarded, so `DiagnosticsLevel.Full` turned any
+  emit-stage refusal into a thrown search — and the trace is exactly what a caller wants when a plan will not
+  emit. Now degrades to a recorded diagnostic.
+- **The probe-row bug was still constructible.** The validator rejected a `MatchSeed` on a page that does not
+  over-fetch, but not the reverse: an over-fetching page whose include stages seed from the untrimmed
+  `MatchPage` emitted the original defect, reachable through the documented `plan with { Query = … }` rewrite.
+  Now guarded symmetrically.
+- **`MatchPageSpec` could contradict itself.** `Top: null, TopIncludesProbeRow: true` reported "over-fetches"
+  and "no page size" simultaneously — the state its own remarks called unrepresentable. The two members
+  collapsed into `TrimmedPageSize` alone, which also removed a `?? throw` and a null-forgiving dereference.
+- **Three emitters had no test pinning their SQL at all.** Mutation testing showed a space appended to
+  `ChainJoin` (both directions) or `ReferencedTypeExpansion`'s `FROM` passed the entire suite — and these are
+  the only emitters whose whitespace P6 restructured non-trivially. Now pinned under both visibility branches.
+- **The wildcard `:iterate` fix needed a back-edge test.** Stuck nodes include those merely downstream of a
+  loop, so a reverse wildcard stranded behind a genuine concrete cycle would have been blamed for it.
+
+The through-line: this compiler's risk is concentrated in shapes that are *emitted* by a test but never
+*explained*, and in emitters whose text nothing asserts. Both are now covered by per-kind theories rather than
+per-shape tests, so they scale as CTE kinds are added.
+
+P5 remains deferred and is now the only unscheduled step.
+
 ## Verdict
 
 Viable. The pipeline design is sound and the leaf tier is already correct — this is a decomposition of three
 orchestrator files along boundaries the codebase itself established, not an architectural redesign.
 
-P0 and P1 are implemented and green: `SqlBuilder.cs` went from 1711 lines to 88, split into seven cohesive
-emitters, with all 1153 golden tests unchanged across both target frameworks. The duplicated keyset invariants
-now share predicates while each layer keeps its own diagnostic wording. P3 and P4 follow, then P2.
+P0 through P4 are implemented, green, and rebased onto `origin/main`: `SqlBuilder.cs` went from 1711 lines to 56,
+split into cohesive emitters, and no file in the project exceeds 510 lines (`Lower.cs`, from 930). The
+duplicated keyset invariants share predicates while each layer keeps its own diagnostic wording.
+
+The rebase carried the work over upstream `480ea416`, which decomposed `SqlBuilder` along a different axis and
+changed emitted SQL. Because the P0–P4 commit modified no test file, upstream's rewritten golden tests acted as an
+exact oracle for the port: the whole suite passed unedited. See Recommendations above for what remains.

@@ -36,8 +36,13 @@ internal static class PredicateEmitter
     /// </summary>
     internal const string ResourceJoinQualifier = "r.";
 
-    /// <summary>Escapes the LIKE metacharacters in a value and wraps it in the % / _ pattern for its match kind, returning a parameter ref for binding.</summary>
-    private static SqlParameterRef EscapeLike(Predicate.Like like)
+    /// <summary>
+    /// Escapes the LIKE metacharacters in a value and wraps it in the % / _ pattern for its match kind,
+    /// returning a parameter ref for binding. Internal because it is the single definition of the value a
+    /// LIKE predicate binds: <see cref="PlanExplainer"/> names that same value, and computing it a second
+    /// time there would be the duplicated traversal the explain cursor exists to remove.
+    /// </summary>
+    internal static SqlParameterRef EscapeLike(Predicate.Like like)
     {
         var raw = (string)like.Value.Value;
         var escaped = raw.Replace("\\", "\\\\", StringComparison.Ordinal)
