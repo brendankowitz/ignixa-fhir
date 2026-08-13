@@ -25,7 +25,7 @@ public class IgnixaElementAdapter : IElement
     private IReadOnlyList<IElement>? _cachedAllChildren;
     private Dictionary<string, IReadOnlyList<IElement>>? _childrenByName;
     private object? _translatedValue;
-    private bool _translatedValueResolved;
+    private volatile bool _translatedValueResolved;
 
     /// <summary>
     /// Creates a new adapter wrapping a Firely SDK ITypedElement.
@@ -46,7 +46,10 @@ public class IgnixaElementAdapter : IElement
     /// Translated into Ignixa's representation - Firely surfaces the temporal primitives as
     /// <c>Hl7.Fhir.ElementModel.Types</c> instances, which Ignixa's evaluators do not recognise.
     /// Memoized so that repeated reads return the same instance rather than re-rendering the
-    /// wire-format string each time.
+    /// wire-format string each time. The value is captured on first read: this adapter is a
+    /// snapshot of the wrapped element, not a live view of it, so re-create it after mutating the
+    /// element underneath. The resolved flag is <c>volatile</c> so a concurrent reader cannot see
+    /// it set before the value it guards.
     /// </para>
     /// </remarks>
     public object? Value
@@ -70,7 +73,12 @@ public class IgnixaElementAdapter : IElement
     public string Location => _firelyElement.Location;
 
     /// <inheritdoc/>
-    public bool HasPrimitiveValue => _firelyElement.Value != null;
+    /// <remarks>
+    /// Derived from <see cref="Value"/> rather than read live off the wrapped element, so the two
+    /// cannot disagree once the value has been snapshotted. Translation never maps a non-null
+    /// value to null, so this is the same answer the wrapped element would give.
+    /// </remarks>
+    public bool HasPrimitiveValue => Value is not null;
 
     /// <inheritdoc/>
     public IType? Type => _firelyElement.Definition != null

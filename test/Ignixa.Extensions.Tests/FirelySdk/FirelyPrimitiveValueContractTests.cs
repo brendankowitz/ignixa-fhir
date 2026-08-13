@@ -115,8 +115,8 @@ public class FirelyPrimitiveValueContractTests
         // Act
         var value = new TypedElementAdapter(element).Value;
 
-        // Assert
-        Assert.Equal(text, value);
+        // Assert - reference equality, so a translation that rebuilt an equal string would fail.
+        Assert.Same(text, value);
     }
 
     [Fact]
@@ -142,6 +142,9 @@ public class FirelyPrimitiveValueContractTests
         // Degrading to the raw text keeps navigation over a malformed resource possible instead of
         // throwing mid-traversal. It is NOT a repair: the raw string reaches Firely exactly as it
         // did before this translation existed, so downstream behaviour on bad data is unchanged.
+        // Concretely, that behaviour is deferred and consumer-dependent - navigation, toString()
+        // and serialization see a plain string, while a consumer that coerces it to a temporal
+        // throws, reported as a type mismatch far from the element that is actually malformed.
         // Note " 12 " is rejected deliberately - FHIR's integer64 regex forbids surrounding
         // whitespace, which long.TryParse would otherwise accept under NumberStyles.Integer.
 
@@ -156,11 +159,11 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Theory]
-    [InlineData("DateTime", "2013-01-01T11:22:33+10:00")]
-    [InlineData("DATE", "2013-01-01")]
-    [InlineData("Time", "11:22:33")]
-    [InlineData("Integer64", "42")]
-    public void GivenInstanceTypeInUnexpectedCasing_WhenReadThroughTypedElementAdapter_ThenStillTranslates(string instanceType, string text)
+    [InlineData("DateTime", "2013-01-01T11:22:33+10:00", typeof(P.DateTime))]
+    [InlineData("DATE", "2013-01-01", typeof(P.Date))]
+    [InlineData("Time", "11:22:33", typeof(P.Time))]
+    [InlineData("Integer64", "42", typeof(long))]
+    public void GivenInstanceTypeInUnexpectedCasing_WhenReadThroughTypedElementAdapter_ThenStillTranslates(string instanceType, string text, Type expected)
     {
         // The FHIRPath evaluator lower-cases instanceType before dispatching on it, so a source
         // that reports non-canonical casing works there. Translation must not be the odd one out.
@@ -172,18 +175,20 @@ public class FirelyPrimitiveValueContractTests
         var value = new TypedElementAdapter(element).Value;
 
         // Assert
-        Assert.IsNotType<string>(value);
+        Assert.IsType(expected, value);
     }
 
     [Theory]
-    [InlineData("date", "2024-03-05")]
-    [InlineData("dateTime", "2024-03-05T13:45:30.123+10:00")]
-    [InlineData("time", "13:45:30.123")]
-    public void GivenIgnixaDateTimeOffsetValue_WhenReadThroughTypedElementAdapter_ThenTranslatesAtTheTypesOwnPrecision(string instanceType, string expected)
+    [InlineData("date", "2024-03-05", typeof(P.Date))]
+    [InlineData("dateTime", "2024-03-05T13:45:30.123+10:00", typeof(P.DateTime))]
+    [InlineData("time", "13:45:30.123", typeof(P.Time))]
+    public void GivenIgnixaDateTimeOffsetValue_WhenReadThroughTypedElementAdapter_ThenTranslatesAtTheTypesOwnPrecision(string instanceType, string expectedText, Type expectedType)
     {
         // IElement.Value permits DateTimeOffset as well as the wire string. Each FHIR type has to
         // land at its own precision: date drops the time and offset, time drops the offset, and
-        // only dateTime keeps both.
+        // only dateTime keeps both. The type is asserted as well as the text, because rendering
+        // the wire string and calling it done would satisfy the text alone - and that is precisely
+        // the pass-through this translation exists to replace.
 
         // Arrange
         var element = new StubElement
@@ -196,7 +201,8 @@ public class FirelyPrimitiveValueContractTests
         var value = new TypedElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal(expected, value?.ToString());
+        Assert.IsType(expectedType, value);
+        Assert.Equal(expectedText, value?.ToString());
     }
 
     [Fact]
@@ -220,6 +226,45 @@ public class FirelyPrimitiveValueContractTests
         Assert.DoesNotContain("+", dateTime.ToString(), StringComparison.Ordinal);
         Assert.DoesNotContain("Z", dateTime.ToString(), StringComparison.Ordinal);
         Assert.StartsWith("2024-03-05T13:45:30", dateTime.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("007", 7L)]
+    [InlineData("+12", 12L)]
+    [InlineData("-0", 0L)]
+    public void GivenIgnixaInteger64WithNonCanonicalDigits_WhenReadThroughTypedElementAdapter_ThenParsesAndCanonicalises(string text, long expected)
+    {
+        // Pins a known, accepted consequence rather than desired behaviour. FHIR's integer64
+        // grammar is [0]|[-+]?[1-9][0-9]*, so "007" is invalid - but long.TryParse accepts it and
+        // canonicalises it to 7, erasing the invalid literal at this boundary. That matches how
+        // SchemaAwareElement already parses the narrower integer types, so the shim is consistent
+        // with the native path; catching it belongs in the validator, which reads the raw text.
+
+        // Arrange
+        var element = new StubElement { InstanceType = "integer64", Value = text };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        Assert.Equal(expected, Assert.IsType<long>(value));
+    }
+
+    [Fact]
+    public void GivenTranslatedTypeCarryingAnUnexpectedClrType_WhenReadThroughTypedElementAdapter_ThenPassesThroughUnchanged()
+    {
+        // Covers the per-helper fallthrough arms: the instanceType is one we translate, but the
+        // value is not a shape that type can be built from. Passing it through unchanged keeps
+        // this a translation rather than a coercion.
+
+        // Arrange
+        var element = new StubElement { InstanceType = "date", Value = 42 };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        Assert.Equal(42, value);
     }
 
     [Fact]
@@ -285,6 +330,25 @@ public class FirelyPrimitiveValueContractTests
         Assert.Equal(true, new IgnixaElementAdapter(new StubTypedElement { InstanceType = "boolean", Value = true }).Value);
         Assert.Equal(42, new IgnixaElementAdapter(new StubTypedElement { InstanceType = "integer", Value = 42 }).Value);
         Assert.Equal(1.5m, new IgnixaElementAdapter(new StubTypedElement { InstanceType = "decimal", Value = 1.5m }).Value);
+    }
+
+    [Fact]
+    public void GivenFirelyInteger64_WhenReadThroughIgnixaElementAdapter_ThenStaysALongRatherThanBecomingAString()
+    {
+        // Pins the deliberate asymmetry: integer64 is translated in the Ignixa -> Firely direction
+        // only. Ignixa's evaluator treats long as a first-class numeric alongside int and decimal
+        // (FhirPathEvaluator.cs:1074-1075, :1317-1318), so "fixing" the asymmetry by stringifying
+        // here would silently downgrade numeric comparison to lexical - making 9 > 10 true.
+        // Without this test that change passes the whole suite.
+
+        // Arrange
+        var element = new StubTypedElement { InstanceType = "integer64", Value = 9007199254740993L };
+
+        // Act
+        var value = new IgnixaElementAdapter(element).Value;
+
+        // Assert
+        Assert.Equal(9007199254740993L, Assert.IsType<long>(value));
     }
 
     [Fact]
@@ -363,6 +427,7 @@ public class FirelyPrimitiveValueContractTests
         var backToIgnixa = new IgnixaElementAdapter(new StubTypedElement { InstanceType = instanceType, Value = firelyValue }).Value;
 
         // Assert
+        Assert.IsNotType<string>(firelyValue);
         Assert.Equal(expected, Assert.IsType<string>(backToIgnixa));
     }
 
@@ -448,6 +513,24 @@ public class FirelyPrimitiveValueContractTests
         // Arrange
         var element = new CountingStubElement { InstanceType = "dateTime", Value = null };
         var adapter = new TypedElementAdapter(element);
+
+        // Act
+        _ = adapter.Value;
+        _ = adapter.Value;
+
+        // Assert
+        Assert.Equal(1, element.ValueReadCount);
+    }
+
+    [Fact]
+    public void GivenNullValue_WhenReadRepeatedlyThroughIgnixaElementAdapter_ThenStillTranslatesOnlyOnce()
+    {
+        // The same guard as above, asserted independently: each adapter carries its own flag, so
+        // the null-sentinel bug is independently reintroducible in this one.
+
+        // Arrange
+        var element = new CountingStubTypedElement { InstanceType = "date", Value = null };
+        var adapter = new IgnixaElementAdapter(element);
 
         // Act
         _ = adapter.Value;

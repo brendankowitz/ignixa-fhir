@@ -1,9 +1,10 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Frozen;
+using System.Diagnostics;
 using System.Globalization;
 using Ignixa.Abstractions;
 using P = Hl7.Fhir.ElementModel.Types;
@@ -107,9 +108,10 @@ internal static class FirelyPrimitiveValues
     /// Ignixa reports the temporal primitives as strings, so the FHIR type name is what tells us
     /// which of them to build. A value that does not parse is returned unchanged, which is what
     /// the adapter did before any translation existed: navigation over a malformed resource stays
-    /// possible, and the malformed text reaches Firely exactly as it would have. Firely then
-    /// applies its own handling, which for a bad temporal is to throw when the value is consumed -
-    /// this method neither introduces nor suppresses that.
+    /// possible, and the malformed text reaches Firely exactly as it would have. What Firely then
+    /// does with it depends on the consumer - one that coerces it to a temporal throws, while
+    /// navigation, <c>toString()</c> and serialization see the raw string. This method neither
+    /// introduces nor suppresses either outcome.
     /// </remarks>
     public static object? ToFirely(object? value, string? instanceType)
     {
@@ -124,7 +126,7 @@ internal static class FirelyPrimitiveValues
             PrimitiveKind.DateTime => ToFirelyDateTime(value),
             PrimitiveKind.Time => ToFirelyTime(value),
             PrimitiveKind.Integer64 => ToFirelyInteger64(value),
-            _ => value,
+            _ => throw new UnreachableException($"Unhandled {nameof(PrimitiveKind)}: {kind}."),
         };
     }
 
@@ -142,10 +144,12 @@ internal static class FirelyPrimitiveValues
 
     /// <remarks>
     /// The offset is part of a FHIR <c>dateTime</c>, so a bare <see cref="DateTime"/> is rendered
-    /// through its round-trip format rather than being given a fabricated one: that emits no
+    /// through its round-trip format rather than being given an arbitrary one: that emits no
     /// offset for <see cref="DateTimeKind.Unspecified"/>, <c>Z</c> for
-    /// <see cref="DateTimeKind.Utc"/>, and the host offset for <see cref="DateTimeKind.Local"/>,
-    /// matching how Ignixa's own evaluator normalises the same value.
+    /// <see cref="DateTimeKind.Utc"/>, and the host machine's offset for
+    /// <see cref="DateTimeKind.Local"/>, matching how Ignixa's own evaluator normalises the same
+    /// value. The <see cref="DateTimeKind.Local"/> result is therefore host-dependent, which is
+    /// inherent to the input: a local <see cref="DateTime"/> has no meaning without one.
     /// </remarks>
     private static object ToFirelyDateTime(object value) => value switch
     {
@@ -158,8 +162,11 @@ internal static class FirelyPrimitiveValues
     };
 
     /// <remarks>
-    /// A FHIR <c>time</c> is a wall-clock time with no offset, so the offset of a supplied instant
-    /// is deliberately dropped rather than folded into the result.
+    /// A FHIR <c>time</c> is a wall-clock time, so where an offset has to be discarded to build
+    /// one - the instant-shaped arms below - it is dropped rather than folded into the result.
+    /// The string arm does not strip one: FHIR's <c>time</c> grammar forbids an offset, so a
+    /// string carrying one is already non-conformant, and preserving what was actually written is
+    /// more useful to a validator than silently normalising it away.
     /// </remarks>
     private static object ToFirelyTime(object value) => value switch
     {
@@ -170,10 +177,14 @@ internal static class FirelyPrimitiveValues
     };
 
     /// <remarks>
-    /// <see cref="NumberStyles.AllowLeadingSign"/> rather than the default
-    /// <see cref="NumberStyles.Integer"/>, which also accepts surrounding whitespace that FHIR's
-    /// <c>integer64</c> grammar does not permit. A value outside <see cref="long"/>'s range fails
-    /// the parse and is returned unchanged, same as any other unparseable input.
+    /// <c>AllowLeadingSign</c> rather than the default <see cref="NumberStyles.Integer"/>, which
+    /// also accepts surrounding whitespace that FHIR's <c>integer64</c> grammar does not permit.
+    /// This is not a grammar check: FHIR's <c>[0]|[-+]?[1-9][0-9]*</c> also forbids leading zeros,
+    /// which <see cref="long.TryParse(string, NumberStyles, IFormatProvider, out long)"/> accepts
+    /// and canonicalises away, so <c>"007"</c> crosses as <c>7</c>. That matches how
+    /// <c>SchemaAwareElement</c> already parses the narrower integer types; validating the literal
+    /// belongs in the validator, not here. A value outside <see cref="long"/>'s range fails the
+    /// parse and is returned unchanged, same as any other unparseable input.
     /// </remarks>
     private static object ToFirelyInteger64(object value) => value switch
     {

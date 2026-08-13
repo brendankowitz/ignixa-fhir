@@ -26,7 +26,7 @@ public class TypedElementAdapter : ITypedElement
 {
     private readonly IElement _coreElement;
     private object? _translatedValue;
-    private bool _translatedValueResolved;
+    private volatile bool _translatedValueResolved;
 
     /// <summary>
     /// Creates a new adapter wrapping an Ignixa IElement.
@@ -66,7 +66,11 @@ public class TypedElementAdapter : ITypedElement
     /// <para>
     /// Memoized because the translation parses, and Firely's engines read <c>Value</c> repeatedly
     /// on the same element - and because <see cref="Children"/> hands out a fresh adapter per call,
-    /// so nothing upstream would amortise it.
+    /// so nothing upstream would amortise it. The value and the instance type are both captured on
+    /// first read: this adapter is a snapshot of the wrapped element, not a live view of it, so
+    /// re-create it after mutating the element underneath. The resolved flag is
+    /// <c>volatile</c> so a concurrent reader cannot see it set before the value it guards; the
+    /// translation is pure, so racing readers at worst repeat the work.
     /// </para>
     /// </remarks>
     public object? Value
