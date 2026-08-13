@@ -261,9 +261,63 @@ var result = element.Select("birthDate < %today", context);
 var context = new EvaluationContext { Resource = patientElement };
 ```
 
-### Element Resolver
+### Reference Resolution (`resolve()`)
 
-The `FhirEvaluationContext` supports configuring an `ElementResolver` to enable the `resolve()` function in FHIRPath expressions. This allows following references from one resource to another.
+The `resolve()` function follows a `Reference` from one resource to another. Resolution happens in two stages, tried in order:
+
+1. **In-instance resolution** — looks inside the resource under evaluation for a contained resource, a sibling Bundle entry, or a bare `#`. This needs no configuration at all.
+2. **`ElementResolver` fallback** — only runs when in-instance resolution misses, and only when an `ElementResolver` is configured on a `FhirEvaluationContext`. This is the extension point for genuinely external references (a different server, a database, a cache).
+
+In-instance resolution always wins when a reference could be resolved both ways — it matches Firely's `ScopedNode` resolution order. Both stages require `Resource` (or `RootResource`) to be set on the evaluation context; `resolve()` has nothing to look inside otherwise and falls straight through to the `ElementResolver` (or to empty, if none is configured).
+
+#### In-instance resolution
+
+No `ElementResolver` needed. It covers:
+
+- Contained resources by `#id` (`"reference": "#p1"` finds the matching entry in `contained`).
+- A bare `#`, which always resolves to the resource that directly contains the reference.
+- For a `Bundle` root, sibling entries by `fullUrl`, `Type/id`, and `Type/id/_history/versionId`.
+- For a `Parameters` root, resources nested under `parameter`/`part`, at any depth.
+
+```csharp
+using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Extensions;
+
+IFhirSchemaProvider schemaProvider = FhirVersion.R4.GetSchemaProvider();
+
+// subject.reference is "#p1" - Patient p1 is a contained resource, not a separate lookup.
+var observationJson = """
+{
+  "resourceType": "Observation",
+  "id": "obs1",
+  "status": "final",
+  "code": { "coding": [ { "system": "http://loinc.org", "code": "1234-5" } ] },
+  "subject": { "reference": "#p1" },
+  "contained": [
+    { "resourceType": "Patient", "id": "p1" }
+  ]
+}
+""";
+
+var observation = ResourceJsonNode.Parse(observationJson).ToElement(schemaProvider);
+
+// No ElementResolver configured - Resource is enough for resolve() to find the contained Patient.
+var context = new EvaluationContext { Resource = observation };
+
+var isPatient = observation
+    .Select("Observation.subject.where(resolve() is Patient).exists()", context)
+    .Single();
+
+// isPatient.Value == true
+```
+
+The same applies to a `Bundle` root: `Bundle.entry.resource.ofType(Observation).subject.resolve()` finds a sibling `entry` by `fullUrl` or `Type/id` with no resolver configured, as long as `Resource` (or `RootResource`) points at the Bundle.
+
+#### External resolver (fallback)
+
+Configure an `ElementResolver` on `FhirEvaluationContext` to resolve references that are not part of the instance being evaluated - a reference to a resource that lives on another server, in a database, or behind a cache.
 
 ```csharp
 using Ignixa.FhirPath.Evaluation;
@@ -347,11 +401,10 @@ var practitionerNames = encounter.Select(
 
 :::note
 The `resolve()` function returns an empty collection if:
-- No `ElementResolver` is configured
-- The reference cannot be resolved
-- An error occurs during resolution
+- The reference is not found in-instance and either no `ElementResolver` is configured or it also misses
+- An error occurs during external resolution (the host resolver throwing is swallowed, not propagated)
 
-This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions. This allows FHIRPath expressions to continue evaluating even when references can't be resolved.
+This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions. This allows FHIRPath expressions to continue evaluating even when references can't be resolved. A contained or intra-Bundle reference resolves with **no `ElementResolver` configured at all** - see [In-instance resolution](#in-instance-resolution).
 :::
 
 ### Instance Creator
