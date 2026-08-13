@@ -30,8 +30,7 @@ public static class DeployReportClassifier
 
     private static readonly string[] NeverDestructiveOperations = ["Create", "Refresh"];
 
-    private static readonly DeployReportClassification AutoSafeResult =
-        new(DeployClassification.AutoSafe, []);
+    private static readonly DeployReportClassification AutoSafeResult = DeployReportClassification.AutoSafe();
 
     /// <summary>
     /// Classifies <paramref name="deployReportXml"/>. Throws only for a caller bug (null/empty
@@ -135,8 +134,7 @@ public static class DeployReportClassifier
         var destructive = flaggedItems.Where(f => !f.IsNeverDestructive).ToList();
         if (destructive.Count > 0)
         {
-            return new DeployReportClassification(
-                DeployClassification.Unsafe,
+            return DeployReportClassification.Unsafe(
                 destructive.Select(f => $"{f.OperationName} {f.ItemValue} is flagged by DacFx as a data issue").ToList());
         }
 
@@ -166,7 +164,7 @@ public static class DeployReportClassifier
                   "kind this classifier treats as never destructive -- the alert and the operation kind disagree");
         }
 
-        return new DeployReportClassification(DeployClassification.Unclassifiable, reasons);
+        return DeployReportClassification.Unclassifiable(reasons);
     }
 
     private static List<string> UnrecognizedChildNames(XElement parent, XName expected)
@@ -188,7 +186,7 @@ public static class DeployReportClassifier
             ?? [];
 
     private static DeployReportClassification Unclassifiable(string reason)
-        => new(DeployClassification.Unclassifiable, [reason]);
+        => DeployReportClassification.Unclassifiable([reason]);
 
     private sealed record FlaggedItem(string OperationName, string ItemValue, string? IssueId, bool IsNeverDestructive);
 }

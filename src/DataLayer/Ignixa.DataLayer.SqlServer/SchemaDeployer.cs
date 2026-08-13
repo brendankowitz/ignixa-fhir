@@ -108,11 +108,21 @@ public sealed class SchemaDeployer : ISchemaDeployer
             return;
         }
 
+        // Version 0 means "no dbo.SchemaVersion table yet" -- every tenant provisioned before this
+        // table existed is at version 0 by definition (see SchemaVersionConstants's changelog: v1
+        // only introduces that tracking table). Bootstrapping it is required for version tracking to
+        // work at all going forward, so unlike a genuine future upgrade it isn't a discretionary
+        // change an operator can opt out of via AutomaticSchemaDeploymentEnabled -- every existing
+        // tenant would otherwise start throwing on its very next request as soon as this build ships.
+        // The classifier below still gates it: if this tenant's actual schema has drifted from what
+        // v1 expects (e.g. a hand-applied hotfix), an unexpected destructive diff still stops here.
+        var isVersionZeroBootstrap = currentVersion == 0;
+
         // Cheap config gate before the expensive DacFx work below. A deployment that has explicitly
         // opted out of automatic schema changes shouldn't pay for full deploy-report generation on
         // every uncached factory creation, nor be taken down by a report-shape problem it has no
         // interest in -- it needs to be told to use the CLI, and nothing more.
-        if (!_options.Value.AutomaticSchemaDeploymentEnabled)
+        if (!isVersionZeroBootstrap && !_options.Value.AutomaticSchemaDeploymentEnabled)
         {
             throw new InvalidOperationException(
                 $"Tenant {tenantId}'s database is behind schema version {SchemaVersionConstants.CurrentVersion} " +
