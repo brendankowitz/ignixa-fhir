@@ -27,6 +27,9 @@ internal class SchemaAwareElement : IElement
     // OPTIMIZATION: Cache type definition (immutable, safe to cache per-instance)
     private readonly Lazy<IType?> _typeDefinition;
 
+    // OPTIMIZATION: Cache parsed Value — see ComputeValue() and _cachedValue initialization in ctor.
+    private readonly Lazy<object?> _cachedValue;
+
     // OPTIMIZATION: Cache for child element definitions (avoid repeated lookups)
     // Key: element name, Value: IType (can be null)
     // Using ConcurrentDictionary for thread-safe concurrent access
@@ -79,6 +82,8 @@ internal class SchemaAwareElement : IElement
 
             return null;
         });
+
+        _cachedValue = new Lazy<object?>(ComputeValue);
     }
 
     /// <summary>
@@ -170,23 +175,26 @@ internal class SchemaAwareElement : IElement
 
     public string InstanceType => _instanceType ?? string.Empty;
 
-    public object? Value
-    {
-        get
-        {
-            var text = _source.Text;
-            if (text == null) return null;
+    public object? Value => _cachedValue.Value;
 
-            // Convert primitive FHIR types to their native C# types for proper FHIRPath evaluation
-            return InstanceType switch
-            {
-                "boolean" => bool.TryParse(text, out var b) ? b : text,
-                "integer" or "unsignedInt" or "positiveInt" => int.TryParse(text, out var i) ? i : text,
-                "decimal" => decimal.TryParse(text, out var d) ? d : text,
-                // FHIRPath engine handles type checking via InstanceType, no prefix needed here
-                _ => text
-            };
-        }
+    private object? ComputeValue()
+    {
+        var text = _source.Text;
+        if (text == null) return null;
+
+        // Convert primitive FHIR types to their native C# types for proper FHIRPath evaluation
+        return InstanceType switch
+        {
+            "boolean" => bool.TryParse(text, out var b) ? (object)b : text,
+            "integer" or "unsignedInt" or "positiveInt" => int.TryParse(text, out var i) ? (object)i : text,
+            "decimal" => decimal.TryParse(text, out var d) ? (object)d : text,
+            "date" => FhirTemporal.TryParse(text, FhirPrimitive.Date, out var td) ? (object)td! : text,
+            "dateTime" => FhirTemporal.TryParse(text, FhirPrimitive.DateTime, out var tdt) ? (object)tdt! : text,
+            "instant" => FhirTemporal.TryParse(text, FhirPrimitive.Instant, out var ti) ? (object)ti! : text,
+            "time" => FhirTemporal.TryParse(text, FhirPrimitive.Time, out var tt) ? (object)tt! : text,
+            // FHIRPath engine handles type checking via InstanceType, no prefix needed here
+            _ => text
+        };
     }
 
     public string Location => _source.Location;

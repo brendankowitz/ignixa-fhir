@@ -30,13 +30,14 @@ public interface IElement
     /// Primitive value for primitive types, null for complex types.
     /// </summary>
     /// <remarks>
-    /// Type mapping:
-    /// - boolean → bool
-    /// - integer → int
-    /// - string/code/id/markdown/url/canonical/uuid → string
-    /// - decimal → decimal
-    /// - dateTime/date/instant → DateTimeOffset or string
-    /// - base64Binary → byte[] or string
+    /// Type mapping (exact runtime type returned):
+    /// - <c>boolean</c> → <see cref="bool"/> (falls back to <see cref="string"/> when unparseable)
+    /// - <c>integer</c>, <c>unsignedInt</c>, <c>positiveInt</c> → <see cref="int"/> (falls back to <see cref="string"/>)
+    /// - <c>decimal</c> → <see cref="decimal"/> (falls back to <see cref="string"/>)
+    /// - <c>date</c>, <c>dateTime</c>, <c>instant</c>, <c>time</c> → <see cref="FhirTemporal"/> (falls back to <see cref="string"/> when unparseable, e.g. hour-precision literals)
+    /// - <c>integer64</c> → <see cref="string"/> (no numeric arm; falls through to raw text)
+    /// - <c>base64Binary</c> → <see cref="string"/> (raw wire text; no byte[] conversion)
+    /// - all other types → <see cref="string"/> (raw wire text)
     /// </remarks>
     object? Value { get; }
 

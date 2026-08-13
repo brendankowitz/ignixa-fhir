@@ -437,7 +437,8 @@ public class SchemaAwareElementTests
         Assert.Single(effectiveChildren);
         Assert.Equal("effectiveDateTime", effectiveChildren[0].Name);
         Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
-        Assert.Equal("1980-05-11", effectiveChildren[0].Value);
+        var temporalValue = Assert.IsType<FhirTemporal>(effectiveChildren[0].Value);
+        Assert.Equal("1980-05-11", temporalValue.Literal);
     }
 
     /// <summary>
@@ -659,7 +660,8 @@ public class SchemaAwareElementTests
         var valueDateTimes = extensions[0].Children("valueDateTime");
         Assert.Single(valueDateTimes);
         Assert.Equal("dateTime", valueDateTimes[0].InstanceType);
-        Assert.Equal("2000-01-01T01:01:01-01:00", valueDateTimes[0].Value);
+        var valueDateTimeValue = Assert.IsType<FhirTemporal>(valueDateTimes[0].Value);
+        Assert.Equal("2000-01-01T01:01:01-01:00", valueDateTimeValue.Literal);
     }
 
     [Fact]
@@ -689,7 +691,8 @@ public class SchemaAwareElementTests
         // Assert
         Assert.Single(birthDateList);
         var birthDate = birthDateList[0];
-        Assert.Equal("2010-05-07", birthDate.Value);
+        var birthDateTemporal = Assert.IsType<FhirTemporal>(birthDate.Value);
+        Assert.Equal("2010-05-07", birthDateTemporal.Literal);
 
         var extensions = birthDate.Children("extension").ToList();
         Assert.Single(extensions);
@@ -698,6 +701,188 @@ public class SchemaAwareElementTests
         var valueDateTimes = extensions[0].Children("valueDateTime");
         Assert.Single(valueDateTimes);
         Assert.Equal("dateTime", valueDateTimes[0].InstanceType);
+    }
+
+    #endregion
+
+    #region Temporal Value Tests
+
+    [Theory]
+    [InlineData("birthDate", "date", "1974-12-25", FhirTemporalPrecision.Day)]
+    [InlineData("birthDate", "date", "1974", FhirTemporalPrecision.Year)]
+    public void GivenPatientWithDateField_WhenReadingValue_ThenReturnsFhirTemporal(
+        string field, string expectedInstanceType, string literal, FhirTemporalPrecision expectedPrecision)
+    {
+        // Arrange
+        var patientJson = $$"""
+        {
+          "resourceType": "Patient",
+          "id": "p1",
+          "{{field}}": "{{literal}}"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var children = typedElement.Children(field).ToList();
+
+        // Assert
+        Assert.Single(children);
+        Assert.Equal(expectedInstanceType, children[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(children[0].Value);
+        Assert.Equal(literal, temporal.Literal);
+        Assert.Equal(expectedPrecision, temporal.Precision);
+    }
+
+    [Fact]
+    public void GivenObservationWithEffectiveDateTime_WhenReadingValue_ThenReturnsFhirTemporal()
+    {
+        // Arrange
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs",
+          "status": "final",
+          "code": { "text": "test" },
+          "effectiveDateTime": "1974-12-25T14:30:00Z"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var effectiveChildren = typedElement.Children("effective").ToList();
+
+        // Assert
+        Assert.Single(effectiveChildren);
+        Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(effectiveChildren[0].Value);
+        Assert.Equal("1974-12-25T14:30:00Z", temporal.Literal);
+        Assert.Equal(FhirTemporalPrecision.Second, temporal.Precision);
+    }
+
+    [Fact]
+    public void GivenObservationWithInstant_WhenReadingValue_ThenReturnsFhirTemporal()
+    {
+        // Arrange
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs",
+          "status": "final",
+          "code": { "text": "test" },
+          "issued": "1974-12-25T14:30:00.123Z"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var issuedChildren = typedElement.Children("issued").ToList();
+
+        // Assert
+        Assert.Single(issuedChildren);
+        Assert.Equal("instant", issuedChildren[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(issuedChildren[0].Value);
+        Assert.Equal("1974-12-25T14:30:00.123Z", temporal.Literal);
+        Assert.Equal(FhirTemporalPrecision.Millisecond, temporal.Precision);
+    }
+
+    [Fact]
+    public void GivenUnparseableTemporalLiteral_WhenReadingValue_ThenFallsBackToRawString()
+    {
+        // Arrange — hour-precision dateTime deliberately fails FhirTemporal.TryParse
+        // (GetPrecision returns Hour, which TryParseTemporal cannot handle via DateTimeOffset.TryParse
+        // for a date-prefixed hour-only string — the round-trip through GetLowerBound returns null)
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs",
+          "status": "final",
+          "code": { "text": "test" },
+          "effectiveDateTime": "2012-01-01T10"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var effectiveChildren = typedElement.Children("effective").ToList();
+
+        // Assert — raw string fallback, no FhirTemporal, no null, no exception
+        Assert.Single(effectiveChildren);
+        Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
+        Assert.Equal("2012-01-01T10", effectiveChildren[0].Value);
+    }
+
+    [Fact]
+    public void GivenHourPrecisionTemporalLiteral_WhenReadingValue_ThenFallsBackToRawString()
+    {
+        // Arrange — "2012-01-01T10" is the canonical example from the task brief
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "p1",
+          "birthDate": "2012-01-01T10"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var children = typedElement.Children("birthDate").ToList();
+
+        // Assert
+        Assert.Single(children);
+        Assert.Equal("date", children[0].InstanceType);
+        Assert.Equal("2012-01-01T10", children[0].Value);
+    }
+
+    /// <summary>
+    /// Exercises the <c>time</c> arm of <see cref="FhirTemporal"/>.
+    /// A bare FHIR <c>time</c> is anchored internally to a synthetic 1900-01-01 date and is not a
+    /// determinate calendar instant, so <see cref="FhirTemporal.Value"/> must be <see langword="null"/>
+    /// and <see cref="FhirTemporal.Kind"/> must be <see cref="FhirPrimitive.Time"/>.
+    /// Field used: <c>HealthcareService.availableTime.availableStartTime</c> (typed as <c>time</c>
+    /// in R4 and therefore a clean, shallow path that the schema provider resolves without fabricating
+    /// wrapper elements).
+    /// </summary>
+    [Fact]
+    public void GivenHealthcareServiceWithAvailableStartTime_WhenReadingValue_ThenReturnsFhirTemporalWithNullValue()
+    {
+        // Arrange
+        var healthcareServiceJson = """
+        {
+          "resourceType": "HealthcareService",
+          "id": "hs1",
+          "availableTime": [
+            {
+              "availableStartTime": "09:00:00"
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(healthcareServiceJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var availableTimeChildren = typedElement.Children("availableTime").ToList();
+        var startTimeChildren = availableTimeChildren[0].Children("availableStartTime").ToList();
+
+        // Assert
+        Assert.Single(startTimeChildren);
+        Assert.Equal("time", startTimeChildren[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(startTimeChildren[0].Value);
+        Assert.Equal(FhirPrimitive.Time, temporal.Kind);
+        Assert.Equal("09:00:00", temporal.Literal);
+        Assert.Null(temporal.Value); // time-only; no determinate calendar instant
     }
 
     #endregion
