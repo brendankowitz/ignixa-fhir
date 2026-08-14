@@ -40,7 +40,8 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         FhirPrimitive kind,
         DateTimeOffset? value,
         DateTime lowerBound,
-        DateTime upperBound)
+        DateTime upperBound,
+        bool hasTimezone)
     {
         Literal = literal;
         Precision = precision;
@@ -48,6 +49,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         Value = value;
         _lowerBound = lowerBound;
         _upperBound = upperBound;
+        HasTimezone = hasTimezone;
     }
 
     /// <summary>
@@ -81,6 +83,22 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// every <c>time</c> value, because a time of day is not a point on the calendar.
     /// </remarks>
     public DateTimeOffset? Value { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the source literal carried a timezone (a <c>Z</c> or a
+    /// <c>±hh:mm</c> offset) on its time-of-day component.
+    /// </summary>
+    /// <remarks>
+    /// This is a genuine, observable fact about the wire value, distinct from <see cref="Value"/>: a
+    /// timezone-less <c>dateTime</c> denotes a floating local time, whereas a timezone-bearing one
+    /// denotes a fixed instant, and FHIRPath treats a comparison between the two as indeterminate.
+    /// <see cref="Value"/> cannot preserve the distinction because it resolves everything to UTC.
+    /// It is derived by scanning the literal after the <c>T</c>, not from the parsed instant, because
+    /// <see cref="DateTimeOffset"/> exposes no "an offset was present" flag. It is always
+    /// <see langword="false"/> for <c>date</c> (no time component) and for <c>time</c> (FHIR times never
+    /// carry a timezone).
+    /// </remarks>
+    public bool HasTimezone { get; }
 
     private bool IsTimeOnly => Kind == FhirPrimitive.Time;
 
@@ -168,9 +186,38 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
             kind,
             ResolveValue(normalized, precision, kind),
             lowerBound.Value,
-            upperBound.Value);
+            upperBound.Value,
+            HasTimezoneComponent(wire, kind));
 
         return true;
+    }
+
+    private static bool HasTimezoneComponent(string wire, FhirPrimitive kind)
+    {
+        // FHIR date has no time component and FHIR time never carries a timezone, so both are always
+        // timezone-less regardless of what the literal happens to contain.
+        if (kind is FhirPrimitive.Date or FhirPrimitive.Time)
+        {
+            return false;
+        }
+
+        // Only the substring after 'T' may hold a timezone; scanning the whole literal would mistake the
+        // date part's '-' separators for a negative offset.
+        var timeIndex = wire.IndexOf('T', StringComparison.Ordinal);
+        if (timeIndex < 0)
+        {
+            return false;
+        }
+
+        foreach (var character in wire.AsSpan(timeIndex + 1))
+        {
+            if (character is 'Z' or '+' or '-')
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -187,7 +234,9 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// Each value denotes the interval its precision covers, so <c>@2012</c> spans the whole of 2012.
     /// Two overlapping intervals that are not identical have no defined order: <c>@2012 &gt; @2012-01</c>
     /// is neither true nor false, and FHIRPath requires that to surface as empty rather than as
-    /// <c>false</c>. A <see langword="null"/> result is that empty.
+    /// <c>false</c>. A <see langword="null"/> result is that empty. The one exception is the second tier:
+    /// FHIRPath treats seconds and milliseconds as a single precision, so two second-or-finer values
+    /// compare as exact instants and always have a defined order.
     /// </remarks>
     public static int? Compare(FhirTemporal? left, FhirTemporal? right)
     {
@@ -199,6 +248,33 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         if (left.IsTimeOnly != right.IsTimeOnly)
         {
             return null;
+        }
+
+        // Timezone-vs-no-timezone is indeterminate whenever both operands carry a time of day: a
+        // floating local time could sit at any offset, so it overlaps a fixed instant rather than
+        // ordering against it, and FHIRPath requires empty. This mirrors the evaluator's string
+        // fallback (leftHasTz != rightHasTz => null). Gate on time-of-day presence (Precision >= Hour):
+        // a date has no timezone by definition, so a HasTimezone difference between date-precision
+        // values is meaningless, not a mismatch. Placed ahead of both comparison branches so it governs
+        // the second-or-finer point comparison and the coarser interval comparison alike.
+        if (left.Precision >= FhirTemporalPrecision.Hour
+            && right.Precision >= FhirTemporalPrecision.Hour
+            && left.HasTimezone != right.HasTimezone)
+        {
+            return null;
+        }
+
+        // FHIRPath recognises exactly six precisions and stops at seconds: milliseconds are the
+        // fractional part of the second tier, not a tier of their own. So once both operands are
+        // second-precision-or-finer they compare as exact instants (points), never as intervals, which
+        // is why @...:31 and @...:31.1 have a definite order instead of the empty that an interval
+        // overlap would yield. This is deliberately kept separate from the lower/upper BOUND helpers:
+        // a second-precision value still spans [ss.000, ss.999] for lowBoundary()/highBoundary(); only
+        // comparison collapses it to its instant. _lowerBound is that instant (ss.000 for second
+        // precision, ss.mmm for millisecond).
+        if (left.Precision >= FhirTemporalPrecision.Second && right.Precision >= FhirTemporalPrecision.Second)
+        {
+            return left._lowerBound.CompareTo(right._lowerBound);
         }
 
         if (left._lowerBound == right._lowerBound && left._upperBound == right._upperBound)
@@ -229,6 +305,10 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// carrying the same value compare equal, which matters because <c>dateTime</c> and <c>instant</c>
     /// share a wire format. <c>time</c> is the one exception, because a bare time of day is anchored to
     /// a placeholder date internally and must not collide with a real value on that date.
+    /// <see cref="HasTimezone"/> <em>is</em> part of identity: a fixed instant and a floating local time
+    /// are different values, and folding it in keeps the invariant that <see cref="Compare"/> returns
+    /// zero exactly when two values are equal, now that a timezone mismatch makes <see cref="Compare"/>
+    /// indeterminate.
     /// </remarks>
     public bool Equals(FhirTemporal? other)
     {
@@ -239,7 +319,8 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         return other is not null
             && Precision == other.Precision
             && _lowerBound == other._lowerBound
-            && IsTimeOnly == other.IsTimeOnly;
+            && IsTimeOnly == other.IsTimeOnly
+            && HasTimezone == other.HasTimezone;
     }
 
     /// <inheritdoc />
@@ -251,7 +332,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// <inheritdoc />
     public override int GetHashCode()
     {
-        return HashCode.Combine(Precision, _lowerBound, IsTimeOnly);
+        return HashCode.Combine(Precision, _lowerBound, IsTimeOnly, HasTimezone);
     }
 
     /// <summary>

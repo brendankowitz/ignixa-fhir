@@ -538,6 +538,14 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             double => "decimal",
             string str when str.StartsWith('@') => ParseFhirPathTypePrefix(str),
             string => "string",
+            FhirTemporal temporal => temporal.Kind switch
+            {
+                FhirPrimitive.Date => "date",
+                FhirPrimitive.DateTime => "dateTime",
+                FhirPrimitive.Instant => "instant",
+                FhirPrimitive.Time => "time",
+                _ => "dateTime"
+            },
             _ => value.GetType().Name
         };
     }

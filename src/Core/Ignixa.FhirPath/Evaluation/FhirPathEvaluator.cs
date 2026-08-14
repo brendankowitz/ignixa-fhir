@@ -1083,7 +1083,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             if ((leftType == "date" || leftType == "datetime" || leftType == "instant") &&
                 (rightType == "date" || rightType == "datetime" || rightType == "instant"))
             {
-                return CompareDateTimeEquality(leftVal, rightVal, equals);
+                return CompareDateTimeEquality(leftVal, rightVal, leftType, rightType, equals);
             }
         }
 
@@ -1096,8 +1096,26 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return true;
     }
 
-    private bool? CompareDateTimeEquality(object? leftValue, object? rightValue, bool equals)
+    private bool? CompareDateTimeEquality(object? leftValue, object? rightValue, string? leftType, string? rightType, bool equals)
     {
+        // Prefer the typed FhirTemporal path whenever both operands resolve to a temporal. It now
+        // expresses the FHIRPath indeterminacy of a timezone-bearing value compared to a timezone-less
+        // one (e.g. @...T15:00:00Z = @...T10:00:00, official testEquality23/testNEquality17): AsTemporal
+        // routes string operands through FhirTemporal.TryParse, which records timezone presence from the
+        // literal, and FhirTemporal.Compare returns null on a timezone mismatch. This agrees with the
+        // string fallback below, so it is safe for all operands, not only when one is already a
+        // FhirTemporal.
+        if (AsTemporal(leftValue, leftType) is { } leftTemporal
+            && AsTemporal(rightValue, rightType) is { } rightTemporal)
+        {
+            return FhirTemporal.Compare(leftTemporal, rightTemporal) switch
+            {
+                null => null,
+                0 => equals,
+                _ => !equals
+            };
+        }
+
         var leftStr = leftValue switch
         {
             string s => s,
@@ -1343,8 +1361,59 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     
             return null;
         }
+    private static FhirTemporal? AsTemporal(object? value, string? instanceType)
+    {
+        switch (value)
+        {
+            case FhirTemporal temporal:
+                return temporal;
+            case string text:
+                return FhirTemporal.TryParse(text, InferTemporalKind(text, instanceType), out var parsed) ? parsed : null;
+            case DateTime dateTime:
+                return FhirTemporal.TryParse(dateTime.ToString("o"), FhirPrimitive.DateTime, out var fromDateTime) ? fromDateTime : null;
+            case DateTimeOffset dateTimeOffset:
+                return FhirTemporal.TryParse(dateTimeOffset.ToString("o"), FhirPrimitive.DateTime, out var fromOffset) ? fromOffset : null;
+            default:
+                return null;
+        }
+    }
+
+    private static FhirPrimitive InferTemporalKind(string literal, string? instanceType)
+    {
+        if (string.Equals(instanceType, "date", StringComparison.OrdinalIgnoreCase))
+            return FhirPrimitive.Date;
+        if (string.Equals(instanceType, "datetime", StringComparison.OrdinalIgnoreCase))
+            return FhirPrimitive.DateTime;
+        if (string.Equals(instanceType, "instant", StringComparison.OrdinalIgnoreCase))
+            return FhirPrimitive.Instant;
+        if (string.Equals(instanceType, "time", StringComparison.OrdinalIgnoreCase))
+            return FhirPrimitive.Time;
+
+        var wire = literal.Length > 0 && literal[0] == '@' ? literal[1..] : literal;
+        if (wire.StartsWith('T') || (wire.Contains(':', StringComparison.Ordinal) && !wire.Contains('-', StringComparison.Ordinal)))
+            return FhirPrimitive.Time;
+
+        return wire.Contains('T', StringComparison.Ordinal) ? FhirPrimitive.DateTime : FhirPrimitive.Date;
+    }
+
     private bool? CompareDateTimesWithPrecision(object? leftValue, object? rightValue, string? leftType, string? rightType, bool greater, bool orEqual)
     {
+        // Prefer the typed path whenever both operands resolve to a temporal, for the same reason as
+        // CompareDateTimeEquality: FhirTemporal.Compare now returns null on timezone-vs-no-timezone, so
+        // the typed path agrees with the string fallback and no longer needs to be gated to a FhirTemporal
+        // operand.
+        if (AsTemporal(leftValue, leftType) is { } leftTemporal
+            && AsTemporal(rightValue, rightType) is { } rightTemporal)
+        {
+            return FhirTemporal.Compare(leftTemporal, rightTemporal) switch
+            {
+                null => null,
+                var comparison => greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0)
+            };
+        }
+
         var leftStr = leftValue switch
         {
             string s => s,
@@ -1897,6 +1966,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             decimal => "decimal",
             bool => "boolean",
             DateTime or DateTimeOffset => "dateTime",
+            FhirTemporal temporal => temporal.Kind switch
+            {
+                FhirPrimitive.Date => "date",
+                FhirPrimitive.DateTime => "dateTime",
+                FhirPrimitive.Instant => "instant",
+                FhirPrimitive.Time => "time",
+                _ => "dateTime"
+            },
             _ => "string"
         };
     }
