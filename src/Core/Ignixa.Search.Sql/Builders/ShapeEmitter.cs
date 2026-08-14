@@ -74,7 +74,7 @@ internal static class ShapeEmitter
         List<EmittedSqlParameter> parameters,
         ResourceVisibility visibility)
     {
-        var top = plan.Top is { } n ? $"TOP ({n}) " : string.Empty;
+        var top = SelectBlock.RenderTop(plan.Top);
         var projectionCols = ProjectionColumns(plan.Projection);
         var projectionJoinFilter = projectionCols.Length > 0 ? ResourceRowFilter(visibility, "r.") : string.Empty;
         var sortJoins = EmitSortJoins(plan.Sort);

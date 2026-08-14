@@ -390,10 +390,12 @@ public class LowerTests
         // The discriminating half of the wildcard diagnosis. Kahn's algorithm leaves behind everything it
         // could not place, including nodes merely downstream of a loop, so a wildcard stranded behind a real
         // A<->B cycle must NOT be blamed for it. The shape that exposes this is a wildcard whose REQUIRES
-        // resolves to null: everything depends on it, so it gets stuck behind the cycle, while its concrete
-        // Produces means it depends on nothing here and is in no cycle of its own. A wildcard whose PRODUCES
-        // is null cannot show it -- that side points at every stage, so being stuck always implies a mutual
-        // pair. (Which parser input yields which null side is direction-dependent; that is not what this pins.)
+        // resolves to null: Overlaps then holds for every stage's Produces against it, so every stage gets an
+        // edge INTO it -- it depends on all of them and is stuck behind the cycle -- while its concrete
+        // Produces means nothing here depends on it, so it is in no cycle of its own. A wildcard whose
+        // PRODUCES is null cannot show this: the edges run the other way, out to every stage, so being stuck
+        // implies a mutual pair. (Which parser input yields which null side is direction-dependent; that is
+        // not what this pins.)
         var aParam = new SearchParameterInfo(
             "a", "a", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/A-a"), targetResourceTypes: ["B"]);
         var bParam = new SearchParameterInfo(
@@ -502,6 +504,29 @@ public class LowerTests
 
         error.Message.ShouldContain("cycle");
         error.Message.ShouldNotContain("wildcard");
+    }
+
+    [Fact]
+    public void GivenAWildcardMutuallyDependentWithASingleConcreteIterate_WhenLowered_ThenItNamesTheWildcardRatherThanACycle()
+    {
+        // The exact complement of the test above, and the direction HasCycle's induced-subgraph property
+        // exists for: the concrete remainder here is a single acyclic node, so removing the wildcard breaks
+        // the deadlock and the wildcard IS the cause. A HasCycle that answered "any non-empty subgraph has a
+        // cycle" would pass every other test in this suite and misdiagnose this one, sending the caller to
+        // hunt a mutual dependency between concrete stages that does not exist.
+        var aParam = new SearchParameterInfo(
+            "a", "a", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/X-a"), targetResourceTypes: ["B"]);
+        var includeA = new IncludeExpression(["X"], aParam, "X", "B", null, wildCard: false, reversed: false, iterate: true);
+        var wildcard = new IncludeExpression(["B"], null!, "B", null!, ["*"], wildCard: true, reversed: false, iterate: true);
+
+        var symbols = new SymbolTable(
+            new Dictionary<string, short> { [aParam.Url.ToString()] = 1 },
+            new Dictionary<string, short> { ["X"] = 10, ["B"] = 11, ["Patient"] = 103 });
+
+        var error = Should.Throw<NotSupportedException>(() =>
+            LowerHarness.Run(expression: null, symbols, targetResourceType: "Patient", includes: [includeA, wildcard], revIncludes: [], includeLimit: 1000, sort: [], sortPhase: SortPhase.Valued, page: null));
+
+        error.Message.ShouldContain("wildcard");
     }
 
     [Fact]

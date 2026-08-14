@@ -46,12 +46,9 @@ internal static class IncludeEmitter
         whereClauses.Add("rsp.BaseUri IS NULL");
         whereClauses.Add(EmitSeedExists(stage, seedCorrelationAlias, includesOnly, matchSeedLabel));
 
-        if (stage.Constraints is { Count: > 0 } constraints)
+        foreach (var constraint in stage.Constraints ?? [])
         {
-            foreach (var constraint in constraints)
-            {
-                whereClauses.Add(EmitConstraintGuard(plan, constraint, outputTypeColumn, outputSurrogateColumn));
-            }
+            whereClauses.Add(EmitConstraintGuard(plan, constraint, outputTypeColumn, outputSurrogateColumn));
         }
 
         var rowFilter = ResourceRowFilter(visibility, "r.");

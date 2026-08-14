@@ -94,8 +94,8 @@ public class EmitProbeRowIncludeSeedTests
     [InlineData(0)]
     public void GivenTopIncludesProbeRowWithoutAUsableCap_WhenEmitted_ThenItIsRejectedBeforeWritingSql(int? top)
     {
-        // TrimmedPageSize subtracts one from the cap, so an absent cap has nothing to subtract from and a
-        // cap of 0 would emit SELECT TOP (-1).
+        // The flag states that the cap is the page size plus a probe row, so an absent cap says nothing and a
+        // cap of 0 leaves no page once the probe row is subtracted. Both are rejected before any SQL exists.
         var spec = new MatchPageSpec(new CteRef(0), Top: top, TopIncludesProbeRow: true);
         var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], spec);
 
@@ -108,26 +108,14 @@ public class EmitProbeRowIncludeSeedTests
     [InlineData(0)]
     public void GivenTopIncludesProbeRowWithoutAUsableCap_WhenAsked_ThenTheSpecReportsNoTrimmedPageRatherThanANegativeOne(int? top)
     {
-        // TrimmedPageSize subtracts one from the cap, and its own summary calls the result a row count. A cap
-        // of 0 must therefore answer "no trimmed page" rather than "-1 rows are on it" -- the incoherent spec
-        // is still rejected, by QueryPlanValidator, but no caller sees a negative row count on the way there.
+        // TrimmedPageSize's summary calls its result a row count, so a cap of 0 must answer "no trimmed page"
+        // rather than "-1 rows are on it". The incoherent spec is still rejected -- by the guards asserted in
+        // the theory above -- but no caller sees a row count that could not be one on the way there. Before
+        // the two derived members collapsed into this one, the same state answered "yes, over-fetches" and
+        // "no page size" simultaneously.
         var spec = new MatchPageSpec(new CteRef(0), Top: top, TopIncludesProbeRow: true);
 
         spec.TrimmedPageSize.ShouldBeNull();
-    }
-
-    [Fact]
-    public void GivenTopIncludesProbeRowWithNoCapToSubtractFrom_WhenAsked_ThenTheSpecReportsNoTrimmedPage()
-    {
-        // Before the two members collapsed into one, this state answered "yes, over-fetches" and "no page
-        // size" simultaneously -- the exact contradiction the type claimed was unrepresentable. One member
-        // means one answer; RequireCoherentProbeRow then rejects the plan outright.
-        var spec = new MatchPageSpec(new CteRef(0), TopIncludesProbeRow: true);
-
-        spec.TrimmedPageSize.ShouldBeNull();
-
-        Should.Throw<NotSupportedException>(() => SqlBuilder.Run(new QueryPlan([new CteDefinition.ResourceSource(103)], spec)))
-            .Message.ShouldContain("TopIncludesProbeRow");
     }
 
     [Fact]

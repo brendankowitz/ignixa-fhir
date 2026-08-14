@@ -44,8 +44,8 @@ public class PlanExplainCoversEveryCteKindTests
     [Fact]
     public void GivenAMatchPageCarryingEveryBoundClause_WhenExplained_ThenItReadsThemInEmissionOrder()
     {
-        // PrintMatchPageCte consumes up to five parameter groups in a fixed order; every other CTE kind
-        // consumes at most one, so this is where an ordering swap can hide. Swapping the Page and
+        // PrintMatchPageCte consumes up to five parameter groups in a fixed order, more than any other single
+        // renderer, so this is where an ordering swap has the most room to hide. Swapping the Page and
         // SurrogateRange blocks used to kill no test because nothing explained a MatchPage carrying a keyset
         // boundary -- "continuation token plus _include" being a mainstream shape.
         var spec = new MatchPageSpec(
@@ -81,7 +81,10 @@ public class PlanExplainCoversEveryCteKindTests
             .ToHashSet(StringComparer.Ordinal);
 
         // Kinds that bind nothing of their own: they compose or label other CTEs. MatchPage and MatchSeed
-        // bind through the canonical MatchPageSpec instead, covered by the fact above.
+        // bind through the canonical MatchPageSpec instead -- MatchPage by the fact above, MatchSeed by
+        // EmitProbeRowIncludeSeedTests and PlanExplainerTests, which explain a probe-trimmed plan and pin
+        // "matchSeed = MatchSeedCte(limit=10)". A MatchSeed cannot be reached from the fact above, which
+        // carries no over-fetching page and so builds no seed wrapper.
         var parameterFree = new HashSet<string>(StringComparer.Ordinal)
         {
             nameof(CteDefinition.Intersect),
@@ -94,7 +97,7 @@ public class PlanExplainCoversEveryCteKindTests
         };
 
         var kinds = typeof(CteDefinition)
-            .GetNestedTypes()
+            .GetNestedTypes(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
             .Where(t => t.IsSubclassOf(typeof(CteDefinition)) && !t.IsAbstract)
             .Select(t => t.Name)
             .ToList();
@@ -102,6 +105,11 @@ public class PlanExplainCoversEveryCteKindTests
         kinds.ShouldNotBeEmpty();
         kinds.Where(kind => !covered.Contains(kind) && !parameterFree.Contains(kind))
             .ShouldBeEmpty("every CteDefinition kind must appear in ParameterBindingCtes or be declared parameter-free");
+
+        // The allow-list cannot prove a kind binds nothing, but it can be stopped from going stale: a renamed
+        // or deleted kind would otherwise leave a dead entry behind and its new name would need no coverage.
+        parameterFree.Except(kinds)
+            .ShouldBeEmpty("a declared parameter-free kind no longer exists -- remove or rename the entry");
     }
 
     [Theory]

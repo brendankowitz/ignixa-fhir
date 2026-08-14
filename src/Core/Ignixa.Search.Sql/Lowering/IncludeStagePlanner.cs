@@ -160,13 +160,14 @@ internal static class IncludeStagePlanner
             var stuck = Enumerable.Range(0, n).Where(i => !ordered[i]).ToList();
 
             // A wildcard resolves one side of its type sets to null, and Overlaps treats null as matching
-            // anything, so on that side it matches every other stage. That makes a wildcard mutually
-            // dependent with whatever it is stuck behind, which is a limitation of wildcard iteration rather
-            // than a cycle the caller wrote. But a wildcard being in a mutual pair does not mean it is the
-            // only problem: a caller-written cycle between two concrete stages drags every wildcard into the
-            // stuck set too. So the question is not "is a wildcard involved" but "does a cycle survive
-            // without the wildcards" -- if one does, that is what the caller has to fix, and saying
-            // otherwise sends them to delete an expression that was never the cause.
+            // anything, so on that side it matches every other stage. Where a stage matches back on the other
+            // side the two are mutually dependent and neither can run first -- a limitation of wildcard
+            // iteration rather than a cycle the caller wrote. But a wildcard being stuck does not mean it is
+            // the cause: a caller-written cycle between two concrete stages drags every wildcard into the
+            // stuck set too, whether or not the wildcard is in a cycle of its own. So the question is not
+            // "is a wildcard involved" but "does a cycle survive without the wildcards" -- if one does, that
+            // is what the caller has to fix, and saying otherwise sends them to delete an expression that
+            // was never the cause.
             var wildcards = stuck.Where(i => entries[i].Produces is null || entries[i].Requires is null).ToHashSet();
             var concreteOnly = stuck.Where(i => !wildcards.Contains(i)).ToList();
 

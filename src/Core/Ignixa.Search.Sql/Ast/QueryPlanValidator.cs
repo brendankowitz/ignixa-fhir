@@ -12,6 +12,11 @@ internal static class QueryPlanValidator
         }
 
         RequireIndex(plan.Match.Index, plan.Ctes.Count, ReferenceBound.Defined, "QueryPlan.Match");
+
+        // Must precede every TrimmedPageSize read below (the MatchSeed guards further down): that member
+        // reports null for an incoherent probe spec rather than a negative row count, so an unguarded read
+        // would take the "does not over-fetch" branch and let the wrapper guards fall quiet on a spec that
+        // is simply invalid. Rejecting it here is what makes null mean what the later reads assume.
         RequireCoherentProbeRow(plan.MatchSpec);
         var matchPageCount = 0;
         var matchPageIndex = -1;
@@ -109,17 +114,15 @@ internal static class QueryPlanValidator
 
     /// <summary>
     /// Rejects a keyset probe flag that has no cap to be part of, or a cap too small to contain both a page
-    /// and its probe row. <see cref="MatchPageSpec.TrimmedPageSize"/> subtracts one from the cap, so an
-    /// unguarded Top of 0 would emit <c>SELECT TOP (-1)</c> in the include seed.
+    /// and its probe row. <see cref="MatchPageSpec.TrimmedPageSize"/> reports null for both, so this must run
+    /// before any read of that member or the incoherent spec reads as "does not over-fetch". Predicates are
+    /// shared with <see cref="Lowering.Lower"/> through <see cref="KeysetPageInvariants"/>; only the wording
+    /// differs, because this layer's caller wrote a <see cref="MatchPageSpec"/> rather than a
+    /// <see cref="SearchPaging.Keyset"/>.
     /// </summary>
     private static void RequireCoherentProbeRow(MatchPageSpec spec)
     {
-        if (!spec.TopIncludesProbeRow)
-        {
-            return;
-        }
-
-        if (spec.Top is not { } cap)
+        if (KeysetPageInvariants.ProbeRowNeedsCap(spec.Top, spec.TopIncludesProbeRow))
         {
             throw new NotSupportedException(
                 "MatchPageSpec.TopIncludesProbeRow requires a Top cap: it states that the cap is the page " +
@@ -127,12 +130,12 @@ internal static class QueryPlanValidator
                 "TopIncludesProbeRow.");
         }
 
-        if (cap < 1)
+        if (KeysetPageInvariants.ProbeRowCapTooSmall(spec.Top, spec.TopIncludesProbeRow))
         {
             throw new NotSupportedException(
-                $"MatchPageSpec.Top must be at least 1 when TopIncludesProbeRow is set; got {cap}. The cap " +
-                "covers the page and its probe row, so the include seed trims to Top - 1 and a smaller cap " +
-                "yields a negative row count.");
+                $"MatchPageSpec.Top must be at least 1 when TopIncludesProbeRow is set; got {spec.Top}. The " +
+                "cap covers the page and its probe row, so the include seed trims to Top - 1: a cap of 1 is a " +
+                "legal empty page, but anything below it is a negative row count.");
         }
     }
 

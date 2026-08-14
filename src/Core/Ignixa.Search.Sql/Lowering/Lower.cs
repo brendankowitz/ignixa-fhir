@@ -110,7 +110,9 @@ internal static class Lower
 
             // Either paging mechanism can over-fetch, so this asks the page rather than the mechanism: a
             // Top-capped keyset page built as MaxItemCount + 1 needs its probe row trimmed off the include
-            // seed exactly as an OFFSET/FETCH probe does.
+            // seed exactly as an OFFSET/FETCH probe does. RejectUnsupportedOptions has already rejected a
+            // probe flag without a usable cap, so a null here means genuinely no over-fetch rather than an
+            // incoherent spec.
             if (matchSpec.TrimmedPageSize is not null && includeStages.Any(stage => stage.SeedFromMatch))
             {
                 includeSeed = new CteRef(ctes.Count);
@@ -173,26 +175,23 @@ internal static class Lower
         }
 
         // The plan-level mirror of this lives in QueryPlanValidator.RequireCoherentProbeRow, which names
-        // MatchPageSpec. Checked here too, in options vocabulary, because that is the type this caller wrote
-        // -- the pattern KeysetPageInvariants describes for every other shared paging invariant.
-        if (topIncludesProbeRow)
+        // MatchPageSpec. Both sides call the same predicates from KeysetPageInvariants and keep their own
+        // wording, so they cannot drift on what is legal -- the pattern that file documents.
+        if (KeysetPageInvariants.ProbeRowNeedsCap(top, topIncludesProbeRow))
         {
-            if (top is not { } probeCap)
-            {
-                throw new NotSupportedException(
-                    $"{nameof(SearchPaging)}.{nameof(SearchPaging.Keyset)}." +
-                    $"{nameof(SearchPaging.Keyset.TopIncludesProbeRow)} requires a Top cap: it states that the " +
-                    "cap is the page size plus one has-more lookahead row, which says nothing about an " +
-                    "uncapped page. Set Top, or clear the flag.");
-            }
+            throw new NotSupportedException(
+                $"{nameof(SearchPaging)}.{nameof(SearchPaging.Keyset)}." +
+                $"{nameof(SearchPaging.Keyset.TopIncludesProbeRow)} requires a Top cap: it states that the " +
+                "cap is the page size plus one has-more lookahead row, which says nothing about an " +
+                "uncapped page. Set Top, or clear the flag.");
+        }
 
-            if (probeCap < 1)
-            {
-                throw new NotSupportedException(
-                    $"Top must be at least 1 when {nameof(SearchPaging.Keyset.TopIncludesProbeRow)} is set; got " +
-                    $"{probeCap}. The cap covers the page and its probe row, so the include stages seed from " +
-                    "Top - 1 rows and a smaller cap leaves nothing to seed from.");
-            }
+        if (KeysetPageInvariants.ProbeRowCapTooSmall(top, topIncludesProbeRow))
+        {
+            throw new NotSupportedException(
+                $"Top must be at least 1 when {nameof(SearchPaging.Keyset.TopIncludesProbeRow)} is set; got " +
+                $"{top}. The cap covers the page and its probe row, so the include stages seed from Top - 1 " +
+                "rows: a cap of 1 is a legal empty page, but anything below it is a negative row count.");
         }
 
         if (includeLimit is < 0 or int.MaxValue)

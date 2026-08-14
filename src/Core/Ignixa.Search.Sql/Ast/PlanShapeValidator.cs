@@ -127,6 +127,8 @@ internal static class PlanShapeValidator
                 "since each key adds a join and a projected sort value.");
         }
 
+        RejectUnderspecifiedSortKeys(plan.Sort);
+
         // Guarded independently of Lower.Run because QueryPlan is a public construction surface.
         if (plan.OffsetPage is not null && (plan.Top is not null || plan.Page is not null))
         {
@@ -153,14 +155,23 @@ internal static class PlanShapeValidator
         // statement does not parse -- an opaque SQL Server error rather than a diagnosis here.
         for (var i = 0; i < plan.Ctes.Count; i++)
         {
+            // Not a type list, so it gets its own message rather than being folded into the switch below:
+            // the parts are CteRefs joined with UNION, and telling the caller to "name the resource types"
+            // would send them to add something this node does not have.
+            if (plan.Ctes[i] is CteDefinition.Union { Parts.Count: 0 })
+            {
+                throw new NotSupportedException(
+                    $"Ctes[{i}].{nameof(CteDefinition.Union.Parts)} names no CTEs to union. The parts are joined " +
+                    "with UNION, so joining zero of them leaves the CTE body empty and \"cteN AS ()\" does not " +
+                    "parse. Name the CTEs the union combines, or remove the node -- a union of nothing is not " +
+                    "expressible as an empty body.");
+            }
+
             var emptyTypeList = plan.Ctes[i] switch
             {
                 CteDefinition.ChainJoin { OutputResourceTypeIds.Count: 0 } => nameof(CteDefinition.ChainJoin.OutputResourceTypeIds),
                 CteDefinition.ReferencedTypeExpansion { OutputResourceTypeIds.Count: 0 } => nameof(CteDefinition.ReferencedTypeExpansion.OutputResourceTypeIds),
                 CteDefinition.CompartmentSource { ResourceTypeIds.Count: 0 } => nameof(CteDefinition.CompartmentSource.ResourceTypeIds),
-                // Not a type list, but the same failure: the parts are joined with UNION, so joining zero of
-                // them leaves the CTE body empty and "cteN AS (\n\n)" does not parse either.
-                CteDefinition.Union { Parts.Count: 0 } => nameof(CteDefinition.Union.Parts),
                 _ => null,
             };
 
@@ -181,6 +192,47 @@ internal static class PlanShapeValidator
         if (!plan.CountOnly)
         {
             RejectUnsupportedPageCombinations(plan);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a sort key whose kind promises a lookup it does not carry the coordinates for.
+    /// <see cref="SortKey"/> documents that <c>SearchParamId</c> is null only for the resource-column kinds
+    /// and that <c>Table</c>/<c>Column</c> are non-null only for <see cref="SortKeyKind.Aggregated"/>, but it
+    /// is a public record with all three optional, so the invariant is documentation until it is checked.
+    /// Unchecked, the emitters dereference or interpolate them: the aggregated join reads
+    /// <c>key.Column!.Name</c> and throws NullReferenceException — a type neither TryCompile nor the
+    /// plan-trace guard catches, so it escapes a Try* method — and a null SearchParamId interpolates to
+    /// nothing, emitting <c>SearchParamId =  AND</c>, which is handed back as a successful compile and fails
+    /// as an opaque syntax error at execution.
+    /// </summary>
+    private static void RejectUnderspecifiedSortKeys(SortSpec? sort)
+    {
+        if (sort is null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < sort.Keys.Count; i++)
+        {
+            var key = sort.Keys[i];
+            if (key.Kind is SortKeyKind.String or SortKeyKind.Date or SortKeyKind.Aggregated && key.SearchParamId is null)
+            {
+                throw new NotSupportedException(
+                    $"Sort key {i} is {nameof(SortKeyKind)}.{key.Kind} but names no SearchParamId. The kind " +
+                    "selects a search-param table whose rows are filtered by that id, and an absent one " +
+                    "renders no filter text at all, so the statement does not parse. Supply the id, or use a " +
+                    "resource-column kind (LastUpdated / ResourceType / ResourceId), which needs none.");
+            }
+
+            if (key.Kind is SortKeyKind.Aggregated && (key.Table is null || key.Column is null))
+            {
+                throw new NotSupportedException(
+                    $"Sort key {i} is {nameof(SortKeyKind)}.{nameof(SortKeyKind.Aggregated)} but names no " +
+                    $"{(key.Table is null ? nameof(SortKey.Table) : nameof(SortKey.Column))}. An aggregated " +
+                    "key emits MIN/MAX over a named search-param table and column, which Lower resolves from " +
+                    "the catalog; without both there is nothing to aggregate over.");
+            }
         }
     }
 

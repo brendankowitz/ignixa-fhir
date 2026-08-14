@@ -40,4 +40,21 @@ internal static class KeysetPageInvariants
 
     /// <summary>The active key count a boundary must supply, treating an absent sort as zero keys.</summary>
     public static int ActiveKeyCount(SortSpec? sort) => sort?.ActiveKeyCount ?? 0;
+
+    /// <summary>
+    /// A probe flag states that a row cap is the page size plus one has-more lookahead row, so it says
+    /// nothing about an uncapped page. Shared for the same reason as the page rules above: Lower rejects it
+    /// naming <c>SearchPaging.Keyset</c>, the plan layer naming <c>MatchPageSpec</c>, and only the predicate
+    /// is common. <c>MatchPageSpec.TrimmedPageSize</c> reports null for this state, so both layers must agree
+    /// on it or a read of that member changes meaning between them.
+    /// </summary>
+    public static bool ProbeRowNeedsCap(int? top, bool topIncludesProbeRow)
+        => topIncludesProbeRow && top is null;
+
+    /// <summary>
+    /// The cap covers the page and its probe row, so a cap below 1 leaves no page once the probe row is
+    /// subtracted — <c>TrimmedPageSize</c> would otherwise compute a negative row count.
+    /// </summary>
+    public static bool ProbeRowCapTooSmall(int? top, bool topIncludesProbeRow)
+        => topIncludesProbeRow && top is { } cap && cap < 1;
 }

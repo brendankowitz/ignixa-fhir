@@ -389,8 +389,10 @@ a `MatchSeed` from it before any validator ran. That is now clamped to null, but
 a flag beside an unrelated optional int.
 
 The fix is `TopSpec(int PageSize, bool ProbeExtraRow)` mirroring `OffsetSpec`, which makes `PageSize` a stored
-non-negative field on both paging branches, deletes `RequireCoherentProbeRow` and its options-level twin, and
-removes the `?? throw` in `MatchPageEmitter` and `PlanExplainer`. Explain output is unaffected — render
+non-negative field on both paging branches and deletes `RequireCoherentProbeRow`, its options-level twin, and
+the two shared predicates in `KeysetPageInvariants`. The `?? throw` in `MatchPageEmitter` and `PlanExplainer`
+stays — `TrimmedPageSize` remains `int?` because a page may legitimately not over-fetch at all. Explain output
+is unaffected — render
 `PageSize + (ProbeExtraRow ? 1 : 0)` — so no golden moves. Deferred because `Top` is public API on a public
 construction surface and `README.md` documents `Keyset(Top: 51, TopIncludesProbeRow: true)` as the calling
 convention; that belongs in a deliberate API-change PR, not bolted onto an otherwise behaviour-preserving one.
@@ -425,7 +427,7 @@ from the P0–P4 work.
 | # | Item | Outcome |
 |---|------|---------|
 | 2 | `Top`-capped keyset page + `_include` seeds includes from the probe row | The over-fetch is now a property of the page rather than of one paging mechanism. `SearchPaging.Keyset` gained `TopIncludesProbeRow`, and `MatchPageSpec` derives a single `TrimmedPageSize` from whichever mechanism is in play — one member rather than a flag plus a size, so there is no state in which the two could disagree. Both `Lower` and the emitter ask the page. The flag's precondition (a cap of at least 1) is rejected at both layers, in each layer's own vocabulary: `Lower` names `SearchPaging.Keyset`, `QueryPlanValidator` names `MatchPageSpec`. |
-| 4 | Two wildcard `:iterate` includes report a cycle | `TopologicalSort` inspects the nodes Kahn's algorithm could not place; if any carries a wildcard set it names wildcard iteration as the limitation instead of blaming a cycle the caller did not write. The genuine-cycle message is unchanged and still covered. |
+| 4 | Two wildcard `:iterate` includes report a cycle | `TopologicalSort` inspects the nodes Kahn's algorithm could not place, then asks whether a cycle survives removing the wildcards from that set. Only when none does is the failure attributed to wildcard iteration; a caller-written cycle keeps the cycle message, even when a wildcard is stuck behind it. |
 | 8 | `Describe` and `Run` validated to different standards | `PlanValidator` moved to `Ast/PlanShapeValidator.cs` and is now reached only through `QueryPlanValidator.Validate`, so a plan is validated through exactly one entry point and no caller can apply half the guards. This immediately caught a golden fixture that paired a keyset boundary with an OFFSET page — a plan `Run` always rejected, so its pinned ordinals described SQL that could never be emitted. |
 
 ### Decided
@@ -451,8 +453,9 @@ them today.
 
 ### Found by review, after the work above
 
-A `/pr-review-toolkit` pass over the finished change (five specialist agents, two of which reproduced findings
-against the built assembly and one of which mutation-tested the suite) surfaced defects the 1219-test suite did
+Four `/pr-review-toolkit` passes over the finished change (six specialist agents in the later rounds, two of
+which reproduced findings against the built assembly and one of which mutation-tested the suite) surfaced
+defects the suite did
 not. All are fixed; they are recorded because each says something about where this compiler's coverage is thin.
 
 - **`Explain()` threw on plans that emit valid SQL.** `Describe` read the root's `OuterPredicate` inside the CTE
@@ -483,12 +486,19 @@ not. All are fixed; they are recorded because each says something about where th
 - **Three emitters had no test pinning their SQL at all.** Mutation testing showed a space appended to
   `ChainJoin` (both directions) or `ReferencedTypeExpansion`'s `FROM` passed the entire suite — and these are
   the only emitters whose whitespace P6 restructured non-trivially. Now pinned under both visibility branches.
-- **The wildcard `:iterate` fix needed a back-edge test.** Stuck nodes include those merely downstream of a
-  loop, so a reverse wildcard stranded behind a genuine concrete cycle would have been blamed for it.
+- **The wildcard `:iterate` diagnosis needed two corrections.** Stuck nodes include those merely downstream of
+  a loop, so a wildcard stranded behind a genuine concrete cycle was blamed for it; and a first fix keyed on
+  the wildcard being in a mutual pair still misattributed a caller-written cycle that coexisted with one. It
+  now asks whether a cycle survives removing the wildcards.
+- **The `:iterate` topological ordering was unpinned.** Discarding it entirely passed the whole suite while
+  silently dropping a dependent include stage — no error, no SQL, the `_include:iterate` simply returned
+  nothing.
 
 The through-line: this compiler's risk is concentrated in shapes that are *emitted* by a test but never
-*explained*, and in emitters whose text nothing asserts. Both are now covered by per-kind theories rather than
-per-shape tests, so they scale as CTE kinds are added.
+*explained*, and in emitters whose text nothing asserts. Explain coverage is now a per-kind theory plus a
+reflection-based exhaustiveness assertion, so a newly added CTE kind lands on a failing test rather than in the
+gap; the emitter text is pinned by hand-written goldens, which do not scale the same way and remain the place
+to look when adding an emitter.
 
 P5 remains deferred and is now the only unscheduled step.
 

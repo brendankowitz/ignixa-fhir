@@ -9,8 +9,8 @@ internal sealed class AggregatedSortKeyEmitter : SortKeyEmitter
 {
     public override string? Join(SortKey key, int index, bool isPrimary)
     {
-        // Key 0 in the Valued phase must gate on the key being present (INNER), like String/Date
-        // below: an unconditional LEFT would leak missing-key rows across the phase boundary and let a
+        // Key 0 in the Valued phase must gate on the key being present (INNER), like SearchParamSortKeyEmitter
+        // (String/Date): an unconditional LEFT would leak missing-key rows across the phase boundary and let a
         // NULL AggValue reach the seek unwrapped. INNER is safe — MIN/MAX over zero rows yields no
         // output row, exactly INNER's semantics.
         var aggFunc = key.Direction == SortOrder.Ascending ? "MIN" : "MAX";

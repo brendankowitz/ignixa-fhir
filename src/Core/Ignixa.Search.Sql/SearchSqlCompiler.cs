@@ -103,7 +103,7 @@ public sealed class SearchSqlCompiler(
             return SearchPlanResult.Failed(
                 new SearchCompilationFailure(CompilationStage.Build, ex.Message, ParameterCode: null, Span: null, ex)
                 {
-                    Diagnostics = Diagnostics(traced, outcomes, implicitParameters: [], planTrace: null),
+                    Diagnostics = Diagnostics(traced, outcomes, implicitParameters: [], planTrace: null, planTraceFailure: null),
                 });
         }
 
@@ -137,7 +137,7 @@ public sealed class SearchSqlCompiler(
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Build, ex);
             return SearchPlanResult.Failed(
-                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
+                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
         var resolved = await Resolve.RunAsync(context, _deps, cancellationToken);
@@ -151,7 +151,7 @@ public sealed class SearchSqlCompiler(
 
             var resolveFailure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved)!;
             return SearchPlanResult.Failed(
-                resolveFailure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
+                resolveFailure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
         LoweredPlan lowered;
@@ -163,7 +163,7 @@ public sealed class SearchSqlCompiler(
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Lower, ex);
             return SearchPlanResult.Failed(
-                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
+                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
         QueryPlanTrace? planTrace = null;
@@ -210,7 +210,7 @@ public sealed class SearchSqlCompiler(
         IReadOnlyList<ParameterTrace> outcomes,
         IReadOnlyList<ImplicitParameter> implicitParameters,
         QueryPlanTrace? planTrace,
-        SearchCompilationFailure? planTraceFailure = null)
+        SearchCompilationFailure? planTraceFailure)
         => traced
             ? new SearchCompilationDiagnostics
             {
