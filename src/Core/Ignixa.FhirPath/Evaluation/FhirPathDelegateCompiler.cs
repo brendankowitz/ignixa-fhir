@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -251,16 +252,13 @@ public class FhirPathDelegateCompiler
         {
             var focusResults = focusFunc(input, ctx);
 
+            // An indeterminate comparison excludes the item, matching the interpreter's where(), which
+            // keeps an element only when its criteria evaluates to a non-empty, true result.
             return focusResults.Where(item =>
-            {
-                var leftResults = leftFunc(item, ctx).ToList();
-                var rightResults = rightFunc(item, ctx).ToList();
-
-                // Comparison: values must match
-                return leftResults.Count == rightResults.Count &&
-                       leftResults.Zip(rightResults).All(pair =>
-                           Equals(pair.First.Value, pair.Second.Value));
-            });
+                _fallbackEvaluator.CompareEquality(
+                    leftFunc(item, ctx).ToList(),
+                    rightFunc(item, ctx).ToList(),
+                    equals: true) == true);
         };
     }
 
@@ -434,46 +432,13 @@ public class FhirPathDelegateCompiler
         return binary.Operator.ToLowerInvariant() switch
 #pragma warning restore CA1308 // Normalize strings to uppercase
         {
-            "=" => (input, ctx) =>
-            {
-                var leftResults = leftFunc(input, ctx).ToList();
-                var rightResults = rightFunc(input, ctx).ToList();
+            "=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: true)),
+            "!=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareEquality(l, r, equals: false)),
 
-                // Empty collections return empty per FHIRPath spec
-                if (leftResults.Count == 0 || rightResults.Count == 0)
-                    return Enumerable.Empty<IElement>();
-
-                // Different counts means not equal
-                if (leftResults.Count != rightResults.Count)
-                    return [CreateBooleanElement(false)];
-
-                // Compare all pairs
-                bool allEqual = leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
-                return [CreateBooleanElement(allEqual)];
-            },
-
-            "!=" => (input, ctx) =>
-            {
-                var leftResults = leftFunc(input, ctx).ToList();
-                var rightResults = rightFunc(input, ctx).ToList();
-
-                // Empty collections return empty per FHIRPath spec
-                if (leftResults.Count == 0 || rightResults.Count == 0)
-                    return Enumerable.Empty<IElement>();
-
-                // Different counts means not equal, so != returns true
-                if (leftResults.Count != rightResults.Count)
-                    return [CreateBooleanElement(true)];
-
-                // Compare all pairs
-                bool allEqual = leftResults.Zip(rightResults).All(pair => Equals(pair.First.Value, pair.Second.Value));
-                return [CreateBooleanElement(!allEqual)];
-            },
-
-            "<" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) < 0),
-            ">" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) > 0),
-            "<=" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) <= 0),
-            ">=" => CompileComparison(leftFunc, rightFunc, (l, r) => CompareValues(l, r) >= 0),
+            "<" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: false)),
+            ">" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: false)),
+            "<=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: false, orEqual: true)),
+            ">=" => CompileComparison(leftFunc, rightFunc, (l, r) => _fallbackEvaluator.CompareOrder(l, r, greater: true, orEqual: true)),
 
             _ => null
         };
@@ -482,10 +447,17 @@ public class FhirPathDelegateCompiler
     /// <summary>
     /// Compiles a constant value expression.
     /// </summary>
+    /// <remarks>
+    /// Deliberately defers to the interpreter's own constant construction. Typing the element from the
+    /// CLR type name produced <c>"String"</c> and <c>"Int32"</c> where the interpreter produces the
+    /// FHIRPath type names <c>"string"</c> and <c>"integer"</c>, and it left a temporal literal's <c>@</c>
+    /// sigil in the value, so <c>@1974-12-25</c> never matched a <c>date</c> element. Both operands of a
+    /// compiled comparison must be built the same way as the interpreter's or the shared comparison
+    /// semantics are handed different inputs and reach different answers.
+    /// </remarks>
     private Func<IElement, EvaluationContext, IEnumerable<IElement>>? CompileConstant(ConstantExpression constant)
     {
-        object value = constant.Value;
-        return (input, ctx) => new[] { CreateValueElement(value) };
+        return (input, ctx) => _fallbackEvaluator.VisitConstant(constant, ctx);
     }
 
     /// <summary>
@@ -548,70 +520,22 @@ public class FhirPathDelegateCompiler
     }
 
     /// <summary>
-    /// Compiles a comparison operation with a custom comparer.
+    /// Compiles a comparison operation onto the interpreter's own comparison semantics.
     /// </summary>
-    private Func<IElement, EvaluationContext, IEnumerable<IElement>> CompileComparison(
+    /// <remarks>
+    /// The comparer is tri-state on purpose. A <see langword="bool"/>-returning comparer cannot express
+    /// FHIRPath's indeterminate result, which partial precision makes mandatory: <c>@2012 &gt; @2012-01</c>
+    /// compares a year-long interval against a month-long one it contains, so the ordering is undecidable
+    /// and the expression must yield empty rather than <c>false</c>. Delegating to the evaluator rather
+    /// than reimplementing the rules here is the point — a second implementation is what drifted last time.
+    /// </remarks>
+    private static Func<IElement, EvaluationContext, IEnumerable<IElement>> CompileComparison(
         Func<IElement, EvaluationContext, IEnumerable<IElement>> leftFunc,
         Func<IElement, EvaluationContext, IEnumerable<IElement>> rightFunc,
-        Func<object?, object?, bool> comparer)
+        Func<List<IElement>, List<IElement>, bool?> comparer)
     {
-        return (input, ctx) =>
-        {
-            var leftResults = leftFunc(input, ctx).ToList();
-            var rightResults = rightFunc(input, ctx).ToList();
-
-            // FHIRPath comparison: single element on each side
-            if (leftResults.Count == 1 && rightResults.Count == 1)
-            {
-                bool result = comparer(leftResults[0].Value, rightResults[0].Value);
-                return [CreateBooleanElement(result)];
-            }
-
-            // Empty or multi-element collections return empty per FHIRPath spec
-            return Enumerable.Empty<IElement>();
-        };
-    }
-
-    /// <summary>
-    /// Compares two values according to FHIRPath comparison rules.
-    /// </summary>
-    private int CompareValues(object? left, object? right)
-    {
-        // Handle null cases
-        if (left == null && right == null) return 0;
-        if (left == null) return -1;
-        if (right == null) return 1;
-
-        // Try numeric comparison first
-        if (IsNumericType(left) && IsNumericType(right))
-        {
-            decimal lVal = Convert.ToDecimal(left);
-            decimal rVal = Convert.ToDecimal(right);
-            return lVal.CompareTo(rVal);
-        }
-
-        // DateTime comparison
-        if (left is DateTime ldt && right is DateTime rdt)
-        {
-            return ldt.CompareTo(rdt);
-        }
-
-        // DateTimeOffset comparison
-        if (left is DateTimeOffset ldto && right is DateTimeOffset rdto)
-        {
-            return ldto.CompareTo(rdto);
-        }
-
-        // String comparison (case-sensitive per FHIRPath spec)
-        return string.Compare(left.ToString(), right.ToString(), StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Checks if a value is a numeric type.
-    /// </summary>
-    private bool IsNumericType(object value)
-    {
-        return value is byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal;
+        return (input, ctx) => FunctionHelpers.ReturnBoolean(
+            comparer(leftFunc(input, ctx).ToList(), rightFunc(input, ctx).ToList()));
     }
 
     /// <summary>
@@ -628,14 +552,6 @@ public class FhirPathDelegateCompiler
     private IElement CreateIntegerElement(int value)
     {
         return new LiteralElement(value, "integer");
-    }
-
-    /// <summary>
-    /// Creates an element that wraps any value.
-    /// </summary>
-    private IElement CreateValueElement(object value)
-    {
-        return new LiteralElement(value, value?.GetType().Name ?? "unknown");
     }
 
     /// <summary>
