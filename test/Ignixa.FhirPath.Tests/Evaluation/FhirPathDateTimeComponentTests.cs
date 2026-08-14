@@ -916,6 +916,39 @@ public class FhirPathDateTimeComponentTests
 
     #endregion
 
+    #region Precision Function with FhirTemporal Element Values
+
+    [Theory]
+    [InlineData("2024-01-15", "date", 8)]
+    [InlineData("2024-01", "date", 6)]
+    [InlineData("2024", "date", 4)]
+    [InlineData("2024-01-15T10:30:45", "dateTime", 14)]
+    [InlineData("10:30:45", "time", 6)]
+    public void GivenFhirTemporalElement_WhenPrecision_ThenReturnsDigitCount(string literal, string instanceType, int expectedDigitCount)
+    {
+        // FhirTemporal is the value type for resource elements with temporal primitives.
+        // precision() must count significant digits as it did when the value was a plain string.
+
+        // Arrange
+        var kind = instanceType switch
+        {
+            "time" => FhirPrimitive.Time,
+            "date" => FhirPrimitive.Date,
+            _ => FhirPrimitive.DateTime,
+        };
+        Assert.True(FhirTemporal.TryParse(literal, kind, out var temporal));
+        var element = new PrimitiveElement(temporal!, instanceType);
+        var expr = _parser.Parse("$this.precision()");
+
+        // Act
+        var result = _evaluator.Evaluate(element, expr).Single();
+
+        // Assert
+        Assert.Equal(expectedDigitCount, result.Value);
+    }
+
+    #endregion
+
     #region Helper Methods
 
     private IElement CreateIntegerElement(int value)

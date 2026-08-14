@@ -539,10 +539,16 @@ public static class DateTimeFunctions
 
         // Handle date/time literals - check InstanceType instead of @ prefix
         // (values no longer include @ prefix after parsing)
-        if (value is string str && (element.InstanceType == "date" || element.InstanceType == "dateTime" || element.InstanceType == "time"))
+        var literalStr = value switch
+        {
+            FhirTemporal temporal => temporal.Literal,
+            string s => s,
+            _ => null,
+        };
+        if (literalStr is not null && (element.InstanceType == "date" || element.InstanceType == "dateTime" || element.InstanceType == "time"))
         {
             // Count digits only (no @ prefix in stored values)
-            var digitCount = str.Count(c => char.IsDigit(c));
+            var digitCount = literalStr.Count(c => char.IsDigit(c));
             return [CreateInteger(digitCount)];
         }
 

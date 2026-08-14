@@ -277,6 +277,57 @@ public class FirelyPrimitiveValueContractTests
         Assert.Null(new TypedElementAdapter(element).Value);
     }
 
+    [Theory]
+    [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013")]
+    [InlineData("instant", "2013-01-01T11:22:33.123Z")]
+    public void GivenIgnixaFhirTemporalDateTime_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDateTime(string instanceType, string literal)
+    {
+        // FhirTemporal is the value type for temporal primitives originating from SchemaAwareElement.
+        // TypedElementAdapter.Value must translate it to the Firely type the SDK expects.
+
+        // Arrange
+        Assert.True(FhirTemporal.TryParse(literal, FhirPrimitive.DateTime, out var temporal));
+        var element = new StubElement { InstanceType = instanceType, Value = temporal };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var dateTime = Assert.IsType<P.DateTime>(value);
+        Assert.Equal(literal, dateTime.ToString());
+    }
+
+    [Fact]
+    public void GivenIgnixaFhirTemporalDate_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDate()
+    {
+        // Arrange
+        Assert.True(FhirTemporal.TryParse("2013-01-01", FhirPrimitive.Date, out var temporal));
+        var element = new StubElement { InstanceType = "date", Value = temporal };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var date = Assert.IsType<P.Date>(value);
+        Assert.Equal("2013-01-01", date.ToString());
+    }
+
+    [Fact]
+    public void GivenIgnixaFhirTemporalTime_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyTime()
+    {
+        // Arrange
+        Assert.True(FhirTemporal.TryParse("11:22:33", FhirPrimitive.Time, out var temporal));
+        var element = new StubElement { InstanceType = "time", Value = temporal };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var time = Assert.IsType<P.Time>(value);
+        Assert.Equal("11:22:33", time.ToString());
+    }
+
     #endregion
 
     #region Firely -> Ignixa

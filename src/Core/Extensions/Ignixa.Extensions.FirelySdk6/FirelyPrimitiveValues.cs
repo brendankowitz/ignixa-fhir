@@ -20,17 +20,19 @@ namespace Ignixa.Extensions.FirelySdk;
 /// The two SDKs disagree on how a primitive value is represented. Firely surfaces the temporal
 /// primitives as <c>Hl7.Fhir.ElementModel.Types</c> instances - <c>date</c> becomes a
 /// <see cref="P.Date"/>, <c>dateTime</c>/<c>instant</c> a <see cref="P.DateTime"/>, and
-/// <c>time</c> a <see cref="P.Time"/>. Ignixa carries those as FHIR wire-format strings
-/// (see <c>SchemaAwareElement.Value</c>). Both agree on <c>boolean</c>, <c>integer</c>,
-/// <c>decimal</c>, and the string-backed types.
+/// <c>time</c> a <see cref="P.Time"/>. Ignixa carries those as <see cref="FhirTemporal"/>
+/// instances (see <c>SchemaAwareElement.Value</c>), which hold the original wire literal and
+/// parsed precision together. Both SDKs agree on <c>boolean</c>, <c>integer</c>, <c>decimal</c>,
+/// and the string-backed types.
 /// </para>
 /// <para>
 /// Passing a value straight through therefore hands the receiving engine a type it does not
-/// recognise. That is not merely untidy: Ignixa's FHIRPath comparison helpers narrow their
-/// operands through a <c>string</c>/<c>DateTime</c>/<c>DateTimeOffset</c> switch that falls
-/// through to <c>null</c> for anything else, so a Firely <see cref="P.DateTime"/> makes any
-/// <c>date</c>/<c>dateTime</c> comparison yield an empty collection instead of a boolean -
-/// silently, and in a position where FHIRPath's empty-propagation hides it.
+/// recognise. In the Ignixa→Firely direction, a <see cref="FhirTemporal"/> in a Firely POCO
+/// property that expects a wire string throws a <c>CodedValidationException</c> at read time.
+/// In the Firely→Ignixa direction, an untranslated <see cref="P.DateTime"/> would fall through
+/// <c>AsTemporal</c> in <c>FhirPathEvaluator</c> - which normalises recognised types to
+/// <see cref="FhirTemporal"/> - producing <c>null</c> and turning every temporal comparison
+/// into an empty collection rather than a boolean, silently.
 /// </para>
 /// <para>
 /// <c>integer64</c> is translated in the Ignixa-to-Firely direction only. Firely reports it as a
@@ -90,6 +92,14 @@ internal static class FirelyPrimitiveValues
     /// and otherwise renders at the precision the value actually carries, so a year-only
     /// <c>dateTime</c> stays year-only rather than being widened to a full timestamp.
     /// </remarks>
+    /// <remarks>
+    /// <b>Asymmetry note (deferred to task 5b):</b> this method currently returns <c>string</c>
+    /// for the temporal types, while Ignixa-native elements (those coming from
+    /// <see cref="TypedElementAdapter"/>) return <see cref="FhirTemporal"/>. Any code that tests
+    /// <c>value is string</c> to branch on temporal handling will therefore diverge depending on
+    /// the element source. Task 5b will migrate consumers and update this method to return
+    /// <see cref="FhirTemporal"/> to close the asymmetry.
+    /// </remarks>
     public static object? ToIgnixa(object? value) => value switch
     {
         P.DateTime dateTime => dateTime.ToString(),
@@ -105,13 +115,15 @@ internal static class FirelyPrimitiveValues
     /// <param name="instanceType">The FHIR type name of the element the value came from.</param>
     /// <returns>The equivalent value in Firely's representation.</returns>
     /// <remarks>
-    /// Ignixa reports the temporal primitives as strings, so the FHIR type name is what tells us
-    /// which of them to build. A value that does not parse is returned unchanged, which is what
-    /// the adapter did before any translation existed: navigation over a malformed resource stays
-    /// possible, and the malformed text reaches Firely exactly as it would have. What Firely then
-    /// does with it depends on the consumer - one that coerces it to a temporal throws, while
-    /// navigation, <c>toString()</c> and serialization see the raw string. This method neither
-    /// introduces nor suppresses either outcome.
+    /// Ignixa reports the temporal primitives as <see cref="FhirTemporal"/> instances, where
+    /// <see cref="FhirTemporal.Literal"/> carries the FHIR wire text (without the leading
+    /// <c>@</c>). The FHIR type name is what tells us which Firely type to build, since all
+    /// three wire formats could otherwise be confused. A value that does not parse is returned
+    /// unchanged, which is what the adapter did before any translation existed: navigation over
+    /// a malformed resource stays possible, and the malformed text reaches Firely exactly as it
+    /// would have. What Firely then does with it depends on the consumer - one that coerces it
+    /// to a temporal throws, while navigation, <c>toString()</c> and serialization see the raw
+    /// string. This method neither introduces nor suppresses either outcome.
     /// </remarks>
     public static object? ToFirely(object? value, string? instanceType)
     {
@@ -136,6 +148,7 @@ internal static class FirelyPrimitiveValues
     /// </remarks>
     private static object ToFirelyDate(object value) => value switch
     {
+        FhirTemporal temporal => ToFirelyDate(temporal.Literal),
         string text => P.Date.TryParse(text, out var parsedText) ? parsedText : value,
         DateTimeOffset dto => P.Date.FromDateTimeOffset(dto, P.DateTimePrecision.Day, includeOffset: false),
         DateTime dt => P.Date.FromDateTimeOffset(AsOffset(dt), P.DateTimePrecision.Day, includeOffset: false),
@@ -153,6 +166,7 @@ internal static class FirelyPrimitiveValues
     /// </remarks>
     private static object ToFirelyDateTime(object value) => value switch
     {
+        FhirTemporal temporal => ToFirelyDateTime(temporal.Literal),
         string text => P.DateTime.TryParse(text, out var parsedText) ? parsedText : value,
         DateTimeOffset dto => P.DateTime.FromDateTimeOffset(dto, P.DateTimePrecision.Fraction, includeOffset: true),
         DateTime dt => P.DateTime.TryParse(dt.ToString("o", CultureInfo.InvariantCulture), out var parsedDateTime)
@@ -170,6 +184,7 @@ internal static class FirelyPrimitiveValues
     /// </remarks>
     private static object ToFirelyTime(object value) => value switch
     {
+        FhirTemporal temporal => ToFirelyTime(temporal.Literal),
         string text => P.Time.TryParse(text, out var parsedText) ? parsedText : value,
         DateTimeOffset dto => P.Time.FromDateTimeOffset(dto, P.DateTimePrecision.Fraction, includeOffset: false),
         DateTime dt => P.Time.FromDateTimeOffset(AsOffset(dt), P.DateTimePrecision.Fraction, includeOffset: false),
