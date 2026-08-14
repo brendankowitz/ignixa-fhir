@@ -700,6 +700,34 @@ public class SqlOnFhirEvaluatorTests
         Assert.Contains("Failed to evaluate ViewDefinition for resource type 'Patient'", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void GivenAFhirPathEvaluationError_WhenBatchEvaluated_ThenTheErrorTypeSurvivesTheContextWrapping()
+    {
+        // A spec-mandated FHIRPath error - '&' is a singleton operator given a three-item left operand -
+        // must stay distinguishable from an engine defect after the evaluator adds resource-type context.
+        // Wrapping every failure in a bare InvalidOperationException erased that distinction before any
+        // ViewDefinition consumer could act on it.
+        var patient = CreateTypedElement(new Dictionary<string, object?>
+        {
+            { "resourceType", "Patient" },
+            { "id", "p1" }
+        });
+
+        var viewJson = """
+            { "resource": "Patient", "select": [{ "column": [{ "name": "bad", "path": "(1 | 2 | 3) & 'b'", "type": "string" }] }] }
+            """;
+        var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(viewJson)!, "ViewDefinition");
+
+        var ex = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.EvaluateBatch(sourceNode, [patient]).ToList());
+
+        // The message and inner exception keep the shape callers already depend on.
+        Assert.Contains("Failed to evaluate ViewDefinition for resource type 'Patient'", ex.Message, StringComparison.Ordinal);
+        Assert.IsType<FhirPathEvaluationException>(ex.InnerException);
+
+        // And it is still an InvalidOperationException, so existing catch sites are unaffected.
+        Assert.IsAssignableFrom<InvalidOperationException>(ex);
+    }
+
     private static IElement CreateTypedElement(Dictionary<string, object?> data)
     {
         // Use real ResourceJsonNode instead of mocks for proper FHIR semantics

@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.SqlOnFhir" />
+    <InternalsVisibleTo Include="Ignixa.Search" />
     <InternalsVisibleTo Include="Ignixa.FhirPath.Tests" />
   </ItemGroup>
 

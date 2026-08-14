@@ -35,10 +35,22 @@ internal static class ElementExtensions
         return null;
     }
 
+    /// <summary>
+    /// Projects elements to their wire lexical form, dropping those that have none.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IElement.Value"/> returns a <see cref="FhirTemporal"/> for date, dateTime, instant and
+    /// time primitives, so an <c>as string</c> cast would silently drop any temporal an expression
+    /// happened to select. Routing through the engine's normalization chokepoint keeps indexing and
+    /// evaluation agreeing on what a primitive's lexical form is. Values with no lexical form (booleans,
+    /// numbers, complex types) still yield nothing, exactly as before.
+    /// </remarks>
     public static IEnumerable<string> AsStringValues(this IEnumerable<IElement> elements)
     {
         if (elements == null) return Enumerable.Empty<string>();
 
-        return elements.Select(x => x.Value as string).Where(x => !string.IsNullOrWhiteSpace(x));
+        return elements
+            .Select(x => FhirPath.Evaluation.WireValue.AsWireString(x.Value))
+            .Where(x => !string.IsNullOrWhiteSpace(x));
     }
 }

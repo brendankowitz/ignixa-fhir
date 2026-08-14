@@ -268,7 +268,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     // No longer used - we run all tests and let them fail/pass naturally
     // private static bool ShouldSkipTest(FhirPathTestCase testCase) { ... }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(GetR4TestCases))]
     [Trait("Category", "OfficialTestSuite")]
     [Trait("FhirVersion", "R4")]
@@ -277,7 +277,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         RunTestCase(testCase, FhirVersion.R4);
     }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(GetR4BTestCases))]
     [Trait("Category", "OfficialTestSuite")]
     [Trait("FhirVersion", "R4B")]
@@ -286,7 +286,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         RunTestCase(testCase, FhirVersion.R4B);
     }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(GetR5TestCases))]
     [Trait("Category", "OfficialTestSuite")]
     [Trait("FhirVersion", "R5")]
@@ -458,7 +458,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Fails when a deferred case is no longer a gap. <see cref="SkipTest"/> reports as a pass, and
+    /// Fails when a deferred case is no longer a gap. <see cref="SkipTest"/> only reports a skip, and
     /// <see cref="OfficialTestSuiteSkipListTests"/> only proves the named case still exists upstream and is
     /// still marked invalid - which stays true forever - so neither of them notices when the engine starts
     /// signalling the error and the entry goes stale. This does: it runs the deferred case and fails if the
@@ -508,11 +508,13 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// Records that this test case is deliberately not asserted, with the reason, and stops the test.
     /// </summary>
     /// <remarks>
-    /// This reports as a pass, not as a skip. xunit v2.9.3 has no working dynamic skip - <c>Assert.Skip</c>
-    /// does not exist and <c>xunit.execution</c> 2.9.3 does not honour <see cref="SkipException"/>'s
-    /// <c>DynamicSkipToken</c> - so a reason-carrying early return is the only mechanism available without
-    /// taking a dependency on <c>Xunit.SkippableFact</c>. The reason string is the compensating control:
-    /// unlike the vacuous passes this class used to produce, every deferral is named, justified in
+    /// This reports as a real skip. xunit v2.9.3 has no working dynamic skip of its own - <c>Assert.Skip</c>
+    /// does not exist and <c>xunit.execution</c> 2.9.3 does not honour its own <c>Xunit.Sdk.SkipException</c>'s
+    /// <c>DynamicSkipToken</c> - so the deferrals used to report as passes, indistinguishable from real
+    /// coverage. <c>Xunit.SkippableFact</c> supplies the missing mechanism: the <c>[SkippableTheory]</c>
+    /// attribute on the three suite entry points installs a runner that translates a thrown
+    /// <c>Xunit.SkipException</c> into a skipped result carrying the reason.
+    /// The reason string remains the compensating control: every deferral is named, justified in
     /// <see cref="_unsignalledInvalidCases"/>, checked against the upstream suites by
     /// <see cref="OfficialTestSuiteSkipListTests"/>, and re-run by
     /// <see cref="AssertDeferralIsStillNeeded"/> so a gap that has since closed fails instead of skipping.
@@ -520,6 +522,11 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     private void SkipTest(string reason)
     {
         _output.WriteLine($"[SKIPPED] {reason}");
+
+        // Xunit.SkipException, not Xunit.Sdk.SkipException: only the former prefixes the message with
+        // the DynamicSkipToken that SkippableFact's runner looks for. The latter is the one xunit 2.9.3
+        // ships and ignores.
+        throw new Xunit.SkipException(reason);
     }
 
     private static void ValidatePredicateResult(FhirPathTestCase testCase, IReadOnlyList<IElement> actualResults)

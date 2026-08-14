@@ -60,8 +60,12 @@ public class FhirPathEvaluatorWithTimeout
         try
         {
             // Execute evaluation with timeout
-            // FhirPathEvaluator.Evaluate is synchronous, so we run it in a Task
-            var task = Task.Run(() => _evaluator.Evaluate(element, compiled), cts.Token);
+            // FhirPathEvaluator.Evaluate is synchronous, so we run it in a Task.
+            // Evaluate returns a lazy enumerable: materializing it inside the Task is what makes the
+            // work actually happen here, rather than on the caller's thread past every catch below.
+            var task = Task.Run<IEnumerable<IElement>>(
+                () => _evaluator.Evaluate(element, compiled).ToList(),
+                cts.Token);
             return await task;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

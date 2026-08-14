@@ -12,6 +12,7 @@ using Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 using Ignixa.NarrativeGenerator.Localization;
 using Ignixa.NarrativeGenerator.Security;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.NarrativeGenerator;
 
@@ -63,6 +64,7 @@ public class FhirNarrativeGenerator : INarrativeGenerator
     /// </summary>
     /// <param name="schema">The FHIR schema for FHIRPath evaluation and structure definitions.</param>
     /// <param name="localizer">Optional string localizer for internationalization. If null, uses a default non-localizing implementation.</param>
+    /// <param name="logger">Optional logger. Template expressions that fail to evaluate are reported here; without one those failures render blank and stay invisible.</param>
     /// <returns>A fully configured narrative generator ready for use.</returns>
     /// <remarks>
     /// <para>
@@ -85,7 +87,7 @@ public class FhirNarrativeGenerator : INarrativeGenerator
     ///     "Patient");
     /// </code>
     /// </remarks>
-    public static INarrativeGenerator Create(ISchema schema, IStringLocalizer? localizer = null)
+    public static INarrativeGenerator Create(ISchema schema, IStringLocalizer? localizer = null, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(schema);
 
@@ -103,11 +105,11 @@ public class FhirNarrativeGenerator : INarrativeGenerator
         var templateResolver = new TemplateResolver();
 
         // Create template engine first (without render_resource support initially)
-        var fhirPathFunctionsInitial = new FhirPathScriptFunctions(schema);
+        var fhirPathFunctionsInitial = new FhirPathScriptFunctions(schema, logger);
         var templateEngine = new NarrativeTemplateEngine(fhirPathFunctionsInitial, localizer, templateResolver);
 
         // Create FHIRPath functions with full support (including render_resource)
-        var fhirPathFunctions = new FhirPathScriptFunctions(schema, templateResolver, templateEngine);
+        var fhirPathFunctions = new FhirPathScriptFunctions(schema, templateResolver, templateEngine, logger);
 
         // Recreate template engine with full FHIRPath functions and template composition support
         templateEngine = new NarrativeTemplateEngine(fhirPathFunctions, localizer, templateResolver);

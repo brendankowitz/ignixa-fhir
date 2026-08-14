@@ -10,6 +10,8 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 
@@ -27,11 +29,12 @@ namespace Ignixa.NarrativeGenerator.Engine.ScriptFunctions;
 /// {{ fhir.display resource.code }}
 /// </code>
 /// </remarks>
-internal class FhirPathScriptFunctions
+internal partial class FhirPathScriptFunctions
 {
     private readonly FhirPathParser _parser;
     private readonly FhirPathEvaluator _evaluator;
     private readonly ISchema _schema;
+    private readonly ILogger _logger;
     private readonly ITemplateResolver? _templateResolver;
     private readonly NarrativeTemplateEngine? _templateEngine;
 
@@ -45,13 +48,15 @@ internal class FhirPathScriptFunctions
     /// Creates a new FhirPathScriptFunctions instance.
     /// </summary>
     /// <param name="schema">The FHIR schema for type information during evaluation.</param>
-    public FhirPathScriptFunctions(ISchema schema)
+    /// <param name="logger">Optional logger. Template expression failures are reported here; without one they are invisible.</param>
+    public FhirPathScriptFunctions(ISchema schema, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(schema);
 
         _parser = new FhirPathParser();
         _evaluator = new FhirPathEvaluator();
         _schema = schema;
+        _logger = logger ?? NullLogger.Instance;
 
         // Public methods will be auto-discovered when this object is imported
         // via scriptObject.Import(this) in NarrativeTemplateEngine
@@ -63,8 +68,9 @@ internal class FhirPathScriptFunctions
     /// <param name="schema">The FHIR schema for type information during evaluation.</param>
     /// <param name="templateResolver">The template resolver for nested resource rendering.</param>
     /// <param name="templateEngine">The template engine for nested resource rendering.</param>
-    internal FhirPathScriptFunctions(ISchema schema, ITemplateResolver templateResolver, NarrativeTemplateEngine templateEngine)
-        : this(schema)
+    /// <param name="logger">Optional logger. Template expression failures are reported here; without one they are invisible.</param>
+    internal FhirPathScriptFunctions(ISchema schema, ITemplateResolver templateResolver, NarrativeTemplateEngine templateEngine, ILogger? logger = null)
+        : this(schema, logger)
     {
         ArgumentNullException.ThrowIfNull(templateResolver);
         ArgumentNullException.ThrowIfNull(templateEngine);
@@ -97,9 +103,11 @@ internal class FhirPathScriptFunctions
             var firstResult = results.FirstOrDefault();
             return firstResult?.Value?.ToString() ?? string.Empty;
         }
-        catch
+        catch (Exception ex)
         {
-            // Return empty on evaluation errors to avoid breaking template rendering
+            // Return empty on evaluation errors to avoid breaking template rendering, but log:
+            // an empty render is otherwise indistinguishable from the expression matching nothing.
+            Log.TemplateExpressionFailed(_logger, ex, exprString, nameof(Path));
             return string.Empty;
         }
     }
@@ -151,10 +159,11 @@ internal class FhirPathScriptFunctions
             var parsedExpression = _parser.Parse(exprString);
             var results = _evaluator.Evaluate(element, parsedExpression);
 
-            return results.Select(r => r.Value?.ToString() ?? string.Empty);
+            return results.Select(r => r.Value?.ToString() ?? string.Empty).ToList();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.TemplateExpressionFailed(_logger, ex, exprString, nameof(PathAll));
             return [];
         }
     }
@@ -185,8 +194,9 @@ internal class FhirPathScriptFunctions
             // Return the first result if it's an IElement
             return results.FirstOrDefault();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.TemplateExpressionFailed(_logger, ex, exprString, nameof(PathElement));
             return null;
         }
     }
@@ -216,8 +226,9 @@ internal class FhirPathScriptFunctions
 
             return results.Any();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.TemplateExpressionFailed(_logger, ex, exprString, nameof(Exists));
             return false;
         }
     }
@@ -242,8 +253,9 @@ internal class FhirPathScriptFunctions
 
             return results.Count();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.TemplateExpressionFailed(_logger, ex, exprString, nameof(Count));
             return 0;
         }
     }
@@ -969,5 +981,13 @@ internal class FhirPathScriptFunctions
         {
             return code;
         }
+    }
+
+    private static partial class Log
+    {
+        [LoggerMessage(
+            Level = LogLevel.Warning,
+            Message = "Narrative template function '{Function}' failed to evaluate FHIRPath expression '{Expression}'; rendering the empty result instead.")]
+        public static partial void TemplateExpressionFailed(ILogger logger, Exception ex, string expression, string function);
     }
 }

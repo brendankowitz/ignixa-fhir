@@ -50,8 +50,15 @@ internal class FhirPathIntegration
             // Get or compile the expression
             var compiledExpression = GetOrCompileExpression(expression);
 
-            // Evaluate
-            return _evaluator.Evaluate(element, compiledExpression);
+            // Materialized here so evaluation errors surface inside this try rather than at the
+            // caller's first enumeration, which would bypass the wrapping below entirely.
+            return _evaluator.Evaluate(element, compiledExpression).ToList();
+        }
+        catch (FhirPathEvaluationException ex)
+        {
+            // Same message and inner exception as the general case, but the type stays distinguishable
+            // so callers can tell "this expression is ill-formed for its data" from an engine defect.
+            throw new FhirPathEvaluationException($"Failed to evaluate FHIRPath expression: {expression}", ex);
         }
         catch (Exception ex)
         {

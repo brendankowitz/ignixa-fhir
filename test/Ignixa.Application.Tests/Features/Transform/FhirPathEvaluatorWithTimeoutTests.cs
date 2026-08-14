@@ -187,6 +187,28 @@ public class FhirPathEvaluatorWithTimeoutTests
 
     #endregion
 
+    [Fact]
+    public async Task GivenAnExpressionThatThrowsDuringEvaluation_WhenEvaluateAsync_ThenTheAwaitThrowsRatherThanTheEnumeration()
+    {
+        // Arrange: '&' is a singleton operator, so a three-item left operand is an evaluation-time
+        // error. The expression parses cleanly, so nothing fails before evaluation starts.
+        var parser = new FhirPathParser();
+        var cache = new FhirPathExpressionCache(parser, NullLogger<FhirPathExpressionCache>.Instance);
+        var evaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
+            cache,
+            new FhirPathEvaluator(),
+            TimeSpan.FromSeconds(5),
+            NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
+
+        var element = new TestElement("Patient", "Patient");
+
+        // Act & Assert: FhirPathEvaluator.Evaluate returns a lazy sequence, so this await used to
+        // complete successfully and hand back a sequence that threw on first enumeration - outside the
+        // Task, outside the timeout, and outside every catch in EvaluateAsync.
+        await Should.ThrowAsync<FhirPathEvaluationException>(
+            async () => await evaluatorWithTimeout.EvaluateAsync("(1 | 2 | 3) & 'b'", element, CancellationToken.None));
+    }
+
     #region Test Helpers
 
     /// <summary>
