@@ -586,43 +586,40 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenBooleanOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    public void GivenBooleanOperand_WhenUnaryMinus_ThenSignalsError()
     {
-        // Regression for #246 (testLiteralIntegerNegative1Invalid, testPrecedence1):
-        // FHIRPath spec: unary minus on non-numeric operand (e.g. boolean) is undefined.
-        // Spec test '-1.convertsToInteger()' is marked invalid="semantic":
-        //   parses as -(1.convertsToInteger()) -> -(true) -> empty (not -1).
+        // Official tests testLiteralIntegerNegative1Invalid and testPrecedence1, both '-1.convertsToInteger()':
+        // unary minus binds looser than the invocation, so this parses as -(1.convertsToInteger()) -> -(true),
+        // which the Unary Operators clause makes an error. The load-bearing part of #251 still holds - the
+        // result must never be -1, which is what Convert.ToDecimal(true) used to produce.
         var expr = _parser.Parse("-1.convertsToInteger()");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        Assert.Empty(result);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("boolean", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void GivenBooleanOperandFromConvertsToDecimal_WhenUnaryMinus_ThenReturnsEmpty()
+    public void GivenBooleanOperandFromConvertsToDecimal_WhenUnaryMinus_ThenSignalsError()
     {
-        // Regression for #246 testLiteralDecimalNegative01Invalid:
-        // '-0.1.convertsToDecimal()' must parse as -(0.1.convertsToDecimal()) -> -(true) -> empty.
+        // Official test testLiteralDecimalNegative01Invalid: '-0.1.convertsToDecimal()' parses as
+        // -(0.1.convertsToDecimal()) -> -(true), which must error rather than yield -0.1 or empty.
         var expr = _parser.Parse("-0.1.convertsToDecimal()");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        Assert.Empty(result);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("boolean", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void GivenStringOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    public void GivenStringOperand_WhenUnaryMinus_ThenSignalsError()
     {
-        // FHIRPath spec: unary minus on a string is undefined.
+        // Unary minus is defined only for Integer, Decimal and Quantity; a string operand is an error.
         var expr = _parser.Parse("-'5'");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        Assert.Empty(result);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("string", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

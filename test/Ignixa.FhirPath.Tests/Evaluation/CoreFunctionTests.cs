@@ -395,17 +395,16 @@ public class CoreFunctionTests
     }
 
     [Fact]
-    public void GivenMultipleItems_WhenNot_ThenReturnsFalse()
+    public void GivenMultipleItems_WhenNot_ThenSignalsError()
     {
-        // Arrange
+        // Arrange - official test testNotInvalid ((1|2).not()): multi-item input to not() violates
+        // Singleton Evaluation of Collections and must be signalled, not answered with empty.
         var expr = _parser.Parse("(true | false).not()");
         var root = CreateIntegerElement(0);
 
-        // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        // Assert
-        Assert.Empty(result); // Multiple items should return empty
+        // Act / Assert
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("not()", exception.Message, StringComparison.Ordinal);
     }
 
     #endregion

@@ -160,48 +160,37 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// </remarks>
     private static readonly FrozenDictionary<string, string> _unsignalledInvalidCases = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        // Singleton-cardinality enforcement. The engine returns empty for a non-singleton operand
-        // everywhere rather than signalling, so fixing these means auditing every binary operator and
-        // function for its input cardinality rule - engine-wide work, not a temporal/comparison fix.
-        ["testConcatenate4"] = "(1 | 2 | 3) & 'b': '&' on a multi-item collection must error; the engine returns empty for every non-singleton operand instead of signalling.",
-        ["testNotInvalid"] = "(1|2).not(): not() on a multi-item collection must error; the engine returns empty for non-singleton input instead of signalling.",
-        ["testIn5"] = "('a' | 'c' | 'd') in 'b': the left operand of 'in' must be a singleton; the engine returns empty instead of signalling.",
-        ["testFHIRPathAsFunction21"] = "Patient.name.as(HumanName): as() requires singleton input and Patient has three names; the engine applies it element-wise and returns all three.",
+        // Singleton cardinality, where the engines disagree with each other rather than with us.
+        ["testFHIRPathAsFunction21"] = "Patient.name.as(HumanName): the type operators do require singleton input, and Patient has three names, but the reference engines split - Firely applies as() element-wise and returns all three (what we do), and HAPI enforces the rule only from R5 onwards. Deferred until the engines agree, not because the rule is unclear.",
 
-        // Schema-aware static analysis. FhirPathAnalyzer is the component that knows element names, choice
-        // elements and resource types; the evaluator is deliberately schema-tolerant and yields empty for
-        // anything it cannot resolve. Making evaluation reject these means running the analyzer as part of
-        // evaluation, which is an architectural decision, not a bug fix.
-        ["testSimpleFail"] = "name.given1: an unknown element name must be a semantic error; the evaluator resolves names leniently and returns empty. Needs FhirPathAnalyzer wired into evaluation.",
-        ["testSimpleWithWrongContext"] = "Encounter.name.given against a Patient: a resource-type mismatch must be a semantic error; the evaluator returns empty. Same FhirPathAnalyzer gap.",
-        ["testPolymorphicsB"] = "Observation.valueQuantity.exists(): choice-element shorthand is not legal FHIRPath (value.ofType(Quantity) is), but the evaluator resolves the shorthand and returns true. Needs choice-element knowledge in analysis.",
-        ["testPolymorphismB"] = "Observation.valueQuantity.unit: same illegal choice-element shorthand as testPolymorphicsB, returning 'lbs' instead of signalling.",
-        ["testPolymorphismAsB"] = "(Observation.value as Period).unit: Period has no 'unit' child, which must be a semantic error; the evaluator returns empty. Same FhirPathAnalyzer gap.",
-        ["testFHIRPathAsFunction23"] = "Patient.gender.as(string1): 'string1' is not a known type, which must error; the engine treats an unresolvable type name as 'matches nothing' and returns empty.",
-        ["testFHIRPathAsFunction24"] = "Patient.gender.ofType(string1): same unresolvable type name as testFHIRPathAsFunction23.",
+        // Unresolved paths. The spec is not silent on these: FHIRPath mandates EMPTY for a path that does
+        // not resolve, and makes stricter typing explicitly optional ("implementations may choose"). So the
+        // evaluator is conformant as it stands and there is nothing here to fix in it. The suite encodes the
+        // stricter option, which in this codebase lives in FhirPathAnalyzer - verified to report an Error for
+        // every expression below - and wiring the analyzer into evaluation is an architectural decision.
+        ["testSimpleFail"] = "name.given1: the evaluator returning empty for an unresolved element name is spec-conformant, not a gap. Strict typing is the opt-in behaviour, and FhirPathAnalyzer already reports \"Property 'given1' not found on type 'HumanName[]'\"; only the wiring is missing.",
+        ["testSimpleWithWrongContext"] = "Encounter.name.given against a Patient: same conformant-empty as testSimpleFail. FhirPathAnalyzer already reports \"Property 'name' not found on type 'Encounter'\".",
+        ["testPolymorphicsB"] = "Observation.valueQuantity.exists(): choice-element shorthand is not legal FHIRPath, but resolving it leniently at evaluation time is the permitted behaviour. FhirPathAnalyzer already reports \"Property 'valueQuantity' not found on type 'Observation'\".",
+        ["testPolymorphismB"] = "Observation.valueQuantity.unit: same shorthand as testPolymorphicsB, and the same analyzer diagnostic already exists.",
+        ["testPolymorphismAsB"] = "(Observation.value as Period).unit: same conformant-empty as testSimpleFail. FhirPathAnalyzer already reports \"Property 'unit' not found on type 'Period'\".",
 
-        // Unary minus binds looser than the invocation, so these parse as -(1.convertsToInteger()) and
-        // negate a boolean. Typing the unary operators is arithmetic-typing work outside temporal scope.
-        ["testLiteralIntegerNegative1Invalid"] = "-1.convertsToInteger() parses as -(1.convertsToInteger()); negating a boolean must error, but unary minus returns empty for a non-numeric operand.",
-        ["testPrecedence1"] = "-1.convertsToInteger(): identical expression and gap to testLiteralIntegerNegative1Invalid.",
-        ["testLiteralDecimalNegative01Invalid"] = "-0.1.convertsToDecimal() parses as -(0.1.convertsToDecimal()); same unary-minus-on-boolean gap.",
+        // Unknown type identifiers - a different question from an unresolved path, since the type operators
+        // name a type rather than navigate to one.
+        ["testFHIRPathAsFunction23"] = "Patient.gender.as(string1): a genuine evaluator gap, unlike the unresolved-path cases - the type operators explicitly mandate an error for an unknown type identifier. TypeMatcher decides purely by name, so signalling needs the schema's type table reachable from EvaluationContext, which it currently is not. FhirPathAnalyzer, which does have the schema, already reports \"Type 'string1' is not a valid FHIR type\".",
+        ["testFHIRPathAsFunction24"] = "Patient.gender.ofType(string1): the spec never states ofType()'s resolution-failure mode, so unlike as() there is no rule to implement - only HAPI errors, Firely returns empty as we do. FhirPathAnalyzer reports the invalid type name regardless.",
 
-        // Deliberate existing design decision, documented in FhirPathEvaluator.VisitFunctionCall: a
-        // positional function over an unordered navigation source returns empty at runtime and is surfaced
-        // as a design-time error by FhirPathAnalyzer instead. Changing it is a decision, not a fix.
-        ["testDollarOrderNotAllowed"] = "Patient.children().skip(1): a positional function over an unordered source must error; VisitFunctionCall deliberately returns empty and defers the diagnostic to FhirPathAnalyzer.",
+        // Ordering, where the suite asks for more than the spec does.
+        ["testDollarOrderNotAllowed"] = "Patient.children().skip(1): the suite is stricter than the spec here. The spec makes the order of children() undefined, not erroneous, so returning empty is conformant; HAPI errors and the suite encodes HAPI's strictness. FhirPathAnalyzer surfaces it as a design-time error, which is the right layer for it.",
 
-        ["testMinus4"] = "'a'-'b': subtraction of two strings must error. Making non-numeric '-' throw is a broad arithmetic-typing change across all operand types; deliberately not bundled with the temporal operand fix.",
-
-        // defineVariable scoping. The engine's variable store is permissive: unknown names resolve to
-        // empty (VisitVariable), redefinition overwrites, and system names are not reserved.
-        ["defineVariable10"] = "select(%fam.given): a reference to an undefined variable must error; VisitVariable returns empty for any unknown name.",
-        ["defineVariable9"] = "a variable defined in one branch of '|' must not be visible in the sibling branch and referencing it must error; the sibling silently sees empty.",
+        // defineVariable scoping. Prerequisite before any of these can be made to signal: %context is
+        // documented on EvaluationContext but not implemented in GetEnvironmentVariable, so making
+        // VisitVariable throw on an unresolved name would turn silent empties into reported errors across
+        // shipped R4/R4B/R5 core invariants that use it (ig-1, sdf-24, sdf-25, exs-19/20/21).
+        ["defineVariable10"] = "select(%fam.given): a reference to an undefined variable must error; VisitVariable returns empty for any unknown name. Blocked on %context being implemented first - see the note above this block.",
+        ["defineVariable9"] = "a variable defined in one branch of '|' must not be visible in the sibling branch and referencing it must error; the sibling silently sees empty. Same %context prerequisite.",
         ["defineVariable12"] = "same cross-branch '|' scope leak as defineVariable9, with the variable defined inside a Patient.name navigation.",
-        ["defineVariable16"] = "a variable from an inner select() scope must not be visible in a later outer select(), and referencing it must error; the engine's DefinedVariables dictionary keeps it visible.",
-        ["dvUsageOutsideScopeThrows"] = "referencing a variable outside the scope that defined it must error; the engine resolves it or returns empty.",
-        ["dvRedefiningVariableThrowsError"] = "redefining an existing variable name must error; EvaluateDefineVariable overwrites the entry.",
-        ["dvCantOverwriteSystemVar"] = "defineVariable('context', ...) must error because 'context' is a system variable; there is no reserved-name check.",
+        ["defineVariable16"] = "a variable from an inner select() scope must not be visible in a later outer select(), and referencing it must error. Needs select() to fork variable scope (CollectionFunctions.Select pushes $this/$index but shares the one DefinedVariables dictionary) on top of the %context prerequisite.",
+        ["dvUsageOutsideScopeThrows"] = "referencing a variable outside the scope that defined it must error; the engine resolves it or returns empty. Same %context prerequisite.",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>

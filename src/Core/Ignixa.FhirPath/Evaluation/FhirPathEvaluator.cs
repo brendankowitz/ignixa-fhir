@@ -33,6 +33,16 @@ namespace Ignixa.FhirPath.Evaluation;
 public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, IEnumerable<IElement>>
 {
     /// <summary>
+    /// Names <c>defineVariable</c> may not claim because the engine already resolves them: the FHIRPath
+    /// external constants and the two implicit iteration variables (official test
+    /// <c>dvCantOverwriteSystemVar</c>: <c>defineVariable('context', 'oops')</c>).
+    /// </summary>
+    private static readonly FrozenSet<string> _reservedVariableNames = new[]
+    {
+        "context", "resource", "rootResource", "this", "index", "total", "ucum", "sct", "loinc"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Creates a new FhirPath evaluator.
     /// </summary>
     public FhirPathEvaluator()
@@ -178,10 +188,72 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             value = focus.ToImmutableList();
         }
 
+        if (_reservedVariableNames.Contains(variableName))
+        {
+            throw new FhirPathEvaluationException(
+                $"defineVariable cannot redefine the system variable '%{variableName}'");
+        }
+
+        if (IsAlreadyDefinedEarlierInSameChain(expression, variableName))
+        {
+            throw new FhirPathEvaluationException($"Variable '%{variableName}' is already defined");
+        }
+
         context.DefinedVariables[variableName] = value;
 
         return focus;
     }
+
+    /// <summary>
+    /// Reports whether an earlier link of this invocation chain already defines <paramref name="variableName"/>
+    /// (official test <c>dvRedefiningVariableThrowsError</c>:
+    /// <c>defineVariable('v1').defineVariable('v1').select(%v1)</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The test to make here is "already defined <i>in this scope</i>", and the obvious implementation - asking
+    /// <see cref="EvaluationContext.DefinedVariables"/> whether it holds the name - cannot express that. That
+    /// dictionary is one mutable store shared by every context derived from the root: <c>PushThis</c> and
+    /// friends copy the reference, not the contents, so a name survives both loop iterations and sibling
+    /// argument evaluations. Asking it produces false errors on three valid official cases -
+    /// <c>dvConceptMapExample</c> (<c>defineVariable('grp')</c> re-executed once per <c>group</c>),
+    /// <c>defineVariable19</c> and <c>dvParametersDontColide</c> (the same name defined in two sibling
+    /// arguments of one call, which the second test is named for).
+    /// </para>
+    /// <para>
+    /// Walking the focus chain instead asks a question the AST can actually answer, and answers it without
+    /// depending on the variable store's scoping - which stays unfixed, and is why the scope-leak cases
+    /// (<c>defineVariable9</c>/<c>10</c>/<c>12</c>/<c>16</c>, <c>dvUsageOutsideScopeThrows</c>) remain
+    /// deferred. The rule is deliberately narrow: it never reports a redefinition that is really a sibling
+    /// scope or a re-execution, and it says nothing about a name defined dynamically or in an enclosing
+    /// expression, which stay permissive as before.
+    /// </para>
+    /// </remarks>
+    private static bool IsAlreadyDefinedEarlierInSameChain(FunctionCallExpression expression, string variableName)
+    {
+        for (var link = FocusOf(expression); link is not null; link = FocusOf(link))
+        {
+            if (link is FunctionCallExpression call && DefinesVariable(call, variableName))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static Expression? FocusOf(Expression expression) => expression switch
+    {
+        FunctionCallExpression call => call.Focus,
+        PropertyAccessExpression property => property.Focus,
+        _ => null
+    };
+
+    private static bool DefinesVariable(FunctionCallExpression call, string variableName)
+        => call.FunctionName.Equals("defineVariable", StringComparison.OrdinalIgnoreCase)
+           && call.Arguments.Count > 0
+           && call.Arguments[0] is ConstantExpression { Value: string definedName }
+           && definedName.Equals(variableName, StringComparison.OrdinalIgnoreCase);
 
     public IEnumerable<IElement> VisitPropertyAccess(PropertyAccessExpression expression, EvaluationContext context)
     {
@@ -421,10 +493,27 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var temporal = IsTemporalElement(left) ? left : right;
         var other = ReferenceEquals(temporal, left) ? right : left;
 
-        throw new InvalidOperationException(
+        throw new FhirPathEvaluationException(
             $"Operator '{operatorSymbol}' on a {temporal.InstanceType} requires a Quantity with a time-valued unit, " +
             $"but the other operand was of type '{other.InstanceType ?? "unknown"}'.");
     }
+
+    /// <summary>
+    /// Builds the error for a math operator applied to operands whose types it is not defined for. FHIRPath's
+    /// Math preamble requires both operands to be of the same or compatible types and makes anything else an
+    /// error, not an empty result (official test <c>testMinus4</c>: <c>'a' - 'b'</c>).
+    /// </summary>
+    /// <remarks>
+    /// Only reached once both operands are known to be single items, so the spec's empty-propagation rule
+    /// (<c>1 * {}</c> is empty) and its divide-by-zero rule (<c>1 / 0</c> is empty) are already satisfied by
+    /// the guards above every call site.
+    /// </remarks>
+    private static FhirPathEvaluationException UndefinedForOperandTypes(IElement left, IElement right, string operatorSymbol)
+        => new($"Operator '{operatorSymbol}' is not defined for operands of type " +
+               $"'{DescribeOperandType(left)}' and '{DescribeOperandType(right)}'.");
+
+    private static string DescribeOperandType(IElement element)
+        => element.InstanceType ?? element.Value?.GetType().Name ?? "unknown";
 
     private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)
     {
@@ -467,7 +556,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 : [CreateDecimal(result)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "+");
     }
 
     private IEnumerable<IElement> EvaluateSubtraction(List<IElement> left, List<IElement> right)
@@ -499,7 +588,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 : [CreateDecimal(result)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "-");
     }
 
     private IEnumerable<IElement> EvaluateMultiplication(List<IElement> left, List<IElement> right)
@@ -523,7 +612,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 : [CreateDecimal(result)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "*");
     }
 
     private IEnumerable<IElement> EvaluateDivision(List<IElement> left, List<IElement> right)
@@ -547,7 +636,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [CreateDecimal(leftDecimal / rightDecimal)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "/");
     }
 
     private IEnumerable<IElement> EvaluateIntegerDivision(List<IElement> left, List<IElement> right)
@@ -563,7 +652,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [CreateInteger((int)Math.Truncate(leftDecimal / rightDecimal))];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "div");
     }
 
     private IEnumerable<IElement> EvaluateModulo(List<IElement> left, List<IElement> right)
@@ -579,7 +668,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [CreateDecimal(leftDecimal % rightDecimal)];
         }
 
-        return [];
+        throw UndefinedForOperandTypes(left[0], right[0], "mod");
     }
 
     private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right)
@@ -587,7 +676,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // FHIRPath spec: Empty collections are treated as empty strings for concatenation
         // '1' & {} = '1', {} & 'b' = 'b'
         if (left.Count > 1 || right.Count > 1)
-            return [];
+        {
+            // Official test testConcatenate4: (1 | 2 | 3) & 'b' is an error, not an empty result.
+            throw new FhirPathEvaluationException(
+                $"Operator '&' requires singleton operands, but was given {left.Count} item(s) on the left and {right.Count} item(s) on the right.");
+        }
 
         var leftStr = left.Count == 1 ? (left[0].Value?.ToString() ?? string.Empty) : string.Empty;
         var rightStr = right.Count == 1 ? (right[0].Value?.ToString() ?? string.Empty) : string.Empty;
@@ -629,7 +722,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return null;
 
         if (singleItem.Count != 1)
+        {
+            // 'in' explicitly errors on a non-singleton left operand (official test testIn5:
+            // ('a' | 'c' | 'd') in 'b'). 'contains' shares this helper but its singleton is the right
+            // operand and the spec states no such rule for it, so it keeps returning empty.
+            if (isIn)
+            {
+                throw new FhirPathEvaluationException(
+                    $"The left operand of 'in' must be a single item, but was a collection of {singleItem.Count} items.");
+            }
+
             return null;
+        }
 
         if (collection.Count == 0)
             return false;
@@ -1029,6 +1133,19 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [];
     }
 
+    /// <summary>
+    /// Evaluates unary <c>+</c>/<c>-</c>. A non-numeric operand of unary <c>-</c> is an error
+    /// (official tests <c>testLiteralIntegerNegative1Invalid</c>, <c>testPrecedence1</c>,
+    /// <c>testLiteralDecimalNegative01Invalid</c>, all of which parse as <c>-(&lt;boolean&gt;)</c>).
+    /// </summary>
+    /// <remarks>
+    /// This arm previously returned empty, on the premise that the spec left a non-numeric operand
+    /// undefined. It does not: the Unary Operators clause types the operand, and the worked example
+    /// <c>-7.combine(3) // ERROR</c> says the same. Firely and HAPI both error. Note the clause is new in
+    /// 3.0.0-ballot and marked STU - under 2.0.0 only the worked example backs it - but no engine reads it
+    /// the lenient way. The typed switch itself must stay: before it, <c>Convert.ToDecimal(true)</c> made
+    /// <c>-true</c> evaluate to <c>-1</c>, which is worse than either empty or an error.
+    /// </remarks>
     public IEnumerable<IElement> VisitUnary(UnaryExpression expression, EvaluationContext context)
     {
         var operand = EvaluateExpression(context.Focus, expression.Operand, context).ToList();
@@ -1048,7 +1165,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 double d => [CreateDecimal(-(decimal)d)],
                 float f => [CreateDecimal(-(decimal)f)],
                 Types.Quantity q => [FunctionHelpers.CreateQuantity(new Types.Quantity(-q.Value, q.Unit))],
-                _ => [] // non-numeric operand: undefined per FHIRPath spec → empty
+                _ => throw new FhirPathEvaluationException(
+                    $"Unary '-' is only defined for Integer, Decimal and Quantity, but the operand was of type '{DescribeOperandType(operand[0])}'.")
             };
         }
         catch (OverflowException)
@@ -1399,7 +1517,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                     // collection hid a real type error (official testLiteralDecimalLessThanInvalid:
                     // Observation.value.value < 'test'). Undecidable-but-well-typed comparisons, such as
                     // partial-precision dates, are handled above and still return null.
-                    throw new InvalidOperationException(
+                    throw new FhirPathEvaluationException(
                         $"Cannot compare '{left[0].InstanceType ?? "unknown"}' with '{right[0].InstanceType ?? "unknown"}': " +
                         "comparison operands must be of the same type.", ex);
                 }
@@ -1602,7 +1720,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         var keyword = quantity.Unit == "a" ? "year" : "month";
-        throw new InvalidOperationException(
+        throw new FhirPathEvaluationException(
             $"'{quantity}' uses the UCUM definite-duration unit '{quantity.Unit}', which has no calendar " +
             $"equivalent, so it cannot be used in {instanceType} arithmetic; use the calendar keyword " +
             $"'{keyword}' instead.");
@@ -1880,7 +1998,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             // routes any lexical value paired with a Quantity through this method; leave them unchanged.
             if (IsTemporalInstanceType(instanceType) && !_timeValuedUnits.Contains(quantity.Unit))
             {
-                throw new InvalidOperationException(
+                throw new FhirPathEvaluationException(
                     $"'{quantity}' is not a time-valued quantity, so it cannot be used in {instanceType} arithmetic.");
             }
 

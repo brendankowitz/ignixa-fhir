@@ -115,7 +115,7 @@ internal static class BooleanFunctions
     /// not() - Returns the negation of the boolean evaluation of the input.
     /// Returns empty if collection is empty.
     /// Per FHIRPath spec: single boolean returns !value, otherwise returns !true (any content is truthy).
-    /// Multiple items is an invalid operation per spec (testNotInvalid), but we return empty for compatibility.
+    /// Multi-item input violates Singleton Evaluation of Collections and is an error (testNotInvalid).
     /// </summary>
     [FhirPathFunction("not",
         SupportedContexts = "boolean-boolean",
@@ -132,10 +132,12 @@ internal static class BooleanFunctions
         if (list.Count == 0)
             return [];
 
-        // Multiple items: per FHIRPath spec this is an invalid operation (testNotInvalid)
-        // We return empty for compatibility rather than throwing
+        // Multiple items: Singleton Evaluation of Collections makes this an error (testNotInvalid)
         if (list.Count != 1)
-            return [];
+        {
+            throw new FhirPathEvaluationException(
+                $"not() requires a single item, but was given a collection of {list.Count} items");
+        }
 
         // Single element: check if it's a boolean
         var element = list[0];

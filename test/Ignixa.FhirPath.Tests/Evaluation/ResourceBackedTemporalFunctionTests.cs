@@ -77,7 +77,7 @@ public class ResourceBackedTemporalFunctionTests
         var evaluate = () => patient.Select("Patient.birthDate + 1 'a'").ToList();
 
         // Assert
-        evaluate.ShouldThrow<InvalidOperationException>();
+        evaluate.ShouldThrow<FhirPathEvaluationException>();
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ResourceBackedTemporalFunctionTests
         var evaluate = () => patient.Select("Patient.birthDate - 1 'a'").ToList();
 
         // Assert
-        evaluate.ShouldThrow<InvalidOperationException>();
+        evaluate.ShouldThrow<FhirPathEvaluationException>();
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class ResourceBackedTemporalFunctionTests
         var evaluate = () => patient.Select("Patient.birthDate + 1 'mo'").ToList();
 
         // Assert
-        evaluate.ShouldThrow<InvalidOperationException>();
+        evaluate.ShouldThrow<FhirPathEvaluationException>();
     }
 
     [Fact]
@@ -417,7 +417,7 @@ public class ResourceBackedTemporalFunctionTests
         var evaluate = () => patient.Select("Patient.birthDate + 'X'").ToList();
 
         // Assert
-        evaluate.ShouldThrow<InvalidOperationException>();
+        evaluate.ShouldThrow<FhirPathEvaluationException>();
     }
 
     [Fact]

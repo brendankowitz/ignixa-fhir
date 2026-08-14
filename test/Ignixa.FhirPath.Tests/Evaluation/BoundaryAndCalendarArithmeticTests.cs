@@ -70,7 +70,7 @@ public class BoundaryAndCalendarArithmeticTests
     {
         var expr = _parser.Parse(expression);
 
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(Root(), expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(Root(), expr).ToList());
     }
 
     /// <summary>
@@ -124,7 +124,7 @@ public class BoundaryAndCalendarArithmeticTests
     {
         var expr = _parser.Parse(expression);
 
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(Root(), expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(Root(), expr).ToList());
     }
 
     /// <summary>

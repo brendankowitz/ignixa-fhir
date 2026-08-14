@@ -191,17 +191,15 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenRedefinedInChain_ThenLaterValueUsed()
+    public void GivenDefineVariable_WhenRedefinedInChain_ThenSignalsError()
     {
-        // Later defineVariable in chain overwrites earlier value
+        // Official test dvRedefiningVariableThrowsError (defineVariable('v1').defineVariable('v1').select(%v1)):
+        // redefining a name already defined earlier in the same chain is an error, not an overwrite.
         var expr = _parser.Parse("1.defineVariable('x', 10).defineVariable('x', 20).select(%x)");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        // Second defineVariable overwrites x to 20
-        Assert.Single(result);
-        Assert.Equal(20, result[0].Value);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("%x", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -378,17 +376,18 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenMultipleDefinitions_ThenLaterOverwritesEarlier()
+    public void GivenDefineVariable_WhenSameNameDefinedInSiblingArguments_ThenBothResolveLocally()
     {
-        // Later definitions in chain overwrite earlier ones
-        var expr = _parser.Parse("1.defineVariable('x', 10).defineVariable('x', 20).select(%x)");
+        // The redefinition rule is scoped to the invocation chain, so sibling arguments of one call may each
+        // define the same name - official test dvParametersDontColide, which this replaces the removed
+        // overwrite-in-chain duplicate with (that case is now GivenDefineVariable_WhenRedefinedInChain_ThenSignalsError).
+        var expr = _parser.Parse("'aaa'.replace(defineVariable('param', 'aaa').select(%param), defineVariable('param', 'bbb').select(%param))");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // %x was overwritten from 10 to 20
         Assert.Single(result);
-        Assert.Equal(20, result[0].Value);
+        Assert.Equal("bbb", result[0].Value);
     }
 
     [Fact]
