@@ -51,6 +51,52 @@ public class BoundaryAndCalendarArithmeticTests
         Assert.Empty(result);
     }
 
+    /// <summary>
+    /// FHIRPath requires the other operand of <c>+</c>/<c>-</c> on a Date, DateTime or Time to be a Quantity
+    /// with a time-valued unit, and to signal an error otherwise rather than yield a value or an empty
+    /// collection. Official cases: <c>testPlus6</c> (<c>@1974-12-25 + 7</c>, semantic) and <c>testMinus6</c>
+    /// (<c>@1974-12-25 - 1 'cm'</c>, execution).
+    /// </summary>
+    [Theory]
+    [InlineData("@1974-12-25 + 7")]
+    [InlineData("@1974-12-25 - 7")]
+    [InlineData("7 + @1974-12-25")]
+    [InlineData("@1974-12-25 + 'X'")]
+    [InlineData("@1974-12-25T10:00:00Z + 7")]
+    [InlineData("@T10:00 + 7")]
+    [InlineData("@1974-12-25 - 1 'cm'")]
+    [InlineData("@1974-12-25 + 1 'kg'")]
+    [InlineData("@T10:00 + 1 'cm'")]
+    public void GivenTemporalWithNonTimeValuedOperand_WhenAddedOrSubtracted_ThenSignalsError(string expression)
+    {
+        var expr = _parser.Parse(expression);
+
+        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(Root(), expr).ToList());
+    }
+
+    /// <summary>
+    /// The error above must not swallow the spec's empty-operand propagation: an empty operand still yields
+    /// empty, never an error. Official cases <c>testPlusEmpty1/2/3</c> and <c>testMinusEmpty1/2/3</c> cover
+    /// the numeric form; these pin the temporal form, which the error path could plausibly have broken.
+    /// </summary>
+    [Theory]
+    [InlineData("@1974-12-25 + {}")]
+    [InlineData("{} + @1974-12-25")]
+    [InlineData("@1974-12-25 - {}")]
+    [InlineData("{} - @1974-12-25")]
+    [InlineData("@1974-12-25T10:00:00Z + {}")]
+    [InlineData("@T10:00 + {}")]
+    [InlineData("1 + {}")]
+    [InlineData("{} + 1")]
+    [InlineData("{} + {}")]
+    public void GivenAnEmptyOperand_WhenAddedOrSubtractedWithATemporal_ThenReturnsEmpty(string expression)
+    {
+        var expr = _parser.Parse(expression);
+        var result = _evaluator.Evaluate(Root(), expr).ToList();
+
+        Assert.Empty(result);
+    }
+
     [Theory]
     [InlineData("@1973-12-25 + 1 'a'", "1974-12-25")]
     [InlineData("@1973-12-25 + 1 'mo'", "1974-01-25")]

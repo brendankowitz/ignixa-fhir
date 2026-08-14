@@ -6,6 +6,7 @@
  * Uses immutable EvaluationContext for pure functional evaluation.
  */
 
+using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
@@ -395,6 +396,36 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return true;
     }
 
+    private static bool IsTemporalInstanceType(string? instanceType)
+        => instanceType is "date" or "dateTime" or "instant" or "time";
+
+    private static bool IsTemporalElement(IElement element)
+        => IsTemporalInstanceType(element.InstanceType) || element.Value is FhirTemporal;
+
+    /// <summary>
+    /// Enforces the FHIRPath rule that the other operand of <c>+</c>/<c>-</c> on a Date, DateTime or Time
+    /// must be a Quantity with a time-valued unit; anything else signals an error rather than producing a
+    /// value (FHIRPath 3.0 "Date/Time Arithmetic", official test <c>testPlus6</c>: <c>@1974-12-25 + 7</c>).
+    /// </summary>
+    /// <remarks>
+    /// Only reached once both operands are known to be single items, so the spec's empty-propagation rule
+    /// (<c>1 + {}</c> is empty, not an error) is already satisfied by the arity guard in the callers.
+    /// </remarks>
+    private static void ThrowIfTemporalWithoutQuantity(IElement left, IElement right, string operatorSymbol)
+    {
+        if (!IsTemporalElement(left) && !IsTemporalElement(right))
+        {
+            return;
+        }
+
+        var temporal = IsTemporalElement(left) ? left : right;
+        var other = ReferenceEquals(temporal, left) ? right : left;
+
+        throw new InvalidOperationException(
+            $"Operator '{operatorSymbol}' on a {temporal.InstanceType} requires a Quantity with a time-valued unit, " +
+            $"but the other operand was of type '{other.InstanceType ?? "unknown"}'.");
+    }
+
     private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)
     {
         if (left.Count != 1 || right.Count != 1)
@@ -419,6 +450,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
         }
+
+        ThrowIfTemporalWithoutQuantity(left[0], right[0], "+");
 
         // String concatenation via + operator
         if (WireValue.AsWireString(leftValue) is { } leftStringVal && WireValue.AsWireString(rightValue) is { } rightStringVal)
@@ -455,6 +488,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "-", right);
         }
+
+        ThrowIfTemporalWithoutQuantity(left[0], right[0], "-");
 
         if (FunctionHelpers.TryConvertToDecimal(leftValue, out var leftDecimal) && FunctionHelpers.TryConvertToDecimal(rightValue, out var rightDecimal))
         {
@@ -1351,19 +1386,29 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     
             if (leftValue is IComparable leftComparable && rightValue is IComparable rightComparable)
             {
+                int comparison;
                 try
                 {
-                    var comparison = leftComparable.CompareTo(rightComparable);
-                    return greater
-                        ? (orEqual ? comparison >= 0 : comparison > 0)
-                        : (orEqual ? comparison <= 0 : comparison < 0);
+                    comparison = leftComparable.CompareTo(rightComparable);
                 }
-                catch
+                catch (ArgumentException ex)
                 {
-                    return null;
+                    // CompareTo rejects the pair only when the operands are of genuinely different
+                    // primitive types (e.g. decimal vs string). FHIRPath requires comparison operands to be
+                    // of the same type and signals an error otherwise - swallowing this into an empty
+                    // collection hid a real type error (official testLiteralDecimalLessThanInvalid:
+                    // Observation.value.value < 'test'). Undecidable-but-well-typed comparisons, such as
+                    // partial-precision dates, are handled above and still return null.
+                    throw new InvalidOperationException(
+                        $"Cannot compare '{left[0].InstanceType ?? "unknown"}' with '{right[0].InstanceType ?? "unknown"}': " +
+                        "comparison operands must be of the same type.", ex);
                 }
+
+                return greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0);
             }
-    
+
             return null;
         }
     private static FhirTemporal? AsTemporal(object? value, string? instanceType)
@@ -1516,6 +1561,23 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private static FhirTemporalPrecision MaxPrecision(FhirTemporalPrecision left, FhirTemporalPrecision right)
         => left >= right ? left : right;
+
+    /// <summary>
+    /// Every unit FHIRPath accepts as time-valued, in both the calendar-keyword and UCUM-code spellings.
+    /// A unit outside this set (<c>'cm'</c>, <c>'kg'</c>, ...) is not a duration at all, which is a
+    /// different failure from a duration that is merely too fine for the operand's precision.
+    /// </summary>
+    private static readonly FrozenSet<string> _timeValuedUnits = new[]
+    {
+        "a", "year", "years",
+        "mo", "month", "months",
+        "wk", "week", "weeks",
+        "d", "day", "days",
+        "h", "hour", "hours",
+        "min", "minute", "minutes",
+        "s", "second", "seconds",
+        "ms", "millisecond", "milliseconds"
+    }.ToFrozenSet(StringComparer.Ordinal);
 
     private static FhirTemporalPrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
         => (instanceType, unit) switch
@@ -1779,7 +1841,20 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         var unitPrecision = GetDateTimeArithmeticUnitPrecision(instanceType, quantity.Unit);
         if (unitPrecision is null)
+        {
+            // A unit that is not time-valued at all is a spec error, not an empty result (official
+            // testMinus6: @1974-12-25 - 1 'cm'). A time-valued unit that is merely finer than the operand
+            // can carry (@1973-12-25 + 1 'h') is a separate question the official suite does not settle,
+            // so that case keeps returning empty. Non-temporal operands reach here only because the caller
+            // routes any lexical value paired with a Quantity through this method; leave them unchanged.
+            if (IsTemporalInstanceType(instanceType) && !_timeValuedUnits.Contains(quantity.Unit))
+            {
+                throw new InvalidOperationException(
+                    $"'{quantity}' is not a time-valued quantity, so it cannot be used in {instanceType} arithmetic.");
+            }
+
             return [];
+        }
 
         var value = (double)quantity.Value * (add ? 1 : -1);
         DateTimeOffset result;

@@ -366,16 +366,22 @@ public class ResourceBackedTemporalFunctionTests
     }
 
     [Fact]
-    public void GivenResourceBackedDate_WhenConcatenatedWithPlus_ThenUsesWireLiteral()
+    public void GivenResourceBackedDate_WhenConcatenatedWithPlus_ThenSignalsError()
     {
         // Arrange
+        // This previously asserted "1974-12-25X", pinning the wire-literal plumbing through the string
+        // concatenation branch of '+'. That branch should never have been reachable from a date: FHIRPath
+        // requires the right operand of '+' on a Date/DateTime/Time to be a Quantity with a time-valued
+        // unit and to signal an error otherwise (official testPlus6, @1974-12-25 + 7). The wire-literal
+        // behaviour itself stays covered by the ordering and function tests in this file; use '&' for
+        // string concatenation.
         var patient = Parse(PatientJson);
 
         // Act
-        var result = patient.Select("Patient.birthDate + 'X'").Single();
+        var evaluate = () => patient.Select("Patient.birthDate + 'X'").ToList();
 
         // Assert
-        result.Value.ShouldBe("1974-12-25X");
+        evaluate.ShouldThrow<InvalidOperationException>();
     }
 
     [Fact]
