@@ -245,6 +245,28 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
         }
+        catch (FhirPathEvaluationException ex)
+        {
+            // A constraint the engine CORRECTLY REFUSED to evaluate — the expression is ill-formed for
+            // the data it was handed, and FHIRPath requires signalling an error rather than yielding a
+            // value. That is a defect in the constraint, not evidence that the resource is invalid, so it
+            // gets the same non-failing Warning as the engine-gap path above. R4's tim-9 is the canonical
+            // case: it feeds a repeating Timing.repeat.when to 'in', which is only defined for a singleton
+            // (R5 rewrote it as when.select($this in (…)).allFalse() for exactly this reason). Failing the
+            // resource here would reject a perfectly conformant instance for a bug in the spec's own text.
+            _logger?.LogWarning(
+                ex,
+                "Constraint {ConstraintKey} is not evaluable against this instance; treating as non-failing",
+                _constraint.Key);
+
+            var issue = new ValidationIssue(
+                IssueSeverity.Warning,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
+
+            return new ValidationResult(isValid: true, issues: new[] { issue });
+        }
         catch (Exception ex)
         {
             // An UNEXPECTED evaluation failure — a defect in our engine or malformed data, not a known
