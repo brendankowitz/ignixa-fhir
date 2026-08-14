@@ -57,6 +57,50 @@ internal static class TypeMatcher
         "Bundle", "Parameters", "Binary"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    // The FHIRPath System namespace. These are types of the language itself, so no FHIR model declares
+    // them and asking the schema about them would wrongly report them as unresolvable.
+    private static readonly FrozenSet<string> SystemTypeNames = new[]
+    {
+        "Boolean", "String", "Integer", "Long", "Decimal", "Date", "DateTime", "Time", "Quantity"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Enforces FHIRPath's rule for the type operators: "if the identifier cannot be resolved to a valid
+    /// type identifier, the evaluator will throw an error" (Types and Reflection, <c>is</c>/<c>as</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deciding this needs a model, and <paramref name="schema"/> is optional on
+    /// <see cref="EvaluationContext"/>: with no model there is no table to fail a lookup against, and
+    /// treating "we were given no model" as "the identifier is wrong" would reject valid expressions. So
+    /// an absent schema keeps the pre-existing permissive behaviour rather than guessing.
+    /// </para>
+    /// <para>
+    /// Applied to <c>as</c>, <c>as()</c> and <c>ofType()</c>. For the first two this is spec compliance.
+    /// For <c>ofType()</c> it is a consistency choice: the spec requires its argument to "resolve to the
+    /// name of a type in a model" but never states the failure mode, and the reference engines disagree
+    /// (HAPI errors, Firely returns empty). Matching <c>as()</c> keeps one answer to one question inside
+    /// this engine, and is not claimed as conformance.
+    /// </para>
+    /// </remarks>
+    public static void EnsureTypeIdentifierResolves(string typeName, ISchema? schema, string operatorDescription)
+    {
+        if (schema is null)
+        {
+            return;
+        }
+
+        var (baseTypeName, _, _) = ParseTypeName(typeName);
+
+        if (SystemTypeNames.Contains(baseTypeName) || schema.IsKnownType(baseTypeName))
+        {
+            return;
+        }
+
+        throw new FhirPathEvaluationException(
+            $"'{typeName}' in {operatorDescription} is not a type identifier known to the {schema.Version} model.");
+    }
+
     /// <summary>
     /// Extracts the type name from a FhirPath expression.
     /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`

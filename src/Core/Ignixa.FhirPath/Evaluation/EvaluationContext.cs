@@ -134,6 +134,25 @@ public record EvaluationContext
     public Dictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
 
     /// <summary>
+    /// Optional model the type operators resolve type identifiers against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// FHIRPath's type operators are the one place the language requires an evaluator to know the model:
+    /// <c>as</c> must signal an error when its identifier does not name a type, which cannot be decided
+    /// from the instance alone - <see cref="TypeMatcher"/> otherwise compares type names as strings and
+    /// has nothing to check an unknown name against.
+    /// </para>
+    /// <para>
+    /// Optional on purpose. Callers that evaluate against elements from a known model (validation, the
+    /// conformance suites) supply it and get the stricter behaviour; callers that have no model - ad-hoc
+    /// expressions over hand-built elements - leave it null and keep the permissive behaviour, because
+    /// "no model" is not evidence that a type identifier is wrong.
+    /// </para>
+    /// </remarks>
+    public ISchema? Schema { get; init; }
+
+    /// <summary>
     /// Optional callback for trace() function output.
     /// When set, trace() calls will invoke this handler with trace information.
     /// </summary>
@@ -276,6 +295,16 @@ public record EvaluationContext
         {
             Environment = Environment.Remove(name)
         };
+    }
+
+    /// <summary>
+    /// Creates a new context that resolves type identifiers against the specified model.
+    /// </summary>
+    public EvaluationContext WithSchema(ISchema schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+
+        return this with { Schema = schema };
     }
 
     /// <summary>

@@ -187,7 +187,7 @@ internal static class CollectionFunctions
             return [];
 
         if (list.Count > 1)
-            throw new InvalidOperationException("single() called on collection with multiple items");
+            throw new FhirPathEvaluationException("single() called on collection with multiple items");
 
         return [list[0]];
     }
@@ -608,6 +608,8 @@ internal static class CollectionFunctions
         if (string.IsNullOrEmpty(typeName))
             return [];
 
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "ofType()");
+
         return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
     }
 
@@ -624,7 +626,8 @@ internal static class CollectionFunctions
         Description = "Type coercion operator (filters by type)")]
     public static IEnumerable<IElement> As(
         IEnumerable<IElement> focus,
-        IReadOnlyList<Expression> arguments)
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context)
     {
         if (arguments.Count == 0)
             throw new ArgumentException("as() requires a type argument");
@@ -632,6 +635,8 @@ internal static class CollectionFunctions
         var typeName = TypeMatcher.ExtractTypeName(arguments[0]);
         if (string.IsNullOrEmpty(typeName))
             return [];
+
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "as()");
 
         return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
     }

@@ -413,7 +413,7 @@ public class EdgeCaseAndErrorTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert - String functions on non-strings throw (matching Firely/fhirpath.js behavior)
-        var ex = Assert.Throws<InvalidOperationException>(() => 
+        var ex = Assert.Throws<FhirPathEvaluationException>(() => 
             _evaluator.Evaluate(root, expr).ToList());
         
         Assert.Contains("upper", ex.Message, StringComparison.OrdinalIgnoreCase);

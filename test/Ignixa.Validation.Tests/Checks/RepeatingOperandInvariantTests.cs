@@ -76,6 +76,28 @@ public class RepeatingOperandInvariantTests
         result.Issues.ShouldContain(i => i.Code == "tim-9" && i.Message.Contains("could not be evaluated"));
     }
 
+    /// <summary>
+    /// The guard clause tim-9 opens with is only a guard if <c>or</c> short-circuits. With no
+    /// <c>offset</c>, <c>offset.empty()</c> is true and the spec's truth table makes the whole expression
+    /// true whatever the right operand would have been - so the ill-formed <c>in</c> is never reached and
+    /// there is nothing to warn about.
+    /// </summary>
+    [Fact]
+    public void GivenTimingRepeatWithMultipleWhenCodesAndNoOffset_WhenValidatingTim9_ThenTheGuardShortCircuitsAndNoIssueIsRaised()
+    {
+        // Arrange — same two 'when' codes, but the guard on the left of 'or' now holds.
+        var repeat = ServiceRequestTimingRepeat("""
+            "when": ["MORN", "EVE"]
+        """);
+
+        // Act
+        var result = ValidateTim9(repeat);
+
+        // Assert
+        result.IsValid.ShouldBeTrue(Describe(result));
+        result.Issues.ShouldBeEmpty();
+    }
+
     [Fact]
     public void GivenTimingRepeatWithASingleAllowedWhenCode_WhenValidatingTim9_ThenNoIssueIsRaised()
     {

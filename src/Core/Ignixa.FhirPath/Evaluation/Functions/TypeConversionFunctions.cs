@@ -616,17 +616,17 @@ internal static class TypeConversionFunctions
 
         // Multiple items signals an error
         if (list.Count > 1)
-            throw new InvalidOperationException("is() function requires input collection to contain at most one item");
+            throw new FhirPathEvaluationException("is() function requires input collection to contain at most one item");
 
         // Get the type name from the argument
         if (arguments.Count != 1)
-            throw new InvalidOperationException("is() function requires exactly one argument");
+            throw new FhirPathEvaluationException("is() function requires exactly one argument");
 
         var typeArgument = arguments[0];
         string? targetTypeName = ExtractTypeName(typeArgument);
 
         if (string.IsNullOrEmpty(targetTypeName))
-            throw new InvalidOperationException("is() function requires a type identifier as argument");
+            throw new FhirPathEvaluationException("is() function requires a type identifier as argument");
 
         var element = list[0];
 

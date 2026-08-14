@@ -178,7 +178,7 @@ internal static class FunctionHelpers
     /// <param name="functionName">The function name for error messages</param>
     /// <param name="str">The extracted string value if valid</param>
     /// <returns>True if valid, false if empty collection</returns>
-    /// <exception cref="InvalidOperationException">If collection has multiple items or a value with no string representation</exception>
+    /// <exception cref="FhirPathEvaluationException">If collection has multiple items or a value with no string representation</exception>
     public static bool TryGetSingleString(IEnumerable<IElement> focus, string functionName, out string str)
     {
         str = string.Empty;
@@ -188,7 +188,7 @@ internal static class FunctionHelpers
             return false;
 
         if (list.Count > 1)
-            throw new InvalidOperationException($"{functionName}() requires a single input value");
+            throw new FhirPathEvaluationException($"{functionName}() requires a single input value");
 
         if (WireValue.AsWireString(list[0].Value) is { } s)
         {
@@ -197,7 +197,7 @@ internal static class FunctionHelpers
         }
 
         var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
-        throw new InvalidOperationException($"Function '{functionName}' is not supported on context type '{typeName}'");
+        throw new FhirPathEvaluationException($"Function '{functionName}' is not supported on context type '{typeName}'");
     }
 
     /// <summary>
@@ -207,7 +207,7 @@ internal static class FunctionHelpers
     /// <param name="functionName">The function name for error messages</param>
     /// <param name="value">The extracted decimal value if valid</param>
     /// <returns>True if valid, false if empty collection</returns>
-    /// <exception cref="InvalidOperationException">If collection has multiple items or non-numeric value</exception>
+    /// <exception cref="FhirPathEvaluationException">If collection has multiple items or non-numeric value</exception>
     public static bool TryGetSingleNumber(IEnumerable<IElement> focus, string functionName, out decimal value)
     {
         value = 0;
@@ -217,13 +217,13 @@ internal static class FunctionHelpers
             return false;
 
         if (list.Count > 1)
-            throw new InvalidOperationException($"{functionName}() requires a single input value");
+            throw new FhirPathEvaluationException($"{functionName}() requires a single input value");
 
         if (TryConvertToDecimal(list[0].Value, out value))
             return true;
 
         var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
-        throw new InvalidOperationException($"Function '{functionName}' is not supported on context type '{typeName}'");
+        throw new FhirPathEvaluationException($"Function '{functionName}' is not supported on context type '{typeName}'");
     }
 
     #endregion

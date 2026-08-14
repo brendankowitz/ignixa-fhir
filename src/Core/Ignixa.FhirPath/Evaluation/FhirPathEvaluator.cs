@@ -33,16 +33,6 @@ namespace Ignixa.FhirPath.Evaluation;
 public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationContext, IEnumerable<IElement>>
 {
     /// <summary>
-    /// Names <c>defineVariable</c> may not claim because the engine already resolves them: the FHIRPath
-    /// external constants and the two implicit iteration variables (official test
-    /// <c>dvCantOverwriteSystemVar</c>: <c>defineVariable('context', 'oops')</c>).
-    /// </summary>
-    private static readonly FrozenSet<string> _reservedVariableNames = new[]
-    {
-        "context", "resource", "rootResource", "this", "index", "total", "ucum", "sct", "loinc"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
     /// Creates a new FhirPath evaluator.
     /// </summary>
     public FhirPathEvaluator()
@@ -153,7 +143,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     {
         if (expression.Arguments.Count is < 1 or > 2)
         {
-            throw new InvalidOperationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
+            throw new FhirPathEvaluationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
         }
 
         var nameExpr = expression.Arguments[0];
@@ -174,7 +164,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (string.IsNullOrEmpty(variableName))
         {
-            throw new InvalidOperationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
+            throw new FhirPathEvaluationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
         }
 
         ImmutableList<IElement> value;
@@ -188,13 +178,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             value = focus.ToImmutableList();
         }
 
-        if (_reservedVariableNames.Contains(variableName))
+        if (DefineVariableRules.ReservedVariableNames.Contains(variableName))
         {
             throw new FhirPathEvaluationException(
                 $"defineVariable cannot redefine the system variable '%{variableName}'");
         }
 
-        if (IsAlreadyDefinedEarlierInSameChain(expression, variableName))
+        if (DefineVariableRules.IsAlreadyDefinedEarlierInSameChain(expression, variableName))
         {
             throw new FhirPathEvaluationException($"Variable '%{variableName}' is already defined");
         }
@@ -203,57 +193,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         return focus;
     }
-
-    /// <summary>
-    /// Reports whether an earlier link of this invocation chain already defines <paramref name="variableName"/>
-    /// (official test <c>dvRedefiningVariableThrowsError</c>:
-    /// <c>defineVariable('v1').defineVariable('v1').select(%v1)</c>).
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The test to make here is "already defined <i>in this scope</i>", and the obvious implementation - asking
-    /// <see cref="EvaluationContext.DefinedVariables"/> whether it holds the name - cannot express that. That
-    /// dictionary is one mutable store shared by every context derived from the root: <c>PushThis</c> and
-    /// friends copy the reference, not the contents, so a name survives both loop iterations and sibling
-    /// argument evaluations. Asking it produces false errors on three valid official cases -
-    /// <c>dvConceptMapExample</c> (<c>defineVariable('grp')</c> re-executed once per <c>group</c>),
-    /// <c>defineVariable19</c> and <c>dvParametersDontColide</c> (the same name defined in two sibling
-    /// arguments of one call, which the second test is named for).
-    /// </para>
-    /// <para>
-    /// Walking the focus chain instead asks a question the AST can actually answer, and answers it without
-    /// depending on the variable store's scoping - which stays unfixed, and is why the scope-leak cases
-    /// (<c>defineVariable9</c>/<c>10</c>/<c>12</c>/<c>16</c>, <c>dvUsageOutsideScopeThrows</c>) remain
-    /// deferred. The rule is deliberately narrow: it never reports a redefinition that is really a sibling
-    /// scope or a re-execution, and it says nothing about a name defined dynamically or in an enclosing
-    /// expression, which stay permissive as before.
-    /// </para>
-    /// </remarks>
-    private static bool IsAlreadyDefinedEarlierInSameChain(FunctionCallExpression expression, string variableName)
-    {
-        for (var link = FocusOf(expression); link is not null; link = FocusOf(link))
-        {
-            if (link is FunctionCallExpression call && DefinesVariable(call, variableName))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static Expression? FocusOf(Expression expression) => expression switch
-    {
-        FunctionCallExpression call => call.Focus,
-        PropertyAccessExpression property => property.Focus,
-        _ => null
-    };
-
-    private static bool DefinesVariable(FunctionCallExpression call, string variableName)
-        => call.FunctionName.Equals("defineVariable", StringComparison.OrdinalIgnoreCase)
-           && call.Arguments.Count > 0
-           && call.Arguments[0] is ConstantExpression { Value: string definedName }
-           && definedName.Equals(variableName, StringComparison.OrdinalIgnoreCase);
 
     public IEnumerable<IElement> VisitPropertyAccess(PropertyAccessExpression expression, EvaluationContext context)
     {
@@ -319,12 +258,19 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return EvaluateUnion(left, right);
         }
 
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        var operatorName = expression.Operator.ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        if (operatorName is "and" or "or" or "implies")
+        {
+            return EvaluateShortCircuitingLogic(operatorName, expression, context);
+        }
+
         var leftResult = EvaluateExpression(context.Focus, expression.Left, context).ToList();
         var rightResult = EvaluateExpression(context.Focus, expression.Right, context).ToList();
 
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        return expression.Operator.ToLowerInvariant() switch
-#pragma warning restore CA1308 // Normalize strings to uppercase
+        return operatorName switch
         {
             "+" => EvaluateAddition(leftResult, rightResult),
             "-" => EvaluateSubtraction(leftResult, rightResult),
@@ -336,7 +282,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "&" => EvaluateStringConcatenation(leftResult, rightResult),
 
             "is" => EvaluateTypeIs(leftResult, expression.Right),
-            "as" => EvaluateTypeAs(leftResult, expression.Right),
+            "as" => EvaluateTypeAs(leftResult, expression.Right, context),
 
             "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true)),
             "contains" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: false)),
@@ -350,14 +296,66 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false)),
             "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: true)),
 
-            "and" => EvaluateAnd(leftResult, rightResult),
-            "or" => EvaluateOr(leftResult, rightResult),
-            "xor" => EvaluateXor(leftResult, rightResult),
-            "implies" => EvaluateImplies(leftResult, rightResult),
+            "xor" => EvaluateXor(GetBooleanValue(leftResult), GetBooleanValue(rightResult)),
 
             _ => throw new NotSupportedException($"Binary operator '{expression.Operator}' is not yet implemented")
         };
     }
+
+    /// <summary>
+    /// Evaluates <c>and</c>, <c>or</c> and <c>implies</c>, evaluating the right operand only when the
+    /// left one has not already decided the answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every operand of a FHIRPath expression can signal an error, so whether an operand is evaluated at
+    /// all is observable behaviour, not an optimisation. R4's <c>tim-9</c> is the case that forces this:
+    /// <c>offset.empty() or (when.exists() and ((when in (…)).not()))</c> is written so that the guard on
+    /// the left makes the ill-formed right side unreachable, and evaluating both operands eagerly defeats
+    /// the guard.
+    /// </para>
+    /// <para>
+    /// Only the three cells that hold across the whole row of the spec's truth tables (§6.5 Boolean logic)
+    /// are short-circuited - see <see cref="DecideFromLeftOperand"/>. Empty is a distinct third state and
+    /// never decides a result on its own, so it always evaluates the right operand and falls through to
+    /// the full three-valued tables below.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<IElement> EvaluateShortCircuitingLogic(string operatorName, BinaryExpression expression, EvaluationContext context)
+    {
+        var left = GetBooleanValue(EvaluateExpression(context.Focus, expression.Left, context).ToList());
+
+        if (DecideFromLeftOperand(operatorName, left) is { } decided)
+        {
+            return FunctionHelpers.ReturnBoolean(decided);
+        }
+
+        var right = GetBooleanValue(EvaluateExpression(context.Focus, expression.Right, context).ToList());
+
+        return operatorName switch
+        {
+            "and" => EvaluateAnd(left, right),
+            "or" => EvaluateOr(left, right),
+            _ => EvaluateImplies(left, right)
+        };
+    }
+
+    /// <summary>
+    /// Returns the result the left operand alone determines, or null when the right operand is still needed.
+    /// </summary>
+    /// <remarks>
+    /// The three cases are exactly the rows of the spec's truth tables whose cells are constant across
+    /// <c>true</c>, <c>false</c> and empty: <c>false and *</c> is always false, <c>true or *</c> is always
+    /// true, and <c>false implies *</c> is always true. No other row is constant, and in particular no
+    /// row keyed by an empty left operand is.
+    /// </remarks>
+    private static bool? DecideFromLeftOperand(string operatorName, bool? left) => (operatorName, left) switch
+    {
+        ("and", false) => false,
+        ("or", true) => true,
+        ("implies", false) => true,
+        _ => null
+    };
 
 
     private IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
@@ -369,11 +367,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the AND operator with FHIRPath three-valued logic.
     /// Returns false if either is false, empty if either is empty and neither is false, otherwise true.
     /// </summary>
-    private IEnumerable<IElement> EvaluateAnd(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateAnd(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // false AND anything = false
         if (leftBool == false || rightBool == false)
             return FunctionHelpers.ReturnBoolean(false);
@@ -390,11 +385,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the OR operator with FHIRPath three-valued logic.
     /// Returns true if either is true, empty if either is empty and neither is true, otherwise false.
     /// </summary>
-    private IEnumerable<IElement> EvaluateOr(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateOr(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // true OR anything = true
         if (leftBool == true || rightBool == true)
             return FunctionHelpers.ReturnBoolean(true);
@@ -411,11 +403,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the XOR operator with FHIRPath three-valued logic.
     /// Returns empty if either is empty, otherwise true if exactly one is true.
     /// </summary>
-    private IEnumerable<IElement> EvaluateXor(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateXor(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // If either is empty, result is empty
         if (leftBool == null || rightBool == null)
             return [];
@@ -428,11 +417,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Evaluates the IMPLIES operator with FHIRPath three-valued logic.
     /// Returns true if left is false or right is true, empty if cannot determine, otherwise false.
     /// </summary>
-    private IEnumerable<IElement> EvaluateImplies(List<IElement> left, List<IElement> right)
+    private static IEnumerable<IElement> EvaluateImplies(bool? leftBool, bool? rightBool)
     {
-        var leftBool = GetBooleanValue(left);
-        var rightBool = GetBooleanValue(right);
-
         // false IMPLIES anything = true
         if (leftBool == false)
             return FunctionHelpers.ReturnBoolean(true);
@@ -700,13 +686,17 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return FunctionHelpers.ReturnBoolean(TypeMatcher.IsTypeMatch(left[0], typeName));
     }
 
-    private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr)
+    private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr, EvaluationContext context)
     {
-        if (left.Count != 1)
-            return [];
-
         var typeName = TypeMatcher.ExtractTypeName(typeExpr);
         if (string.IsNullOrEmpty(typeName))
+            return [];
+
+        // Whether the identifier names a type does not depend on the data, so this is checked before the
+        // cardinality guard below - otherwise 'as' would quietly accept a nonsense type on empty input.
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "operator 'as'");
+
+        if (left.Count != 1)
             return [];
 
         var strippedTypeName = TypeMatcher.StripNamespace(typeName);
@@ -2091,7 +2081,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Per spec: If input collection has multiple items, signal an error
         if (context.Focus.Count > 1)
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"Instance selector requires a single input item or empty collection, but got {context.Focus.Count} items");
         }
 

@@ -169,7 +169,7 @@ internal static class MathFunctions
             return [];
 
         if (list.Count > 1)
-            throw new InvalidOperationException("abs() requires a single input value");
+            throw new FhirPathEvaluationException("abs() requires a single input value");
 
         // Handle Quantity types
         if (list[0].Value is Types.Quantity qty)
@@ -185,7 +185,7 @@ internal static class MathFunctions
             return [FunctionHelpers.CreateDecimal(Math.Abs(value))];
 
         var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
-        throw new InvalidOperationException($"Function 'abs' is not supported on context type '{typeName}'");
+        throw new FhirPathEvaluationException($"Function 'abs' is not supported on context type '{typeName}'");
     }
 
     /// <summary>

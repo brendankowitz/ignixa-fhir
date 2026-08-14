@@ -161,7 +161,7 @@ internal static class BooleanFunctions
         if (nonBooleanElement is not null)
         {
             var valueDescription = nonBooleanElement.Value is null ? "null" : $"'{nonBooleanElement.Value}'";
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"Unable to convert {valueDescription} to a boolean for {functionName}()");
         }
     }

@@ -300,7 +300,9 @@ public class FhirPathInvariantCheck : IValidationCheck
         var scope = state.Scope;
         if (scope.Resource is null)
         {
-            return new EvaluationContext().WithInstanceCreator(_instanceCreator.Value);
+            return new EvaluationContext()
+                .WithInstanceCreator(_instanceCreator.Value)
+                .WithSchema(_schema);
         }
 
         return new FhirEvaluationContext
@@ -308,7 +310,8 @@ public class FhirPathInvariantCheck : IValidationCheck
             Resource = scope.Resource,
             RootResource = scope.RootResource,
             ElementResolver = scope.Resolver,
-            InstanceCreator = _instanceCreator.Value
+            InstanceCreator = _instanceCreator.Value,
+            Schema = _schema
         };
     }
 

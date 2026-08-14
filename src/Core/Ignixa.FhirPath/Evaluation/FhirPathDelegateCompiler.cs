@@ -369,7 +369,7 @@ public class FhirPathDelegateCompiler
             if (results.Count == 0)
                 return Enumerable.Empty<IElement>();
             if (results.Count > 1)
-                throw new InvalidOperationException("single() called on collection with multiple items");
+                throw new FhirPathEvaluationException("single() called on collection with multiple items");
             return new[] { results[0] };
         };
     }
@@ -409,6 +409,8 @@ public class FhirPathDelegateCompiler
 
         return (input, ctx) =>
         {
+            TypeMatcher.EnsureTypeIdentifierResolves(typeName, ctx.Schema, "ofType()");
+
             var focusResults = focusFunc(input, ctx);
             // Case-insensitive type matching per FHIRPath spec
             return focusResults.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&

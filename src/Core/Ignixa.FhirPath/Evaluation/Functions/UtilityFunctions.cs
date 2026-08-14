@@ -199,14 +199,14 @@ internal static class UtilityFunctions
 
         if (arguments.Count < 1 || arguments.Count > 2)
         {
-            throw new InvalidOperationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
+            throw new FhirPathEvaluationException("defineVariable requires 1 or 2 arguments: variable name and optional value expression");
         }
 
         // Evaluate the name argument
         var nameResult = evaluateExpression(focusList, arguments[0], context).ToList();
         if (nameResult.Count != 1 || nameResult[0].Value is not string variableName)
         {
-            throw new InvalidOperationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
+            throw new FhirPathEvaluationException("defineVariable requires a string as the first argument (literal, identifier, or expression that evaluates to a string)");
         }
 
         // Evaluate the value expression (or use focus if not provided)

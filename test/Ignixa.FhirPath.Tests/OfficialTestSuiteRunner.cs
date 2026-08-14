@@ -174,11 +174,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         ["testPolymorphismB"] = "Observation.valueQuantity.unit: same shorthand as testPolymorphicsB, and the same analyzer diagnostic already exists.",
         ["testPolymorphismAsB"] = "(Observation.value as Period).unit: same conformant-empty as testSimpleFail. FhirPathAnalyzer already reports \"Property 'unit' not found on type 'Period'\".",
 
-        // Unknown type identifiers - a different question from an unresolved path, since the type operators
-        // name a type rather than navigate to one.
-        ["testFHIRPathAsFunction23"] = "Patient.gender.as(string1): a genuine evaluator gap, unlike the unresolved-path cases - the type operators explicitly mandate an error for an unknown type identifier. TypeMatcher decides purely by name, so signalling needs the schema's type table reachable from EvaluationContext, which it currently is not. FhirPathAnalyzer, which does have the schema, already reports \"Type 'string1' is not a valid FHIR type\".",
-        ["testFHIRPathAsFunction24"] = "Patient.gender.ofType(string1): the spec never states ofType()'s resolution-failure mode, so unlike as() there is no rule to implement - only HAPI errors, Firely returns empty as we do. FhirPathAnalyzer reports the invalid type name regardless.",
-
         // Ordering, where the suite asks for more than the spec does.
         ["testDollarOrderNotAllowed"] = "Patient.children().skip(1): the suite is stricter than the spec here. The spec makes the order of children() undefined, not erroneous, so returning empty is conformant; HAPI errors and the suite encodes HAPI's strictness. FhirPathAnalyzer surfaces it as a design-time error, which is the right layer for it.",
 
@@ -380,12 +375,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         List<IElement> resultList;
         try
         {
-            var context = new FhirEvaluationContext
-            {
-                Resource = element,
-                ElementResolver = TestElementResolver.Create(element)
-            };
-            resultList = _evaluator.Evaluate(element, expression, context).ToList();
+            resultList = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
         catch (NotSupportedException ex)
         {
@@ -425,7 +415,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     {
         if (_unsignalledInvalidCases.TryGetValue(testCase.Name, out var deferralReason))
         {
-            AssertDeferralIsStillNeeded(testCase, element, deferralReason);
+            AssertDeferralIsStillNeeded(testCase, element, schemaProvider, deferralReason);
             return;
         }
 
@@ -447,17 +437,11 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             Assert.Fail($"Expected syntax error but expression parsed successfully in test '{testCase.Name}' (group: {testCase.GroupName}): {testCase.Expression}");
         }
 
-        var context = new FhirEvaluationContext
-        {
-            Resource = element,
-            ElementResolver = TestElementResolver.Create(element)
-        };
-
         List<IElement> results;
         try
         {
             // Force evaluation by iterating results - the evaluator is lazy
-            results = _evaluator.Evaluate(element, expression, context).ToList();
+            results = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
         catch (Exception ex) when (IsEngineSignalledError(ex))
         {
@@ -480,18 +464,13 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// signalling the error and the entry goes stale. This does: it runs the deferred case and fails if the
     /// engine now signals, so closing a gap forces the list entry to be removed.
     /// </summary>
-    private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, string deferralReason)
+    private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider, string deferralReason)
     {
         try
         {
             var expression = _parser.Parse(testCase.Expression);
-            var context = new FhirEvaluationContext
-            {
-                Resource = element,
-                ElementResolver = TestElementResolver.Create(element)
-            };
 
-            _ = _evaluator.Evaluate(element, expression, context).ToList();
+            _ = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
         catch (Exception ex) when (IsEngineSignalledError(ex))
         {
@@ -505,6 +484,18 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         SkipTest($"{testCase.Name}: {deferralReason}");
     }
+
+    /// <summary>
+    /// Builds the evaluation context every case is run under. The version's schema is supplied so the type
+    /// operators can tell an unresolvable type identifier from a type that simply does not match, which the
+    /// suite's <c>as(string1)</c> / <c>ofType(string1)</c> cases require.
+    /// </summary>
+    private static FhirEvaluationContext BuildContext(IElement element, IFhirSchemaProvider schemaProvider) => new()
+    {
+        Resource = element,
+        ElementResolver = TestElementResolver.Create(element),
+        Schema = schemaProvider
+    };
 
     /// <summary>
     /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness.

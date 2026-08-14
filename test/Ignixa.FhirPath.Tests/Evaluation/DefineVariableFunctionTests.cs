@@ -104,7 +104,7 @@ public class DefineVariableFunctionTests
         var expr = _parser.Parse("defineVariable()");
         var root = CreateIntegerElement(0);
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList()
         );
 
@@ -112,7 +112,7 @@ public class DefineVariableFunctionTests
 
         // Test with 3 arguments - should also throw
         var expr3 = _parser.Parse("defineVariable('x', 1, 2)");
-        var exception3 = Assert.Throws<InvalidOperationException>(() =>
+        var exception3 = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr3).ToList()
         );
 
@@ -125,7 +125,7 @@ public class DefineVariableFunctionTests
         var expr = _parser.Parse("defineVariable(5, 10)");
         var root = CreateIntegerElement(0);
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList()
         );
 

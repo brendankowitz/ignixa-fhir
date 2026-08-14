@@ -588,7 +588,7 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
     }
 
     [Fact]
@@ -599,7 +599,7 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
     }
 
     [Fact]
@@ -610,7 +610,7 @@ public class ConversionAndStringFunctionTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
     }
 
     #endregion
