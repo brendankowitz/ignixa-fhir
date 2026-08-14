@@ -145,6 +145,30 @@ public class ResolveFunctionTests
     }
 
     [Fact]
+    public void GivenBareHashAtRootScope_WhenElementResolverWouldReturnNonNull_ThenReturnsEmptyWithoutConsultingResolver()
+    {
+        // Arrange - Firely (5.13.1/6.0.1) and HAPI (org.hl7.fhir.core 8.10.0) both short-circuit a
+        // bare '#' at root scope and never consult the host resolver. This test proves Ignixa does the
+        // same: resolving '#' at root (where in-instance lookup returns null) with an ElementResolver
+        // that would return a non-null element must still return empty, proving the resolver was never
+        // consulted.
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var resolverElement = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""resolver-decoy"" }");
+        var expr = _parser.Parse("'#'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = reference => reference == "#" ? resolverElement : null,
+        };
+
+        // Act
+        var result = _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void GivenRootResourceItself_WhenResolvingBareHash_ThenReturnsEmpty()
     {
         // Arrange - Firely's ScopedNodeOnBaseTests asserts Resolve("#") is null for a

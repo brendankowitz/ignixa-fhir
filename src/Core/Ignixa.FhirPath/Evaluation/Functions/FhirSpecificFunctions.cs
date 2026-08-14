@@ -161,8 +161,10 @@ internal static class FhirSpecificFunctions
     /// <summary>
     /// Resolves a single reference value: in-instance first, then the host resolver. Per FHIR spec,
     /// a host resolver failure is swallowed rather than propagated - resolve() returns empty on failure.
-    /// A bare <c>#</c> is scope-dependent (see <see cref="ReferenceIndex.ResolveContainerScope"/>) so
-    /// it is dispatched separately from every other reference shape, which is a plain index lookup.
+    /// A bare <c>#</c> is scope-dependent (see <see cref="ReferenceIndex.ResolveContainerScope"/>) and
+    /// is decided entirely in-instance: never falls through to the host resolver, matching Firely and HAPI.
+    /// Every other reference shape tries in-instance first, then falls back to the host resolver if no
+    /// in-instance result is found.
     /// </summary>
     private static IElement? ResolveReferenceValue(
         string referenceValue,
@@ -170,9 +172,12 @@ internal static class FhirSpecificFunctions
         Func<string, IElement?>? elementResolver,
         IElement? currentResource)
     {
-        var resolved = referenceValue == "#"
-            ? TryResolveContainerScope(referenceIndex, currentResource)
-            : TryResolveInInstance(referenceIndex, referenceValue);
+        if (referenceValue == "#")
+        {
+            return TryResolveContainerScope(referenceIndex, currentResource);
+        }
+
+        var resolved = TryResolveInInstance(referenceIndex, referenceValue);
 
         if (resolved != null || elementResolver == null)
         {
