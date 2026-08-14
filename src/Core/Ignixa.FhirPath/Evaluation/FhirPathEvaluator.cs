@@ -748,30 +748,30 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 // Per FHIRPath §6.5: For Date, DateTime, and Time values, comparison is done
                 // at the precision of the least precise operand. Trailing components are ignored.
                 // Only truncate when both operands are the same category (both Date or both DateTime).
-                var leftPrecision = GetDateTimePrecision(normalizedLeft);
-                var rightPrecision = GetDateTimePrecision(normalizedRight);
+                var leftPrecision = FhirTemporal.GetLiteralPrecision(normalizedLeft);
+                var rightPrecision = FhirTemporal.GetLiteralPrecision(normalizedRight);
 
                 // Date type has precision ≤ Day; DateTime/Time has precision ≥ Hour.
                 // Date vs DateTime are different types and never equivalent.
-                bool leftIsDateOnly = leftPrecision <= DateTimePrecision.Day;
-                bool rightIsDateOnly = rightPrecision <= DateTimePrecision.Day;
+                bool leftIsDateOnly = leftPrecision <= FhirTemporalPrecision.Day;
+                bool rightIsDateOnly = rightPrecision <= FhirTemporalPrecision.Day;
 
                 if (leftIsDateOnly != rightIsDateOnly)
                 {
                     return false;
                 }
 
-                if (leftPrecision != DateTimePrecision.Invalid && rightPrecision != DateTimePrecision.Invalid
+                if (leftPrecision != FhirTemporalPrecision.Invalid && rightPrecision != FhirTemporalPrecision.Invalid
                     && leftPrecision != rightPrecision)
                 {
                     // Treat Millisecond as Second — fractional seconds are part of the second value,
                     // not a separate trailing component per the FHIRPath spec.
-                    var effectiveLeft = leftPrecision == DateTimePrecision.Millisecond ? DateTimePrecision.Second : leftPrecision;
-                    var effectiveRight = rightPrecision == DateTimePrecision.Millisecond ? DateTimePrecision.Second : rightPrecision;
+                    var effectiveLeft = leftPrecision == FhirTemporalPrecision.Millisecond ? FhirTemporalPrecision.Second : leftPrecision;
+                    var effectiveRight = rightPrecision == FhirTemporalPrecision.Millisecond ? FhirTemporalPrecision.Second : rightPrecision;
 
                     if (effectiveLeft != effectiveRight)
                     {
-                        var minPrecision = (DateTimePrecision)Math.Min((int)effectiveLeft, (int)effectiveRight);
+                        var minPrecision = (FhirTemporalPrecision)Math.Min((int)effectiveLeft, (int)effectiveRight);
                         normalizedLeft = TruncateToDateTimePrecision(normalizedLeft, minPrecision);
                         normalizedRight = TruncateToDateTimePrecision(normalizedRight, minPrecision);
                     }
@@ -850,26 +850,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// </summary>
     private static bool IsDateTimeString(string value)
     {
-        if (string.IsNullOrEmpty(value))
-            return false;
-
-        // Starts with @ prefix
-        if (value.StartsWith('@'))
-            return true;
-
-        // Time-only format (starts with T)
-        if (value.StartsWith('T') && value.Length >= 3 && char.IsDigit(value[1]))
-            return true;
-
-        // Date/DateTime format (starts with 4-digit year)
-        if (value.Length >= 4 && char.IsDigit(value[0]) && char.IsDigit(value[1]) && char.IsDigit(value[2]) && char.IsDigit(value[3]))
-        {
-            // Check for date pattern (YYYY or YYYY-MM or YYYY-MM-DD)
-            if (value.Length == 4) return true;
-            if (value.Length >= 5 && value[4] == '-') return true;
-        }
-
-        return false;
+        return FhirTemporal.IsTemporalLiteral(value);
     }
 
     private string NormalizeWhitespace(string str)
@@ -1143,10 +1124,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         leftStr = NormalizeMillisecondPrecision(leftStr);
         rightStr = NormalizeMillisecondPrecision(rightStr);
 
-        var leftPrecision = GetDateTimePrecision(leftStr);
-        var rightPrecision = GetDateTimePrecision(rightStr);
+        var leftPrecision = FhirTemporal.GetLiteralPrecision(leftStr);
+        var rightPrecision = FhirTemporal.GetLiteralPrecision(rightStr);
 
-        if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
+        if (leftPrecision == FhirTemporalPrecision.Invalid || rightPrecision == FhirTemporalPrecision.Invalid)
             return null;
 
         // Per FHIRPath spec: when comparing dates with different precision, the result is uncertain
@@ -1204,7 +1185,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             TryParseFhirDateTime(rightStr, out var rightDt))
         {
             // For date/time with at least hour precision
-            if (leftPrecision >= DateTimePrecision.Hour)
+            if (leftPrecision >= FhirTemporalPrecision.Hour)
             {
                 // If both have explicit timezones, compare in UTC
                 if (leftHasTz && rightHasTz)
@@ -1446,10 +1427,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         leftStr = NormalizeMillisecondPrecision(leftStr);
         rightStr = NormalizeMillisecondPrecision(rightStr);
 
-        var leftPrecision = GetDateTimePrecision(leftStr);
-        var rightPrecision = GetDateTimePrecision(rightStr);
+        var leftPrecision = FhirTemporal.GetLiteralPrecision(leftStr);
+        var rightPrecision = FhirTemporal.GetLiteralPrecision(rightStr);
 
-        if (leftPrecision == DateTimePrecision.Invalid || rightPrecision == DateTimePrecision.Invalid)
+        if (leftPrecision == FhirTemporalPrecision.Invalid || rightPrecision == FhirTemporalPrecision.Invalid)
             return null;
 
         // Per FHIRPath spec: When comparing dates with different precision,
@@ -1509,93 +1490,34 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     }
 
-    private enum DateTimePrecision
-    {
-        Invalid,
-        Year,
-        Month,
-        Day,
-        Hour,
-        Minute,
-        Second,
-        Millisecond
-    }
-
-    private DateTimePrecision GetDateTimePrecision(string value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return DateTimePrecision.Invalid;
-
-        if (value.StartsWith("T", StringComparison.Ordinal))
-        {
-            var timePart = value.Substring(1);
-            var colonCount = timePart.Count(c => c == ':');
-            if (colonCount == 0) return DateTimePrecision.Hour;
-            if (colonCount == 1) return DateTimePrecision.Minute;
-
-            return timePart.Contains('.', StringComparison.Ordinal) ? DateTimePrecision.Millisecond : DateTimePrecision.Second;
-        }
-
-        if (value.Length >= 4 && value.Length <= 10)
-        {
-            var parts = value.Split('-');
-            return parts.Length switch
-            {
-                1 => DateTimePrecision.Year,
-                2 => DateTimePrecision.Month,
-                3 => DateTimePrecision.Day,
-                _ => DateTimePrecision.Invalid
-            };
-        }
-
-        if (value.Contains('T', StringComparison.Ordinal))
-        {
-            var timePart = value.Split('T')[1];
-            timePart = timePart.TrimEnd('Z');
-            if (timePart.Contains('+', StringComparison.Ordinal) || timePart.Contains('-', StringComparison.Ordinal))
-            {
-                var tzIndex = Math.Max(timePart.LastIndexOf('+'), timePart.LastIndexOf('-'));
-                timePart = timePart.Substring(0, tzIndex);
-            }
-
-            var colonCount = timePart.Count(c => c == ':');
-            if (colonCount == 0) return DateTimePrecision.Hour;
-            if (colonCount == 1) return DateTimePrecision.Minute;
-
-            return timePart.Contains('.', StringComparison.Ordinal) ? DateTimePrecision.Millisecond : DateTimePrecision.Second;
-        }
-
-        return DateTimePrecision.Invalid;
-    }
-
-    private static DateTimePrecision MaxPrecision(DateTimePrecision left, DateTimePrecision right)
+    private static FhirTemporalPrecision MaxPrecision(FhirTemporalPrecision left, FhirTemporalPrecision right)
         => left >= right ? left : right;
 
-    private static DateTimePrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
+    private static FhirTemporalPrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
         => (instanceType, unit) switch
         {
-            ("date", "a" or "year" or "years") => DateTimePrecision.Year,
-            ("date", "mo" or "month" or "months") => DateTimePrecision.Month,
-            ("date", "wk" or "week" or "weeks") => DateTimePrecision.Day,
-            ("date", "d" or "day" or "days") => DateTimePrecision.Day,
-            ("dateTime", "a" or "year" or "years") => DateTimePrecision.Year,
-            ("dateTime", "mo" or "month" or "months") => DateTimePrecision.Month,
-            ("dateTime", "wk" or "week" or "weeks") => DateTimePrecision.Day,
-            ("dateTime", "d" or "day" or "days") => DateTimePrecision.Day,
-            ("dateTime", "h" or "hour" or "hours") => DateTimePrecision.Hour,
-            ("dateTime", "min" or "minute" or "minutes") => DateTimePrecision.Minute,
-            ("dateTime", "s" or "second" or "seconds") => DateTimePrecision.Second,
-            ("dateTime", "ms" or "millisecond" or "milliseconds") => DateTimePrecision.Millisecond,
-            ("time", "h" or "hour" or "hours") => DateTimePrecision.Hour,
-            ("time", "min" or "minute" or "minutes") => DateTimePrecision.Minute,
-            ("time", "s" or "second" or "seconds") => DateTimePrecision.Second,
-            ("time", "ms" or "millisecond" or "milliseconds") => DateTimePrecision.Millisecond,
+            ("date", "a" or "year" or "years") => FhirTemporalPrecision.Year,
+            ("date", "mo" or "month" or "months") => FhirTemporalPrecision.Month,
+            ("date", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
+            ("date", "d" or "day" or "days") => FhirTemporalPrecision.Day,
+            ("dateTime", "a" or "year" or "years") => FhirTemporalPrecision.Year,
+            ("dateTime", "mo" or "month" or "months") => FhirTemporalPrecision.Month,
+            ("dateTime", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
+            ("dateTime", "d" or "day" or "days") => FhirTemporalPrecision.Day,
+            ("dateTime", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
+            ("dateTime", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
+            ("dateTime", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
+            ("dateTime", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
+            ("time", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
+            ("time", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
+            ("time", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
+            ("time", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
             _ => null
         };
 
-    private static string TruncateToDateTimePrecision(string value, DateTimePrecision precision)
+    private static string TruncateToDateTimePrecision(string value, FhirTemporalPrecision precision)
     {
-        if (string.IsNullOrEmpty(value) || precision == DateTimePrecision.Invalid)
+        if (string.IsNullOrEmpty(value) || precision == FhirTemporalPrecision.Invalid)
             return value;
 
         // Extract timezone suffix if present (for DateTime values)
@@ -1625,11 +1547,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         return precision switch
         {
-            DateTimePrecision.Year => dateComponents[0],
-            DateTimePrecision.Month => dateComponents.Length >= 2
+            FhirTemporalPrecision.Year => dateComponents[0],
+            FhirTemporalPrecision.Month => dateComponents.Length >= 2
                 ? $"{dateComponents[0]}-{dateComponents[1]}"
                 : datePart,
-            DateTimePrecision.Day => dateComponents.Length >= 3
+            FhirTemporalPrecision.Day => dateComponents.Length >= 3
                 ? $"{dateComponents[0]}-{dateComponents[1]}-{dateComponents[2]}"
                 : datePart,
             _ when tIndex < 0 => datePart,
@@ -1637,7 +1559,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         };
     }
 
-    private static string TruncateTimePortion(string value, string datePart, string tzSuffix, DateTimePrecision precision)
+    private static string TruncateTimePortion(string value, string datePart, string tzSuffix, FhirTemporalPrecision precision)
     {
         var tIndex = value.IndexOf('T', StringComparison.Ordinal);
         var rawTime = value.Substring(tIndex + 1);
@@ -1648,10 +1570,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var timeComponents = rawTime.Split(':');
         var result = precision switch
         {
-            DateTimePrecision.Hour => $"{datePart}T{timeComponents[0]}",
-            DateTimePrecision.Minute when timeComponents.Length >= 2
+            FhirTemporalPrecision.Hour => $"{datePart}T{timeComponents[0]}",
+            FhirTemporalPrecision.Minute when timeComponents.Length >= 2
                 => $"{datePart}T{timeComponents[0]}:{timeComponents[1]}",
-            DateTimePrecision.Second when timeComponents.Length >= 3
+            FhirTemporalPrecision.Second when timeComponents.Length >= 3
                 => $"{datePart}T{timeComponents[0]}:{timeComponents[1]}:{timeComponents[2].Split('.')[0]}",
             _ => value,
         };
@@ -1753,14 +1675,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out result);
     }
 
-        private DateTime? GetDateTimeLowerBound(string value, DateTimePrecision precision)
+        private DateTime? GetDateTimeLowerBound(string value, FhirTemporalPrecision precision)
         {
             try
             {
                 return precision switch
                 {
-                    DateTimePrecision.Year => new DateTime(int.Parse(value), 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                    DateTimePrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime(),
+                    FhirTemporalPrecision.Year => new DateTime(int.Parse(value), 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                    FhirTemporalPrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime(),
                     _ => TryParseFhirDateTime(value, out var dt) ? dt.UtcDateTime : null
                 };
             }
@@ -1770,14 +1692,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             }
         }
     
-        private DateTime? GetDateTimeUpperBound(string value, DateTimePrecision precision)
+        private DateTime? GetDateTimeUpperBound(string value, FhirTemporalPrecision precision)
         {
             try
             {
-                if (precision == DateTimePrecision.Year)
+                if (precision == FhirTemporalPrecision.Year)
                     return new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999, DateTimeKind.Utc);
     
-                if (precision == DateTimePrecision.Month)
+                if (precision == FhirTemporalPrecision.Month)
                     return DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime().AddMonths(1).AddMilliseconds(-1);
     
                 if (!TryParseFhirDateTime(value, out var dtOffset))
@@ -1787,11 +1709,11 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     
                 return precision switch
                 {
-                    DateTimePrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
-                    DateTimePrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
-                    DateTimePrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
-                    DateTimePrecision.Second => dt.AddSeconds(1).AddMilliseconds(-1),
-                    DateTimePrecision.Millisecond => dt, // Millisecond precision is exact
+                    FhirTemporalPrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
+                    FhirTemporalPrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
+                    FhirTemporalPrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
+                    FhirTemporalPrecision.Second => dt.AddSeconds(1).AddMilliseconds(-1),
+                    FhirTemporalPrecision.Millisecond => dt, // Millisecond precision is exact
                     _ => dt
                 };
             }
@@ -1810,8 +1732,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             ? "T" + dateTimeStr
             : dateTimeStr;
 
-        var precision = GetDateTimePrecision(parseStr);
-        if (precision == DateTimePrecision.Invalid)
+        var precision = FhirTemporal.GetLiteralPrecision(parseStr);
+        if (precision == FhirTemporalPrecision.Invalid)
             return [];
         if (!TryParseFhirDateTime(parseStr, out var dt))
             return [];
@@ -1848,7 +1770,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [new PrimitiveElement(resultStr, instanceType)];
     }
 
-    private string FormatDateTimeWithPrecision(DateTimeOffset dt, DateTimePrecision precision, string originalStr, bool isTimeOnly)
+    private string FormatDateTimeWithPrecision(DateTimeOffset dt, FhirTemporalPrecision precision, string originalStr, bool isTimeOnly)
     {
         // Preserve timezone from original string
         var hasTimeZone = originalStr.Contains('+', StringComparison.Ordinal) ||
@@ -1857,13 +1779,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         var format = precision switch
         {
-            DateTimePrecision.Year => "yyyy",
-            DateTimePrecision.Month => "yyyy-MM",
-            DateTimePrecision.Day => "yyyy-MM-dd",
-            DateTimePrecision.Hour => "yyyy-MM-dd'T'HH",
-            DateTimePrecision.Minute => "yyyy-MM-dd'T'HH:mm",
-            DateTimePrecision.Second => "yyyy-MM-dd'T'HH:mm:ss",
-            DateTimePrecision.Millisecond => "yyyy-MM-dd'T'HH:mm:ss.fff",
+            FhirTemporalPrecision.Year => "yyyy",
+            FhirTemporalPrecision.Month => "yyyy-MM",
+            FhirTemporalPrecision.Day => "yyyy-MM-dd",
+            FhirTemporalPrecision.Hour => "yyyy-MM-dd'T'HH",
+            FhirTemporalPrecision.Minute => "yyyy-MM-dd'T'HH:mm",
+            FhirTemporalPrecision.Second => "yyyy-MM-dd'T'HH:mm:ss",
+            FhirTemporalPrecision.Millisecond => "yyyy-MM-dd'T'HH:mm:ss.fff",
             _ => "o"
         };
 
@@ -1875,7 +1797,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             // Strip T prefix - FHIR time format is HH:mm:ss, not THH:mm:ss
             result = result.Substring(tIndex + 1);
         }
-        else if (hasTimeZone && precision >= DateTimePrecision.Hour)
+        else if (hasTimeZone && precision >= FhirTemporalPrecision.Hour)
         {
             result += dt.ToString("zzz", System.Globalization.CultureInfo.InvariantCulture);
         }

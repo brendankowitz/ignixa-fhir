@@ -502,4 +502,84 @@ public class FhirTemporalTests
         FhirTemporal.Compare(time, laterTime).ShouldNotBeNull().ShouldBeLessThan(0);
         time.Equals(laterTime).ShouldBeFalse();
     }
+
+    // -----------------------------------------------------------------------------------------
+    // GetLiteralPrecision, IsTemporalLiteral, IsDateOrDateTimeLiteral — shape-classification
+    // heuristics. These are pinned here because the contract deliberately diverges from TryParse
+    // in ways that are easy to mistake for a bug (see F4 remarks).
+    // -----------------------------------------------------------------------------------------
+
+    [Fact]
+    public void GivenHourOnlyDateTime_WhenGetLiteralPrecision_ThenReturnsHourEvenThoughTryParseRejects()
+    {
+        // GetLiteralPrecision classifies shape only — hour-only is a recognisable shape.
+        FhirTemporal.GetLiteralPrecision("2012-01-01T10").ShouldBe(FhirTemporalPrecision.Hour);
+
+        // TryParse enforces FHIR validity — hour-only dateTime is not valid FHIR, so it fails.
+        FhirTemporal.TryParse("2012-01-01T10", FhirPrimitive.DateTime, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenFhirPathSigilPrefix_WhenGetLiteralPrecision_ThenSigilIsStrippedBeforeClassification()
+    {
+        FhirTemporal.GetLiteralPrecision("@2012").ShouldBe(FhirTemporalPrecision.Year);
+        FhirTemporal.GetLiteralPrecision("@2012-01-01").ShouldBe(FhirTemporalPrecision.Day);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("@")]
+    public void GivenNullOrEmptyOrSigilOnlyLiteral_WhenGetLiteralPrecision_ThenReturnsInvalid(string? literal)
+    {
+        FhirTemporal.GetLiteralPrecision(literal).ShouldBe(FhirTemporalPrecision.Invalid);
+    }
+
+    [Theory]
+    [InlineData("2012", FhirTemporalPrecision.Year)]
+    [InlineData("2012-01", FhirTemporalPrecision.Month)]
+    [InlineData("2012-01-01", FhirTemporalPrecision.Day)]
+    [InlineData("2012-01-01T10:30", FhirTemporalPrecision.Minute)]
+    [InlineData("2012-01-01T10:30:00", FhirTemporalPrecision.Second)]
+    [InlineData("2012-01-01T10:30:00.123", FhirTemporalPrecision.Millisecond)]
+    [InlineData("T10:30", FhirTemporalPrecision.Minute)]
+    [InlineData("T13:45:00", FhirTemporalPrecision.Second)]
+    public void GivenTemporalLiteralShape_WhenGetLiteralPrecision_ThenReturnsExpectedPrecision(
+        string literal,
+        FhirTemporalPrecision expected)
+    {
+        FhirTemporal.GetLiteralPrecision(literal).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("T10:30", false)]
+    [InlineData("13:45:00", false)]
+    [InlineData("2012", true)]
+    [InlineData("2012-01-01", true)]
+    [InlineData("2012-01-01T10:30", true)]
+    [InlineData("@2012-01-01", true)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("abc", false)]
+    public void GivenLiteral_WhenIsDateOrDateTimeLiteral_ThenTimeLiteralsReturnFalseAndDateLiteralsReturnTrue(
+        string? literal,
+        bool expected)
+    {
+        FhirTemporal.IsDateOrDateTimeLiteral(literal).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("@2012", true)]
+    [InlineData("T10:30", true)]
+    [InlineData("2012-01-01", true)]
+    [InlineData("2012-01-01T10:30", true)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("abc", false)]
+    public void GivenLiteral_WhenIsTemporalLiteral_ThenAtPrefixedTAndYearFirstLiteralsReturnTrue(
+        string? literal,
+        bool expected)
+    {
+        FhirTemporal.IsTemporalLiteral(literal).ShouldBe(expected);
+    }
 }

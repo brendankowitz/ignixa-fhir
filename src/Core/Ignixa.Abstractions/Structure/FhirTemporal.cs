@@ -379,6 +379,103 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         return Literal;
     }
 
+    /// <summary>
+    /// Classifies the precision of a temporal literal by its structural shape, without constructing a
+    /// full <see cref="FhirTemporal"/> and without implying that the literal is valid or parseable.
+    /// </summary>
+    /// <param name="literal">The wire literal, optionally prefixed with the FHIRPath <c>@</c> sigil.</param>
+    /// <returns>
+    /// The inferred precision, or <see cref="FhirTemporalPrecision.Invalid"/> when <paramref name="literal"/> is
+    /// <see langword="null"/>, empty, or does not match any recognised temporal shape.
+    /// </returns>
+    /// <remarks>
+    /// This method classifies shape only: it may return a non-<see cref="FhirTemporalPrecision.Invalid"/> value
+    /// for inputs that <see cref="TryParse"/> would reject — for example, <c>"2012-01-01T10"</c>
+    /// (hour-only, which is not a valid FHIR dateTime) returns <see cref="FhirTemporalPrecision.Hour"/> here.
+    /// Use <see cref="TryParse"/> when validity is required.
+    /// </remarks>
+    internal static FhirTemporalPrecision GetLiteralPrecision(string? literal)
+    {
+        if (string.IsNullOrEmpty(literal))
+        {
+            return FhirTemporalPrecision.Invalid;
+        }
+
+        var wire = literal[0] == '@' ? literal[1..] : literal;
+        return wire.Length == 0 ? FhirTemporalPrecision.Invalid : GetPrecision(wire);
+    }
+
+    /// <summary>
+    /// Returns a value indicating whether <paramref name="literal"/> looks like any FHIR or FHIRPath temporal
+    /// value (<c>date</c>, <c>dateTime</c>, <c>instant</c>, or <c>time</c>).
+    /// </summary>
+    /// <param name="literal">The string to test, optionally prefixed with the FHIRPath <c>@</c> sigil.</param>
+    /// <returns>
+    /// <see langword="true"/> for an <c>@</c>-prefixed FHIRPath literal, a <c>T</c>-prefixed time-only literal,
+    /// or a year-first date or dateTime literal.
+    /// </returns>
+    /// <remarks>
+    /// This is a structural heuristic: it tests character-level shape only and implies nothing about
+    /// whether the string is a valid FHIR value. Use <see cref="TryParse"/> when validity is required.
+    /// </remarks>
+    internal static bool IsTemporalLiteral(string? literal)
+    {
+        if (string.IsNullOrEmpty(literal))
+        {
+            return false;
+        }
+
+        // FHIRPath @-sigil marks any temporal literal.
+        if (literal[0] == '@')
+        {
+            return true;
+        }
+
+        // Time-only literal: T followed by a digit.
+        if (literal[0] == 'T' && literal.Length >= 2 && char.IsDigit(literal[1]))
+        {
+            return true;
+        }
+
+        // Date or dateTime: starts with a 4-digit year, followed by end-of-string, '-', or 'T'/'space' separator.
+        return literal.Length >= 4
+            && char.IsDigit(literal[0]) && char.IsDigit(literal[1])
+            && char.IsDigit(literal[2]) && char.IsDigit(literal[3])
+            && (literal.Length == 4 || literal[4] == '-' || literal[4] == 'T' || literal[4] == ' ');
+    }
+
+    /// <summary>
+    /// Returns a value indicating whether <paramref name="literal"/> looks like a FHIR <c>date</c> or
+    /// <c>dateTime</c> literal (year-first format).
+    /// </summary>
+    /// <param name="literal">The string to test, optionally prefixed with the FHIRPath <c>@</c> sigil.</param>
+    /// <returns>
+    /// <see langword="true"/> when the literal begins with a 4-digit year optionally followed by
+    /// <c>-</c>, <c>T</c>, or space separators. Returns <see langword="false"/> for time-only strings
+    /// (those starting with <c>T</c>) so that the caller can distinguish date/dateTime from time values.
+    /// </returns>
+    /// <remarks>
+    /// This is a structural heuristic: it tests character-level shape only and implies nothing about
+    /// whether the string is a valid FHIR value. Use <see cref="TryParse"/> when validity is required.
+    /// Unlike <see cref="IsTemporalLiteral"/>, this method returns <see langword="false"/> for
+    /// <c>T</c>-prefixed time-only literals, making it suitable for code paths that handle date and time
+    /// strings in separate branches.
+    /// </remarks>
+    internal static bool IsDateOrDateTimeLiteral(string? literal)
+    {
+        if (string.IsNullOrEmpty(literal))
+        {
+            return false;
+        }
+
+        var wire = literal[0] == '@' ? literal[1..] : literal;
+
+        return wire.Length >= 4
+            && char.IsDigit(wire[0]) && char.IsDigit(wire[1])
+            && char.IsDigit(wire[2]) && char.IsDigit(wire[3])
+            && (wire.Length == 4 || wire[4] == '-' || wire[4] == 'T' || wire[4] == ' ');
+    }
+
     private static string Normalize(string wire, FhirPrimitive kind)
     {
         var value = kind == FhirPrimitive.Time && !wire.StartsWith('T')

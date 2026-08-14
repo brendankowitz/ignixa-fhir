@@ -18,5 +18,10 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ignixa.FhirPath" />
+    <InternalsVisibleTo Include="Ignixa.Serialization.Tests" />
+  </ItemGroup>
+
 </Project>
 
