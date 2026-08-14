@@ -205,6 +205,89 @@ So the proposal is not "adopt Firely's model". It is "apply the pattern Ignixa a
 Firely's typed values are not buying fidelity — both sides have that. They're buying **precision
 carried with the value**, which is what removes the compensation layer.
 
+### (i) There are *two* evaluation paths, not one — and the cost analysis above only counted one
+
+Findings (b) and (c) size the compensation layer as ~500 of the 1,935 lines in `FhirPathEvaluator.cs`.
+That undercounts, because the interpreter is not the only consumer of `IElement.Value`.
+
+`TypedElementExtensions.Select()` (`:64`) — the entry point `CLAUDE.md` directs all resource data
+access to, and the one search-parameter extraction runs through — tries a **compiled delegate first**
+and only falls back to the interpreter:
+
+```csharp
+private static readonly FhirPathDelegateCompiler _delegateCompiler = new(new FhirPathEvaluator());   // :33
+return _delegateCache.GetOrAdd(expressionString, _ => _delegateCompiler.TryCompile(ast));            // :53
+```
+
+`FhirPathDelegateCompiler` is 683 lines with its **own** independently-implemented comparison
+semantics — a bare `Equals(pair.First.Value, pair.Second.Value)` at three sites, and a `CompareValues`
+that does an ordinal string compare. So the "two divergent copies of `GetDateTimePrecision`" in
+Finding (c) understates the divergence: comparison itself is forked across an interpreter and a
+compiler, and the two do not agree.
+
+Two consequences, both confirmed empirically when Option 3 was implemented:
+
+1. **The migration surface is larger than Finding (c) implies.** Changing `IElement.Value` broke the
+   compiled path too — `Patient.where(birthDate = '1974-12-25').exists()` silently stopped matching,
+   because the compiler's `Equals` compared a `FhirTemporal` against a `string`. Any audit scoped to
+   `FhirPathEvaluator.cs` would have missed it, and did.
+2. **The paths already disagree on `main`, independent of this work.** Because the compiler keeps the
+   `@` sigil in a temporal constant's value and compares ordinally, `Patient.birthDate = @1974-12-25`
+   evaluates `false` compiled and `true` interpreted. Same for `Observation.issued > @2024-01-01T00:00:00Z`.
+   This predates PR #399 and is not caused by it.
+
+Item 2 is a live correctness bug on `main` and deserves its own investigation — fixing it properly
+requires the compiled path to be able to return *empty* for indeterminate partial precision, but
+`CompileComparison` is typed `Func<object?, object?, bool>` and structurally cannot. That is a design
+change, not a parity fix, and it is out of scope here.
+
+The relevance to this investigation: a typed temporal value makes the two paths *able* to share one
+comparison implementation (`FhirTemporal.Compare`), which neither Option 1 nor Option 4 offers. That
+is a point in Option 3's favour the original analysis did not credit it with.
+
+### (j) The strongest argument was missed entirely: the spec mandates it
+
+Everything above argues the change on maintainability — compensation cost, bug class, divergent helpers.
+Those are real but they are *engineering* arguments, and they are why the original verdict could
+plausibly land on "not worth the refactor today". The conformance argument is stronger and was not
+made.
+
+FHIR's FHIRPath profile (`https://hl7.org/fhir/fhirpath.html`, §2.1.9) defines the mapping from FHIR
+primitives to FHIRPath System types:
+
+| FHIR primitive | System type |
+|---|---|
+| `date`, `dateTime`, `instant` | `System.DateTime` |
+| `time` | `System.Time` |
+| `string`, `uri`, `code`, `oid`, `id`, `uuid`, `markdown`, `base64Binary` | `System.String` |
+
+`date` is **not** on the `System.String` list. Handing a temporal to the FHIRPath engine as a string
+was a conformance gap, not merely an inelegant representation — and it is the direct cause of the
+downstream symptoms catalogued in Findings (a) through (d), which are consequences rather than
+independent problems.
+
+Firely reached the same conclusion in practice: `Patient.birthDate.Value` is
+`Hl7.Fhir.ElementModel.Types.Date`, not a string. Verified empirically against `Hl7.Fhir` 4.3.0,
+5.11.4 and 6.0.1 — byte-identical behaviour across three majors.
+
+The observable consequence of the gap, also verified across those three Firely versions and against
+HAPI's `FHIRPathEngine`:
+
+| | `Patient.birthDate + 1` | `Patient.birthDate.toInteger()` |
+|---|---|---|
+| Firely (all three majors) | throws | empty |
+| HAPI (`operateTypes` **and** `opPlus`) | throws | n/a |
+| FHIRPath spec | error | empty |
+| Ignixa, dates-as-`string` | **`1975`** | **`1974`** |
+
+Ignixa silently produced a plausible wrong number where the entire ecosystem refuses the operation.
+That is the worst available failure mode in a clinical query language, and it was a direct consequence
+of `date` presenting as `System.String`, exactly as the profile forbids.
+
+This reframes the verdict below. The original weighed a maintainability benefit against a refactor
+cost and reasonably concluded "wait for more pain". Conformance is not a maintainability preference to
+be traded off, and the trigger conditions never contemplated it.
+
 ## Options
 
 ### Option 1 — Do nothing
@@ -234,8 +317,9 @@ wire literal plus a parsed precision enum; return it from `IElement.Value` for `
   divergent `GetDateTimePrecision` copies collapse to one.
 - Comparison helpers pattern-match on the type instead of needing a parallel `instanceType`
   parameter — retires the bug class in Finding (d), including the open Quantity instance.
-- Satisfies [ADR-2510](../../adr/adr-2510-capability-sourcenode-model.md): Ignixa-native, no
-  `Hl7.Fhir.*` dependency.
+- Ignixa-native, no `Hl7.Fhir.*` dependency — consistent with `CLAUDE.md`'s layer rule, and with the
+  precedent [ADR-2510](../../adr/adr-2510-capability-sourcenode-model.md) set when it chose
+  SourceNode-based POCOs over the Firely SDK for CapabilityStatement.
 
 Cost is real: `IElement.Value`'s contract changes, so every consumer that assumes `string` for a
 temporal must be found and updated. Note the documented contract (`IElement.cs:29-41`) already reads
@@ -266,9 +350,10 @@ frozen — see [Timing](#timing-the-pre-10-window).
 The options above weigh benefit against cost as if cost were constant. It is not.
 
 `IElement` ships in `Ignixa.Abstractions`, which sets `IsPackable=true`
-(`src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj:12`), overriding the repo-wide
-`IsPackable=false` in `Directory.Build.props:60`. `IElement.Value` is therefore public API, not an
-internal detail. The latest release tag is `release/0.6.41` — pre-1.0.
+(`src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj:12`). `Directory.Build.props:57-63` sets
+`IsPackable=false` only for projects whose name contains `Test`, so packability here is an explicit
+opt-in rather than an override of a repo-wide default. Either way `IElement.Value` is shipped public
+API, not an internal detail. The latest release tag is `release/0.6.41` — pre-1.0.
 
 That makes the cost of an `IElement.Value` change a **step function**, not a constant:
 
@@ -300,15 +385,33 @@ Three consequences:
 | Removes ~500 lines of string-parsing compensation and lets two divergent helper copies collapse to one (Finding (c)) | Migration must prove serialization fidelity is untouched — the whole point of the current design |
 | Precision computed once, not per operation across 8 call sites (Finding (b)) | Real refactor cost against a system whose tests currently pass |
 | Extends a pattern Ignixa already ships and validated for `Quantity` (Finding (g)) | Temporal semantics are subtler than `Quantity`'s; new type is easy to get wrong |
-| Lossless — the wire literal is retained, as Firely proves is achievable (Finding (e)) | Consumers pattern-matching `is string` on temporals break loudly (arguably a pro) |
-| Ignixa-native; respects ADR-2510's rejection of `Hl7.Fhir.*` | Reimplements what Firely already solved, for dependency reasons rather than technical ones |
+| Lossless — the wire literal is retained, as Firely proves is achievable (Finding (e)) | Consumers pattern-matching `is string` on temporals break **silently**, not loudly — see the note below |
+| Ignixa-native, consistent with `CLAUDE.md`'s layer rule and the ADR-2510 precedent | Reimplements what Firely already solved, for dependency reasons rather than technical ones |
+
+**Correction, recorded from the implementation attempt**: the "break loudly" assumption above was
+wrong, and wrong in the direction that matters. When Option 3 was implemented, every call site still
+gating on `is string` — arithmetic (`EvaluateAddition`/`EvaluateSubtraction`), `toDate`/`toDateTime`,
+`join()`, and the `>`/`<` type gates missing `instant`/`time` — failed by returning an **empty
+collection**, not by throwing or failing to compile. `TryGetSingleString` was the sole exception, and
+it threw. The full 4,024-test suite stayed green throughout, because the FHIRPath conformance suite
+exercises `@`-literals (still `string`) and never routes a *parsed resource's* `IElement.Value`
+through those functions.
+
+That is the same silent-empty failure mode as Finding (d), reproduced by the fix for Finding (d).
+The lesson is not that Option 3 is wrong — it is that `object? Value` makes the migration itself
+un-typecheckable, so the migration needs resource-backed test coverage **before** the contract
+changes, not after.
 
 ## Alignment
 
-- [x] Follows architectural layering rules — Option 3 lives in `Ignixa.FhirPath.Types`, no
-      `Hl7.Fhir.*` dependency, consistent with ADR-2510.
-- [x] Developer Experience — removes the "did I remember to pass `instanceType`?" trap; wrong usage
-      becomes a compile error instead of an empty collection.
+- [x] Follows architectural layering rules — no `Hl7.Fhir.*` dependency, consistent with
+      `CLAUDE.md`'s layer rule and the ADR-2510 precedent. (As implemented the type landed in
+      `Ignixa.Abstractions.Structure`, not `Ignixa.FhirPath.Types` as sketched here, because
+      `IElement.Value`'s declared contract lives in `Ignixa.Abstractions`.)
+- [~] Developer Experience — removes the "did I remember to pass `instanceType`?" trap, but *not* by
+      making wrong usage a compile error. `IElement.Value` is still `object?`, so a missed call site
+      degrades to an empty collection exactly as before; only `TryGetSingleString` failed loudly.
+      See the correction under Tradeoffs.
 - [x] Specification compliance — improves it. Partial-precision comparison and calendar arithmetic
       are FHIRPath-spec behaviours currently hand-rolled per call site.
 - [x] Consistent with existing patterns — `QuantityElement` / `Types.Quantity` is the same shape
@@ -339,6 +442,13 @@ Read on `main` at `ca5c65b7` unless noted.
   Ignixa's own `Types.Quantity`; open defect
 - [PR #398](https://github.com/brendankowitz/ignixa-fhir/pull/398) — the boundary fix
 
+**The second evaluation path (Finding (i))**
+- `src/Core/Ignixa.FhirPath/Evaluation/TypedElementExtensions.cs:33,53,64` — `Select()` prefers a
+  compiled delegate over the interpreter
+- `src/Core/Ignixa.FhirPath/Evaluation/FhirPathDelegateCompiler.cs` — 683 lines, its own `Equals`
+  and ordinal `CompareValues`; `CompileComparison` is typed `Func<object?, object?, bool>` and so
+  cannot express FHIRPath's indeterminate-precision empty result
+
 **The contract and the precedent**
 - `src/Core/Ignixa.Serialization/SourceNodes/SchemaAwareElement.cs:173-190` — `Value` getter;
   temporals fall through `_ => text`
@@ -349,8 +459,9 @@ Read on `main` at `ca5c65b7` unless noted.
 - `src/Core/Ignixa.FhirPath/Types/Quantity.cs:23-50` — `Types.Quantity` with a `Precision` field
 
 **Versioning surface**
-- `src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj:12` — `IsPackable=true`, overriding
-  `Directory.Build.props:60` (`IsPackable=false`); `IElement` is shipped public API
+- `src/Core/Ignixa.Abstractions/Ignixa.Abstractions.csproj:12` — `IsPackable=true` (explicit opt-in;
+  `Directory.Build.props:57-63` sets `IsPackable=false` only for `*Test*` project names, so this is
+  not an override of a repo-wide default); `IElement` is shipped public API
 - `git tag --list "release/*"` → latest `release/0.6.41`; pre-1.0 as of this investigation
 
 **Firely, verified against decompiled `Hl7.Fhir.Base` 6.0.1 / 5.13.1**
@@ -363,8 +474,10 @@ Read on `main` at `ca5c65b7` unless noted.
 **Prior art in this repo**
 - [primitive-fidelity](primitive-fidelity.md) — serialization axis; finding (c) documents `decimal`
   loss, finding (e) the dates-as-string verdict this investigation scopes against
-- [ADR-2510](../../adr/adr-2510-capability-sourcenode-model.md) — rejects `Hl7.Fhir.*`, ruling out
-  simply adopting `P.Date`
+- [ADR-2510](../../adr/adr-2510-capability-sourcenode-model.md) — scoped to CapabilityStatement, but
+  the precedent for preferring Ignixa-native SourceNode models over the Firely SDK. The repo-wide
+  prohibition on `Hl7.Fhir.*` in Application/DataLayer is in `CLAUDE.md`, not this ADR; together they
+  rule out simply adopting `P.Date`
 
 ## Verdict
 
