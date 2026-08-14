@@ -404,13 +404,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time + Quantity
-        if (leftValue is string leftDateStr && rightValue is Types.Quantity rightQty)
+        if (WireValue.AsWireString(leftValue) is { } leftDateStr && rightValue is Types.Quantity rightQty)
         {
             return EvaluateDateTimeArithmetic(leftDateStr, rightQty, add: true, left[0].InstanceType);
         }
 
         // Quantity + Date/DateTime/Time
-        if (leftValue is Types.Quantity leftQty && rightValue is string rightDateStr)
+        if (leftValue is Types.Quantity leftQty && WireValue.AsWireString(rightValue) is { } rightDateStr)
         {
             return EvaluateDateTimeArithmetic(rightDateStr, leftQty, add: true, right[0].InstanceType);
         }
@@ -421,7 +421,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
 
         // String concatenation via + operator
-        if (leftValue is string leftStringVal && rightValue is string rightStringVal)
+        if (WireValue.AsWireString(leftValue) is { } leftStringVal && WireValue.AsWireString(rightValue) is { } rightStringVal)
         {
             return [CreateString(leftStringVal + rightStringVal)];
         }
@@ -446,7 +446,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time - Quantity
-        if (leftValue is string leftStr && rightValue is Types.Quantity qty)
+        if (WireValue.AsWireString(leftValue) is { } leftStr && rightValue is Types.Quantity qty)
         {
             return EvaluateDateTimeArithmetic(leftStr, qty, add: false, left[0].InstanceType);
         }
@@ -736,7 +736,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return rounded1 == rounded2;
         }
 
-        if (left is string leftStr && right is string rightStr)
+        if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
             // Check if these are datetime strings (start with @ or look like dates/times)
             if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
@@ -1023,7 +1023,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     }
 
 
-    private bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
+    /// <summary>
+    /// Applies FHIRPath <c>=</c> / <c>!=</c> semantics to two evaluated operand collections.
+    /// </summary>
+    /// <remarks>
+    /// Internal rather than private because <see cref="FhirPathDelegateCompiler"/> calls it. The compiled
+    /// fast path once carried its own ordinal string comparison, which answered <c>false</c> for
+    /// <c>birthDate = @1974-12-25</c> while this method answered <c>true</c>. Sharing the one
+    /// implementation is what makes the two evaluation paths incapable of drifting apart again.
+    /// </remarks>
+    internal bool? CompareEquality(List<IElement> left, List<IElement> right, bool equals)
     {
         // Per FHIRPath official tests: {} = {} and {} != {} both return empty
         // Any comparison involving empty collection returns empty (three-valued logic)
@@ -1061,8 +1070,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 }
             }
 
-            if ((leftType == "date" || leftType == "datetime" || leftType == "instant") &&
-                (rightType == "date" || rightType == "datetime" || rightType == "instant"))
+            if (IsTemporalOperand(leftVal, leftType) && IsTemporalOperand(rightVal, rightType))
             {
                 return CompareDateTimeEquality(leftVal, rightVal, leftType, rightType, equals);
             }
@@ -1089,6 +1097,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (AsTemporal(leftValue, leftType) is { } leftTemporal
             && AsTemporal(rightValue, rightType) is { } rightTemporal)
         {
+            // A time of day and a calendar value are different types, not overlapping intervals, so
+            // equality is definitely false where ordering is indeterminate (official testDateNotEqualTime*).
+            // FhirTemporal.Compare cannot express that distinction: it returns null for both.
+            if ((leftTemporal.Kind == FhirPrimitive.Time) != (rightTemporal.Kind == FhirPrimitive.Time))
+            {
+                return !equals;
+            }
+
             return FhirTemporal.Compare(leftTemporal, rightTemporal) switch
             {
                 null => null,
@@ -1261,7 +1277,16 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return value;
     }
 
-        private bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
+        /// <summary>
+        /// Applies FHIRPath ordering semantics to two evaluated operand collections.
+        /// </summary>
+        /// <remarks>
+        /// Internal for the same reason as <see cref="CompareEquality"/>: the compiled path shares it.
+        /// The <see cref="Nullable{T}"/> return is load-bearing — partial precision makes some orderings
+        /// undecidable (<c>@2012 &gt; @2012-01</c>), and FHIRPath requires that to surface as an empty
+        /// collection rather than as <c>false</c>.
+        /// </remarks>
+        internal bool? CompareOrder(List<IElement> left, List<IElement> right, bool greater, bool orEqual)
         {
             if (left.Count == 0 || right.Count == 0)
                 return null;
@@ -1291,13 +1316,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return QuantityEvaluator.EvaluateComparison(left, op, right);
             }
     
-            if ((leftType == "date" || leftType == "datetime" || leftType == "time") &&
-                (rightType == "date" || rightType == "datetime" || rightType == "time"))
+            if (IsTemporalOperand(leftValue, leftType) && IsTemporalOperand(rightValue, rightType))
             {
                 return CompareDateTimesWithPrecision(leftValue, rightValue, leftType, rightType, greater, orEqual);
             }
-    
-                    if (leftValue is string leftStr && rightValue is string rightStr)
+
+                    if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
                     {
                         // Try to treat as typed dates first if they look like dates
                         // This handles cases where type info is lost or implicit conversion is expected
@@ -1578,6 +1602,21 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             _ => value,
         };
         return string.IsNullOrEmpty(tzSuffix) ? result : result + tzSuffix;
+    }
+
+    /// <summary>
+    /// Checks whether an operand should be compared as a temporal value.
+    /// </summary>
+    /// <remarks>
+    /// The declared type is authoritative for FHIRPath literals, whose values are plain strings, but it is
+    /// not sufficient on its own: an element carrying a <see cref="FhirTemporal"/> is a temporal regardless
+    /// of what its instance type says. Testing the value as well keeps the two comparison paths from
+    /// disagreeing when a typed value arrives with a type name the gate does not enumerate.
+    /// </remarks>
+    private static bool IsTemporalOperand(object? value, string? typeName)
+    {
+        return value is FhirTemporal
+            || typeName is "date" or "datetime" or "instant" or "time";
     }
 
     /// <summary>

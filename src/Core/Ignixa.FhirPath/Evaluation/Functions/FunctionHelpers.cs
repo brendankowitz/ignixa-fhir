@@ -96,7 +96,7 @@ internal static class FunctionHelpers
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
 
-        if (left is string leftStr && right is string rightStr)
+        if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
             var leftNormalized = NormalizeDateString(leftStr);
             var rightNormalized = NormalizeDateString(rightStr);
@@ -172,13 +172,13 @@ internal static class FunctionHelpers
     #region Type Validation Helpers
 
     /// <summary>
-    /// Validates that the focus collection contains a single string value.
+    /// Validates that the focus collection contains a single value with a string representation.
     /// </summary>
     /// <param name="focus">The input collection</param>
     /// <param name="functionName">The function name for error messages</param>
     /// <param name="str">The extracted string value if valid</param>
     /// <returns>True if valid, false if empty collection</returns>
-    /// <exception cref="InvalidOperationException">If collection has multiple items or non-string value</exception>
+    /// <exception cref="InvalidOperationException">If collection has multiple items or a value with no string representation</exception>
     public static bool TryGetSingleString(IEnumerable<IElement> focus, string functionName, out string str)
     {
         str = string.Empty;
@@ -190,7 +190,7 @@ internal static class FunctionHelpers
         if (list.Count > 1)
             throw new InvalidOperationException($"{functionName}() requires a single input value");
 
-        if (list[0].Value is string s)
+        if (WireValue.AsWireString(list[0].Value) is { } s)
         {
             str = s;
             return true;

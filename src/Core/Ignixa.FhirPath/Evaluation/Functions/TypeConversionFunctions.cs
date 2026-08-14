@@ -222,7 +222,7 @@ internal static class TypeConversionFunctions
             return [];
 
         var value = list[0].Value;
-        if (value is string s)
+        if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
             if (IsValidFhirDate(s))
@@ -285,7 +285,7 @@ internal static class TypeConversionFunctions
             return [];
 
         var value = list[0].Value;
-        if (value is string s)
+        if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
             if (IsValidFhirDateTime(s))
@@ -373,7 +373,7 @@ internal static class TypeConversionFunctions
             return [];
 
         var value = list[0].Value;
-        if (value is string s)
+        if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
             if (TimeSpan.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out _))
