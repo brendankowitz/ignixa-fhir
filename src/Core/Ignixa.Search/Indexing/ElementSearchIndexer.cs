@@ -252,11 +252,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
         var results = new List<ISearchValue>();
 
+        // Materialized inside the try: element.Select returns a lazy enumerable, so enumerating it
+        // outside would raise evaluation errors past this catch and fail the whole write.
         IEnumerable<IElement> extractedValues = Enumerable.Empty<IElement>();
 
         try
         {
-            extractedValues = element.Select(fhirPathExpression, context);
+            extractedValues = element.Select(fhirPathExpression, context).ToList();
         }
         catch (Exception ex)
         {
@@ -349,11 +351,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         var results = new List<ISearchValue>();
 
         // For simple value type, we can parse the expression directly.
+        // Materialized inside the try: element.Select returns a lazy enumerable, so enumerating it
+        // outside would raise evaluation errors past this catch and fail the whole write.
         IEnumerable<IElement> extractedValues = Enumerable.Empty<IElement>();
 
         try
         {
-            extractedValues = element.Select(fhirPathExpression, context);
+            extractedValues = element.Select(fhirPathExpression, context).ToList();
         }
         catch (Exception ex)
         {
