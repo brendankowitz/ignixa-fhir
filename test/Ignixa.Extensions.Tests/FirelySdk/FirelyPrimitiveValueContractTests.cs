@@ -29,6 +29,8 @@ public class FirelyPrimitiveValueContractTests
 
     [Theory]
     [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013-01-01T11:22:33")]
+    [InlineData("dateTime", "2013-01-01T11:22")]
     [InlineData("dateTime", "2013")]
     [InlineData("instant", "2013-01-01T11:22:33.123Z")]
     public void GivenIgnixaDateTimeString_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDateTime(string instanceType, string text)
@@ -279,6 +281,8 @@ public class FirelyPrimitiveValueContractTests
 
     [Theory]
     [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013-01-01T11:22:33")]
+    [InlineData("dateTime", "2013-01-01T11:22")]
     [InlineData("dateTime", "2013")]
     [InlineData("instant", "2013-01-01T11:22:33.123Z")]
     public void GivenIgnixaFhirTemporalDateTime_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDateTime(string instanceType, string literal)
@@ -334,6 +338,8 @@ public class FirelyPrimitiveValueContractTests
 
     [Theory]
     [InlineData("2013-01-01T11:22:33+10:00")]
+    [InlineData("2013-01-01T11:22:33")]
+    [InlineData("2013-01-01T11:22")]
     [InlineData("2013")]
     public void GivenFirelyDateTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal(string text)
     {
@@ -438,12 +444,17 @@ public class FirelyPrimitiveValueContractTests
 
     [Theory]
     [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013-01-01T11:22:33")]
+    [InlineData("dateTime", "2013-01-01T11:22")]
     [InlineData("dateTime", "2013")]
     [InlineData("date", "2013-01-01")]
     [InlineData("time", "11:22:33")]
     public void GivenIgnixaTemporalString_WhenRoundTrippedThroughBothAdapters_ThenPrecisionIsPreserved(string instanceType, string text)
     {
-        // Precision matters: a year-only dateTime must not be widened into a full timestamp.
+        // Precision matters: a year-only dateTime must not be widened into a full timestamp, and a
+        // timezone-less dateTime must not acquire one -- the adapters sit either side of a Firely type
+        // that resolves everything to an offset, so an invented "Z" here would be invisible until it
+        // reached FHIRPath comparison and turned an indeterminate result into a definite one.
         // Note this case is weak on its own - a pass-through adapter satisfies it too, because the
         // identity function trivially round-trips. The DateTimeOffset theory below is the one with
         // mutation-detection power; this one guards against a lossy parse/render pair.
