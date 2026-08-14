@@ -1579,15 +1579,44 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         "ms", "millisecond", "milliseconds"
     }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The UCUM definite-duration units that have no calendar equivalent: <c>'a'</c> is a fixed 365.25 days
+    /// and <c>'mo'</c> a fixed twelfth of that, so neither lands where the calendar keywords
+    /// <c>year</c>/<c>month</c> do. Every other UCUM time unit ('wk', 'd', 'h', 'min', 's', 'ms') is both
+    /// definite and unambiguous, so only these two are rejected.
+    /// </summary>
+    private static readonly FrozenSet<string> _calendarIncompatibleDurationUnits = new[] { "a", "mo" }
+        .ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Enforces the FHIRPath rule that <c>'a'</c> and <c>'mo'</c> signal an error in Date, DateTime and Time
+    /// arithmetic (FHIRPath 3.0 "Date/Time Arithmetic": the year row reads "using 'a' will signal an error"
+    /// and the month row "using 'mo' will signal an error"; official cases <c>testPlusDate14</c>,
+    /// <c>testPlusDate16</c> and <c>testPlusDate17</c>).
+    /// </summary>
+    private static void ThrowIfCalendarIncompatibleUnit(string instanceType, Types.Quantity quantity)
+    {
+        if (!IsTemporalInstanceType(instanceType) || !_calendarIncompatibleDurationUnits.Contains(quantity.Unit))
+        {
+            return;
+        }
+
+        var keyword = quantity.Unit == "a" ? "year" : "month";
+        throw new InvalidOperationException(
+            $"'{quantity}' uses the UCUM definite-duration unit '{quantity.Unit}', which has no calendar " +
+            $"equivalent, so it cannot be used in {instanceType} arithmetic; use the calendar keyword " +
+            $"'{keyword}' instead.");
+    }
+
     private static FhirTemporalPrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
         => (instanceType, unit) switch
         {
-            ("date", "a" or "year" or "years") => FhirTemporalPrecision.Year,
-            ("date", "mo" or "month" or "months") => FhirTemporalPrecision.Month,
+            ("date", "year" or "years") => FhirTemporalPrecision.Year,
+            ("date", "month" or "months") => FhirTemporalPrecision.Month,
             ("date", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
             ("date", "d" or "day" or "days") => FhirTemporalPrecision.Day,
-            ("dateTime", "a" or "year" or "years") => FhirTemporalPrecision.Year,
-            ("dateTime", "mo" or "month" or "months") => FhirTemporalPrecision.Month,
+            ("dateTime", "year" or "years") => FhirTemporalPrecision.Year,
+            ("dateTime", "month" or "months") => FhirTemporalPrecision.Month,
             ("dateTime", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
             ("dateTime", "d" or "day" or "days") => FhirTemporalPrecision.Day,
             ("dateTime", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
@@ -1826,6 +1855,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, Types.Quantity quantity, bool add, string instanceType)
     {
+        ThrowIfCalendarIncompatibleUnit(instanceType, quantity);
+
         dateTimeStr = dateTimeStr.StartsWith("@", StringComparison.Ordinal) ? dateTimeStr.Substring(1) : dateTimeStr;
 
         var isTimeOnly = instanceType == "time";
@@ -1863,8 +1894,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             result = quantity.Unit switch
             {
-                "a" or "year" or "years" => dt.AddYears((int)Math.Truncate(value)),
-                "mo" or "month" or "months" => dt.AddMonths((int)Math.Truncate(value)),
+                "year" or "years" => dt.AddYears((int)Math.Truncate(value)),
+                "month" or "months" => dt.AddMonths((int)Math.Truncate(value)),
                 "wk" or "week" or "weeks" => dt.AddDays(Math.Truncate(value) * 7),
                 "d" or "day" or "days" => dt.AddDays(Math.Truncate(value)),
                 "h" or "hour" or "hours" => dt.AddHours(value),

@@ -193,16 +193,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         ["testMinus4"] = "'a'-'b': subtraction of two strings must error. Making non-numeric '-' throw is a broad arithmetic-typing change across all operand types; deliberately not bundled with the temporal operand fix.",
 
-        // The suite treats the UCUM definite durations 'a' (365.25 days) and 'mo' as not calendar-
-        // convertible, so adding them to a date is an error, while the calendar keywords year/month are
-        // fine. Ignixa currently treats 'a'/'mo' as synonyms for the keywords, and
-        // BoundaryAndCalendarArithmeticTests + ResourceBackedTemporalFunctionTests pin that behaviour with
-        // explicit expected values. Reversing it is a deliberate contract change that flips four pinned
-        // unit tests and needs a decision, not a drive-by edit inside an error-handling fix.
-        ["testPlusDate14"] = "@1973-12-25 + 1 'mo': UCUM 'mo' is a definite duration and not calendar-convertible, so the suite requires an error; Ignixa treats 'mo' as the calendar keyword 'month'. Contradicts BoundaryAndCalendarArithmeticTests, which pins 1974-01-25.",
-        ["testPlusDate16"] = "@1973-12-25 + 1 'a': UCUM 'a' is a definite duration; same conflict as testPlusDate14, pinned as 1974-12-25.",
-        ["testPlusDate17"] = "@1975-12-25 + 1 'a': same UCUM definite-duration conflict as testPlusDate16.",
-
         // defineVariable scoping. The engine's variable store is permissive: unknown names resolve to
         // empty (VisitVariable), redefinition overwrites, and system names are not reserved.
         ["defineVariable10"] = "select(%fam.given): a reference to an undefined variable must error; VisitVariable returns empty for any unknown name.",
@@ -446,7 +436,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     {
         if (_unsignalledInvalidCases.TryGetValue(testCase.Name, out var deferralReason))
         {
-            SkipTest($"{testCase.Name}: {deferralReason}");
+            AssertDeferralIsStillNeeded(testCase, element, deferralReason);
             return;
         }
 
@@ -495,6 +485,39 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     }
 
     /// <summary>
+    /// Fails when a deferred case is no longer a gap. <see cref="SkipTest"/> reports as a pass, and
+    /// <see cref="OfficialTestSuiteSkipListTests"/> only proves the named case still exists upstream and is
+    /// still marked invalid - which stays true forever - so neither of them notices when the engine starts
+    /// signalling the error and the entry goes stale. This does: it runs the deferred case and fails if the
+    /// engine now signals, so closing a gap forces the list entry to be removed.
+    /// </summary>
+    private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, string deferralReason)
+    {
+        try
+        {
+            var expression = _parser.Parse(testCase.Expression);
+            var context = new FhirEvaluationContext
+            {
+                Resource = element,
+                ElementResolver = TestElementResolver.Create(element)
+            };
+
+            _ = _evaluator.Evaluate(element, expression, context).ToList();
+        }
+        catch (Exception ex) when (IsEngineSignalledError(ex))
+        {
+            Assert.Fail($"""
+                '{testCase.Name}' is deferred in _unsignalledInvalidCases but the engine now signals the error, so the entry is stale and must be removed.
+                Expression: {testCase.Expression}
+                Signalled: {ex.GetType().Name}: {ex.Message}
+                Deferral reason on file: {deferralReason}
+                """);
+        }
+
+        SkipTest($"{testCase.Name}: {deferralReason}");
+    }
+
+    /// <summary>
     /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness.
     /// xunit assertion failures (<see cref="XunitException"/>, including <c>Assert.Fail</c>'s
     /// <c>FailException</c>) must never be mistaken for the engine reporting an invalid expression.
@@ -510,8 +533,9 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// <c>DynamicSkipToken</c> - so a reason-carrying early return is the only mechanism available without
     /// taking a dependency on <c>Xunit.SkippableFact</c>. The reason string is the compensating control:
     /// unlike the vacuous passes this class used to produce, every deferral is named, justified in
-    /// <see cref="_unsignalledInvalidCases"/>, and covered by
-    /// <see cref="OfficialTestSuiteSkipListTests"/> so it cannot go stale unnoticed.
+    /// <see cref="_unsignalledInvalidCases"/>, checked against the upstream suites by
+    /// <see cref="OfficialTestSuiteSkipListTests"/>, and re-run by
+    /// <see cref="AssertDeferralIsStillNeeded"/> so a gap that has since closed fails instead of skipping.
     /// </remarks>
     private void SkipTest(string reason)
     {

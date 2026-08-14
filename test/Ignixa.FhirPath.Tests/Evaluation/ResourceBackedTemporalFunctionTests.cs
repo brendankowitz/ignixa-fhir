@@ -63,29 +63,65 @@ public class ResourceBackedTemporalFunctionTests
     }
 
     [Fact]
-    public void GivenResourceBackedDate_WhenAddingUcumYear_ThenReturnsShiftedDate()
+    public void GivenResourceBackedDate_WhenAddingUcumYear_ThenSignalsError()
     {
         // Arrange
+        // This previously asserted "1975-12-25". UCUM 'a' is a fixed 365.25 days with no calendar
+        // equivalent, so FHIRPath 3.0 "Date/Time Arithmetic" says using it signals an error - official
+        // testPlusDate16 (@1973-12-25 + 1 'a', invalid="execution" in R4/R4B/R5). What this case really
+        // covers is that the resource-backed FhirTemporal reaches the arithmetic path at all rather than
+        // falling through to string concatenation; the calendar-keyword tests above and below pin that.
         var patient = Parse(PatientJson);
 
         // Act
-        var result = patient.Select("Patient.birthDate + 1 'a'").Single();
+        var evaluate = () => patient.Select("Patient.birthDate + 1 'a'").ToList();
 
         // Assert
-        result.Value.ShouldBe("1975-12-25");
+        evaluate.ShouldThrow<InvalidOperationException>();
     }
 
     [Fact]
-    public void GivenResourceBackedDate_WhenSubtractingUcumYear_ThenReturnsShiftedDate()
+    public void GivenResourceBackedDate_WhenSubtractingUcumYear_ThenSignalsError()
     {
         // Arrange
+        // Previously asserted "1973-12-25"; same UCUM definite-duration rule as the addition case,
+        // mandated by official testPlusDate16/testPlusDate17.
         var patient = Parse(PatientJson);
 
         // Act
-        var result = patient.Select("Patient.birthDate - 1 'a'").Single();
+        var evaluate = () => patient.Select("Patient.birthDate - 1 'a'").ToList();
 
         // Assert
-        result.Value.ShouldBe("1973-12-25");
+        evaluate.ShouldThrow<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void GivenResourceBackedDate_WhenAddingUcumMonth_ThenSignalsError()
+    {
+        // Arrange
+        // Official testPlusDate14 (@1973-12-25 + 1 'mo', invalid="execution").
+        var patient = Parse(PatientJson);
+
+        // Act
+        var evaluate = () => patient.Select("Patient.birthDate + 1 'mo'").ToList();
+
+        // Assert
+        evaluate.ShouldThrow<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void GivenResourceBackedDate_WhenAddingUcumWeek_ThenReturnsShiftedDate()
+    {
+        // Arrange
+        // 'wk' is definite and unambiguous, so it must keep working where 'a'/'mo' now error - this is the
+        // over-tightening guard for the rejection above (official testPlusDate15).
+        var patient = Parse(PatientJson);
+
+        // Act
+        var result = patient.Select("Patient.birthDate + 1 'wk'").Single();
+
+        // Assert
+        result.Value.ShouldBe("1975-01-01");
     }
 
     [Fact]
