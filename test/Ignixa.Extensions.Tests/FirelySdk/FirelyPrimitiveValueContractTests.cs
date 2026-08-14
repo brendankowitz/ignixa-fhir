@@ -335,7 +335,7 @@ public class FirelyPrimitiveValueContractTests
     [Theory]
     [InlineData("2013-01-01T11:22:33+10:00")]
     [InlineData("2013")]
-    public void GivenFirelyDateTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsWireFormatString(string text)
+    public void GivenFirelyDateTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal(string text)
     {
         // Arrange
         var element = new StubTypedElement { InstanceType = "dateTime", Value = P.DateTime.Parse(text) };
@@ -344,11 +344,12 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal(text, Assert.IsType<string>(value));
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal(text, temporal.Literal);
     }
 
     [Fact]
-    public void GivenFirelyDate_WhenReadThroughIgnixaElementAdapter_ThenReturnsWireFormatString()
+    public void GivenFirelyDate_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal()
     {
         // Arrange
         var element = new StubTypedElement { InstanceType = "date", Value = P.Date.Parse("2013-01-01") };
@@ -357,11 +358,12 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal("2013-01-01", Assert.IsType<string>(value));
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal("2013-01-01", temporal.Literal);
     }
 
     [Fact]
-    public void GivenFirelyTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsWireFormatString()
+    public void GivenFirelyTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal()
     {
         // Arrange
         var element = new StubTypedElement { InstanceType = "time", Value = P.Time.Parse("11:22:33") };
@@ -370,7 +372,8 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal("11:22:33", Assert.IsType<string>(value));
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal("11:22:33", temporal.Literal);
     }
 
     [Fact]
@@ -453,7 +456,7 @@ public class FirelyPrimitiveValueContractTests
         var backToIgnixa = new IgnixaElementAdapter(new StubTypedElement { InstanceType = instanceType, Value = firelyValue }).Value;
 
         // Assert
-        Assert.Equal(text, backToIgnixa);
+        Assert.Equal(text, Assert.IsType<FhirTemporal>(backToIgnixa).Literal);
     }
 
     [Theory]
@@ -479,7 +482,7 @@ public class FirelyPrimitiveValueContractTests
 
         // Assert
         Assert.IsNotType<string>(firelyValue);
-        Assert.Equal(expected, Assert.IsType<string>(backToIgnixa));
+        Assert.Equal(expected, Assert.IsType<FhirTemporal>(backToIgnixa).Literal);
     }
 
     #endregion
@@ -621,7 +624,7 @@ public class FirelyPrimitiveValueContractTests
         var value = element.ToIgnixaElement().Value;
 
         // Assert
-        Assert.Equal("2013-01-01", Assert.IsType<string>(value));
+        Assert.Equal("2013-01-01", Assert.IsType<FhirTemporal>(value).Literal);
     }
 
     [Fact]

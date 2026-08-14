@@ -87,26 +87,26 @@ internal static class FirelyPrimitiveValues
     /// <param name="value">The value as Firely reports it.</param>
     /// <returns>The equivalent value in Ignixa's representation.</returns>
     /// <remarks>
-    /// The temporal types round-trip through their FHIR wire format, which is what
-    /// <c>ToString()</c> returns: Firely preserves the originally parsed string when it has one,
-    /// and otherwise renders at the precision the value actually carries, so a year-only
-    /// <c>dateTime</c> stays year-only rather than being widened to a full timestamp.
-    /// </remarks>
-    /// <remarks>
-    /// <b>Asymmetry note (deferred to task 5b):</b> this method currently returns <c>string</c>
-    /// for the temporal types, while Ignixa-native elements (those coming from
-    /// <see cref="TypedElementAdapter"/>) return <see cref="FhirTemporal"/>. Any code that tests
-    /// <c>value is string</c> to branch on temporal handling will therefore diverge depending on
-    /// the element source. Task 5b will migrate consumers and update this method to return
-    /// <see cref="FhirTemporal"/> to close the asymmetry.
+    /// Temporal types are translated from Firely's <c>Hl7.Fhir.ElementModel.Types</c> to
+    /// <see cref="FhirTemporal"/>. The wire literal is sourced from <c>ToString()</c>, which
+    /// Firely preserves from the original parsed text (so a year-only <c>dateTime</c> stays
+    /// year-only rather than being widened to a full timestamp), and then parsed by
+    /// <see cref="FhirTemporal.TryParse"/>. When parsing fails — which signals malformed wire
+    /// data, not a programmer error — the string is returned unchanged so that navigation and
+    /// serialization can still work on the raw text.
     /// </remarks>
     public static object? ToIgnixa(object? value) => value switch
     {
-        P.DateTime dateTime => dateTime.ToString(),
-        P.Date date => date.ToString(),
-        P.Time time => time.ToString(),
+        P.DateTime dateTime => ToTemporalOrFallback(dateTime.ToString(), FhirPrimitive.DateTime),
+        P.Date date => ToTemporalOrFallback(date.ToString(), FhirPrimitive.Date),
+        P.Time time => ToTemporalOrFallback(time.ToString(), FhirPrimitive.Time),
         _ => value,
     };
+
+    private static object? ToTemporalOrFallback(string? literal, FhirPrimitive kind) =>
+        literal is not null && FhirTemporal.TryParse(literal, kind, out var temporal) && temporal is not null
+            ? temporal
+            : literal;
 
     /// <summary>
     /// Converts a value read from an Ignixa <c>IElement</c> into the representation Firely uses.

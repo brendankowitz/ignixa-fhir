@@ -104,6 +104,7 @@ internal static class ElementJsonConverter
             float f => JsonValue.Create(f),
             DateTime dt => JsonValue.Create(dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
             DateTimeOffset dto => JsonValue.Create(dto.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
+            FhirTemporal temporal => JsonValue.Create(temporal.Literal),
             _ => JsonNode.Parse(JsonSerializer.Serialize(value)),
         };
     }

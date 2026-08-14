@@ -26,7 +26,7 @@ namespace Ignixa.FhirFakes.EdgeCases;
 /// </remarks>
 public static class ElementTreeEnumerator
 {
-    /// <summary>Walks the resource and returns every mutable primitive string leaf, in stable order.</summary>
+    /// <summary>Walks the resource and returns every mutable primitive-valued leaf, in stable order.</summary>
     public static IReadOnlyList<MutationTarget> Enumerate(ResourceJsonNode resource, IFhirSchemaProvider schemaProvider)
     {
         ArgumentNullException.ThrowIfNull(resource);
@@ -43,16 +43,25 @@ public static class ElementTreeEnumerator
         {
             if (child.HasPrimitiveValue)
             {
-                AddLeafIfStringValued(child, targets);
+                AddLeafIfPrimitiveValued(child, targets);
             }
 
             WalkChildren(child, targets);
         }
     }
 
-    private static void AddLeafIfStringValued(IElement leaf, List<MutationTarget> targets)
+    private static void AddLeafIfPrimitiveValued(IElement leaf, List<MutationTarget> targets)
     {
-        if (leaf.Value is not string value)
+        string? value;
+        if (leaf.Value is FhirTemporal temporal)
+        {
+            value = temporal.Literal;
+        }
+        else if (leaf.Value is string s)
+        {
+            value = s;
+        }
+        else
         {
             return;
         }
@@ -61,7 +70,7 @@ public static class ElementTreeEnumerator
         if (valueNode is null)
         {
             throw new InvalidOperationException(
-                $"Leaf '{leaf.Location}' (InstanceType '{leaf.InstanceType}') reports a primitive string value but no backing JsonValue node could be resolved — ElementTreeEnumerator invariant violated.");
+                $"Leaf '{leaf.Location}' (InstanceType '{leaf.InstanceType}') reports a primitive string or temporal value but no backing JsonValue node could be resolved — ElementTreeEnumerator invariant violated.");
         }
 
         targets.Add(new MutationTarget(

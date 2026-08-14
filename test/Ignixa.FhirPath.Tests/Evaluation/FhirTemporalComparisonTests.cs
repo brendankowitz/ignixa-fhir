@@ -147,6 +147,128 @@ public class FhirTemporalComparisonTests
         result.Value.ShouldBe(true);
     }
 
+    #region Aggregate min/max regression — FhirTemporal routing
+
+    [Fact]
+    public void GivenFhirTemporalDateCollection_WhenMin_ThenReturnsEarliestDate()
+    {
+        // Regression: MinMaxDate had no FhirTemporal arm, so min() on a FhirTemporal date
+        // collection returned empty instead of the earliest element.
+
+        // Arrange
+        var d1 = CreateTemporalElement("birthDate", "2020-06-15", FhirPrimitive.Date, "date");
+        var d2 = CreateTemporalElement("birthDate", "2019-01-01", FhirPrimitive.Date, "date");
+        var d3 = CreateTemporalElement("birthDate", "2021-12-31", FhirPrimitive.Date, "date");
+        var root = new ContainerElement("Patient", new[] { d1, d2, d3 });
+        var expr = _parser.Parse("birthDate.min()");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        result.Value.ShouldBe("2019-01-01");
+        result.InstanceType.ShouldBe("date");
+    }
+
+    [Fact]
+    public void GivenFhirTemporalDateCollection_WhenMax_ThenReturnsLatestDate()
+    {
+        // Arrange
+        var d1 = CreateTemporalElement("birthDate", "2020-06-15", FhirPrimitive.Date, "date");
+        var d2 = CreateTemporalElement("birthDate", "2019-01-01", FhirPrimitive.Date, "date");
+        var d3 = CreateTemporalElement("birthDate", "2021-12-31", FhirPrimitive.Date, "date");
+        var root = new ContainerElement("Patient", new[] { d1, d2, d3 });
+        var expr = _parser.Parse("birthDate.max()");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        result.Value.ShouldBe("2021-12-31");
+        result.InstanceType.ShouldBe("date");
+    }
+
+    [Fact]
+    public void GivenFhirTemporalInstantCollection_WhenMin_ThenReturnsEarliestInstant()
+    {
+        // Regression: IsDateOrDateTime() only matched "date"/"datetime", not "instant"/"time".
+        // Min/Max now dispatch FhirTemporal directly to MinMaxDate before the IsDateOrDateTime
+        // fallback, so all four temporal kinds are covered.
+
+        // Arrange
+        var i1 = CreateTemporalElement("recorded", "2024-03-15T10:00:00Z", FhirPrimitive.Instant, "instant");
+        var i2 = CreateTemporalElement("recorded", "2024-01-01T00:00:00Z", FhirPrimitive.Instant, "instant");
+        var i3 = CreateTemporalElement("recorded", "2024-06-30T23:59:59Z", FhirPrimitive.Instant, "instant");
+        var root = new ContainerElement("Observation", new[] { i1, i2, i3 });
+        var expr = _parser.Parse("recorded.min()");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        result.Value.ShouldBe("2024-01-01T00:00:00Z");
+    }
+
+    [Fact]
+    public void GivenFhirTemporalInstantCollection_WhenMax_ThenReturnsLatestInstant()
+    {
+        // Arrange
+        var i1 = CreateTemporalElement("recorded", "2024-03-15T10:00:00Z", FhirPrimitive.Instant, "instant");
+        var i2 = CreateTemporalElement("recorded", "2024-01-01T00:00:00Z", FhirPrimitive.Instant, "instant");
+        var i3 = CreateTemporalElement("recorded", "2024-06-30T23:59:59Z", FhirPrimitive.Instant, "instant");
+        var root = new ContainerElement("Observation", new[] { i1, i2, i3 });
+        var expr = _parser.Parse("recorded.max()");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        result.Value.ShouldBe("2024-06-30T23:59:59Z");
+    }
+
+    [Fact]
+    public void GivenFhirTemporalTimeCollection_WhenMin_ThenReturnsEarliestTime()
+    {
+        // Regression: before this fix, all FhirTemporal values (including time) were routed to
+        // MinMaxDate, but TryParseDate has only date-anchored formats so "10:30:00" matched none,
+        // every element was continued, and min() returned []. MinMaxTime now handles
+        // FhirTemporal.Time via ordinal comparison over Literal.
+
+        // Arrange
+        var t1 = CreateTemporalElement("birthTime", "10:30:00", FhirPrimitive.Time, "time");
+        var t2 = CreateTemporalElement("birthTime", "08:00:00", FhirPrimitive.Time, "time");
+        var t3 = CreateTemporalElement("birthTime", "23:59:59", FhirPrimitive.Time, "time");
+        var root = new ContainerElement("Patient", new[] { t1, t2, t3 });
+        var expr = _parser.Parse("birthTime.min()");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        ((FhirTemporal)result.Value!).Literal.ShouldBe("08:00:00");
+        result.InstanceType.ShouldBe("time");
+    }
+
+    [Fact]
+    public void GivenFhirTemporalTimeCollection_WhenMax_ThenReturnsLatestTime()
+    {
+        // Arrange
+        var t1 = CreateTemporalElement("birthTime", "10:30:00", FhirPrimitive.Time, "time");
+        var t2 = CreateTemporalElement("birthTime", "08:00:00", FhirPrimitive.Time, "time");
+        var t3 = CreateTemporalElement("birthTime", "23:59:59", FhirPrimitive.Time, "time");
+        var root = new ContainerElement("Patient", new[] { t1, t2, t3 });
+        var expr = _parser.Parse("birthTime.max()");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        ((FhirTemporal)result.Value!).Literal.ShouldBe("23:59:59");
+        result.InstanceType.ShouldBe("time");
+    }
+
+    #endregion
+
     private static IElement CreateTemporalElement(string name, string literal, FhirPrimitive kind, string instanceType)
     {
         if (!FhirTemporal.TryParse(literal, kind, out var temporal) || temporal is null)

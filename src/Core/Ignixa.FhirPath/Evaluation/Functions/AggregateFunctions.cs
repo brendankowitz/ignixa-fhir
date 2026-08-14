@@ -100,7 +100,21 @@ internal static class AggregateFunctions
             return MinMaxNumeric(list, isMax: false);
         }
 
-        // Handle string comparison (but check for date/datetime strings first)
+        // FhirTemporal carries the typed value from resource elements. time is routed to
+        // MinMaxTime (ordinal HH:mm:ss comparison — no date component). date/dateTime/instant
+        // are routed to MinMaxDate (parse-to-DateTime comparison).
+        if (firstValue is FhirTemporal ft && ft.Kind == FhirPrimitive.Time)
+        {
+            return MinMaxTime(list, isMax: false);
+        }
+
+        if (firstValue is FhirTemporal)
+        {
+            return MinMaxDate(list, isMax: false);
+        }
+
+        // FHIRPath date/dateTime literals begin with '@'; the evaluator strips '@T' from time
+        // literals so bare HH:mm:ss strings reach MinMaxString rather than this branch.
         if (firstValue is string s && s.StartsWith('@'))
         {
             // Date or DateTime literal (@2024-01-10 or @2024-01-10T10:00:00Z)
@@ -161,7 +175,21 @@ internal static class AggregateFunctions
             return MinMaxNumeric(list, isMax: true);
         }
 
-        // Handle string comparison (but check for date/datetime strings first)
+        // FhirTemporal carries the typed value from resource elements. time is routed to
+        // MinMaxTime (ordinal HH:mm:ss comparison — no date component). date/dateTime/instant
+        // are routed to MinMaxDate (parse-to-DateTime comparison).
+        if (firstValue is FhirTemporal ft && ft.Kind == FhirPrimitive.Time)
+        {
+            return MinMaxTime(list, isMax: true);
+        }
+
+        if (firstValue is FhirTemporal)
+        {
+            return MinMaxDate(list, isMax: true);
+        }
+
+        // FHIRPath date/dateTime literals begin with '@'; the evaluator strips '@T' from time
+        // literals so bare HH:mm:ss strings reach MinMaxString rather than this branch.
         if (firstValue is string s && s.StartsWith('@'))
         {
             // Date or DateTime literal (@2024-01-10 or @2024-01-10T10:00:00Z)
@@ -396,6 +424,11 @@ internal static class AggregateFunctions
                 dateString = dto.ToString("yyyy-MM-ddTHH:mm:ssZ");
                 inferredType = "dateTime";
             }
+            else if (element.Value is FhirTemporal fhirTemporal)
+            {
+                dateString = fhirTemporal.Literal;
+                inferredType = element.InstanceType;
+            }
             else if (element.Value is string s && s.StartsWith('@'))
             {
                 // Strip @ prefix
@@ -433,6 +466,46 @@ internal static class AggregateFunctions
         }
 
         return [];
+    }
+
+    private static IEnumerable<IElement> MinMaxTime(List<IElement> list, bool isMax)
+    {
+        // FHIR time values (HH:mm:ss[.fff]) sort correctly under ordinal string comparison
+        // because the format is zero-padded and fixed-width per component. A time value has
+        // no date component, so parsing to DateTime is semantically wrong; MinMaxDate cannot
+        // be reused here.
+        string? extremeValue = null;
+        IElement? result = null;
+
+        foreach (var element in list)
+        {
+            string? timeString = null;
+
+            if (element.Value is FhirTemporal fhirTemporal && fhirTemporal.Kind == FhirPrimitive.Time)
+            {
+                timeString = fhirTemporal.Literal;
+            }
+            else if (element.Value is string s)
+            {
+                // Plain HH:mm:ss[.fff] string — occurs in mixed collections where a resource
+                // time element appears alongside FhirTemporal instances.
+                timeString = s;
+            }
+
+            if (timeString == null)
+                continue;
+
+            var comparison = extremeValue is null ? -1
+                : string.Compare(timeString, extremeValue, StringComparison.Ordinal);
+
+            if (extremeValue == null || (isMax && comparison > 0) || (!isMax && comparison < 0))
+            {
+                extremeValue = timeString;
+                result = element;
+            }
+        }
+
+        return result is not null ? [result] : [];
     }
 
     #endregion
