@@ -5,11 +5,9 @@
 
 #nullable enable
 
-using Ignixa.Abstractions;
-using Shouldly;
-using Xunit;
+using System.Globalization;
 
-namespace Ignixa.Serialization.Tests;
+namespace Ignixa.Abstractions.Tests;
 
 /// <summary>
 /// Tests for <see cref="FhirTemporal"/>, covering the requirement that the type be typed and
@@ -581,5 +579,165 @@ public class FhirTemporalTests
         bool expected)
     {
         FhirTemporal.IsTemporalLiteral(literal).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("2024-02-29", FhirPrimitive.Date)]
+    [InlineData("2000-02-29", FhirPrimitive.Date)]
+    [InlineData("2024-02-29T10:30:00Z", FhirPrimitive.Instant)]
+    public void GivenLeapDayInALeapYear_WhenParsed_ThenItIsAccepted(string literal, FhirPrimitive kind)
+    {
+        // Act
+        var parsed = FhirTemporal.TryParse(literal, kind, out var result);
+
+        // Assert
+        parsed.ShouldBeTrue();
+        result.ShouldNotBeNull();
+        result.Literal.ShouldBe(literal);
+        result.Value.ShouldNotBeNull();
+        result.Value.Value.UtcDateTime.Date.ShouldBe(new DateTime(int.Parse(literal[..4], CultureInfo.InvariantCulture), 2, 29));
+    }
+
+    [Theory]
+    [InlineData("2023-02-29", FhirPrimitive.Date)]
+    [InlineData("1900-02-29", FhirPrimitive.Date)]
+    [InlineData("2023-02-29T10:30:00Z", FhirPrimitive.Instant)]
+    public void GivenLeapDayInANonLeapYear_WhenParsed_ThenParsingFails(string literal, FhirPrimitive kind)
+    {
+        // 1900 is the century rule: divisible by 100 but not 400, so it is not a leap year. Both this and
+        // the plain 2023 case are rejected because the bounds are resolved through DateTimeOffset.TryParse,
+        // which enforces the calendar. Nothing silently accepts an impossible date.
+
+        // Act
+        var parsed = FhirTemporal.TryParse(literal, kind, out var result);
+
+        // Assert
+        parsed.ShouldBeFalse();
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(FhirPrimitive.Date)]
+    [InlineData(FhirPrimitive.DateTime)]
+    [InlineData(FhirPrimitive.Instant)]
+    [InlineData(FhirPrimitive.Time)]
+    public void GivenNullLiteral_WhenParsed_ThenParsingFailsForEveryTemporalKind(FhirPrimitive kind)
+    {
+        // Act
+        var parsed = FhirTemporal.TryParse(null, kind, out var result);
+
+        // Assert
+        parsed.ShouldBeFalse();
+        result.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(FhirPrimitive.Date)]
+    [InlineData(FhirPrimitive.DateTime)]
+    [InlineData(FhirPrimitive.Instant)]
+    [InlineData(FhirPrimitive.Time)]
+    public void GivenEmptyLiteral_WhenParsed_ThenParsingFailsForEveryTemporalKind(FhirPrimitive kind)
+    {
+        // Act
+        var parsed = FhirTemporal.TryParse(string.Empty, kind, out var result);
+
+        // Assert
+        parsed.ShouldBeFalse();
+        result.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenTimezoneBearingAndTimezoneLessSameClock_WhenOrderedWithCompareTo_ThenTheyDoNotCollide()
+    {
+        // The CompareTo/Equals consistency contract. These two differ only in timezone presence, which is
+        // an equality key, so a zero CompareTo would let any comparison-based collection drop one of them.
+        FhirTemporal.TryParse("2012-01-01T14:30:00Z", FhirPrimitive.Instant, out var withTimezone);
+        FhirTemporal.TryParse("2012-01-01T14:30:00", FhirPrimitive.DateTime, out var withoutTimezone);
+
+        // Assert
+        withTimezone.ShouldNotBeNull();
+        withoutTimezone.ShouldNotBeNull();
+        withTimezone.Equals(withoutTimezone).ShouldBeFalse();
+        withTimezone.CompareTo(withoutTimezone).ShouldNotBe(0);
+        withoutTimezone.CompareTo(withTimezone).ShouldNotBe(0);
+        Math.Sign(withTimezone.CompareTo(withoutTimezone))
+            .ShouldBe(-Math.Sign(withoutTimezone.CompareTo(withTimezone)));
+    }
+
+    [Fact]
+    public void GivenTimezoneBearingAndTimezoneLessSameClock_WhenPutInASortedSet_ThenBothSurvive()
+    {
+        // Arrange
+        FhirTemporal.TryParse("2012-01-01T14:30:00Z", FhirPrimitive.Instant, out var withTimezone);
+        FhirTemporal.TryParse("2012-01-01T14:30:00", FhirPrimitive.DateTime, out var withoutTimezone);
+
+        // Act
+        SortedSet<FhirTemporal> sorted = [withTimezone!, withoutTimezone!];
+        var distinct = new[] { withTimezone!, withoutTimezone! }.Distinct().ToList();
+
+        // Assert
+        sorted.Count.ShouldBe(2);
+        distinct.Count.ShouldBe(2);
+    }
+
+    [Theory]
+    [InlineData("2012-01-01T14:30:00Z", FhirPrimitive.Instant, "2012-01-01T14:30:00", FhirPrimitive.DateTime)]
+    [InlineData("2012-01-01T14:30:00Z", FhirPrimitive.Instant, "2012-01-01T14:30:00Z", FhirPrimitive.DateTime)]
+    [InlineData("2012-01-01T10:00:00Z", FhirPrimitive.Instant, "2012-01-01T20:00:00+10:00", FhirPrimitive.Instant)]
+    [InlineData("2012-01-01", FhirPrimitive.Date, "2012-01-01T00:00:00", FhirPrimitive.DateTime)]
+    [InlineData("2012", FhirPrimitive.Date, "2012-01", FhirPrimitive.Date)]
+    [InlineData("13:45:00", FhirPrimitive.Time, "1900-01-01T13:45:00", FhirPrimitive.DateTime)]
+    [InlineData("2012-01-01T14:30:00", FhirPrimitive.DateTime, "2012-01-01T14:30:00.5", FhirPrimitive.DateTime)]
+    public void GivenTwoValues_WhenComparedWithCompareTo_ThenZeroHoldsExactlyWhenTheyAreEqual(
+        string leftLiteral,
+        FhirPrimitive leftKind,
+        string rightLiteral,
+        FhirPrimitive rightKind)
+    {
+        // Arrange
+        FhirTemporal.TryParse(leftLiteral, leftKind, out var left);
+        FhirTemporal.TryParse(rightLiteral, rightKind, out var right);
+
+        // Assert
+        left.ShouldNotBeNull();
+        right.ShouldNotBeNull();
+        (left.CompareTo(right) == 0).ShouldBe(left.Equals(right));
+        (right.CompareTo(left) == 0).ShouldBe(right.Equals(left));
+    }
+
+    [Fact]
+    public void GivenAKindThatDisagreesWithTheLiteral_WhenParsed_ThenHasTimezoneStillFollowsTheLiteral()
+    {
+        // Kind is unvalidated schema metadata, so a dateTime-shaped literal can arrive labelled as a date.
+        // Value is resolved from the literal, so HasTimezone must be too -- otherwise the instance reports
+        // a floating local time while holding a fixed UTC instant, and because HasTimezone is an equality
+        // and ordering key that inconsistency propagates into collections.
+        FhirTemporal.TryParse("2012-01-01T14:30:00Z", FhirPrimitive.Date, out var mislabelled);
+        FhirTemporal.TryParse("2012-01-01T14:30:00Z", FhirPrimitive.DateTime, out var correctlyLabelled);
+
+        // Assert
+        mislabelled.ShouldNotBeNull();
+        correctlyLabelled.ShouldNotBeNull();
+        mislabelled.HasTimezone.ShouldBeTrue();
+        mislabelled.Value.ShouldBe(correctlyLabelled.Value);
+        mislabelled.Equals(correctlyLabelled).ShouldBeTrue();
+        mislabelled.CompareTo(correctlyLabelled).ShouldBe(0);
+    }
+
+    [Fact]
+    public void GivenTheSameTimeWrittenWithAndWithoutTheLeadingT_WhenParsed_ThenHasTimezoneAgrees()
+    {
+        // Normalize() supplies the leading 'T' before the timezone scan, so the two spellings cannot
+        // disagree on an equality key.
+        FhirTemporal.TryParse("13:45:00", FhirPrimitive.Time, out var bare);
+        FhirTemporal.TryParse("T13:45:00", FhirPrimitive.Time, out var prefixed);
+
+        // Assert
+        bare.ShouldNotBeNull();
+        prefixed.ShouldNotBeNull();
+        bare.HasTimezone.ShouldBe(prefixed.HasTimezone);
+        bare.HasTimezone.ShouldBeFalse();
+        bare.CompareTo(prefixed).ShouldBe(0);
+        bare.Equals(prefixed).ShouldBeTrue();
     }
 }

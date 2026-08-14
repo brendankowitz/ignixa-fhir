@@ -20,7 +20,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ignixa.FhirPath" />
-    <InternalsVisibleTo Include="Ignixa.Serialization.Tests" />
+    <InternalsVisibleTo Include="Ignixa.Abstractions.Tests" />
   </ItemGroup>
 
 </Project>
