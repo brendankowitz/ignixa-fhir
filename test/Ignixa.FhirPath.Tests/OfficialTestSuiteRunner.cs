@@ -10,6 +10,7 @@ using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Xunit;
 using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace Ignixa.FhirPath.Tests;
 
@@ -141,6 +142,94 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
 
+    /// <summary>
+    /// Official <c>invalid</c>-marked cases the engine does not yet signal an error for, keyed by test name
+    /// with the specific gap that defers each one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every entry here used to pass vacuously: <see cref="RunInvalidExpressionTest"/> caught its own
+    /// <c>Assert.Fail</c> and logged it as a success, so the whole <c>invalid</c> category was unverified.
+    /// With that fixed, these are the cases that genuinely fail, and each is skipped by name rather than
+    /// suppressed as a category - a skip that names its gap is auditable, a silent pass is not.
+    /// </para>
+    /// <para>
+    /// Adding a name here is a deferral, never a fix. Removing one should follow from making the engine
+    /// signal the error, not from relaxing the assertion.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _unsignalledInvalidCases = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        // Singleton-cardinality enforcement. The engine returns empty for a non-singleton operand
+        // everywhere rather than signalling, so fixing these means auditing every binary operator and
+        // function for its input cardinality rule - engine-wide work, not a temporal/comparison fix.
+        ["testConcatenate4"] = "(1 | 2 | 3) & 'b': '&' on a multi-item collection must error; the engine returns empty for every non-singleton operand instead of signalling.",
+        ["testNotInvalid"] = "(1|2).not(): not() on a multi-item collection must error; the engine returns empty for non-singleton input instead of signalling.",
+        ["testIn5"] = "('a' | 'c' | 'd') in 'b': the left operand of 'in' must be a singleton; the engine returns empty instead of signalling.",
+        ["testFHIRPathAsFunction21"] = "Patient.name.as(HumanName): as() requires singleton input and Patient has three names; the engine applies it element-wise and returns all three.",
+
+        // Schema-aware static analysis. FhirPathAnalyzer is the component that knows element names, choice
+        // elements and resource types; the evaluator is deliberately schema-tolerant and yields empty for
+        // anything it cannot resolve. Making evaluation reject these means running the analyzer as part of
+        // evaluation, which is an architectural decision, not a bug fix.
+        ["testSimpleFail"] = "name.given1: an unknown element name must be a semantic error; the evaluator resolves names leniently and returns empty. Needs FhirPathAnalyzer wired into evaluation.",
+        ["testSimpleWithWrongContext"] = "Encounter.name.given against a Patient: a resource-type mismatch must be a semantic error; the evaluator returns empty. Same FhirPathAnalyzer gap.",
+        ["testPolymorphicsB"] = "Observation.valueQuantity.exists(): choice-element shorthand is not legal FHIRPath (value.ofType(Quantity) is), but the evaluator resolves the shorthand and returns true. Needs choice-element knowledge in analysis.",
+        ["testPolymorphismB"] = "Observation.valueQuantity.unit: same illegal choice-element shorthand as testPolymorphicsB, returning 'lbs' instead of signalling.",
+        ["testPolymorphismAsB"] = "(Observation.value as Period).unit: Period has no 'unit' child, which must be a semantic error; the evaluator returns empty. Same FhirPathAnalyzer gap.",
+        ["testFHIRPathAsFunction23"] = "Patient.gender.as(string1): 'string1' is not a known type, which must error; the engine treats an unresolvable type name as 'matches nothing' and returns empty.",
+        ["testFHIRPathAsFunction24"] = "Patient.gender.ofType(string1): same unresolvable type name as testFHIRPathAsFunction23.",
+
+        // Unary minus binds looser than the invocation, so these parse as -(1.convertsToInteger()) and
+        // negate a boolean. Typing the unary operators is arithmetic-typing work outside temporal scope.
+        ["testLiteralIntegerNegative1Invalid"] = "-1.convertsToInteger() parses as -(1.convertsToInteger()); negating a boolean must error, but unary minus returns empty for a non-numeric operand.",
+        ["testPrecedence1"] = "-1.convertsToInteger(): identical expression and gap to testLiteralIntegerNegative1Invalid.",
+        ["testLiteralDecimalNegative01Invalid"] = "-0.1.convertsToDecimal() parses as -(0.1.convertsToDecimal()); same unary-minus-on-boolean gap.",
+
+        // Deliberate existing design decision, documented in FhirPathEvaluator.VisitFunctionCall: a
+        // positional function over an unordered navigation source returns empty at runtime and is surfaced
+        // as a design-time error by FhirPathAnalyzer instead. Changing it is a decision, not a fix.
+        ["testDollarOrderNotAllowed"] = "Patient.children().skip(1): a positional function over an unordered source must error; VisitFunctionCall deliberately returns empty and defers the diagnostic to FhirPathAnalyzer.",
+
+        ["testMinus4"] = "'a'-'b': subtraction of two strings must error. Making non-numeric '-' throw is a broad arithmetic-typing change across all operand types; deliberately not bundled with the temporal operand fix.",
+
+        // The suite treats the UCUM definite durations 'a' (365.25 days) and 'mo' as not calendar-
+        // convertible, so adding them to a date is an error, while the calendar keywords year/month are
+        // fine. Ignixa currently treats 'a'/'mo' as synonyms for the keywords, and
+        // BoundaryAndCalendarArithmeticTests + ResourceBackedTemporalFunctionTests pin that behaviour with
+        // explicit expected values. Reversing it is a deliberate contract change that flips four pinned
+        // unit tests and needs a decision, not a drive-by edit inside an error-handling fix.
+        ["testPlusDate14"] = "@1973-12-25 + 1 'mo': UCUM 'mo' is a definite duration and not calendar-convertible, so the suite requires an error; Ignixa treats 'mo' as the calendar keyword 'month'. Contradicts BoundaryAndCalendarArithmeticTests, which pins 1974-01-25.",
+        ["testPlusDate16"] = "@1973-12-25 + 1 'a': UCUM 'a' is a definite duration; same conflict as testPlusDate14, pinned as 1974-12-25.",
+        ["testPlusDate17"] = "@1975-12-25 + 1 'a': same UCUM definite-duration conflict as testPlusDate16.",
+
+        // defineVariable scoping. The engine's variable store is permissive: unknown names resolve to
+        // empty (VisitVariable), redefinition overwrites, and system names are not reserved.
+        ["defineVariable10"] = "select(%fam.given): a reference to an undefined variable must error; VisitVariable returns empty for any unknown name.",
+        ["defineVariable9"] = "a variable defined in one branch of '|' must not be visible in the sibling branch and referencing it must error; the sibling silently sees empty.",
+        ["defineVariable12"] = "same cross-branch '|' scope leak as defineVariable9, with the variable defined inside a Patient.name navigation.",
+        ["defineVariable16"] = "a variable from an inner select() scope must not be visible in a later outer select(), and referencing it must error; the engine's DefinedVariables dictionary keeps it visible.",
+        ["dvUsageOutsideScopeThrows"] = "referencing a variable outside the scope that defined it must error; the engine resolves it or returns empty.",
+        ["dvRedefiningVariableThrowsError"] = "redefining an existing variable name must error; EvaluateDefineVariable overwrites the entry.",
+        ["dvCantOverwriteSystemVar"] = "defineVariable('context', ...) must error because 'context' is a system variable; there is no reserved-name check.",
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The deferred case names, exposed so <see cref="OfficialTestSuiteSkipListTests"/> can prove each one
+    /// still names a real, still-invalid case in the official suites.
+    /// </summary>
+    public static IEnumerable<string> DeferredInvalidCaseNames => _unsignalledInvalidCases.Keys;
+
+    /// <summary>
+    /// The deferred cases with their justifications, exposed for the same guard tests.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> DeferredInvalidCaseReasons => _unsignalledInvalidCases;
+
+    /// <summary>
+    /// The resolved directory containing <c>TestData/fhir-test-cases</c>, exposed for the guard tests.
+    /// </summary>
+    public static string ProjectRoot => _projectRoot;
+
     // Functions that throw NotImplementedException at runtime - tests are run but expected to fail
     // These functions are explicitly defined to throw for proper test tracking.
     // Type introspection: conformsTo()
@@ -237,23 +326,20 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Arrange
         ArgumentNullException.ThrowIfNull(testCase);
 
-        // Pass with comment for version-specific tests where behavior differs between R4/R4B and R5
-        // testPlusDate19: R4/R4B truncate fractional seconds to integers, R5 preserves them
-        // Our implementation follows R5 behavior (sub-second precision preserved)
+        // Version-specific behaviour: R4/R4B truncate fractional seconds to integers, R5 preserves them,
+        // and our implementation follows R5 (sub-second precision preserved).
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testPlusDate19")
         {
-            _output.WriteLine("[SKIPPED] testPlusDate19: R4/R4B expect truncation of fractional seconds; our implementation follows R5 behavior");
+            SkipTest("testPlusDate19: R4/R4B expect truncation of fractional seconds; this implementation follows R5 behaviour");
             return;
         }
 
-        // Pass with comment for quantity algebra tests - Fhir.Metrics library doesn't support unit multiplication/division
-        // with different prefixes (e.g., cm * m). These tests require full UCUM algebra support.
-        // testQuantity9: 2.0 'cm' * 2.0 'm' = 0.040 'm2' (unit multiplication)
-        // testQuantity10: 4.0 'g' / 2.0 'm' = 2 'g/m' (unit division)
-        // testQuantity11: 1.0 'm' / 1.0 'm' = 1 '1' (dimensionless) - this one might work now with canonical conversion
+        // Quantity algebra: Fhir.Metrics does not support unit multiplication/division across prefixes.
+        // testQuantity9:  2.0 'cm' * 2.0 'm' = 0.040 'm2' (unit multiplication)
+        // testQuantity10: 4.0 'g'  / 2.0 'm' = 2 'g/m'    (unit division)
         if (testCase.Name is "testQuantity9" or "testQuantity10")
         {
-            _output.WriteLine($"[SKIPPED] {testCase.Name}: Requires full UCUM unit algebra; Fhir.Metrics library limitation");
+            SkipTest($"{testCase.Name}: requires full UCUM unit algebra; Fhir.Metrics library limitation");
             return;
         }
 
@@ -346,72 +432,90 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
     /// <summary>
     /// Runs a test case that expects an invalid expression (syntax, semantic, or execution error).
-    /// The test passes if parsing or evaluation throws the expected error type.
+    /// The test passes only if the engine itself signals an error - a <c>syntax</c> case must fail at
+    /// parse time, a <c>semantic</c>/<c>execution</c> case at parse or evaluation time.
     /// </summary>
+    /// <remarks>
+    /// Every <c>Assert.Fail</c> below sits outside a <c>try</c> on purpose. An earlier version wrapped the
+    /// whole method body in one, so xunit's own <c>FailException</c> landed in the trailing
+    /// <c>catch (Exception)</c> and was logged as <c>[INVALID-OK]</c> - which made every single
+    /// <c>invalid</c>-marked case pass unconditionally. The <c>IsEngineSignalledError</c> filters keep that
+    /// from coming back if this method is ever restructured.
+    /// </remarks>
     private void RunInvalidExpressionTest(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider)
     {
+        if (_unsignalledInvalidCases.TryGetValue(testCase.Name, out var deferralReason))
+        {
+            SkipTest($"{testCase.Name}: {deferralReason}");
+            return;
+        }
+
         var invalidType = testCase.InvalidType ?? "syntax";
 
+        Expression expression;
         try
         {
-            // Try to parse the expression
-            var expression = _parser.Parse(testCase.Expression);
-
-            // If parsing succeeded and we expected a syntax error, that's a failure
-            if (invalidType == "syntax")
-            {
-                Assert.Fail($"Expected syntax error but expression parsed successfully: {testCase.Expression}");
-                return;
-            }
-
-            // Try to evaluate the expression
-            var context = new FhirEvaluationContext
-            {
-                Resource = element,
-                ElementResolver = TestElementResolver.Create(element)
-            };
-
-            // Force evaluation by iterating results
-            var results = _evaluator.Evaluate(element, expression, context).ToList();
-
-            // If we get here, no error was thrown - fail the test
-            Assert.Fail($"Expected {invalidType} error but expression evaluated successfully: {testCase.Expression}");
+            expression = _parser.Parse(testCase.Expression);
         }
-        catch (NotImplementedException ex)
+        catch (Exception ex) when (IsEngineSignalledError(ex))
         {
-            // NotImplementedException counts as semantic/execution error
-            if (invalidType is "semantic" or "execution")
-            {
-                _output.WriteLine($"[INVALID-OK] {testCase.Name}: NotImplementedException thrown as expected ({invalidType})");
-                return;
-            }
-            Assert.Fail($"Expected {invalidType} error but got NotImplementedException: {ex.Message}");
+            _output.WriteLine($"[INVALID-OK] {testCase.Name}: parse-time error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
+            return;
         }
-        catch (InvalidOperationException ex)
+
+        if (invalidType == "syntax")
         {
-            // InvalidOperationException typically indicates semantic/execution errors
-            if (invalidType is "semantic" or "execution")
-            {
-                _output.WriteLine($"[INVALID-OK] {testCase.Name}: InvalidOperationException thrown as expected ({invalidType})");
-                return;
-            }
-            Assert.Fail($"Expected {invalidType} error but got InvalidOperationException: {ex.Message}");
+            Assert.Fail($"Expected syntax error but expression parsed successfully in test '{testCase.Name}' (group: {testCase.GroupName}): {testCase.Expression}");
         }
-        catch (Exception ex) when (invalidType == "syntax")
+
+        var context = new FhirEvaluationContext
         {
-            // Any parse error for syntax tests is acceptable
-            _output.WriteLine($"[INVALID-OK] {testCase.Name}: Parse error thrown as expected (syntax): {ex.GetType().Name}");
-        }
-        catch (Exception ex)
+            Resource = element,
+            ElementResolver = TestElementResolver.Create(element)
+        };
+
+        List<IElement> results;
+        try
         {
-            // For semantic/execution, any exception is acceptable
-            if (invalidType is "semantic" or "execution")
-            {
-                _output.WriteLine($"[INVALID-OK] {testCase.Name}: Exception thrown as expected ({invalidType}): {ex.GetType().Name}");
-                return;
-            }
-            throw;
+            // Force evaluation by iterating results - the evaluator is lazy
+            results = _evaluator.Evaluate(element, expression, context).ToList();
         }
+        catch (Exception ex) when (IsEngineSignalledError(ex))
+        {
+            _output.WriteLine($"[INVALID-OK] {testCase.Name}: evaluation error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        Assert.Fail($"""
+            Expected {invalidType} error but expression completed successfully in test '{testCase.Name}' (group: {testCase.GroupName})
+            Expression: {testCase.Expression}
+            Input file: {testCase.InputFile}
+            Actual outputs: {FormatActualOutputs(results)}
+            """);
+    }
+
+    /// <summary>
+    /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness.
+    /// xunit assertion failures (<see cref="XunitException"/>, including <c>Assert.Fail</c>'s
+    /// <c>FailException</c>) must never be mistaken for the engine reporting an invalid expression.
+    /// </summary>
+    private static bool IsEngineSignalledError(Exception exception) => exception is not XunitException;
+
+    /// <summary>
+    /// Records that this test case is deliberately not asserted, with the reason, and stops the test.
+    /// </summary>
+    /// <remarks>
+    /// This reports as a pass, not as a skip. xunit v2.9.3 has no working dynamic skip - <c>Assert.Skip</c>
+    /// does not exist and <c>xunit.execution</c> 2.9.3 does not honour <see cref="SkipException"/>'s
+    /// <c>DynamicSkipToken</c> - so a reason-carrying early return is the only mechanism available without
+    /// taking a dependency on <c>Xunit.SkippableFact</c>. The reason string is the compensating control:
+    /// unlike the vacuous passes this class used to produce, every deferral is named, justified in
+    /// <see cref="_unsignalledInvalidCases"/>, and covered by
+    /// <see cref="OfficialTestSuiteSkipListTests"/> so it cannot go stale unnoticed.
+    /// </remarks>
+    private void SkipTest(string reason)
+    {
+        _output.WriteLine($"[SKIPPED] {reason}");
     }
 
     private static void ValidatePredicateResult(FhirPathTestCase testCase, IReadOnlyList<IElement> actualResults)
