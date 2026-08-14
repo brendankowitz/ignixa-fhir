@@ -26,7 +26,7 @@ namespace Ignixa.Abstractions;
 /// instance.
 /// </para>
 /// </remarks>
-[SuppressMessage("Microsoft.Design", "CA1036:OverrideMethodsOnComparableTypes", Justification = "FHIRPath ordering is tri-state, so a bool-returning relational operator cannot express an indeterminate result. Callers needing FHIRPath semantics use Compare; CompareTo exists only to give collections a total order.")]
+[SuppressMessage("Microsoft.Design", "CA1036:OverrideMethodsOnComparableTypes", Justification = "FHIRPath ordering is tri-state, so a bool-returning relational operator cannot express an indeterminate result. Callers needing FHIRPath semantics use Compare; CompareTo exists only to give collections a total order. The non-generic IComparable is deliberately not implemented for the same reason: the evaluator has 'is IComparable' fallbacks that would silently turn FHIRPath's empty into a definite answer.")]
 public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTemporal>
 {
     private const string TimeOnlyAnchor = "1900-01-01";
@@ -94,9 +94,12 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// denotes a fixed instant, and FHIRPath treats a comparison between the two as indeterminate.
     /// <see cref="Value"/> cannot preserve the distinction because it resolves everything to UTC.
     /// It is derived by scanning the literal after the <c>T</c>, not from the parsed instant, because
-    /// <see cref="DateTimeOffset"/> exposes no "an offset was present" flag. It is always
-    /// <see langword="false"/> for <c>date</c> (no time component) and for <c>time</c> (FHIR times never
-    /// carry a timezone).
+    /// <see cref="DateTimeOffset"/> exposes no "an offset was present" flag, and not from
+    /// <see cref="Kind"/>, which is unvalidated caller-supplied metadata that may disagree with the
+    /// literal. A well-formed <c>date</c> has no time component and a well-formed <c>time</c> never
+    /// carries a timezone, so both report <see langword="false"/> because the scan finds nothing, not
+    /// because the kind suppresses it. That keeps this property consistent with <see cref="Value"/> and
+    /// with the ordering keys, which are likewise derived from the literal.
     /// </remarks>
     public bool HasTimezone { get; }
 
@@ -144,6 +147,15 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// <see cref="FhirPrimitive.Date"/>. Shape conformance checking belongs to
     /// <c>FhirPrimitiveValidator</c>.
     /// </para>
+    /// <para>
+    /// <paramref name="kind"/> nonetheless selects an interpretation rather than merely labelling one:
+    /// <see cref="FhirPrimitive.Time"/> anchors the literal to a placeholder date and suppresses
+    /// <see cref="Value"/>, because a time of day is not a point on the calendar. What it must never do is
+    /// override a fact the literal already states. <see cref="HasTimezone"/> is read from the literal for
+    /// that reason -- forcing it off for <see cref="FhirPrimitive.Date"/> once let a mislabelled
+    /// <c>dateTime</c> report a floating local time while holding a resolved UTC instant, and because
+    /// <see cref="HasTimezone"/> is an equality and ordering key, that contradiction reached collections.
+    /// </para>
     /// </remarks>
     public static bool TryParse(string? literal, FhirPrimitive kind, out FhirTemporal? result)
     {
@@ -187,29 +199,27 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
             ResolveValue(normalized, precision, kind),
             lowerBound.Value,
             upperBound.Value,
-            HasTimezoneComponent(wire, kind));
+            HasTimezoneComponent(normalized));
 
         return true;
     }
 
-    private static bool HasTimezoneComponent(string wire, FhirPrimitive kind)
+    private static bool HasTimezoneComponent(string normalized)
     {
-        // FHIR date has no time component and FHIR time never carries a timezone, so both are always
-        // timezone-less regardless of what the literal happens to contain.
-        if (kind is FhirPrimitive.Date or FhirPrimitive.Time)
-        {
-            return false;
-        }
+        // Derived from the literal alone, never from Kind: Kind is unvalidated, so suppressing the scan
+        // for date or time would let a mislabelled literal produce an instance whose HasTimezone
+        // contradicts its own Value and ordering keys -- and HasTimezone participates in both equality
+        // and CompareTo. The normalized form is used so that "13:45:00" and "T13:45:00" agree.
 
         // Only the substring after 'T' may hold a timezone; scanning the whole literal would mistake the
         // date part's '-' separators for a negative offset.
-        var timeIndex = wire.IndexOf('T', StringComparison.Ordinal);
+        var timeIndex = normalized.IndexOf('T', StringComparison.Ordinal);
         if (timeIndex < 0)
         {
             return false;
         }
 
-        foreach (var character in wire.AsSpan(timeIndex + 1))
+        foreach (var character in normalized.AsSpan(timeIndex + 1))
         {
             if (character is 'Z' or '+' or '-')
             {
@@ -306,9 +316,17 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// share a wire format. <c>time</c> is the one exception, because a bare time of day is anchored to
     /// a placeholder date internally and must not collide with a real value on that date.
     /// <see cref="HasTimezone"/> <em>is</em> part of identity: a fixed instant and a floating local time
-    /// are different values, and folding it in keeps the invariant that <see cref="Compare"/> returns
-    /// zero exactly when two values are equal, now that a timezone mismatch makes <see cref="Compare"/>
-    /// indeterminate.
+    /// are different values.
+    /// <para>
+    /// Two distinct comparison surfaces relate to this method and they do not hold the same invariant.
+    /// <see cref="CompareTo"/> returns zero exactly when this method returns <see langword="true"/>, which
+    /// is the consistency contract sorted and keyed collections require; it is why
+    /// <see cref="HasTimezone"/> is a tiebreaker there as well as an equality key here.
+    /// <see cref="Compare"/> carries no such invariant and must not be assumed to agree: it is tri-state,
+    /// so a non-zero result there means "ordered", not "unequal", and a <see langword="null"/> result means
+    /// the ordering is indeterminate rather than that the values differ. Use this method, never
+    /// <see cref="Compare"/>, to decide equality.
+    /// </para>
     /// </remarks>
     public bool Equals(FhirTemporal? other)
     {
@@ -343,6 +361,10 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// <remarks>
     /// This is a total order so that sorted collections behave, and is therefore not FHIRPath comparison:
     /// it never reports indeterminacy. Use <see cref="Compare"/> for FHIRPath semantics.
+    /// The tiebreakers are exactly <see cref="Equals(FhirTemporal)"/>'s keys, so a zero result here means
+    /// the operands are equal. Without that agreement a <see cref="SortedSet{T}"/> or an
+    /// <c>OrderBy().Distinct()</c> would silently collapse two unequal values -- a timezone-bearing and a
+    /// timezone-less reading of the same clock face, most obviously -- into one.
     /// </remarks>
     public int CompareTo(FhirTemporal? other)
     {
@@ -363,7 +385,16 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
             return byPrecision;
         }
 
-        return IsTimeOnly.CompareTo(other.IsTimeOnly);
+        var byTimeOnly = IsTimeOnly.CompareTo(other.IsTimeOnly);
+        if (byTimeOnly != 0)
+        {
+            return byTimeOnly;
+        }
+
+        // Arbitrary but total, and it is what makes CompareTo == 0 agree with Equals == true. Sorting the
+        // timezone-less value first has no temporal meaning -- the two are genuinely unordered in FHIRPath
+        // terms; the only requirement here is that they do not collide.
+        return HasTimezone.CompareTo(other.HasTimezone);
     }
 
     /// <summary>
