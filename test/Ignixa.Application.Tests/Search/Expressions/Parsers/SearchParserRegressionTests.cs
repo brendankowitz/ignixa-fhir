@@ -39,8 +39,12 @@ public class SearchParserRegressionTests
     // shared bridge that lowers it back to the old field-level shape every old-shape backend consumes.
     // It stays pure -- the SQL-only date-index optimization is applied by the SQL backend afterward
     // (see DateTimeEqualityRewriterTests in the DataLayer tests), not baked into this shared bridge.
+    // These two assertions were previously the other way round, pinning a pair of deviations from
+    // search.html#prefix that had been in place long enough to look intentional: eq lowered to an overlap
+    // and ap to a containment. That made eq and ne non-complementary -- a month-long Period row satisfied
+    // both date=eq<one-day> and date=ne<one-day> -- which is self-evidently wrong whatever the spec says.
     [Fact]
-    public void GivenAnApproximateDateSearch_WhenLoweredToLegacy_ThenItUsesTheContainmentShape()
+    public void GivenAnApproximateDateSearch_WhenLoweredToLegacy_ThenItUsesTheOverlapShape()
     {
         var context = new SearchParserTestContext();
         context.Add("Patient", "birthdate", SearchParamType.Date);
@@ -48,14 +52,14 @@ public class SearchParserRegressionTests
         Expression lowered = LegacyExpressionLowerer.LowerToLegacy(
             context.Parser.Parse(Patient, "birthdate", "ap2000-01-01"));
 
-        // :ap lowers to the containment shape (DateTimeStart >= x AND DateTimeEnd <= y): a single
-        // DateTimeStart bound. Any SQL index optimization is layered on separately, not here.
-        (lowered.ToString() ?? string.Empty).ShouldContain("FieldGreaterThanOrEqual DateTimeStart");
+        // ap is "the range of the search value overlaps with the range of the target value", over a widened
+        // window: DateTimeStart <= widenedEnd AND DateTimeEnd >= widenedStart.
+        (lowered.ToString() ?? string.Empty).ShouldContain("FieldLessThanOrEqual DateTimeStart");
         DateTimeStartBoundCount(lowered).ShouldBe(1);
     }
 
     [Fact]
-    public void GivenAnEqualityDateSearch_WhenLoweredToLegacy_ThenItUsesTheOverlapShape()
+    public void GivenAnEqualityDateSearch_WhenLoweredToLegacy_ThenItUsesTheContainmentShape()
     {
         var context = new SearchParserTestContext();
         context.Add("Patient", "birthdate", SearchParamType.Date);
@@ -63,8 +67,10 @@ public class SearchParserRegressionTests
         Expression lowered = LegacyExpressionLowerer.LowerToLegacy(
             context.Parser.Parse(Patient, "birthdate", "2000-01-01"));
 
-        // Equality uses the overlap shape (DateTimeStart <= end AND DateTimeEnd >= start).
-        (lowered.ToString() ?? string.Empty).ShouldContain("FieldLessThanOrEqual DateTimeStart");
+        // eq is "the range of the search value fully contains the range of the target value":
+        // DateTimeStart >= searchStart AND DateTimeEnd <= searchEnd. The SQL-only index optimization that
+        // adds a redundant DateTimeStart upper bound is layered on afterward, not here.
+        (lowered.ToString() ?? string.Empty).ShouldContain("FieldGreaterThanOrEqual DateTimeStart");
         DateTimeStartBoundCount(lowered).ShouldBe(1);
     }
 

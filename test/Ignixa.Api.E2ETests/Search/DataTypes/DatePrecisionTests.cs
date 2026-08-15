@@ -213,8 +213,12 @@ public class DatePrecisionTests : CapabilityDrivenTestBase
         var results = await Harness.SearchAsync("Patient", $"_tag={_testTag}&birthdate=1982-01");
 
         // Assert
-        results.Length.ShouldBe(3, "Should match year-only, month-only, and full date containing January 1982");
-        results.ShouldContain(r => r.Id == created[0].Id, "Year 1982 contains January");
+        // eq is "the range of the search value fully contains the range of the target value", so the
+        // containment runs search-to-target, not target-to-search. A patient recorded only as "1982" is not
+        // known to have been born in January, so a January query must not claim them; the sibling year-only
+        // test covers the direction that does hold, where the wider value is the search rather than the row.
+        results.Length.ShouldBe(2, "Should match month-only and full date confined to January 1982");
+        results.ShouldNotContain(r => r.Id == created[0].Id, "Year 1982 is not confined to January");
         results.ShouldContain(r => r.Id == created[1].Id);
         results.ShouldContain(r => r.Id == created[2].Id);
         results.ShouldNotContain(r => r.Id == created[3].Id);

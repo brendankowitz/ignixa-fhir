@@ -54,16 +54,23 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
     public static readonly object[][] DateSearchParameterData =
     [
         // ===== eq (equals - search value fully contains target) =====
-        ["1980", 1, 2, 3, 4, 5, 7],                          // Year: all dates within 1980
-        ["1980-01", 1],                                       // January 1980: only year-precision obs[1]
-        ["1980-05", 1, 2, 3, 4, 5, 7],                       // May 1980
-        ["1980-05-10", 1, 2],                                 // May 10: obs with wider ranges
-        ["1980-05-11", 1, 2, 3, 4, 5],                       // May 11
-        ["1980-05-11T16:32:15", 1, 2, 3, 4, 5],              // Specific second
-        ["1980-05-11T16:32:15.500", 1, 2, 3, 4, 5],          // Specific millisecond
-        ["1980-05-11T16:32:15.5000000", 1, 2, 3, 4, 5],      // 7 decimal places
-        ["1980-05-11T16:32:15.5000001", 1, 2, 3, 4],         // Microsecond (excludes obs[5])
-        ["1980-05-11T16:32:30", 1, 2, 3],                    // Different second
+        // These rows previously encoded an OVERLAP reading, under which a year-precision observation came
+        // back for a single-day query. That contradicted both this class's own documented semantics (above)
+        // and the ne rows below: obs[1] and obs[2] were expected for BOTH date=1980-05-11 and
+        // date=ne1980-05-11, which no reading of the spec permits. Each set below is now exactly the
+        // complement of its ne counterpart, which is what "does not fully contain" being the negation of
+        // "fully contains" requires. Empty sets are correct, not placeholders: nothing in the fixture is
+        // narrow enough to sit inside a single January, a single May 10, or the second at 16:32:30.
+        ["1980", 1, 2, 3, 4, 5, 7],                          // Year: everything that fits inside 1980
+        ["1980-01"],                                          // Nothing is confined to January 1980
+        ["1980-05", 2, 3, 4, 5, 7],                          // May 1980 (obs[1] spans the year, so is excluded)
+        ["1980-05-10"],                                       // Nothing is confined to May 10
+        ["1980-05-11", 3, 4, 5],                             // May 11 and everything inside it
+        ["1980-05-11T16:32:15", 4, 5],                       // That second, and the instant inside it
+        ["1980-05-11T16:32:15.500", 5],                      // Specific millisecond
+        ["1980-05-11T16:32:15.5000000", 5],                  // 7 decimal places: same instant as obs[5]
+        ["1980-05-11T16:32:15.5000001"],                      // One tick later: obs[5] no longer fits
+        ["1980-05-11T16:32:30"],                              // Nothing is at 16:32:30
 
         // ===== ne (not equals - search value does NOT fully contain target) =====
         ["ne1980", 0, 6],                                     // Not in 1980
@@ -284,12 +291,20 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
     }
 
     /// <summary>
-    /// Tests date search against Period datatype (start and end dates).
-    /// A date matches a Period if it overlaps with the period range.
+    /// Tests finding a Period-valued observation that covers a given instant.
     /// </summary>
+    /// <remarks>
+    /// This is deliberately not an <c>eq</c> query. "The row's range covers this instant" is an overlap, and
+    /// <c>eq</c> is containment the other way round — a two-day period is never contained in an instant, so
+    /// <c>date=&lt;instant&gt;</c> correctly returns nothing here. The prefix pair below is how the spec
+    /// expresses overlap: <c>le</c> gives "target starts at or before" and <c>ge</c> "target ends at or
+    /// after", and their conjunction is exactly the set of rows spanning the instant. The expected
+    /// observations are unchanged from when this asserted an overlap-shaped <c>eq</c>, because the intent
+    /// was always overlap; only the query needed to say so.
+    /// </remarks>
     [Theory]
-    [InlineData("1980-05-16T16:32:15.500", 1, 2, 7)] // Overlaps with period [1980-05-16 to 1980-05-17]
-    public async Task GivenADateTimeSearchParam_WhenSearchedAgainstAPeriod_ThenCorrectBundleShouldBeReturned(
+    [InlineData("1980-05-16T16:32:15.500", 1, 2, 7)] // Spans the instant: year, month, and period [05-16, 05-17]
+    public async Task GivenAnInstant_WhenSearchedAgainstAPeriod_ThenTheCoveringObservationsAreReturned(
         string queryValue,
         params int[] expectedIndices)
     {
@@ -297,7 +312,9 @@ public class DateSearchTests : CapabilityDrivenTestBase, IClassFixture<DateSearc
         RequireSearchParameter("Observation", "date");
 
         // Act
-        var results = await Harness.SearchAsync("Observation", $"_tag={_fixture.Tag}&date={queryValue}");
+        var results = await Harness.SearchAsync(
+            "Observation",
+            $"_tag={_fixture.Tag}&date=le{queryValue}&date=ge{queryValue}");
 
         // Assert
         var expectedObservations = expectedIndices.Select(i => _fixture.Observations[i]).ToArray();

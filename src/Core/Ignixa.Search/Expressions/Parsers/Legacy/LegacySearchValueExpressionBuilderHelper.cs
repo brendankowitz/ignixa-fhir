@@ -39,53 +39,18 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
 
         if (_modifier != null) ThrowModifierNotSupported();
 
-        switch (_comparator)
+        // Shares DateRangeComparisonSemantics with SearchValueExpressionBuilderHelper rather than mirroring
+        // its date lowering by hand. The parity tests compare the two trees, and a hand-mirrored copy is
+        // exactly what let eq and ap drift here in the first place.
+        if (!Enum.IsDefined(typeof(SearchComparator), _comparator))
         {
-            case SearchComparator.Eq:
-                _outputExpression = Expression.And(
-                    Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
-                break;
-            case SearchComparator.Ne:
-                _outputExpression = Expression.Or(
-                    Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
-                    Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
-                break;
-            case SearchComparator.Lt:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Gt:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Le:
-                _outputExpression = Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Ge:
-                _outputExpression = Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Sa:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Eb:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Ap:
-                long startTicks = dateTime.Start.UtcTicks;
-                long endTicks = dateTime.End.UtcTicks;
-
-                long differenceTicks = (long)((DateTimeOffset.UtcNow.Ticks - Math.Max(startTicks, endTicks)) * ApproximateMultiplier);
-
-                DateTimeOffset approximateStart = dateTime.Start.AddTicks(-differenceTicks);
-                DateTimeOffset approximateEnd = dateTime.End.AddTicks(differenceTicks);
-
-                _outputExpression = Expression.And(
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeStart, _componentIndex, approximateStart),
-                    Expression.LessThanOrEqual(FieldName.DateTimeEnd, _componentIndex, approximateEnd));
-                break;
-            default:
-                ThrowComparatorNotSupported();
-                break;
+            ThrowComparatorNotSupported();
+            return;
         }
+
+        _outputExpression = DateRangePredicateExpressionRenderer.Render(
+            DateRangeComparisonSemantics.Build(_comparator, dateTime, DateTimeOffset.UtcNow),
+            _componentIndex);
     }
 
     void ISearchValueVisitor.Visit(NumberSearchValue number)

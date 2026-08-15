@@ -42,73 +42,20 @@ internal sealed class SearchValueExpressionBuilderHelper : ISearchValueVisitor
 
         if (_modifier != null) ThrowModifierNotSupported();
 
-        // Based on spec here: http://hl7.org/fhir/search.html#prefix
-        // FHIR spec says: eq = "the range of the search value fully contains the range of the target value"
-        // However, Microsoft FHIR Server (and this implementation) uses a practical interpretation:
-        // eq matches when target range OVERLAPS with or CONTAINS the search range.
-        // This means wider-precision values match narrower searches:
-        //   - date=1980-05-11 matches obs with "1980" (year precision) because the year contains the day
-        //   - date=1980-05-11 matches obs with "1980-05" (month) because the month contains the day
-        //   - date=1980-05-11 matches obs with "1980-05-11" (day) - exact match
-        // This is the intuitive behavior for date searches.
-        //
-        // ne (not equals) uses strict FHIR spec: "target is NOT fully contained within search range"
-        // This means ne matches when target extends outside the search boundaries:
-        //   - date=ne1980-05-11 matches obs with "1980" because the year extends beyond May 11
-        //   - date=ne1980-05-11 matches obs with "1980-05" because the month extends beyond May 11
-        //   - date=ne1980-05-11 does NOT match obs with "1980-05-11" because it's fully contained
-        switch (_comparator)
+        // The prefix table lives in DateRangeComparisonSemantics, which the SQL compiler renders too. It
+        // used to be restated here, and the restatement had drifted: eq was an overlap ("practical
+        // interpretation") rather than the spec's containment, which made eq and ne non-complementary --
+        // a month-long Period row satisfied BOTH date=eq<one-day> and date=ne<one-day> -- and ap was a
+        // containment rather than the spec's overlap. Do not reintroduce a local copy to "fix" a prefix.
+        if (!Enum.IsDefined(typeof(SearchComparator), _comparator))
         {
-            case SearchComparator.Eq:
-                // Match if ranges overlap: target.Start <= search.End AND target.End >= search.Start
-                // This includes exact matches, target containing search, and search containing target
-                _outputExpression = Expression.And(
-                    Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
-                break;
-            case SearchComparator.Ne:
-                // ne = target is NOT fully contained within search range
-                // NOT (target.Start >= search.Start AND target.End <= search.End)
-                // = target.Start < search.Start OR target.End > search.End
-                _outputExpression = Expression.Or(
-                    Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
-                    Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
-                break;
-            case SearchComparator.Lt:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Gt:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Le:
-                _outputExpression = Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Ge:
-                _outputExpression = Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Sa:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Eb:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Ap:
-                long startTicks = dateTime.Start.UtcTicks;
-                long endTicks = dateTime.End.UtcTicks;
-
-                long differenceTicks = (long)((DateTimeOffset.UtcNow.Ticks - Math.Max(startTicks, endTicks)) * ApproximateMultiplier);
-
-                DateTimeOffset approximateStart = dateTime.Start.AddTicks(-differenceTicks);
-                DateTimeOffset approximateEnd = dateTime.End.AddTicks(differenceTicks);
-
-                _outputExpression = Expression.And(
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeStart, _componentIndex, approximateStart),
-                    Expression.LessThanOrEqual(FieldName.DateTimeEnd, _componentIndex, approximateEnd));
-                break;
-            default:
-                ThrowComparatorNotSupported();
-                break;
+            ThrowComparatorNotSupported();
+            return;
         }
+
+        _outputExpression = DateRangePredicateExpressionRenderer.Render(
+            DateRangeComparisonSemantics.Build(_comparator, dateTime, DateTimeOffset.UtcNow),
+            _componentIndex);
     }
 
     void ISearchValueVisitor.Visit(NumberSearchValue number)

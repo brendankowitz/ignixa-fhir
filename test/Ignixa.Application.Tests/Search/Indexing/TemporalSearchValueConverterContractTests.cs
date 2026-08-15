@@ -88,9 +88,14 @@ public class TemporalSearchValueConverterContractTests
     {
         // The baseline here is deliberately not PartialDateTime.Parse. InstantToDateTimeSearchValueConverter
         // narrows through PrimitiveTypeConverter instead, which produces a point rather than a range, so a
-        // second-precision instant and a second-precision dateTime index differently. That divergence
-        // predates FhirTemporal; this test pins the instant converter against its own raw-string behaviour,
-        // not against the dateTime converter's.
+        // second-precision instant and a second-precision dateTime index differently even when they carry
+        // the identical literal. That is required, not incidental: the date search parameter section of the
+        // spec (https://hl7.org/fhir/R4/search.html#date) gives dateTime "the range of the value as defined
+        // above" but gives instant "an interval with an effective width of 0". Aligning the two converters
+        // would therefore break whichever one was moved. DateSearchIndexingSemanticsTests asserts the two
+        // shapes directly and cites the text; this test only pins the instant converter against its own
+        // raw-string behaviour, so that the FhirTemporal-backed IElement.Value keeps feeding it what the
+        // wire string used to.
 
         // Arrange
         var recorded = ParseSingle(
