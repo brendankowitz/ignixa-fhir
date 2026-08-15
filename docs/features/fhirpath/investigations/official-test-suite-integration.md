@@ -261,14 +261,14 @@ engine work and were stale in every column.
 |---------|----------|--------|--------|--------------------|---------------|--------------------|
 | **R4**    | 935       | 921       | 0     | 12     | 2     | 921 (98.5%)     |
 | **R4B**   | 933       | 919       | 0     | 12     | 2     | 919 (98.5%)     |
-| **R5**    | 1,032     | 1,011     | 0     | 16     | 5     | 1,011 (98.0%)   |
-| **Total** | **2,900** | **2,851** | **0** | **40** | **9** | **2,851 (98.3%)** |
+| **R5**    | 1,032     | 1,016     | 0     | 11     | 5     | 1,016 (98.4%)   |
+| **Total** | **2,900** | **2,856** | **0** | **35** | **9** | **2,856 (98.5%)** |
 
 Read the last column, not the "Failed" column. Every case in the suite now either asserts and passes or
 is accounted for explicitly, so a raw pass rate reads 100% and tells you nothing. The two escape hatches
 are the ones worth watching:
 
-- **Deferred (40)** - named entries in `_unsignalledInvalidCases`, each with a written reason. These
+- **Deferred (35)** - named entries in `_unsignalledInvalidCases`, each with a written reason. These
   report as real xunit skips (via `Xunit.SkippableFact`; xunit 2.9.3 has no working dynamic skip of its
   own, so they previously reported as passes and were indistinguishable from coverage).
   `AssertDeferralIsStillNeeded` re-runs each one and *fails* if the engine has started signalling the
@@ -281,8 +281,10 @@ Three R5 cases are CDA-mode and excluded at parse time, so 2,903 parse and 2,900
 **Test Coverage Distribution** (by group, counting only genuinely asserted cases):
 - `testBasics` - 5/7; `testType` - 30/30
 - `testQuantity` - 9/11 (`testQuantity9`/`10` need full UCUM unit algebra; Fhir.Metrics limitation)
-- `defineVariable` (R5 only) - 16/21. Five are deferred: `defineVariable9`, `defineVariable10`,
-  `defineVariable12`, `defineVariable16`, `dvUsageOutsideScopeThrows`
+- `defineVariable` (R5 only) - 21/21, no deferrals. `defineVariable9`/`10`/`12`/`16` and
+  `dvUsageOutsideScopeThrows` were deferred until `%context` was implemented and `defineVariable`
+  bindings were scoped lexically (`VariableScope`); reading an undefined `%name` now signals an error
+  per FHIRPath §1.9 instead of yielding empty
 - String functions (`split`, `trim`, `encode`, `escape`) - no deferrals, no failures
 - Math functions (`round`, `abs`, `sqrt`, `ln`, `exp`) - no deferrals, no failures
 - `testAggregate`, `LowBoundary`, `HighBoundary` - no deferrals, no failures

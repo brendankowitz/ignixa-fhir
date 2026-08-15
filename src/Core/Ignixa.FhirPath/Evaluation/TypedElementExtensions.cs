@@ -61,6 +61,37 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Collection of elements that match the expression</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This defaults <c>%resource</c> to <paramref name="input"/>; <see cref="FhirPathEvaluator.Evaluate"/>
+    /// deliberately does not.</b> The difference is the contract, not an oversight, and the two must not be
+    /// aligned by making the engine default as well.
+    /// </para>
+    /// <para>
+    /// This overload documents <paramref name="input"/> as "the root element", so treating it as the resource
+    /// is a defensible reading of its own contract - and FHIR blesses the equality explicitly: "The resource is
+    /// very often the context, such that %resource = %context". <see cref="FhirPathEvaluator.Evaluate"/> makes
+    /// no such promise: its input is "the node handed to the engine", and its callers routinely hand it a
+    /// sub-element (invariants are attached to elements, SQL-on-FHIR evaluates columns against
+    /// <c>forEach</c> items, narrative templates re-enter with an extracted node). Defaulting there would bind
+    /// <c>%resource</c> to a non-resource, which FHIR defines it never to be - "the resource that contains the
+    /// original node that is in %context" - and would replace an honest empty with a confidently wrong node.
+    /// For invariant evaluation that is a strict downgrade: an unevaluable constraint currently degrades to a
+    /// non-failing warning, whereas a wrong <c>%resource</c> produces a wrong verdict.
+    /// </para>
+    /// <para>
+    /// The engine cannot infer its way out of this. Unlike Firely's <c>ScopedNode</c>, <see cref="IElement"/>
+    /// carries no parent link, so there is no containing resource to walk up to - the host is the only party
+    /// that knows, and unbound therefore resolves to empty (FHIRPath 1.9: a defined variable with no value
+    /// specified is empty, only an *undefined* name is an error).
+    /// </para>
+    /// <para>
+    /// Narrowing this default to fire only when <paramref name="input"/> is genuinely a resource is the correct
+    /// end state - the <c>getResourceKey()</c> justification below is stale, since SQL-on-FHIR binds
+    /// <c>RootResource</c> itself and never reaches this method - but its only remaining coverage lives in the
+    /// SQL-on-FHIR conformance suite, so it is left for a change that can run those tests.
+    /// </para>
+    /// </remarks>
     public static IEnumerable<IElement> Select(this IElement input, string expression, EvaluationContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(input);

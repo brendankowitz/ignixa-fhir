@@ -190,7 +190,9 @@ public class FhirPathInvariantCheck : IValidationCheck
             // (resource roots and contained recursion), supply %resource / %rootResource /
             // resolve() so root-referencing invariants (dom-*, bdl-*) evaluate correctly.
             // When scope is unseeded (some direct callers/tests), fall back to a bare context,
-            // which defaults %resource to the constrained element as before.
+            // in which %resource and %rootResource are empty. %context is bound either way: the
+            // evaluator takes it from the node handed to it, which is the constrained element -
+            // what the ~30 shipped %context invariants (ig-1, sdf-24/25, exs-14..21) expect.
             var result = _evaluator.Value.Evaluate(element, expression, BuildEvaluationContext(state));
 
             // Convert result to boolean

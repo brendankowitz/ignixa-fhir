@@ -177,15 +177,6 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Ordering, where the suite asks for more than the spec does.
         ["testDollarOrderNotAllowed"] = "Patient.children().skip(1): the suite is stricter than the spec here. The spec makes the order of children() undefined, not erroneous, so returning empty is conformant; HAPI errors and the suite encodes HAPI's strictness. FhirPathAnalyzer surfaces it as a design-time error, which is the right layer for it.",
 
-        // defineVariable scoping. Prerequisite before any of these can be made to signal: %context is
-        // documented on EvaluationContext but not implemented in GetEnvironmentVariable, so making
-        // VisitVariable throw on an unresolved name would turn silent empties into reported errors across
-        // shipped R4/R4B/R5 core invariants that use it (ig-1, sdf-24, sdf-25, exs-19/20/21).
-        ["defineVariable10"] = "select(%fam.given): a reference to an undefined variable must error; VisitVariable returns empty for any unknown name. Blocked on %context being implemented first - see the note above this block.",
-        ["defineVariable9"] = "a variable defined in one branch of '|' must not be visible in the sibling branch and referencing it must error; the sibling silently sees empty. Same %context prerequisite.",
-        ["defineVariable12"] = "same cross-branch '|' scope leak as defineVariable9, with the variable defined inside a Patient.name navigation.",
-        ["defineVariable16"] = "a variable from an inner select() scope must not be visible in a later outer select(), and referencing it must error. Needs select() to fork variable scope (CollectionFunctions.Select pushes $this/$index but shares the one DefinedVariables dictionary) on top of the %context prerequisite.",
-        ["dvUsageOutsideScopeThrows"] = "referencing a variable outside the scope that defined it must error; the engine resolves it or returns empty. Same %context prerequisite.",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>

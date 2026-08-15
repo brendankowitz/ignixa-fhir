@@ -45,7 +45,10 @@ internal sealed class ValidationHandler(ILogger<ValidationHandler> logger, IVali
                 SkipTerminologyValidation = true   // Skip terminology checks
             };
 
-            var validationResult = schema.Validate(context.Element, settings);
+            // Bare state on purpose: Minimal depth runs universal checks only, and FHIRPath invariants are
+            // profile-tier, so nothing here reads %resource / %rootResource / resolve(). Seeding the scope
+            // would cost a reference-index build over every resource for no behavioural gain.
+            var validationResult = schema.Validate(context.Element, settings, new ValidationState());
 
             if (!validationResult.IsValid)
             {

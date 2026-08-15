@@ -42,17 +42,39 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// <summary>
     /// Evaluates a FhirPath expression against an input element and returns matching elements.
     /// </summary>
-    /// <param name="input">The root element to evaluate against</param>
+    /// <param name="input">The node to evaluate against - not necessarily a resource</param>
     /// <param name="expression">The parsed FhirPath expression</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Collection of elements that match the expression</returns>
     /// <remarks>
+    /// <para>
+    /// <b><c>%context</c> is filled in from <paramref name="input"/>; <c>%resource</c> is not.</b> The FHIRPath
+    /// specification defines <c>%context</c> as "the original node that was passed to the evaluation engine",
+    /// which is exactly this argument, whereas FHIR defines <c>%resource</c> as "the resource that contains the
+    /// original node that is in %context" - a node this method has no way to find, because
+    /// <see cref="IElement"/> carries no parent link. The host binds it or it resolves to empty.
+    /// </para>
+    /// <para>
+    /// This is why <see cref="TypedElementExtensions.Select"/> defaults <c>%resource</c> and this method does
+    /// not: that overload's contract names its input "the root element", while this one's callers routinely
+    /// pass a sub-element. See the remarks on that method for the full reasoning; the two are deliberately
+    /// different, not accidentally inconsistent.
+    /// </para>
+    /// <para>
     /// For best performance, use a <see cref="Parser.FhirPathParser"/> with <see cref="Parsing.CompilationOptions.Optimize"/>
     /// set to true to optimize expressions at parse-time rather than evaluation-time.
+    /// </para>
     /// </remarks>
     public IEnumerable<IElement> Evaluate(IElement input, Expression expression, EvaluationContext? context = null)
     {
         context ??= new EvaluationContext();
+
+        // %context is "the original node that was passed to the evaluation engine", so this is the only
+        // place that can know it. A caller that set it explicitly keeps its own choice.
+        if (context.ContextNode is null)
+        {
+            context = context.WithContextNode(input);
+        }
 
         // Push the root element onto the $this stack so $this resolves correctly throughout evaluation
         context = context.PushThis(input);
@@ -189,7 +211,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             throw new FhirPathEvaluationException($"Variable '%{variableName}' is already defined");
         }
 
-        context.DefinedVariables[variableName] = value;
+        context.Variables.Define(variableName, value);
 
         return focus;
     }
@@ -248,9 +270,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         {
             // For union operator, each branch should have isolated variable scope
             // Variables defined in one branch should NOT be visible in sibling branches
-            // Use ForkForBranch() to give each branch its own copy of DefinedVariables
-            var leftContext = context.ForkForBranch();
-            var rightContext = context.ForkForBranch();
+            var leftContext = context.ForkVariableScope();
+            var rightContext = context.ForkVariableScope();
 
             var left = EvaluateExpression(context.Focus, expression.Left, leftContext).ToList();
             var right = EvaluateExpression(context.Focus, expression.Right, rightContext).ToList();
@@ -1027,11 +1048,25 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     }
 
+    /// <summary>
+    /// Resolves <c>%name</c>, signalling an error when nothing defines the name.
+    /// </summary>
+    /// <remarks>
+    /// FHIRPath §1.9 makes reading an undefined environment variable an error, and this is the check the
+    /// official <c>defineVariable</c> scope cases assert. A bound name whose value is empty is not an error
+    /// and still yields an empty collection, which is why this asks
+    /// <see cref="EvaluationContext.TryGetEnvironmentVariable"/> rather than testing the value for null.
+    /// <see cref="Analysis.FhirPathAnalyzer"/> already reports the same condition statically.
+    /// </remarks>
     public IEnumerable<IElement> VisitVariable(VariableRefExpression expression, EvaluationContext context)
     {
-        var value = context.GetEnvironmentVariable(expression.Name);
+        if (!context.TryGetEnvironmentVariable(expression.Name, out var value))
+        {
+            throw new FhirPathEvaluationException(
+                $"Attempting to access an undefined environment variable: {expression.Name}");
+        }
 
-        if (value == null)
+        if (value is null)
             return [];
 
         return value switch

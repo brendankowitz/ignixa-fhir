@@ -38,22 +38,21 @@ internal static class DefineVariableRules
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The test to make here is "already defined <i>in this scope</i>", and the obvious implementation -
-    /// asking the runtime variable store whether it holds the name - cannot express that. That dictionary is
-    /// one mutable store shared by every context derived from the root: <c>PushThis</c> and friends copy the
-    /// reference, not the contents, so a name survives both loop iterations and sibling argument evaluations.
-    /// Asking it produces false errors on three valid official cases - <c>dvConceptMapExample</c>
-    /// (<c>defineVariable('grp')</c> re-executed once per <c>group</c>), <c>defineVariable19</c> and
-    /// <c>dvParametersDontColide</c> (the same name defined in two sibling arguments of one call, which the
-    /// second test is named for).
+    /// The test to make here is "already defined <i>in this scope</i>", and asking the runtime variable store
+    /// whether it holds the name still cannot express it, even now that <see cref="Evaluation.VariableScope"/>
+    /// gives each per-item argument and each <c>|</c> operand a frame of its own. Scope frames make loop
+    /// re-execution safe - <c>dvConceptMapExample</c> re-runs <c>defineVariable('grp')</c> once per
+    /// <c>group</c>, each time in a fresh frame - but sibling arguments of one call deliberately share a
+    /// frame, because a variable defined in one argument has to be readable in the next
+    /// (<c>defineVariable19</c>). A presence check would therefore still fire on <c>dvParametersDontColide</c>,
+    /// which defines the same name in two sibling arguments of one <c>replace()</c> and is named for it.
     /// </para>
     /// <para>
-    /// Walking the focus chain instead asks a question the AST can actually answer, and answers it without
-    /// depending on the variable store's scoping - which stays unfixed, and is why the scope-leak cases
-    /// (<c>defineVariable9</c>/<c>10</c>/<c>12</c>/<c>16</c>, <c>dvUsageOutsideScopeThrows</c>) remain
-    /// deferred. The rule is deliberately narrow: it never reports a redefinition that is really a sibling
-    /// scope or a re-execution, and it says nothing about a name defined dynamically or in an enclosing
-    /// expression, which stay permissive as before.
+    /// Walking the focus chain instead asks a question the AST can answer outright, and is what
+    /// <c>dvRedefiningVariableThrowsError</c> actually describes: the same invocation chain, not the same
+    /// dictionary. The rule is deliberately narrow - it never reports a redefinition that is really a sibling
+    /// argument or a re-execution, and it says nothing about a name defined dynamically or in an enclosing
+    /// expression, which stay permissive.
     /// </para>
     /// </remarks>
     public static bool IsAlreadyDefinedEarlierInSameChain(FunctionCallExpression expression, string variableName)

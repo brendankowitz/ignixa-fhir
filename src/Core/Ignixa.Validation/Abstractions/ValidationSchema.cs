@@ -144,11 +144,35 @@ public sealed class ValidationSchema
     /// </summary>
     /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings (including depth).</param>
-    /// <param name="state">Current validation state. Optional - a default state will be used if not provided.</param>
+    /// <param name="state">
+    /// Current validation state, carrying the resource scope that <c>%resource</c>, <c>%rootResource</c> and
+    /// <c>resolve()</c> are drawn from. When omitted, the scope is seeded from <paramref name="element"/>.
+    /// </param>
     /// <returns>Combined validation result from all checks.</returns>
+    /// <remarks>
+    /// <para>
+    /// The omitted/null default used to be a bare <see cref="ValidationState"/>, which is how the write path
+    /// came to validate every resource with no scope at all: an unseeded state leaves <c>%resource</c> empty,
+    /// and <c>FhirPathInvariantCheck</c> reads an empty result as a failed constraint - so a conformant
+    /// resource is rejected for a defect in the caller, and only at Full depth, where invariants actually run.
+    /// </para>
+    /// <para>
+    /// A <see cref="ValidationSchema"/> is built per StructureDefinition and carries the
+    /// <see cref="ResourceType"/> it validates, so <paramref name="element"/> is by contract the resource this
+    /// schema applies to - which makes seeding the scope from it correct by construction, not a guess. That is
+    /// the difference from <c>FhirPathEvaluator.Evaluate</c>, whose input is any node and which therefore must
+    /// not infer a resource.
+    /// </para>
+    /// <para>
+    /// Callers that knowingly need no scope - Minimal depth runs no FHIRPath invariants, and seeding costs a
+    /// reference-index build over the whole resource - pass a bare state explicitly, so that choice stays
+    /// visible at the call site rather than riding on an omitted argument.
+    /// </para>
+    /// </remarks>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState? state = null)
     {
-        state ??= new ValidationState();
+        state ??= new ValidationState().EnterRootResource(element);
+
         var results = new List<ValidationResult>();
 
         // Universal checks always run (all depths)

@@ -389,7 +389,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         if (funcDef?.TakesExpressionArguments == true)
         {
             var singleItemContext = focusTypes.AsSingle();
-            innerContext = innerContext.WithFocus(singleItemContext).PushExpressionContext(singleItemContext);
+            innerContext = innerContext
+                .WithFocus(singleItemContext)
+                .PushExpressionContext(singleItemContext)
+                .ForkVariableScope();
         }
 
         if (functionName.Equals("ofType", StringComparison.OrdinalIgnoreCase) ||
@@ -478,8 +481,8 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var visitor = _childVisitor ?? this;
 
         // For union operator, fork context so defineVariable in one branch doesn't leak to sibling
-        var leftContext = expression.Operator == "|" ? context.ForkForBranch() : context;
-        var rightContext = expression.Operator == "|" ? context.ForkForBranch() : context;
+        var leftContext = expression.Operator == "|" ? context.ForkVariableScope() : context;
+        var rightContext = expression.Operator == "|" ? context.ForkVariableScope() : context;
 
         var leftResult = expression.Left?.AcceptVisitor(visitor, leftContext) ?? new FhirPathTypeSet();
         var rightResult = expression.Right?.AcceptVisitor(visitor, rightContext) ?? new FhirPathTypeSet();

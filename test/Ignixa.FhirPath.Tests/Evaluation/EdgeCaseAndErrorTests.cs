@@ -80,18 +80,19 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenNonExistentVariable_WhenReferenced_ThenReturnsEmpty()
+    public void GivenNonExistentVariable_WhenReferenced_ThenSignalsError()
     {
-        // Arrange
+        // Arrange - FHIRPath 1.9 makes reading an undefined environment variable an error, not an empty
+        // collection; a silent empty is indistinguishable from a variable that is bound to nothing.
         var context = new EvaluationContext();
         var expr = _parser.Parse("%nonExistent");
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr, context).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr, context).ToList());
 
         // Assert
-        Assert.Empty(result);
+        Assert.Contains("nonExistent", exception.Message, StringComparison.Ordinal);
     }
 
     #endregion
