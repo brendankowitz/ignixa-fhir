@@ -53,6 +53,50 @@ public record ValidationState
     public ResourceScope Scope { get; init; } = new();
 
     /// <summary>
+    /// The maximum number of nested element/contained-resource descents the validator will make
+    /// before it stops and reports rather than recursing further.
+    /// <para>
+    /// The compiled schema graph is already finite — <c>StructureDefinitionSchemaBuilder</c> cycle-guards
+    /// type recursion at build time, and the deepest nesting the R4 core schema produces is a handful
+    /// of element levels. Runtime depth is therefore bounded by the document, not the schema, and the
+    /// only ways to exceed this are contained-within-contained nesting (which dom-2 forbids) or a
+    /// hostile instance.
+    /// </para>
+    /// <para>
+    /// Note this is the inner of two guards: System.Text.Json's own <c>MaxDepth</c> also defaults to
+    /// 64 and, since every nesting level costs at least one JSON level, usually rejects such a document
+    /// before the validator sees it. This limit is what holds when a caller raises that ceiling or
+    /// builds the element tree from a non-JSON source.
+    /// </para>
+    /// </summary>
+    public const int MaxNestingDepth = 64;
+
+    /// <summary>
+    /// Gets how many nested element or contained-resource levels below the validation root this state
+    /// sits. Incremented by <see cref="TryDescend"/> at each descent.
+    /// </summary>
+    public int NestingDepth { get; init; }
+
+    /// <summary>
+    /// Attempts to descend one nesting level. Returns false once <see cref="MaxNestingDepth"/> is
+    /// reached, so the caller can report the truncation instead of recursing further; a validator that
+    /// silently stopped walking would report a clean result for a subtree it never looked at.
+    /// </summary>
+    /// <param name="descended">The state one level deeper, when the limit has not been reached.</param>
+    /// <returns>True if the descent is permitted; otherwise, false.</returns>
+    public bool TryDescend(out ValidationState descended)
+    {
+        if (NestingDepth >= MaxNestingDepth)
+        {
+            descended = this;
+            return false;
+        }
+
+        descended = this with { NestingDepth = NestingDepth + 1 };
+        return true;
+    }
+
+    /// <summary>
     /// Creates a new state with updated instance information.
     /// </summary>
     /// <param name="resourceType">The resource type being validated (e.g., "Patient").</param>
