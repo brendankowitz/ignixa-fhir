@@ -465,7 +465,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
             "integer" or "decimal" => SearchParamType.Number,
 
             // Date types
-            "date" or "dateTime" or "instant" or "Period" => SearchParamType.Date,
+            "date" or "dateTime" or "instant" or "Period" or "Timing" => SearchParamType.Date,
 
             // Quantity types
             "Quantity" or "Money" or "Range" => SearchParamType.Quantity,
