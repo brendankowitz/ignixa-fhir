@@ -58,7 +58,18 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
             return ValidationResult.Success();
         }
 
+        if (!state.TryDescend(out var descended))
+        {
+            return new ValidationResult(
+                isValid: true,
+                issues: new[] { ValidationIssue.NestingLimitExceeded(state.Location.InstancePath, "contained") });
+        }
+
+        // Issues propagate regardless of the contained result's validity: gating on !IsValid would
+        // drop every non-failing Warning raised inside the contained resource, including the
+        // engine-refusal warnings that exist to be reported without failing the resource.
         var issues = new List<ValidationIssue>();
+        var isValid = true;
 
         for (int i = 0; i < containedElements.Count; i++)
         {
@@ -106,42 +117,43 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
 
             // Validate contained resource against its own schema. Re-scope so %resource points at
             // the contained resource and %rootResource at the containing parent (FHIR dom-* rule).
-            var containedState = state.WithLocation(containedPath).EnterContainedResource(containedElement);
+            var containedState = descended.WithLocation(containedPath).EnterContainedResource(containedElement);
             var containedResult = containedSchema.Validate(containedElement, settings, containedState);
 
-            if (!containedResult.IsValid)
+            isValid &= containedResult.IsValid;
+
+            // Adjust paths to be relative to parent resource
+            var parentPrefix = $"{element.Location}.{containedPath}";
+            foreach (var issue in containedResult.Issues)
             {
-                // Adjust paths to be relative to parent resource
-                var parentPrefix = $"{element.Location}.{containedPath}";
-                foreach (var issue in containedResult.Issues)
+                // The nested validation returns paths relative to the contained resource (e.g., "Patient.unknownField")
+                // We need to replace the resource type prefix with the contained path
+                var adjustedPath = issue.Path;
+
+                // If path starts with the contained resource type (e.g., "Patient."), replace with contained path
+                if (adjustedPath.StartsWith($"{resourceType}.", StringComparison.Ordinal))
                 {
-                    // The nested validation returns paths relative to the contained resource (e.g., "Patient.unknownField")
-                    // We need to replace the resource type prefix with the contained path
-                    var adjustedPath = issue.Path;
-
-                    // If path starts with the contained resource type (e.g., "Patient."), replace with contained path
-                    if (adjustedPath.StartsWith($"{resourceType}.", StringComparison.Ordinal))
-                    {
-                        adjustedPath = $"{parentPrefix}.{adjustedPath.Substring(resourceType.Length + 1)}";
-                    }
-                    else if (adjustedPath == resourceType)
-                    {
-                        // Path is just the resource type (e.g., "Patient")
-                        adjustedPath = parentPrefix;
-                    }
-                    else if (!adjustedPath.StartsWith(parentPrefix, StringComparison.Ordinal))
-                    {
-                        // Path doesn't start with parent prefix, so prepend it
-                        adjustedPath = $"{parentPrefix}.{adjustedPath}";
-                    }
-
-                    issues.Add(issue with { Path = adjustedPath });
+                    adjustedPath = $"{parentPrefix}.{adjustedPath.Substring(resourceType.Length + 1)}";
                 }
+                else if (adjustedPath == resourceType)
+                {
+                    // Path is just the resource type (e.g., "Patient")
+                    adjustedPath = parentPrefix;
+                }
+                else if (!adjustedPath.StartsWith(parentPrefix, StringComparison.Ordinal))
+                {
+                    // Path doesn't start with parent prefix, so prepend it
+                    adjustedPath = $"{parentPrefix}.{adjustedPath}";
+                }
+
+                issues.Add(issue with { Path = adjustedPath });
             }
         }
 
-        return issues.Count > 0
-            ? ValidationResult.Failure(issues)
-            : ValidationResult.Success();
+        // Validity is the conjunction of the contained results' own verdicts and the severity of the
+        // issues raised directly here (missing/unknown resourceType), which never pass through a
+        // nested result to contribute their invalidity.
+        var hasErrors = issues.Any(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal);
+        return new ValidationResult(isValid && !hasErrors, issues);
     }
 }

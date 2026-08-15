@@ -100,6 +100,24 @@ public sealed record ValidationIssue
     }
 
     /// <summary>
+    /// Creates the issue reported when traversal stops at
+    /// <see cref="ValidationState.MaxNestingDepth"/>. A Warning, not an Error: the instance has not
+    /// been shown to be invalid, only left partly unexamined — but the gap is stated rather than
+    /// passed off as a clean result.
+    /// </summary>
+    /// <param name="location">FHIRPath location of the element whose subtree was not descended into.</param>
+    /// <param name="elementName">The element whose subtree was left unvalidated.</param>
+    /// <returns>A non-failing validation issue describing the truncated traversal.</returns>
+    public static ValidationIssue NestingLimitExceeded(string location, string elementName)
+    {
+        return new ValidationIssue(
+            severity: IssueSeverity.Warning,
+            code: "validation-nesting-limit",
+            path: string.IsNullOrEmpty(location) ? elementName : $"{location}.{elementName}",
+            message: $"'{elementName}' was not validated: nesting depth limit of {ValidationState.MaxNestingDepth} reached");
+    }
+
+    /// <summary>
     /// Creates a terminology validation failure issue with HAPI-compatible coding.
     /// </summary>
     /// <param name="code">The code that failed validation.</param>
