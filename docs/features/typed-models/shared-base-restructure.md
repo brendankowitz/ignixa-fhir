@@ -48,7 +48,7 @@ A pre-pass loads the `DefinitionCollection` for **every targeted version** and c
 
 | Bucket | Definition | Emission |
 |---|---|---|
-| **Identical** | element set and every element's type/cardinality/binding match across all targeted versions | Emit **once** as a base type in `Ignixa.Models`. No subclass. Version namespaces may `global using`-alias it for unqualified use. |
+| **Identical** | element set and every element's type/cardinality/binding match across all targeted versions | Datatypes and backbones: emit **once** as a base type in `Ignixa.Models`, no subclass, and version namespaces may `global using`-alias it for unqualified use. Resources: emit the base **and** a per-version subclass anyway — the subclass carries the version identity (`[CompatibleFhirVersions]`), which an alias cannot. |
 | **Additive** | a later version only *adds* elements; all shared elements are identical | `Base.X` holds the common shape; `{Version}.X : Base.X` adds the version-only accessors. |
 | **Incompatible** | a *shared* element differs (cardinality `0..1`↔`0..*`, retype, binding/enum change) | `Base.X` **omits** that element; each `{Version}.X` defines it with the version-correct type. Base stays Liskov-substitutable. |
 

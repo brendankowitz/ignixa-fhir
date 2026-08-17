@@ -16,8 +16,10 @@ namespace Ignixa.Models.Tests;
 /// <summary>
 /// Structural lock on the type-classifier's outcomes. These assert over the BUILT assemblies via
 /// reflection (no FHIR-package load), so they pin the classification contract cheaply: an IDENTICAL
-/// type lives once in the base with no per-version subclass; a SUBCLASSED type's base is the shared
-/// base type; an INCOMPATIBLE element is typed differently per version.
+/// datatype lives once in the base with no per-version subclass (resources always get one -- see
+/// <see cref="GivenResourceFacade_WhenClassified_ThenEverySupportedVersionHasARealSubclassNotAnAlias"/>);
+/// a SUBCLASSED type's base is the shared base type; an INCOMPATIBLE element is typed differently per
+/// version; and Resource/DomainResource-level elements are declared once on their base class.
 /// </summary>
 public sealed class ClassificationLockTests
 {
@@ -202,9 +204,11 @@ public sealed class ClassificationLockTests
     public void GivenResourceFacade_WhenGenerated_ThenItInheritsBaseElementsInsteadOfRedeclaringThem()
     {
         // Regression guard for the generator's skip gates: a resource facade that re-emits an inherited
-        // element shadows the base member (CS0108) and forks its storage. Scoped to ResourceJsonNode
-        // subclasses on purpose -- Attachment.Language and CompositionSection.Text are genuine
-        // datatype/backbone elements of the same name and must NOT be caught by this.
+        // element shadows the base member, so which accessor a caller gets depends on their static type.
+        // CS0108 is an error here (TreatWarningsAsErrors), so the compiler already covers that direction;
+        // this locks the direction it cannot see. Scoped to ResourceJsonNode subclasses on purpose --
+        // Attachment.Language and CompositionSection.Text are genuine datatype/backbone elements of the
+        // same name and must NOT be caught by this.
         string[] inherited = ["Id", "Meta", "ImplicitRules", "Language", "Text", "Contained", "Extension", "ModifierExtension"];
 
         int checkedProperties = 0;
@@ -225,17 +229,23 @@ public sealed class ClassificationLockTests
             }
         }
 
-        // Guards the sweep against becoming vacuous if the facade filter ever stops matching.
-        checkedProperties.ShouldBeGreaterThan(50);
+        // Roughly 11 facades x 3 assemblies x 4-8 properties. A loose floor would let the sweep silently
+        // drop an entire assembly and still pass.
+        checkedProperties.ShouldBeGreaterThan(200);
     }
 
     [Fact]
     public void GivenResourceFacade_WhenClassified_ThenEverySupportedVersionHasARealSubclassNotAnAlias()
     {
         // Resource version identity must not be derived from whether an element happens to diverge.
-        // CompatibleFhirVersionsAttribute is read with inherit:false and a `global using` alias cannot
-        // carry an attribute, so a resource that loses its subclass silently loses the As<T> guard and
-        // untagged-node version stamping. Datatypes are exempt -- As<T> is constrained to ResourceJsonNode.
+        // CompatibleFhirVersionsAttribute is read with inherit:false (and declared Inherited = false) and
+        // a `global using` alias cannot carry an attribute, so a resource that loses its subclass silently
+        // loses the As<T> guard and the single-version stamping path in As<T>. AsVersion() is unaffected --
+        // it stamps from the registry key. Datatypes are exempt: As<T> is constrained to ResourceJsonNode.
+        //
+        // Every resource is swept, NOT just attribute-tagged ones. Version-agnostic contract types
+        // (Bundle, Parameters, OperationOutcome) deliberately carry no base attribute, and filtering on
+        // the attribute would have excluded 4 of the 7 subclasses that actually regressed.
         var assembliesByVersion = new Dictionary<FhirVersion, Assembly>
         {
             [FhirVersion.R4] = R4Assembly,
@@ -245,18 +255,20 @@ public sealed class ClassificationLockTests
         var baseResources = SerializationAssembly.GetTypes()
             .Where(t => t.IsPublic
                 && t.Namespace == "Ignixa.Models"
-                && typeof(ResourceJsonNode).IsAssignableFrom(t)
-                && t.GetCustomAttribute<CompatibleFhirVersionsAttribute>() is not null)
+                && typeof(ResourceJsonNode).IsAssignableFrom(t))
             .ToList();
 
-        baseResources.ShouldNotBeEmpty();
+        baseResources.Count.ShouldBeGreaterThanOrEqualTo(11);
 
         int checkedSubclasses = 0;
         foreach (Type baseResource in baseResources)
         {
-            FhirVersion[] versions = baseResource
-                .GetCustomAttribute<CompatibleFhirVersionsAttribute>()!
-                .Versions.ToArray();
+            // An untagged base is a version-agnostic contract type, which by definition exists in every
+            // supported version -- so require a subclass in all of them rather than skipping it.
+            FhirVersion[] versions = baseResource.GetCustomAttribute<CompatibleFhirVersionsAttribute>(inherit: false)
+                is { } attribute
+                ? attribute.Versions.ToArray()
+                : assembliesByVersion.Keys.ToArray();
 
             foreach (FhirVersion version in versions)
             {
@@ -271,14 +283,40 @@ public sealed class ClassificationLockTests
                     $"{baseResource.Name} supports {version} but has no Ignixa.Models.{version}.{baseResource.Name} "
                     + "subclass to carry its version tag");
                 subclass!.BaseType.ShouldBe(baseResource);
-                subclass.GetCustomAttribute<CompatibleFhirVersionsAttribute>()!
+                subclass.GetCustomAttribute<CompatibleFhirVersionsAttribute>(inherit: false)!
                     .Versions.ToArray().ShouldBe([version]);
                 checkedSubclasses++;
             }
         }
 
-        // Guards against the resource filter silently narrowing to nothing.
-        checkedSubclasses.ShouldBeGreaterThan(10);
+        // 11 resources x 2 versions. A loose floor would tolerate losing half the matrix.
+        checkedSubclasses.ShouldBeGreaterThanOrEqualTo(22);
+    }
+
+    [Fact]
+    public void GivenNonDomainResourceFacade_WhenClassified_ThenItDoesNotExposeDomainResourceElements()
+    {
+        // The other half of the placement invariant. Before this PR, Bundle and Parameters simply had no
+        // text/contained/extension/modifierExtension emitted. Now the invariant rests entirely on the
+        // generator choosing ResourceJsonNode as their base, so assert the negative directly -- a facade
+        // misclassified onto DomainResourceJsonNode would otherwise silently gain all four and let callers
+        // write JSON this project's own validator rejects (see Validation.Tests ResourceOnlyUniversalPropertyTests).
+        string[] domainResourceOnly = ["Text", "Contained", "Extension", "ModifierExtension"];
+
+        var nonDomainResources = AllResourceFacades()
+            .Where(t => !typeof(DomainResourceJsonNode).IsAssignableFrom(t))
+            .ToList();
+
+        nonDomainResources.ShouldNotBeEmpty();
+
+        foreach (Type facade in nonDomainResources)
+        {
+            foreach (string name in domainResourceOnly)
+            {
+                facade.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)
+                    .ShouldBeNull($"{facade.FullName} is not a DomainResource but exposes {name}");
+            }
+        }
     }
 
     private static IEnumerable<Type> AllResourceFacades() =>

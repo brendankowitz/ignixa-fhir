@@ -154,13 +154,18 @@ internal sealed class TypedModelClassifier
 
         // Resources carry version *identity*, not just version-specific members, so their subclass
         // existence must not be derived from whether any element happens to diverge. The version tag
-        // lives in [CompatibleFhirVersions], which ResourceJsonNode reads with inherit:false, and a
-        // `global using` alias cannot carry an attribute. Without a real per-version type, As<T>()
-        // silently loses its cross-version guard and untagged nodes stop being version-stamped.
+        // lives in [CompatibleFhirVersions], which ResourceJsonNode reads with inherit:false (and the
+        // attribute is declared Inherited = false, so a subclass can never borrow its base's tag), and a
+        // `global using` alias cannot carry an attribute. Without a real per-version type, As<T>() silently
+        // loses its cross-version guard, and its single-version stamping path goes quiet too because the
+        // base's tag lists every version. AsVersion() is unaffected -- it stamps from the registry key.
         // Emitting unconditionally also keeps the public API stable: Ignixa.Models.{version}.{Resource}
         // must not appear or disappear as upstream versions happen to converge or diverge.
+        // This became reachable only once the skip gates below stripped id/meta/implicitRules/language and
+        // the DomainResource four off every facade -- for most resources those were the sole divergence.
         // Datatypes and backbones are exempt -- As<T> is constrained to ResourceJsonNode, so they can
-        // never participate in the version guard and are free to alias to the shared base.
+        // never participate in the version guard and are free to alias to the shared base. The attribute
+        // is still emitted on datatype bases, but is inert since nothing can read it through As<T>.
         if (kind is FacadeKind.Resource or FacadeKind.DomainResource)
         {
             foreach (string version in presentIn)
@@ -259,7 +264,7 @@ internal sealed class TypedModelClassifier
             }
 
             // Declared once on DomainResourceJsonNode. Only DomainResource facades inherit these --
-            // Bundle/Parameters/Binary extend Resource directly and legitimately have no such elements.
+            // Bundle and Parameters extend Resource directly and legitimately have no such elements.
             // Keep in sync with the accessors on Ignixa.Serialization.SourceNodes.DomainResourceJsonNode.
             if (kind is FacadeKind.DomainResource && (jsonName is "contained" or "text" or "extension" or "modifierExtension"))
             {
@@ -421,7 +426,13 @@ internal sealed class TypedModelClassifier
             }
             else
             {
-                break;
+                // Failing open here would return "not a DomainResource", which since the DomainResource
+                // element skip gate was added no longer just picks the wrong base class name -- it also
+                // re-emits text/contained/extension/modifierExtension onto a facade whose base already
+                // declares them. That output still compiles, so the mistake would ship silently.
+                throw new InvalidOperationException(
+                    $"Cannot resolve base definition '{baseName}' while determining whether a type is a "
+                    + "DomainResource. The StructureDefinition set is incomplete; refusing to guess.");
             }
         }
 

@@ -254,7 +254,10 @@ public sealed class CSharpTypedModelLanguage : ILanguage
                 }
             }
 
-            // Also register resource types that are base-only (no subclass) for this version.
+            // Resources always have a subclass in every version they are present in (see the version-identity
+            // rule in TypedModelClassifier.MergeType), so there is no base-only resource left to register
+            // here. Kept as an assertion rather than deleted: if that rule is ever relaxed, AsVersion must
+            // fall back to the base type instead of silently having no registration for the resource.
             foreach (var classification in classifications.Values)
             {
                 if (classification.Kind is not (FacadeKind.DomainResource or FacadeKind.Resource))
@@ -269,8 +272,10 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
                 if (!classification.SubclassVersions.Contains(version))
                 {
-                    // base-only resource in this version: AsVersion should yield the base type.
-                    registrations.Add((classification.TypeName, classification.TypeName));
+                    throw new InvalidOperationException(
+                        $"Resource '{classification.TypeName}' is present in {version} but has no version subclass. "
+                        + "Resources must always be subclassed so [CompatibleFhirVersions] has a type to live on; "
+                        + "see TypedModelClassifier.MergeType.");
                 }
             }
 
@@ -902,12 +907,13 @@ public sealed class CSharpTypedModelLanguage : ILanguage
 
         // isVersionSubclass is checked first and short-circuits VersionAgnosticContractTypes deliberately:
         // that set says "the elements common to every classified version are safe to read from any
-        // version," which is a claim about the BASE type only. A per-version subclass exists precisely
-        // because some element genuinely differs between versions (e.g. Bundle.issues is R5-only,
-        // Parameters.parameter.value[x]'s choice-type union differs between R4/R5) -- so a subclass for
-        // typeName "Bundle" must keep its own single-version CompatibleFhirVersionsAttribute even though
-        // the base type doesn't, or a real cross-version misread through that specific subclass (e.g. an
-        // R4-tagged node read via R5.Bundle, silently missing the version-specific shape) would stop
+        // version," which is a claim about the BASE type only. A per-version subclass is where version
+        // identity lives -- for datatypes and backbones it exists because an element genuinely differs
+        // (e.g. Bundle.issues is R5-only, Parameters.parameter.value[x]'s choice-type union differs between
+        // R4/R5), and for resources it exists unconditionally (see TypedModelClassifier.MergeType). Either
+        // way a subclass for typeName "Bundle" must keep its own single-version CompatibleFhirVersionsAttribute
+        // even though the base type doesn't, or a real cross-version misread through that specific subclass
+        // (e.g. an R4-tagged node read via R5.Bundle, silently missing the version-specific shape) would stop
         // being caught.
         if (!isVersionSubclass && VersionAgnosticContractTypes.Contains(typeName))
         {

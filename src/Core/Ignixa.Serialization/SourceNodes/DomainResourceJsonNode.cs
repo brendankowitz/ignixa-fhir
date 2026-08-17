@@ -48,6 +48,11 @@ public class DomainResourceJsonNode : ResourceJsonNode
     {
     }
 
+    /// <summary>
+    /// Contained resources. Items come back as the bare <see cref="ResourceJsonNode"/> base --
+    /// no resourceType-based routing is applied, so <c>Contained[0] is Patient</c> is false even for a
+    /// contained Patient. Use <c>As&lt;T&gt;()</c> to reach a concrete facade.
+    /// </summary>
     [JsonIgnore]
     public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
 
