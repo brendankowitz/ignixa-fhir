@@ -261,9 +261,126 @@ var result = element.Select("birthDate < %today", context);
 var context = new EvaluationContext { Resource = patientElement };
 ```
 
-### Element Resolver
+### Reference Resolution (`resolve()`)
 
-The `FhirEvaluationContext` supports configuring an `ElementResolver` to enable the `resolve()` function in FHIRPath expressions. This allows following references from one resource to another.
+The `resolve()` function follows a `Reference` from one resource to another. Resolution happens in two stages, tried in order:
+
+1. **In-instance resolution** — looks inside the resource under evaluation for a contained resource, a sibling Bundle/Parameters entry, or (when there is something to index) a bare `#`. This needs no configuration at all.
+2. **`ElementResolver` fallback** — runs whenever in-instance resolution does not produce a result and an `ElementResolver` is configured on a `FhirEvaluationContext`. This is the extension point for genuinely external references (a different server, a database, a cache).
+
+In-instance resolution requires a root to index: `RootResource` if set, otherwise `Resource` (the two can differ — for example, validation sets them to different elements while inside a contained resource's own scope). With neither set, there is nothing to index at all, so *every* reference — including a bare `#` — falls straight through to the `ElementResolver` fallback, or to empty if that isn't configured either.
+
+#### In-instance resolution
+
+No `ElementResolver` needed. It covers:
+
+- Contained resources by `#id` (`"reference": "#p1"` finds the matching entry in `contained`).
+- A bare `#` — **only when an index exists** (`Resource` or `RootResource` is set) — is decided entirely in-instance: it resolves to the containing resource when evaluated from inside one of that container's own contained resources, and to empty at the container's own scope (root, or a Bundle/Parameters entry). See the callout below — this is **not** the same rule as an unresolved `#id`.
+- For a `Bundle` root, sibling entries by `fullUrl`, `Type/id`, and `Type/id/_history/versionId`.
+- For a `Parameters` root, resources nested under `parameter`/`part` (at any depth), keyed by `Type/id` only — Parameters entries have no `fullUrl`.
+
+```csharp
+using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Extensions;
+
+IFhirSchemaProvider schemaProvider = FhirVersion.R4.GetSchemaProvider();
+
+// subject.reference is "#p1" - Patient p1 is a contained resource, not a separate lookup.
+var observationJson = """
+{
+  "resourceType": "Observation",
+  "id": "obs1",
+  "status": "final",
+  "code": { "coding": [ { "system": "http://loinc.org", "code": "1234-5" } ] },
+  "subject": { "reference": "#p1" },
+  "contained": [
+    { "resourceType": "Patient", "id": "p1" }
+  ]
+}
+""";
+
+var observation = ResourceJsonNode.Parse(observationJson).ToElement(schemaProvider);
+
+// No ElementResolver configured - Resource is enough for resolve() to find the contained Patient.
+var context = new EvaluationContext { Resource = observation };
+
+var isPatient = observation
+    .Select("Observation.subject.where(resolve() is Patient).exists()", context)
+    .Single();
+
+// isPatient.Value == true
+```
+
+The same applies to a `Bundle` root: `Bundle.entry.resource.ofType(Observation).subject.resolve()` finds a sibling `entry` by `fullUrl` or `Type/id` with no resolver configured, as long as `RootResource` (or `Resource`) points at the Bundle.
+
+##### Bare `#` versus an unresolved `#id`
+
+:::warning
+An unresolved `#id` and an unresolved bare `#` behave differently, and this is the single most surprising part of the design:
+
+- **`#id` that misses** the in-instance index falls through to the `ElementResolver`, exactly like any other unresolved reference.
+- **Bare `#`** never falls through once an index exists (`Resource` or `RootResource` is set) — if it doesn't resolve to a containing resource in-instance, `resolve()` returns empty, and the `ElementResolver` is never consulted, even if one is configured and would return something.
+
+Ignixa follows Firely for this asymmetry: `ScopedNodeExtensions.Resolve<T>` only short-circuits the exact string `"#"` — for an unresolved `#id` it still consults the external resolver. HAPI's `FHIRPathEngine.funcResolve` disagrees: it short-circuits every `#`-prefixed reference regardless of the id, so it never consults the host resolver for any fragment. See `GivenUnresolvedFragmentReference_WhenElementResolverCanResolveIt_ThenFallsBackToResolver` and the sibling bare-`#` tests in `ResolveFunctionTests.cs` for the executable contract.
+:::
+
+##### Container scoping
+
+Contained resources are scoped to the nearest **container boundary**, not to the whole instance. A container boundary is the root itself, or any `Bundle.entry.resource` / `Parameters.parameter[.part].resource` — per R4 [`references.html` §2.3.0.8](https://hl7.org/fhir/R4/references.html#contained): "resolution stops at the elements `Bundle.entry.resource` and `Parameters.parameter.resource`, but not at `DomainResource.contained`".
+
+Practically:
+
+- A `#frag` reference inside a Bundle entry's resource resolves against **that entry's own** `contained` array, and cannot see a same-named `#frag` contained in a different entry.
+- Bare `#` from inside a contained resource that itself lives inside a Bundle entry resolves to the **entry resource**, not the Bundle root.
+- Sibling lookups (`fullUrl`, `Type/id`, and the versioned form) are **not** affected by container scoping — they remain cross-entry by design, because they are Bundle/Parameters-level lookups, not containment.
+
+```csharp
+// Two Bundle entries each contain an Organization with id "org1". Container scoping means each
+// Patient's "#org1" resolves within its own entry, never the other entry's same-named contained
+// resource.
+IFhirSchemaProvider schemaProvider = FhirVersion.R4.GetSchemaProvider();
+
+var bundleJson = """
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Patient", "id": "patA",
+        "managingOrganization": { "reference": "#org1" },
+        "contained": [ { "resourceType": "Organization", "id": "org1", "name": "OrgA" } ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Patient", "id": "patB",
+        "managingOrganization": { "reference": "#org1" },
+        "contained": [ { "resourceType": "Organization", "id": "org1", "name": "OrgB" } ]
+      }
+    }
+  ]
+}
+""";
+
+var bundle = ResourceJsonNode.Parse(bundleJson).ToElement(schemaProvider);
+var context = new EvaluationContext { Resource = bundle };
+
+var orgAName = bundle
+    .Select("Bundle.entry.resource.ofType(Patient).where(id = 'patA').managingOrganization.resolve().name", context)
+    .Single();
+var orgBName = bundle
+    .Select("Bundle.entry.resource.ofType(Patient).where(id = 'patB').managingOrganization.resolve().name", context)
+    .Single();
+
+// orgAName.Value == "OrgA", orgBName.Value == "OrgB" - each entry sees only its own contained pool.
+```
+
+#### External resolver (fallback)
+
+Configure an `ElementResolver` on `FhirEvaluationContext` to resolve references that are not part of the instance being evaluated - a reference to a resource that lives on another server, in a database, or behind a cache.
 
 ```csharp
 using Ignixa.FhirPath.Evaluation;
@@ -346,12 +463,13 @@ var practitionerNames = encounter.Select(
 ```
 
 :::note
-The `resolve()` function returns an empty collection if:
-- No `ElementResolver` is configured
-- The reference cannot be resolved
-- An error occurs during resolution
+The `resolve()` function's error-handling contract:
 
-This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions. This allows FHIRPath expressions to continue evaluating even when references can't be resolved.
+- The reference is not found in-instance, and either no `ElementResolver` is configured or it also misses → returns empty. This follows FHIRPath's propagation semantics - operations on empty collections return empty rather than throwing exceptions, so expressions can keep evaluating even when a reference can't be resolved.
+- The configured `ElementResolver` throws → treated the same as "not found" (empty), **except** `OperationCanceledException` and `OutOfMemoryException`, which propagate rather than being swallowed. The host resolver is caller-supplied code and a trust boundary, so an ordinary failure there is "reference not found" per spec - but cancellation and out-of-memory are not ordinary failures.
+- A defect while building or querying the in-instance index itself (for example a broken `IElement` implementation) is **not** treated as "not found" - it propagates. Only the external-resolver boundary is trusted enough to swallow exceptions; a bug in Ignixa's own resolution logic is not.
+
+A contained or intra-Bundle/Parameters reference resolves with **no `ElementResolver` configured at all** - see [In-instance resolution](#in-instance-resolution). `ResolveFunctionTests.cs` (`test/Ignixa.FhirPath.Tests/Evaluation/`) is the executable spec behind this section - in-instance resolution, container scoping, the bare-`#` versus `#id` asymmetry, and this error-handling contract are all asserted there. If this page and that file ever disagree, trust the tests.
 :::
 
 ### Instance Creator

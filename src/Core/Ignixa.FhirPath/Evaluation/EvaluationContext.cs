@@ -23,6 +23,20 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <see cref="WithFocus"/>, <see cref="PushThis"/>, <see cref="WithEnvironmentVariable"/>.
 /// </para>
 /// <para>
+/// <b>Two deliberate exceptions:</b> <see cref="DefinedVariables"/> and
+/// <see cref="ReferenceIndexCache"/> are mutable holders, and a plain <c>with</c> copy carries the
+/// same reference forward rather than cloning it - so every derived context still mutates and sees
+/// the one shared <see cref="DefinedVariables"/> dictionary and the one shared
+/// <see cref="ReferenceIndexCache"/> instance. This is intentional, not an oversight: it is what
+/// lets <c>defineVariable()</c> stay visible across <c>with</c>-derived copies within the same
+/// expression, and what lets <see cref="ReferenceIndexCache"/> build its index once per root instead
+/// of once per copy. <see cref="ForkForBranch"/> is the one place that deliberately breaks the
+/// sharing - it clones <see cref="DefinedVariables"/> so union branches cannot leak variables to
+/// each other. Do not "fix" the sharing elsewhere by cloning these two properties on every
+/// <c>with</c>; that would silently defeat the reference index cache and break variable visibility
+/// across nested evaluation.
+/// </para>
+/// <para>
 /// <b>Runtime vs Static Analysis Context:</b>
 /// </para>
 /// <para>
@@ -156,6 +170,17 @@ public record EvaluationContext
     /// yields an empty result.
     /// </summary>
     public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
+
+    /// <summary>
+    /// Cache holder for the in-instance <see cref="ReferenceIndex"/> that <c>resolve()</c> uses to
+    /// look up contained resources and, for a Bundle/Parameters root, sibling entries, before
+    /// falling back to <see cref="FhirEvaluationContext.ElementResolver"/>. A single holder
+    /// instance is shared by every <c>with</c>-derived copy of this context, so the index is built
+    /// at most once per root even though the context itself is copied on every
+    /// <see cref="PushThis"/> / <see cref="WithFocus"/> / etc. Internal: an implementation detail
+    /// of <c>resolve()</c>, not part of the public evaluation API.
+    /// </summary>
+    internal ReferenceIndexCache ReferenceIndexCache { get; init; } = new();
 
     /// <summary>
     /// Creates a forked context for evaluating a branch expression (e.g., union operands).

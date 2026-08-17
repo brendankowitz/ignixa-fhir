@@ -39,6 +39,12 @@ is known:
   `Scope` (`ResourceScope`).
 - `ResourceScope` carries `%resource`, `%rootResource`, and a `resolve()` delegate (backed by
   `ReferenceIndex`: contained `#id` + intra-Bundle `fullUrl` / `Type/id`).
+  - **Update (2026-08):** since GitHub issue #400/#401, the FhirPath `resolve()` function tries
+    in-instance resolution first (contained resources, sibling Bundle/Parameters entries, and
+    container-scoped bare `#`) and only calls this `ResourceScope` delegate as a fallback when
+    nothing in-instance matches. This delegate is no longer *the* resolution mechanism, just the
+    external one. See `docs/site/docs/core-sdk/fhirpath.md` and `ResolveFunctionTests.cs` for the
+    current contract.
 - Scope is forked at the two resource boundaries — `EnterRootResource` (handler entry) and
   `EnterContainedResource` (contained recursion). `FhirPathInvariantCheck.BuildEvaluationContext`
   materializes a `FhirEvaluationContext { Resource, RootResource, ElementResolver }` from the scope;

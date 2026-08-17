@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Validation.Abstractions;
 
 namespace Ignixa.Validation.Checks;
