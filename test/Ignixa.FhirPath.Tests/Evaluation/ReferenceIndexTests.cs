@@ -327,7 +327,7 @@ public class ReferenceIndexTests
         // Arrange - the fragment #org1 lives only inside a Bundle entry resource, never on the
         // Bundle root (a Bundle is not a DomainResource), so it resolves only when the lookup is
         // scoped to the enclosing entry via that entry resource's Location prefix.
-        var element = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var element = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
         var index = ReferenceIndex.Build(element);
         var entryA = element.Children("entry")[0].Children("resource").Single();
 
@@ -347,7 +347,7 @@ public class ReferenceIndexTests
         // the containment-isolation guarantee (R4 references.html §2.3.0.8): a fragment inside entry
         // A must never see entry B's contained pool. If the two pools were merged into one, the
         // first-wins TryAdd would make both look up the same "org1" and this test would fail.
-        var element = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var element = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
         var index = ReferenceIndex.Build(element);
         var entryA = element.Children("entry")[0].Children("resource").Single();
         var entryB = element.Children("entry")[1].Children("resource").Single();
@@ -367,7 +367,7 @@ public class ReferenceIndexTests
         // Arrange - an empty focus Location must fall back to the ROOT container's contained pool,
         // which for a Bundle is empty; it must never behave as a wildcard that matches an entry's
         // scope. A null focus Location is treated the same way.
-        var element = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var element = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
         var index = ReferenceIndex.Build(element);
 
         // Act & Assert
@@ -381,7 +381,7 @@ public class ReferenceIndexTests
         // Arrange - a top-level parameter.resource and a resource nested under parameter.part.resource
         // each contain an Organization with the same id "org1"; each fragment must resolve within its
         // own container boundary, exactly as for Bundle entries.
-        var element = ToElement(ParametersWithContainedFragmentsJson);
+        var element = ToElement(ContainerScopeTestFixtures.ParametersWithContainedFragmentsJson);
         var index = ReferenceIndex.Build(element);
         var topResource = element.Children("parameter")[0].Children("resource").Single();
         var nestedResource = element.Children("parameter")[1].Children("part").Single().Children("resource").Single();
@@ -396,11 +396,123 @@ public class ReferenceIndexTests
     }
 
     [Fact]
-    public void GivenContainedResourceWithEmptyLocation_WhenResolvingContainerScope_ThenReturnsNull()
+    public void GivenBundleEntryBWithNoContainedOfItsOwn_WhenResolvingFragmentReferencedByEntryB_ThenReturnsNullNotEntryAsContained()
     {
-        // Arrange - several first-party IElement implementations return string.Empty for Location.
-        // An empty Location must never be treated as a member of any container's contained pool,
-        // otherwise bare '#' would falsely resolve to the root (Finding 2).
+        // Arrange - the negative direction of the isolation guarantee (R4 references.html §2.3.0.8):
+        // every prior isolation test only asserted that entry A finds its OWN #org1, which still
+        // holds even if resolution leaked to sibling pools (each entry hits its own pool first).
+        // Entry B has no `contained` of its own, so it registers no nested scope at all; the
+        // correctly-scoped pool for entry B's location is therefore the (empty, for a Bundle) root
+        // pool, and a leak that fell back to scanning every nested scope on a miss would find entry
+        // A's Organization instead of returning null.
+        var element = ToElement(ContainerScopeTestFixtures.BundleWhereOnlyOneEntryHasContainedIdJson);
+        var index = ReferenceIndex.Build(element);
+        var entryB = element.Children("entry")[1].Children("resource").Single();
+
+        // Act
+        var resolved = index.Resolve("#org1", entryB.Location);
+
+        // Assert
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenParametersPartWithNoContainedOfItsOwn_WhenResolvingFragmentReferencedByThatPart_ThenReturnsNullNotTopLevelContained()
+    {
+        // Arrange - the Parameters equivalent of the Bundle negative-isolation case above: the
+        // resource nested under parameter.part.resource references #org1 but declares no contained
+        // of its own, so it must never see the top-level parameter.resource's contained Organization.
+        var element = ToElement(ContainerScopeTestFixtures.ParametersWhereOnlyOneEntryHasContainedIdJson);
+        var index = ReferenceIndex.Build(element);
+        var nestedResource = element.Children("parameter")[1].Children("part").Single().Children("resource").Single();
+
+        // Act
+        var resolved = index.Resolve("#org1", nestedResource.Location);
+
+        // Assert
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenFragmentReferencedFromBundleRootItself_WhenResolvingOutsideAnyEntry_ThenReturnsNullNotAnEntrysContained()
+    {
+        // Arrange - a fragment resolved at the Bundle root's own Location (i.e. focus is outside
+        // every entry) must never see an entry's contained pool. A Bundle is not a DomainResource,
+        // so its own contained pool is always empty; SelectContainedPool must fall back to that
+        // empty root pool here, not leak into entry A's scope.
+        var element = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
+        var index = ReferenceIndex.Build(element);
+
+        // Act
+        var resolved = index.Resolve("#org1", element.Location);
+
+        // Assert
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenElevenBundleEntriesWithEntryOneAndEntryTenSharingContainedId_WhenResolvingFragmentPerEntry_ThenEachResolvesToItsOwnContained()
+    {
+        // Arrange - regression coverage for SelectContainedPool's longest-prefix loop across many
+        // candidate scopes, including a two-digit bracket index. This does NOT exercise the
+        // IsInScope trailing-boundary check: "Bundle.entry[10].resource" is not a plain
+        // string-prefix of "Bundle.entry[1].resource" at all - the closing ']' diverges from the
+        // next index digit immediately, so plain StartsWith alone already separates every
+        // bracket-indexed sibling regardless of digit count. See the next test for a construction
+        // that genuinely exercises the boundary guard.
+        var element = ToElement(ContainerScopeTestFixtures.BundleWithElevenEntriesSharingContainedIdAtEntryOneAndTenJson);
+        var index = ReferenceIndex.Build(element);
+        var entryOne = element.Children("entry")[1].Children("resource").Single();
+        var entryTen = element.Children("entry")[10].Children("resource").Single();
+
+        // Act
+        var resolvedEntryOne = index.Resolve("#org1", entryOne.Location);
+        var resolvedEntryTen = index.Resolve("#org1", entryTen.Location);
+
+        // Assert
+        resolvedEntryOne!.Children("name").Single().Value.ShouldBe("OrgAtEntryOne");
+        resolvedEntryTen!.Children("name").Single().Value.ShouldBe("OrgAtEntryTen");
+    }
+
+    [Fact]
+    public void GivenFocusLocationSharingContainerPrefixWithoutDotBoundary_WhenResolvingFragment_ThenDoesNotFalselyMatchThatContainer()
+    {
+        // Arrange - IsInScope requires a prefix match AND a boundary character (exact length, or
+        // the next char is '.'), so e.g. "Bundle.entry[1].resource" cannot falsely enclose
+        // "Bundle.entry[1].resourceX...". No real parsed Location can produce this shape (a sibling
+        // element's name is always preceded by a '.'), but Resolve(reference, focusLocation)'s
+        // focusLocation parameter is a plain string, not a re-derived IElement.Location - the
+        // public contract does not require callers to pass a real one. This constructs a
+        // focusLocation that is a genuine character-prefix collision with a real registered
+        // container's prefix, without landing on a '.' boundary, to pin that the guard is
+        // load-bearing rather than dead code: mutating IsInScope's final line to `return true`
+        // makes this test fail (it would then falsely resolve to entry A's Organization).
+        var element = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
+        var index = ReferenceIndex.Build(element);
+        var entryAResource = element.Children("entry")[0].Children("resource").Single();
+
+        // Act - "resourceX" is not a real child of "resource": the boundary check must reject it.
+        var resolved = index.Resolve("#org1", entryAResource.Location + "X");
+
+        // Assert
+        resolved.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenElementWithEmptyLocation_WhenResolvingContainerScope_ThenReturnsNullButThisDoesNotProveTheGuardIsLoadBearing()
+    {
+        // Arrange - this pins that ResolveContainerScope("") returns null, but it cannot distinguish
+        // ResolveContainerScope's own `string.IsNullOrEmpty(location)` guard from a weaker
+        // `location is null` check: IndexContained skips indexing any contained child whose Location
+        // is empty (see its own `!string.IsNullOrEmpty(location)` guard), so
+        // `_containerByContainedLocation` never contains "" as a key. The dictionary lookup on ""
+        // therefore returns null regardless of which guard runs first. A real IElement whose
+        // contained child reports string.Empty (rather than a non-empty path) for Location is not
+        // constructible through the production parsing pipeline, so the stronger assertion this
+        // test's original name implied - that the guard itself is what prevents a false-positive
+        // match - is not reachable; this test instead documents the end-to-end behaviour, and the
+        // sibling null-Location test below is what actually proves the guard is necessary (a null key
+        // reaches Dictionary.TryGetValue and throws ArgumentNullException without it).
         var element = ToElement(@"{
             ""resourceType"": ""Patient"",
             ""id"": ""example"",
@@ -433,58 +545,6 @@ public class ReferenceIndexTests
         // Assert
         resolved.ShouldBeNull();
     }
-
-    private const string BundleWithTwoEntriesSharingContainedIdJson = @"{
-        ""resourceType"": ""Bundle"",
-        ""type"": ""collection"",
-        ""entry"": [
-            {
-                ""resource"": {
-                    ""resourceType"": ""Patient"",
-                    ""id"": ""patA"",
-                    ""managingOrganization"": { ""reference"": ""#org1"" },
-                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgA"" } ]
-                }
-            },
-            {
-                ""resource"": {
-                    ""resourceType"": ""Patient"",
-                    ""id"": ""patB"",
-                    ""managingOrganization"": { ""reference"": ""#org1"" },
-                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgB"" } ]
-                }
-            }
-        ]
-    }";
-
-    private const string ParametersWithContainedFragmentsJson = @"{
-        ""resourceType"": ""Parameters"",
-        ""parameter"": [
-            {
-                ""name"": ""top"",
-                ""resource"": {
-                    ""resourceType"": ""Patient"",
-                    ""id"": ""ptop"",
-                    ""managingOrganization"": { ""reference"": ""#org1"" },
-                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""TopOrg"" } ]
-                }
-            },
-            {
-                ""name"": ""group"",
-                ""part"": [
-                    {
-                        ""name"": ""nested"",
-                        ""resource"": {
-                            ""resourceType"": ""Patient"",
-                            ""id"": ""pnested"",
-                            ""managingOrganization"": { ""reference"": ""#org1"" },
-                            ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""NestedOrg"" } ]
-                        }
-                    }
-                ]
-            }
-        ]
-    }";
 
     private IElement BuildParametersWithNestedResources() => ToElement(@"{
         ""resourceType"": ""Parameters"",

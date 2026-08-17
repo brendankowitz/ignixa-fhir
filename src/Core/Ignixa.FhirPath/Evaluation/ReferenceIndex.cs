@@ -40,20 +40,17 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </remarks>
 public sealed class ReferenceIndex
 {
-    private readonly IElement _root;
     private readonly Dictionary<string, IElement> _rootContainedById;
     private readonly IReadOnlyList<ContainedScope> _nestedScopes;
     private readonly Dictionary<string, IElement> _byBundleKey;
     private readonly Dictionary<string, IElement> _containerByContainedLocation;
 
     private ReferenceIndex(
-        IElement root,
         Dictionary<string, IElement> rootContainedById,
         IReadOnlyList<ContainedScope> nestedScopes,
         Dictionary<string, IElement> byBundleKey,
         Dictionary<string, IElement> containerByContainedLocation)
     {
-        _root = root;
         _rootContainedById = rootContainedById;
         _nestedScopes = nestedScopes;
         _byBundleKey = byBundleKey;
@@ -87,7 +84,7 @@ public sealed class ReferenceIndex
             IndexParametersEntries(root, byBundleKey, nestedScopes, containerByContainedLocation);
         }
 
-        return new ReferenceIndex(root, rootContainedById, nestedScopes, byBundleKey, containerByContainedLocation);
+        return new ReferenceIndex(rootContainedById, nestedScopes, byBundleKey, containerByContainedLocation);
     }
 
     /// <summary>
@@ -201,8 +198,13 @@ public sealed class ReferenceIndex
             return false;
         }
 
-        // Guard the boundary so "Bundle.entry[1].resource" does not falsely enclose
-        // "Bundle.entry[10].resource...": the next character after the prefix must start a child.
+        // Guard the boundary so a container's prefix only encloses its own descendants, e.g.
+        // "Bundle.entry[1].resourceX" (a sibling field, not a child) must not match the prefix
+        // "Bundle.entry[1].resource". This is not reachable via bracket-indexed siblings from real
+        // parsed Locations (e.g. entry[1] vs entry[10] already diverge at the digit inside the
+        // brackets), but Resolve(reference, focusLocation) is public and its focusLocation
+        // parameter is a plain string, not a re-derived IElement.Location - a caller is not
+        // required to pass a genuine one.
         return location.Length == prefix.Length || location[prefix.Length] == '.';
     }
 

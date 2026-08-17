@@ -205,7 +205,7 @@ internal static class FhirSpecificFunctions
         {
             return elementResolver(referenceValue);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        catch (Exception ex) when (!IsCancellationOrOutOfMemory(ex))
         {
             // WHY: the host resolver is a trust boundary (caller-supplied code), so an ordinary
             // failure there is "reference not found" per spec - but cancellation/OOM are not that,
@@ -213,6 +213,18 @@ internal static class FhirSpecificFunctions
             return null;
         }
     }
+
+    /// <summary>
+    /// True for a direct <see cref="OperationCanceledException"/>/<see cref="OutOfMemoryException"/>,
+    /// or one wrapped in an <see cref="AggregateException"/> - which is exactly the shape a
+    /// sync-over-async host resolver (<c>.Result</c>/<c>.Wait()</c> over a cancelled or OOM-failing
+    /// task) produces, and which a plain <c>is not OperationCanceledException</c> filter would miss
+    /// because <see cref="AggregateException"/> does not derive from it.
+    /// </summary>
+    private static bool IsCancellationOrOutOfMemory(Exception ex) =>
+        ex is OperationCanceledException or OutOfMemoryException
+        || (ex is AggregateException aggregate
+            && aggregate.Flatten().InnerExceptions.Any(inner => inner is OperationCanceledException or OutOfMemoryException));
 
     /// <summary>
     /// getResourceKey() - SQL on FHIR v2 function that returns resourceType/id for the ROOT resource.

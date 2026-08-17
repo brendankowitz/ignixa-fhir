@@ -312,6 +312,89 @@ public class ResolveFunctionTests
     }
 
     [Fact]
+    public void GivenElementResolverThatThrowsTaskCanceledException_WhenResolving_ThenPropagates()
+    {
+        // Arrange - TaskCanceledException derives from OperationCanceledException, so it already
+        // propagates through the plain `is not OperationCanceledException` filter; pinned here so
+        // the whole cancellation contract in the table below is covered by one test file.
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new TaskCanceledException(),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<TaskCanceledException>(act);
+    }
+
+    [Fact]
+    public void GivenElementResolverThatThrowsAggregateExceptionWrappingOperationCanceledException_WhenResolving_ThenPropagates()
+    {
+        // Arrange - a sync-over-async host resolver (.Result / .Wait()) wraps a cancelled task's
+        // exception in an AggregateException, which does NOT derive from OperationCanceledException,
+        // so a plain `is not OperationCanceledException` filter would swallow it. Cancellation must
+        // still propagate rather than being reported as "reference not found".
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new AggregateException(new OperationCanceledException()),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<AggregateException>(act);
+    }
+
+    [Fact]
+    public void GivenElementResolverThatThrowsAggregateExceptionWrappingTaskCanceledException_WhenResolving_ThenPropagates()
+    {
+        // Arrange - same sync-over-async shape as above, but the wrapped exception is the
+        // TaskCanceledException subtype specifically.
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new AggregateException(new TaskCanceledException()),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<AggregateException>(act);
+    }
+
+    [Fact]
+    public void GivenElementResolverThatThrowsAggregateExceptionWrappingOutOfMemoryException_WhenResolving_ThenPropagates()
+    {
+        // Arrange - OutOfMemoryException gets the same sync-over-async wrapping treatment as
+        // cancellation and must propagate for the same reason: it is not "reference not found".
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new AggregateException(new OutOfMemoryException()),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<AggregateException>(act);
+    }
+
+    [Fact]
     public void GivenRootWhoseChildrenThrows_WhenResolving_ThenPropagatesTheException()
     {
         // Arrange - a ThrowingElement is a broken IElement, not a reference that failed to
@@ -456,7 +539,7 @@ public class ResolveFunctionTests
         // Arrange - both entries contain an Organization with id "org1" but different names. Each
         // entry is its own container boundary, so patA's #org1 must resolve to OrgA and patB's to
         // OrgB. A single merged pool would collapse both to whichever was indexed first.
-        var bundle = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var bundle = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
         var context = new EvaluationContext { Resource = bundle };
 
         // Act
@@ -479,7 +562,7 @@ public class ResolveFunctionTests
     {
         // Arrange - the Parameters equivalent of the Bundle isolation case, including a resource
         // nested under parameter.part.resource. Each parameter.resource is a container boundary.
-        var parameters = ToElement(ParametersWithContainedFragmentsJson);
+        var parameters = ToElement(ContainerScopeTestFixtures.ParametersWithContainedFragmentsJson);
         var context = new EvaluationContext { Resource = parameters };
 
         // Act
@@ -498,6 +581,78 @@ public class ResolveFunctionTests
     }
 
     [Fact]
+    public void GivenBundleEntryBWithNoContainedOfItsOwn_WhenResolvingItsFragmentReference_ThenReturnsEmptyNotEntryAsContained()
+    {
+        // Arrange - end-to-end counterpart of the ReferenceIndex-level negative isolation test.
+        // Every prior isolation test only asserted that entry A finds its OWN #org1, which still
+        // holds even if resolution leaked to sibling pools; this pins the negative direction
+        // (R4 references.html §2.3.0.8): entry B declares no contained of its own, so
+        // managingOrganization.resolve() must be empty, never entry A's Organization.
+        var bundle = ToElement(ContainerScopeTestFixtures.BundleWhereOnlyOneEntryHasContainedIdJson);
+        var context = new EvaluationContext { Resource = bundle };
+
+        // Act
+        var resolved = _evaluator.Evaluate(
+            bundle,
+            _parser.Parse("Bundle.entry.resource.ofType(Patient).where(id = 'patB').managingOrganization.resolve()"),
+            context).ToList();
+
+        // Assert
+        resolved.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenParametersPartWithNoContainedOfItsOwn_WhenResolvingItsFragmentReference_ThenReturnsEmptyNotTopLevelContained()
+    {
+        // Arrange - the Parameters equivalent of the Bundle negative-isolation case above: the
+        // resource nested under parameter.part.resource references #org1 but declares no contained
+        // of its own, so it must never see the top-level parameter.resource's contained Organization.
+        var parameters = ToElement(ContainerScopeTestFixtures.ParametersWhereOnlyOneEntryHasContainedIdJson);
+        var context = new EvaluationContext { Resource = parameters };
+
+        // Act
+        var resolved = _evaluator.Evaluate(
+            parameters,
+            _parser.Parse("Parameters.parameter.part.resource.ofType(Patient).where(id = 'pnested').managingOrganization.resolve()"),
+            context).ToList();
+
+        // Assert
+        resolved.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void GivenElevenBundleEntriesWithEntryOneAndEntryTenSharingContainedId_WhenResolvingEachEntrysFragment_ThenEachResolvesToItsOwnContained()
+    {
+        // Arrange - regression coverage for SelectContainedPool's longest-prefix loop across many
+        // candidate scopes end-to-end through the evaluator, including a two-digit bracket index.
+        // This does NOT exercise the IsInScope trailing-boundary check itself: through the real
+        // evaluator, focusLocation is always a genuine IElement.Location, and
+        // "Bundle.entry[10].resource" is not a plain string-prefix of "Bundle.entry[1].resource" at
+        // all (the closing ']' diverges from the next index digit immediately), so no real parsed
+        // Location can construct the collision the guard defends against. A unit-level test in
+        // ReferenceIndexTests (GivenFocusLocationSharingContainerPrefixWithoutDotBoundary_...) hand
+        // -crafts a focusLocation string via the public Resolve(reference, focusLocation) API to
+        // pin that guard instead, since Resolve's focusLocation parameter does not require a real
+        // Location.
+        var bundle = ToElement(ContainerScopeTestFixtures.BundleWithElevenEntriesSharingContainedIdAtEntryOneAndTenJson);
+        var context = new EvaluationContext { Resource = bundle };
+
+        // Act
+        var resolvedEntryOne = _evaluator.Evaluate(
+            bundle,
+            _parser.Parse("Bundle.entry.resource.ofType(Patient).where(id = 'pat1').managingOrganization.resolve().name"),
+            context).Single();
+        var resolvedEntryTen = _evaluator.Evaluate(
+            bundle,
+            _parser.Parse("Bundle.entry.resource.ofType(Patient).where(id = 'pat10').managingOrganization.resolve().name"),
+            context).Single();
+
+        // Assert
+        resolvedEntryOne.Value.ShouldBe("OrgAtEntryOne");
+        resolvedEntryTen.Value.ShouldBe("OrgAtEntryTen");
+    }
+
+    [Fact]
     public void GivenBareHashFromContainedInsideBundleEntry_WhenResolving_ThenReturnsEntryResourceNotBundle()
     {
         // Arrange - bare '#' from inside a contained resource resolves to that contained resource's
@@ -505,7 +660,7 @@ public class ResolveFunctionTests
         // Bundle root (R4 references.html §2.3.0.8: "there is only one container resource"). Children()
         // returns a fresh wrapper each call, so the entry resource cannot be compared by identity;
         // assert on its content instead.
-        var bundle = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var bundle = ToElement(ContainerScopeTestFixtures.BundleWithTwoEntriesSharingContainedIdJson);
         var containedOrg = bundle.Children("entry")[0].Children("resource").Single().Children("contained").Single();
         var expr = _parser.Parse("'#'.resolve()");
         var context = new EvaluationContext { Resource = containedOrg, RootResource = bundle };
@@ -691,61 +846,10 @@ public class ResolveFunctionTests
         result.Children("id").Single().Value.ShouldBe("p1");
     }
 
-    private const string BundleWithTwoEntriesSharingContainedIdJson = @"{
-        ""resourceType"": ""Bundle"",
-        ""type"": ""collection"",
-        ""entry"": [
-            {
-                ""resource"": {
-                    ""resourceType"": ""Patient"",
-                    ""id"": ""patA"",
-                    ""managingOrganization"": { ""reference"": ""#org1"" },
-                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgA"" } ]
-                }
-            },
-            {
-                ""resource"": {
-                    ""resourceType"": ""Patient"",
-                    ""id"": ""patB"",
-                    ""managingOrganization"": { ""reference"": ""#org1"" },
-                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgB"" } ]
-                }
-            }
-        ]
-    }";
-
-    private const string ParametersWithContainedFragmentsJson = @"{
-        ""resourceType"": ""Parameters"",
-        ""parameter"": [
-            {
-                ""name"": ""top"",
-                ""resource"": {
-                    ""resourceType"": ""Patient"",
-                    ""id"": ""ptop"",
-                    ""managingOrganization"": { ""reference"": ""#org1"" },
-                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""TopOrg"" } ]
-                }
-            },
-            {
-                ""name"": ""group"",
-                ""part"": [
-                    {
-                        ""name"": ""nested"",
-                        ""resource"": {
-                            ""resourceType"": ""Patient"",
-                            ""id"": ""pnested"",
-                            ""managingOrganization"": { ""reference"": ""#org1"" },
-                            ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""NestedOrg"" } ]
-                        }
-                    }
-                ]
-            }
-        ]
-    }";
-
     /// <summary>
     /// Minimal <see cref="IElement"/> whose <see cref="Children"/> always throws, used to prove that
-    /// a pathological instance cannot make <c>resolve()</c> throw while building its in-instance index.
+    /// a pathological instance DOES make <c>resolve()</c> throw while building its in-instance index -
+    /// a defect in our own engine propagates instead of being masked as an empty resolve() result.
     /// </summary>
     private sealed class ThrowingElement : IElement
     {
