@@ -1,4 +1,4 @@
-namespace Ignixa.Search.Sql.Ast;
+﻿namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// The rules a keyset page and a sort must jointly satisfy for the emitted seek to agree with the emitted
@@ -45,8 +45,9 @@ internal static class KeysetPageInvariants
     /// A probe flag states that a row cap is the page size plus one has-more lookahead row, so it says
     /// nothing about an uncapped page. Shared for the same reason as the page rules above: Lower rejects it
     /// naming <c>SearchPaging.Keyset</c>, the plan layer naming <c>MatchPageSpec</c>, and only the predicate
-    /// is common. <c>MatchPageSpec.TrimmedPageSize</c> reports null for this state, so both layers must agree
-    /// on it or a read of that member changes meaning between them.
+    /// is common. <c>MatchPageSpec.TrimmedPageSize</c> reports null for this state unless an OFFSET probe
+    /// supplies the trim instead, which is why the guard rejects the combination outright rather than
+    /// inferring it from that member.
     /// </summary>
     public static bool ProbeRowNeedsCap(int? top, bool topIncludesProbeRow)
         => topIncludesProbeRow && top is null;

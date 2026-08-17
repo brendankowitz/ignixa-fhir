@@ -1,4 +1,4 @@
-namespace Ignixa.Search.Sql.Ast;
+﻿namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// Immutable configuration for the match page and its optional include-seed wrappers.
@@ -37,8 +37,8 @@ public sealed record MatchPageSpec(
     /// cap to subtract from), and every caller would have had to know which to trust.
     /// </summary>
     /// <remarks>
-    /// A cap below 1 yields null rather than a negative count, so
-    /// this never reports a row count it could not mean. Null therefore means "no over-fetch, or an
+    /// Yields null rather than a negative count under either paging mechanism, so this never reports a row
+    /// count it could not mean. Null therefore means "no over-fetch, or an
     /// incoherent probe spec that an earlier guard has already rejected" — <c>QueryPlanValidator</c> runs
     /// <c>RequireCoherentProbeRow</c> before any read of this member, and <c>Lower</c> rejects the same
     /// combination in options vocabulary, so a caller reaching a read can treat null as the first meaning.
@@ -49,10 +49,19 @@ public sealed record MatchPageSpec(
         {
             if (OffsetPage is { ProbeExtraRow: true } offset)
             {
-                return offset.Limit;
+                // Clamped like the Top branch below: OffsetSpec.Limit's own guard lives in
+                // PlanShapeValidator, which runs after the reads this member serves, so a negative limit
+                // would otherwise be reported as a row count while validation is still deciding.
+                return offset.Limit >= 0 ? offset.Limit : null;
             }
 
-            return TopIncludesProbeRow && Top is { } cap && cap >= 1 ? cap - 1 : null;
+            // The usable-cap threshold is KeysetPageInvariants' to own: the validators consume those
+            // predicates to reject exactly the states this returns null for, so a hand-written `cap >= 1`
+            // here would be a second copy the two could drift apart on.
+            var incoherent = KeysetPageInvariants.ProbeRowNeedsCap(Top, TopIncludesProbeRow)
+                || KeysetPageInvariants.ProbeRowCapTooSmall(Top, TopIncludesProbeRow);
+
+            return TopIncludesProbeRow && !incoherent && Top is { } cap ? cap - 1 : null;
         }
     }
 

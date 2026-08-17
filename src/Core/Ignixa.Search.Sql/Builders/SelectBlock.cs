@@ -57,9 +57,10 @@ internal sealed record SelectBlock
     public string Indent { get; init; } = "    ";
 
     /// <summary>
-    /// The <c>TOP (n) </c> fragment, trailing space included, or empty. Shared with the match-page emitter,
-    /// which assembles its SELECT through <see cref="SqlTextWriter"/> rather than this type but must render
-    /// the cap identically — the trailing space is stated here once instead of at each call site.
+    /// The <c>TOP (n) </c> fragment, trailing space included, or empty. Shared with the emitters that
+    /// assemble a SELECT through <see cref="SqlTextWriter"/> rather than this type — the match-page emitter
+    /// and <c>ShapeEmitter.EmitMatchOnlyShape</c> — which must render the cap identically. The trailing
+    /// space is stated here once instead of at each call site.
     /// </summary>
     internal static string RenderTop(int? top)
         => top is { } n ? string.Create(CultureInfo.InvariantCulture, $"TOP ({n}) ") : string.Empty;

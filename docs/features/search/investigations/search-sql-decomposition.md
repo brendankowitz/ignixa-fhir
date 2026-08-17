@@ -36,8 +36,8 @@ The consequences are concrete rather than aesthetic:
 
 Any change here is bounded by three hard invariants:
 
-1. **Byte-identical SQL.** Golden tests (`Ast/EmitTests.cs` 3114 lines, `EndToEndCompilationTests.cs` 2178,
-   `Ast/EmitSqlGrammarTests.cs` 854) pin emitted text. The same plan must always emit the same bytes.
+1. **Byte-identical SQL.** Golden tests (`Ast/EmitTests.cs`, `EndToEndCompilationTests.cs`,
+   `Ast/EmitSqlGrammarTests.cs`) pin emitted text. The same plan must always emit the same bytes.
 2. **Parameter ordinal ordering is load-bearing.** `EmitCteBlocks` runs before shape emission so CTE values take
    leading `@pN` ordinals, and `PlanExplainer` re-walks the plan to reproduce that numbering. Reordering emission
    breaks the explain format.
@@ -380,6 +380,18 @@ raised — precisely the action the message invites ("raise this threshold delib
 overwritten in the `else` branch; the initial assignment is live only when `expression is null`, where it is
 never read. Harmless, but it obscures the control flow.
 
+**8. [FIXED] `Describe` and `Run` validate to different standards.** Surfaced after the rebase onto `480ea416`.
+`SqlBuilder.Run` calls `QueryPlanValidator.Validate` then `PlanValidator.Validate`; `PlanExplainer.Describe`
+calls only the first. `QueryPlanValidator` holds no equivalent of the second's guards, so `Describe` accepts and
+renders plans that `Run` refuses: a negative `Top`, more than three sort keys, `OffsetPage` combined with `Top`
+(SQL Server error 10741), an out-of-range `OffsetSpec`, an empty `OutputResourceTypeIds`, an
+`IncludeStage.Limit` of `int.MaxValue`, an undefined `SortPhase`, and every unsound keyset page/sort pairing.
+
+Some asymmetry is defensible — a diagnostic tool that refuses to explain a broken plan is less useful for
+diagnosing it. But the split is not currently drawn on that principle; it is an artifact of where each guard
+happened to live when the two files were written. Upstream's own tests assert a shared standard
+(`AssertRejectedBySqlBuilderAndExplain`), which suggests the intent is symmetry for anything structural.
+
 **9. `TopIncludesProbeRow` is a flag whose precondition is not in the type.** `SearchPaging.Keyset` and
 `MatchPageSpec` both carry `int? Top` plus `bool TopIncludesProbeRow`, so "the flag requires a cap" is enforced
 at runtime — by `Lower.RejectUnsupportedOptions` and `QueryPlanValidator.RequireCoherentProbeRow` — rather than
@@ -404,18 +416,6 @@ the include arms, and disappears entirely once the caller drops the probe row �
 from a kept match. The duplication rationale pinned in `EmitProbeRowIncludeSeedTests` is sound for the case it
 describes but does not cover this sharing case. Pre-dates this work (arrived with upstream `480ea416`) and has
 no in-repo consumer, so it is recorded rather than changed.
-
-**8. [FIXED] `Describe` and `Run` validate to different standards.** Surfaced after the rebase onto `480ea416`.
-`SqlBuilder.Run` calls `QueryPlanValidator.Validate` then `PlanValidator.Validate`; `PlanExplainer.Describe`
-calls only the first. `QueryPlanValidator` holds no equivalent of the second's guards, so `Describe` accepts and
-renders plans that `Run` refuses: a negative `Top`, more than three sort keys, `OffsetPage` combined with `Top`
-(SQL Server error 10741), an out-of-range `OffsetSpec`, an empty `OutputResourceTypeIds`, an
-`IncludeStage.Limit` of `int.MaxValue`, an undefined `SortPhase`, and every unsound keyset page/sort pairing.
-
-Some asymmetry is defensible — a diagnostic tool that refuses to explain a broken plan is less useful for
-diagnosing it. But the split is not currently drawn on that principle; it is an artifact of where each guard
-happened to live when the two files were written. Upstream's own tests assert a shared standard
-(`AssertRejectedBySqlBuilderAndExplain`), which suggests the intent is symmetry for anything structural.
 
 ## Recommendations
 

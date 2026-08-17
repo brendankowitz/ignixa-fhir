@@ -119,6 +119,29 @@ public class EmitProbeRowIncludeSeedTests
     }
 
     [Fact]
+    public void GivenAnOffsetProbeWithANegativeLimit_WhenAsked_ThenTheSpecReportsNoTrimmedPageRatherThanANegativeOne()
+    {
+        // The OFFSET branch answers first, so the Top branch's clamp does not cover it. OffsetSpec.Limit is
+        // guarded in PlanShapeValidator, which QueryPlanValidator runs AFTER the reads of this member, and
+        // Lower reads it with no validator in between at all -- so the member has to hold the line itself or
+        // it hands out a row count that could not be one while validation is still deciding.
+        var spec = new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(0, -5, ProbeExtraRow: true));
+
+        spec.TrimmedPageSize.ShouldBeNull();
+    }
+
+    [Fact]
+    public void GivenACapOfOne_WhenAsked_ThenItIsAcceptedAsAnEmptyPageRatherThanRejectedAsTooSmall()
+    {
+        // The accepted side of the cap boundary, which two caller-visible refusal messages assert is legal:
+        // _count=0 arrives as Top = MaxItemCount + 1 = 1, one probe row and no page. Without this, tightening
+        // the threshold to `cap <= 1` would break _count=0 with the whole suite still green.
+        var spec = new MatchPageSpec(new CteRef(0), Top: 1, TopIncludesProbeRow: true);
+
+        spec.TrimmedPageSize.ShouldBe(0);
+    }
+
+    [Fact]
     public void GivenAnOverFetchingPageWhoseIncludeStagesBypassTheMatchSeed_WhenEmitted_ThenItIsRejected()
     {
         // The original bug, reconstructed: a page that over-fetches, an include stage seeding from the match

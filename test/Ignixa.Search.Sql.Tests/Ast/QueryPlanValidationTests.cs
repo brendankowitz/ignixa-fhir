@@ -209,14 +209,50 @@ public class QueryPlanValidationTests
         AssertRejectedBySqlBuilderAndExplain(plan, "names no Table");
     }
 
+    [Fact]
+    public void GivenAnAggregatedSortKeyWithATableButNoColumn_WhenRunOrExplained_ThenBothRejectItNamingColumn()
+    {
+        // The other half of the same guard: with a Table present the message must name Column, or a caller
+        // is sent to supply the coordinate they already have. AggregatedSortKeyEmitter dereferences Column,
+        // not Table, so this is the branch that actually throws when unguarded.
+        var table = SqlCatalog.Default.Table("TokenSearchParam");
+        var spec = new MatchPageSpec(
+            new CteRef(0),
+            Sort: new SortSpec([new SortKey(202, SortKeyKind.Aggregated, SortOrder.Ascending, table)], SortPhase.Valued));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], spec);
+
+        AssertRejectedBySqlBuilderAndExplain(plan, "names no Column");
+    }
+
+    [Fact]
+    public void GivenAnAggregatedSortKeyWithAColumnButNoTable_WhenRunOrExplained_ThenBothRejectItNamingTable()
+    {
+        // The remaining arm of the same guard. Each disjunct needs its own case: with only the both-null
+        // case present, deleting either `key.Table is null` or `key.Column is null` left the suite green,
+        // so the guard was protected by an accident of one test's input rather than by coverage.
+        var column = SqlCatalog.Default.Table("TokenSearchParam").Column("Code");
+        var spec = new MatchPageSpec(
+            new CteRef(0),
+            Sort: new SortSpec(
+                [new SortKey(202, SortKeyKind.Aggregated, SortOrder.Ascending, Table: null, Column: column)],
+                SortPhase.Valued));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], spec);
+
+        AssertRejectedBySqlBuilderAndExplain(plan, "names no Table");
+    }
+
     [Theory]
     [InlineData(SortKeyKind.String)]
     [InlineData(SortKeyKind.Date)]
+    [InlineData(SortKeyKind.Aggregated)]
     public void GivenASearchParamSortKeyWithNoSearchParamId_WhenRunOrExplained_ThenBothRejectItRatherThanEmittingInvalidSql(SortKeyKind kind)
     {
         // A null SearchParamId interpolates to nothing, emitting "SearchParamId =  AND ..." -- SQL that is
         // handed back as a successful compile and fails as an opaque syntax error at execution, far from the
         // cause. Exactly what the empty-type-list guard exists to prevent, for a different member.
+        //
+        // Aggregated is included to pin precedence: it is missing Table and Column too, and the id is the
+        // coordinate the caller must supply first, so the id guard has to win.
         var spec = new MatchPageSpec(
             new CteRef(0),
             Sort: new SortSpec([new SortKey(null, kind, SortOrder.Ascending)], SortPhase.Valued));

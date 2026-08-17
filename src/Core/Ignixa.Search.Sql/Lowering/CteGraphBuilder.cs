@@ -26,10 +26,9 @@ internal sealed class CteGraphBuilder
     /// <summary>Appends a CTE and records the IR node it was lowered from, for <see cref="PlanProvenance"/>.</summary>
     public CteRef Add(CteDefinition cte, Expression provenanceNode)
     {
-        _ctes.Add(cte);
-        var index = _ctes.Count - 1;
-        _origins.Add(new CteOrigin(index, provenanceNode));
-        return new CteRef(index);
+        var reference = Add(cte);
+        _origins.Add(new CteOrigin(reference.Index, provenanceNode));
+        return reference;
     }
 
     public CteRef Intersect(CteRef left, CteRef right) => Add(new CteDefinition.Intersect(left, right));

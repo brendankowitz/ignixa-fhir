@@ -1,4 +1,4 @@
-namespace Ignixa.Search.Sql.Ast;
+﻿namespace Ignixa.Search.Sql.Ast;
 
 /// <summary>
 /// Rejects the plan shapes that have no coherent SQL rendering. Complements <see cref="QueryPlanValidator"/>,
@@ -221,8 +221,9 @@ internal static class PlanShapeValidator
                 throw new NotSupportedException(
                     $"Sort key {i} is {nameof(SortKeyKind)}.{key.Kind} but names no SearchParamId. The kind " +
                     "selects a search-param table whose rows are filtered by that id, and an absent one " +
-                    "renders no filter text at all, so the statement does not parse. Supply the id, or use a " +
-                    "resource-column kind (LastUpdated / ResourceType / ResourceId), which needs none.");
+                    "interpolates to nothing, emitting `SearchParamId =  AND`, so the statement does not " +
+                    "parse. Supply the id, or use a resource-column kind (LastUpdated / ResourceType / " +
+                    "ResourceId), which needs none.");
             }
 
             if (key.Kind is SortKeyKind.Aggregated && (key.Table is null || key.Column is null))

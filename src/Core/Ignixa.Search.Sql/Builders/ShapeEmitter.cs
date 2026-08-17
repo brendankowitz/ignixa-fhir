@@ -75,8 +75,7 @@ internal static class ShapeEmitter
         ResourceVisibility visibility)
     {
         var top = SelectBlock.RenderTop(plan.Top);
-        var projectionCols = ProjectionColumns(plan.Projection);
-        var projectionJoinFilter = projectionCols.Length > 0 ? ResourceRowFilter(visibility, "r.") : string.Empty;
+        var (projectionCols, projectionJoinFilter) = ProjectionJoin(plan, visibility);
         var sortJoins = EmitSortJoins(plan.Sort);
         var sortColumns = EmitSortSelectColumns(plan.Sort);
 
@@ -160,6 +159,14 @@ internal static class ShapeEmitter
     private const string IncludeUnionAlias = "includeUnion";
 
     /// <summary>
+    /// The clause every include arm carries to drop rows the match page already returns, so a resource that is
+    /// both a match and an include target appears once, as a match. Stated once because all four arms — the two
+    /// assemblies, each in its projected and unprojected form — must exclude on exactly the same key.
+    /// </summary>
+    private const string ExcludeMatchPageRows =
+        $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)";
+
+    /// <summary>
     /// Emits the outer global-page SELECT for an IncludesOnly page: <c>SELECT DISTINCT TOP (Limit + 1)
     /// T1, Sid1, IsMatch, &lt;IsPartial&gt;</c> over the UNION of every include stage body, ordered by (T1, Sid1),
     /// budget applied once so the page resumes from a boundary. Arms use plain <c>UNION</c> (not UNION ALL) so a
@@ -214,9 +221,8 @@ internal static class ShapeEmitter
     /// </summary>
     private static List<string> BuildGlobalIncludesPageArms(QueryPlan plan, IReadOnlyList<IncludeStage> includes, ResourceVisibility visibility)
     {
-        var projectionCols = ProjectionColumns(plan.Projection);
+        var (projectionCols, projectionJoinFilter) = ProjectionJoin(plan, visibility);
         var hasActiveProjection = projectionCols.Length > 0;
-        var projectionJoinFilter = hasActiveProjection ? ResourceRowFilter(visibility, "r.") : string.Empty;
 
         var arms = new List<string>();
         for (var i = 0; i < includes.Count; i++)
@@ -227,9 +233,9 @@ internal static class ShapeEmitter
             arms.Add(hasActiveProjection
                 ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}{projectionCols} FROM {IncludeLabel(i)} i\n" +
                   $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
-                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)"
+                  ExcludeMatchPageRows
                 : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias} FROM {IncludeLabel(i)} i\n" +
-                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+                  ExcludeMatchPageRows);
         }
 
         return arms;
@@ -298,9 +304,8 @@ internal static class ShapeEmitter
     /// </summary>
     private static List<string> BuildUnionArms(QueryPlan plan, IReadOnlyList<IncludeStage> includes, ResourceVisibility visibility)
     {
-        var projectionCols = ProjectionColumns(plan.Projection);
+        var (projectionCols, projectionJoinFilter) = ProjectionJoin(plan, visibility);
         var hasActiveProjection = projectionCols.Length > 0;
-        var projectionJoinFilter = hasActiveProjection ? ResourceRowFilter(visibility, "r.") : string.Empty;
 
         var activeSortKeyCount = ActiveKeyIndices(plan.Sort).Count;
         var nullSortColumns = string.Concat(Enumerable.Repeat(", NULL", activeSortKeyCount));
@@ -325,12 +330,23 @@ internal static class ShapeEmitter
             arms.Add(hasActiveProjection
                 ? $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns}{projectionCols} FROM {IncludeLimitLabel(i)} i\n" +
                   $"INNER JOIN dbo.Resource r ON r.ResourceTypeId = i.T1 AND r.ResourceSurrogateId = i.Sid1{projectionJoinFilter}\n" +
-                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)"
+                  ExcludeMatchPageRows
                 : $"SELECT i.T1, i.Sid1, CAST(0 AS bit){isMatchAlias}, i.IsPartial{nullSortColumns} FROM {IncludeLimitLabel(i)} i\n" +
-                  $"WHERE NOT EXISTS (SELECT 1 FROM {MatchPage} m WHERE m.T1 = i.T1 AND m.Sid1 = i.Sid1)");
+                  ExcludeMatchPageRows);
         }
 
         return arms;
+    }
+
+    /// <summary>
+    /// The projected columns and the visibility filter the <c>dbo.Resource</c> join carrying them must add.
+    /// The two are always decided together — the filter qualifies a join that exists only to project — so they
+    /// are derived once here rather than restated at each shape that opens that join.
+    /// </summary>
+    private static (string Columns, string JoinFilter) ProjectionJoin(QueryPlan plan, ResourceVisibility visibility)
+    {
+        var columns = ProjectionColumns(plan.Projection);
+        return (columns, columns.Length > 0 ? ResourceRowFilter(visibility, "r.") : string.Empty);
     }
 
     /// <summary>
