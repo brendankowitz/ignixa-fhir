@@ -1065,6 +1065,17 @@ public class SearchParameterQueryGenerator
             return await GenerateQuantityAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
         }
 
+        // Special handling for Reference AND expressions - every part of the reference must identify the SAME
+        // row. A reference is a single stored triple (base, type, id), so intersecting per-field resource-id
+        // sets is not equivalent: a resource whose parameter reaches a repeating element carries several rows,
+        // and one row can supply the type while a different row supplies the id, matching a resource that
+        // references neither.
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
+            IsReferenceAndExpression(multiaryExpr))
+        {
+            return await GenerateReferenceAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
+        }
+
         // Special handling for Token AND expressions - all filters (system, code, missing system) must apply to the SAME row
         // This handles patterns like "|code" which generates: And(Missing(TokenSystem), StringEquals(TokenCode, "code"))
         if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
@@ -1487,30 +1498,37 @@ public class SearchParameterQueryGenerator
         string? identifierTypeSystem = null;
         string? identifierTypeCode = null;
 
+        // IsTokenAndExpression routes on Any, so a mixed And reaches here with conjuncts this method cannot
+        // apply. Dropping them widened the result instead of failing: a composite whose parameter is absent
+        // from dbo.SearchParam, or whose component pairing DetermineCompositeType returns Unknown for, bypasses
+        // the composite interception in GenerateQueryAsync and arrives as an And of several components. The
+        // token conjunct alone then answered the search. Throwing matches GenerateQuantityAndQueryAsync and
+        // turns a silently wrong answer into a diagnosable failure. Every shape
+        // SearchValueExpressionBuilderHelper emits for a token value is handled below, so this is unreachable
+        // from a single token search parameter.
         foreach (var expr in multiaryExpr.Expressions)
         {
-            if (expr is StringExpression stringExpr)
+            switch (expr)
             {
-                switch (stringExpr.FieldName)
-                {
-                    case FieldName.TokenSystem:
-                        system = stringExpr.Value;
-                        break;
-                    case FieldName.TokenCode:
-                        code = stringExpr.Value;
-                        break;
-                    case FieldName.IdentifierTypeSystem:
-                        identifierTypeSystem = stringExpr.Value;
-                        break;
-                    case FieldName.IdentifierTypeCode:
-                        identifierTypeCode = stringExpr.Value;
-                        break;
-                }
-            }
-            else if (expr is MissingFieldExpression missingExpr && missingExpr.FieldName == FieldName.TokenSystem)
-            {
-                // |code pattern: system must be null/missing
-                requireMissingSystem = true;
+                case StringExpression { FieldName: FieldName.TokenSystem } systemExpr:
+                    system = systemExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.TokenCode } codeExpr:
+                    code = codeExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.IdentifierTypeSystem } identifierTypeSystemExpr:
+                    identifierTypeSystem = identifierTypeSystemExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.IdentifierTypeCode } identifierTypeCodeExpr:
+                    identifierTypeCode = identifierTypeCodeExpr.Value;
+                    break;
+                case MissingFieldExpression { FieldName: FieldName.TokenSystem }:
+                    // |code pattern: system must be null/missing
+                    requireMissingSystem = true;
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"Unexpected expression {expr.GetType().Name} in a Token AND search; a dropped conjunct would silently widen the result.");
             }
         }
 
@@ -1589,6 +1607,113 @@ public class SearchParameterQueryGenerator
             .Select(sp => sp.ResourceSurrogateId);
     }
 
+    /// <summary>
+    /// Checks whether every conjunct addresses one ReferenceSearchParam row, which is the shape
+    /// <c>SearchValueExpressionBuilderHelper.Visit(ReferenceSearchValue)</c> emits for all three
+    /// <see cref="ReferenceKind"/> variants that lower to a conjunction.
+    /// </summary>
+    private static bool IsReferenceAndExpression(MultiaryExpression multiaryExpr)
+    {
+        // All, not Any: a conjunct this method does not recognise is one GenerateReferenceAndQueryAsync
+        // would not apply, and dropping a conjunct widens the result.
+        if (!multiaryExpr.Expressions.All(e =>
+            e is StringExpression { FieldName: FieldName.ReferenceBaseUri or FieldName.ReferenceResourceType or FieldName.ReferenceResourceId }
+                or MissingFieldExpression { FieldName: FieldName.ReferenceBaseUri }))
+        {
+            return false;
+        }
+
+        // A composite spreads its components over several ComponentIndex values against the paired columns
+        // of a composite table, so folding them onto one ReferenceSearchParam row would be wrong. Requiring
+        // a single index leaves composites to CompositeSearchParameterQueryGenerator.
+        return multiaryExpr.Expressions
+            .Select(e => ((IFieldExpression)e).ComponentIndex)
+            .Distinct()
+            .Count() == 1;
+    }
+
+    /// <summary>
+    /// Generates a single Reference query with base, type and id applied to the SAME row. A reference is one
+    /// stored triple, so the conjunction is a claim about one row rather than about the union of rows.
+    /// Mirrors <c>ReferenceColumnEquality</c> in Ignixa.Search.Sql, which already builds this as one
+    /// row-level predicate over one alias.
+    /// </summary>
+    private async Task<IQueryable<long>> GenerateReferenceAndQueryAsync(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Using single-row Reference AND query generation for {Count} conjuncts", multiaryExpr.Expressions.Count);
+
+        string? baseUri = null;
+        string? referenceResourceType = null;
+        string? referenceResourceId = null;
+        var requireMissingBaseUri = false;
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            switch (expr)
+            {
+                case StringExpression { FieldName: FieldName.ReferenceBaseUri } baseUriExpr:
+                    baseUri = baseUriExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.ReferenceResourceType } typeExpr:
+                    referenceResourceType = typeExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.ReferenceResourceId } idExpr:
+                    referenceResourceId = idExpr.Value;
+                    break;
+                case MissingFieldExpression { FieldName: FieldName.ReferenceBaseUri }:
+                    requireMissingBaseUri = true;
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"Unexpected expression {expr.GetType().Name} in a Reference AND search; a dropped conjunct would silently widen the result.");
+            }
+        }
+
+        // The type name resolves to an id once, ahead of the predicate, because it is a lookup against the
+        // ResourceType table. Naming the type inside the row predicate would make it a per-row await.
+        short? referenceResourceTypeId = null;
+        if (!string.IsNullOrEmpty(referenceResourceType))
+        {
+            referenceResourceTypeId = await _cache.GetResourceTypeIdAsync(referenceResourceType, ct);
+            if (!referenceResourceTypeId.HasValue)
+            {
+                _logger.LogDebug("Reference resource type not found: {ReferenceResourceType}", referenceResourceType);
+                return _context.EmptyResourceIds();
+            }
+        }
+
+        var query = _context.ReferenceSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        if (referenceResourceTypeId is { } typeId)
+        {
+            query = query.Where(sp => sp.ReferenceResourceTypeId == typeId);
+        }
+
+        // A named base pins the row to that server; ReferenceKind.Internal instead lowers to Missing(BaseUri),
+        // meaning "this server", which is the null column. ReferenceKind.InternalOrExternal names neither and
+        // leaves the base unconstrained, so a relative search matches a row with or without a base.
+        if (!string.IsNullOrEmpty(baseUri))
+        {
+            query = query.Where(sp => sp.BaseUri == baseUri);
+        }
+        else if (requireMissingBaseUri)
+        {
+            query = query.Where(sp => sp.BaseUri == null);
+        }
+
+        if (!string.IsNullOrEmpty(referenceResourceId))
+        {
+            query = query.Where(sp => sp.ReferenceResourceId == referenceResourceId);
+        }
+
+        return query.Select(sp => sp.ResourceSurrogateId);
+    }
 
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
         short? resourceTypeId,
