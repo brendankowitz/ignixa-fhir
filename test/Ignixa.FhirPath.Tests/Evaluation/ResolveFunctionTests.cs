@@ -325,8 +325,18 @@ public class ResolveFunctionTests
     [Fact]
     public void GivenReferenceElementWhoseValueIsTheReferenceString_WhenResolving_ThenInInstanceResolutionFindsIt()
     {
-        // Arrange
+        // Arrange - pins the premise this test relies on: SchemaAwareElement reports
+        // `Observation.subject.reference` as InstanceType "Reference" (a case-insensitive
+        // name/type-match quirk), which is exactly what routes ExtractReferenceValue into its
+        // "Value is the reference string" fallback rather than the bare-primitive branch. If that
+        // heuristic is ever tightened this assertion fails loudly instead of the test silently
+        // starting to cover a different branch.
         var observation = ToElement(ObservationWithContainedPatientJson);
+        var referenceElement = _evaluator.Evaluate(
+            observation,
+            _parser.Parse("Observation.subject.reference"),
+            new EvaluationContext { Resource = observation }).Single();
+        referenceElement.InstanceType.ShouldBe("Reference");
         var expr = _parser.Parse("Observation.subject.reference.resolve().id");
         var context = new EvaluationContext { Resource = observation };
 
@@ -501,6 +511,179 @@ public class ResolveFunctionTests
         result.Children("id").Single().Value.ShouldBe("patA");
     }
 
+    [Fact]
+    public void GivenMultiElementFocusWithTwoResolvableReferences_WhenResolving_ThenReturnsBothInOrder()
+    {
+        // Arrange - GitHub issue #401 review gap: every pre-existing test narrows focus to a single
+        // element (e.g. ofType(Observation) on a Bundle). A real 0..* expression such as
+        // Observation.performer.resolve() must accumulate every resolvable element, in focus order,
+        // not just the first one.
+        var observation = ToElement(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""obs-multi"",
+            ""status"": ""final"",
+            ""code"": { ""coding"": [ { ""system"": ""http://loinc.org"", ""code"": ""1234-5"" } ] },
+            ""performer"": [
+                { ""reference"": ""#pr1"" },
+                { ""reference"": ""#pr2"" }
+            ],
+            ""contained"": [
+                { ""resourceType"": ""Practitioner"", ""id"": ""pr1"" },
+                { ""resourceType"": ""Practitioner"", ""id"": ""pr2"" }
+            ]
+        }");
+        var expr = _parser.Parse("Observation.performer.resolve().id");
+        var context = new EvaluationContext { Resource = observation };
+
+        // Act
+        var result = _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        result.Count.ShouldBe(2);
+        result[0].Value.ShouldBe("pr1");
+        result[1].Value.ShouldBe("pr2");
+    }
+
+    [Fact]
+    public void GivenMultiElementFocusWithOneResolvableAndOneUnresolvableReference_WhenResolving_ThenReturnsOnlyTheResolvedOneWithoutThrowing()
+    {
+        // Arrange - a mixed focus where one reference resolves in-instance and the other resolves
+        // nowhere (no ElementResolver is supplied) must yield exactly the one resolved element,
+        // not throw, and not silently drop the rest of the loop.
+        var observation = ToElement(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""obs-mixed"",
+            ""status"": ""final"",
+            ""code"": { ""coding"": [ { ""system"": ""http://loinc.org"", ""code"": ""1234-5"" } ] },
+            ""performer"": [
+                { ""reference"": ""#pr1"" },
+                { ""reference"": ""#unknown"" }
+            ],
+            ""contained"": [
+                { ""resourceType"": ""Practitioner"", ""id"": ""pr1"" }
+            ]
+        }");
+        var expr = _parser.Parse("Observation.performer.resolve().id");
+        var context = new EvaluationContext { Resource = observation };
+
+        // Act
+        var result = _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        result.Single().Value.ShouldBe("pr1");
+    }
+
+    [Fact]
+    public void GivenMultiElementFocusWithAnEmptyReferenceFollowedByAResolvableOne_WhenResolving_ThenSkipsTheEmptyOneAndStillResolvesTheLater()
+    {
+        // Arrange - this is the case that specifically catches "continue" degrading to "break" in
+        // the resolve() accumulation loop: the first performer has no reference value at all (an
+        // empty Reference object), which must be skipped, not treated as a reason to stop looking
+        // at the rest of the focus.
+        var observation = ToElement(@"{
+            ""resourceType"": ""Observation"",
+            ""id"": ""obs-skip"",
+            ""status"": ""final"",
+            ""code"": { ""coding"": [ { ""system"": ""http://loinc.org"", ""code"": ""1234-5"" } ] },
+            ""performer"": [
+                { },
+                { ""reference"": ""#pr2"" }
+            ],
+            ""contained"": [
+                { ""resourceType"": ""Practitioner"", ""id"": ""pr2"" }
+            ]
+        }");
+        var expr = _parser.Parse("Observation.performer.resolve().id");
+        var context = new EvaluationContext { Resource = observation };
+
+        // Act
+        var result = _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        result.Single().Value.ShouldBe("pr2");
+    }
+
+    [Fact]
+    public void GivenUnresolvedFragmentReference_WhenElementResolverCanResolveIt_ThenFallsBackToResolver()
+    {
+        // Arrange - deliberate Firely-over-HAPI choice. Firely short-circuits only the exact string
+        // "#": for an unresolved "#unknownId" its ScopedNode still consults the external resolver
+        // (its own ScopedNodeOnBaseTests asserts Assert.IsNull(inner7.Resolve("#d", externalResolve));
+        // Assert.AreEqual("#d", lastUrlResolved);) - the host WAS called. HAPI instead
+        // short-circuits every "#"-prefixed reference and never consults the host resolver for any
+        // fragment. Ignixa follows Firely: a "#id" that misses the in-instance index falls through
+        // to the host ElementResolver, while a bare "#" never does (see the sibling bare-hash tests
+        // above).
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var resolverElement = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""from-resolver"" }");
+        var expr = _parser.Parse("'#unknownId'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = reference => reference == "#unknownId" ? resolverElement : null,
+        };
+
+        // Act
+        var result = _evaluator.Evaluate(observation, expr, context).Single();
+
+        // Assert
+        result.ShouldBeSameAs(resolverElement);
+    }
+
+    [Fact]
+    public void GivenBundleEntryWithVersionedReference_WhenResolvingThroughTheEvaluator_ThenFindsTheVersionedEntry()
+    {
+        // Arrange - versioned Type/id/_history/vid resolution is covered at the ReferenceIndex unit
+        // level (ReferenceIndexTests), but not end-to-end through resolve().
+        var bundle = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""1"",
+                        ""meta"": { ""versionId"": ""3"" }
+                    }
+                },
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Observation"",
+                        ""id"": ""2"",
+                        ""status"": ""final"",
+                        ""code"": { ""coding"": [ { ""system"": ""http://loinc.org"", ""code"": ""1234-5"" } ] },
+                        ""subject"": { ""reference"": ""Patient/1/_history/3"" }
+                    }
+                }
+            ]
+        }");
+        var expr = _parser.Parse("Bundle.entry.resource.ofType(Observation).subject.resolve().id");
+        var context = new EvaluationContext { Resource = bundle };
+
+        // Act
+        var result = _evaluator.Evaluate(bundle, expr, context).Single();
+
+        // Assert
+        result.Value.ShouldBe("1");
+    }
+
+    [Fact]
+    public void GivenFocusElementWithResourceReferenceInstanceType_WhenResolving_ThenExtractsReferenceValueAndResolves()
+    {
+        // Arrange - ExtractReferenceValue treats InstanceType "ResourceReference" the same as
+        // "Reference" (see ElementSearchIndexer, which recognizes both names for the same FHIR
+        // Reference concept), but no existing test ever constructs an element with that InstanceType.
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var reference = new ResourceReferenceElement("#p1");
+        var context = new EvaluationContext { Resource = observation };
+
+        // Act
+        var result = FhirSpecificFunctions.Resolve(new[] { reference }, context).Single();
+
+        // Assert
+        result.Children("id").Single().Value.ShouldBe("p1");
+    }
+
     private const string BundleWithTwoEntriesSharingContainedIdJson = @"{
         ""resourceType"": ""Bundle"",
         ""type"": ""collection"",
@@ -592,6 +775,35 @@ public class ResolveFunctionTests
         public bool HasPrimitiveValue => true;
 
         public IReadOnlyList<IElement> Children(string? name = null) => Array.Empty<IElement>();
+
+        public T? Meta<T>() where T : class => null;
+    }
+
+    /// <summary>
+    /// Minimal <see cref="IElement"/> whose <see cref="InstanceType"/> is the alternate name
+    /// "ResourceReference" rather than "Reference", with a single "reference" child holding the
+    /// reference string - exercises the other half of ExtractReferenceValue's type-name check.
+    /// </summary>
+    private sealed class ResourceReferenceElement : IElement
+    {
+        private readonly string _referenceValue;
+
+        public ResourceReferenceElement(string referenceValue)
+        {
+            _referenceValue = referenceValue;
+        }
+
+        public string Name => string.Empty;
+        public object? Value => null;
+        public string InstanceType => "ResourceReference";
+        public string Location => string.Empty;
+        public IType? Type => null;
+        public bool HasPrimitiveValue => false;
+
+        public IReadOnlyList<IElement> Children(string? name = null) =>
+            name is null or "reference"
+                ? new IElement[] { new PrimitiveElement(_referenceValue, "string") }
+                : Array.Empty<IElement>();
 
         public T? Meta<T>() where T : class => null;
     }

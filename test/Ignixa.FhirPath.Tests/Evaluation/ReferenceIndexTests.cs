@@ -267,21 +267,6 @@ public class ReferenceIndexTests
     }
 
     [Fact]
-    public void GivenUnknownFragment_WhenResolving_ThenStillReturnsNull()
-    {
-        // Arrange
-        var element = ToElement(@"{
-            ""resourceType"": ""Patient"",
-            ""id"": ""example"",
-            ""contained"": [ { ""resourceType"": ""Practitioner"", ""id"": ""p1"" } ]
-        }");
-        var index = ReferenceIndex.Build(element);
-
-        // Act & Assert
-        index.Resolve("#unknown").ShouldBeNull();
-    }
-
-    [Fact]
     public void GivenParametersRoot_WhenResolvingTopLevelParameterResourceByTypeAndId_ThenReturnsResource()
     {
         // Arrange
