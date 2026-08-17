@@ -355,6 +355,157 @@ public class ResolveFunctionTests
         result.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void GivenBundleEntryWithContainedFragment_WhenNoElementResolverIsSupplied_ThenResolveFindsEntryContained()
+    {
+        // Arrange - reviewer case A: a #frag reference inside a Bundle entry resource. Firely resolves
+        // this; before this fix Ignixa returned empty because ReferenceIndex only indexed the Bundle
+        // root's (non-existent) contained pool. No ElementResolver is supplied, so success proves
+        // in-instance, entry-scoped resolution.
+        var bundle = ToElement(@"{
+            ""resourceType"": ""Bundle"",
+            ""type"": ""collection"",
+            ""entry"": [
+                {
+                    ""resource"": {
+                        ""resourceType"": ""Patient"",
+                        ""id"": ""patA"",
+                        ""managingOrganization"": { ""reference"": ""#org1"" },
+                        ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgA"" } ]
+                    }
+                }
+            ]
+        }");
+        var expr = _parser.Parse("Bundle.entry.resource.ofType(Patient).managingOrganization.resolve().name");
+        var context = new EvaluationContext { Resource = bundle };
+
+        // Act
+        var result = _evaluator.Evaluate(bundle, expr, context).Single();
+
+        // Assert
+        result.Value.ShouldBe("OrgA");
+    }
+
+    [Fact]
+    public void GivenTwoBundleEntriesWithSameContainedId_WhenResolving_ThenEachResolvesToItsOwnContained()
+    {
+        // Arrange - both entries contain an Organization with id "org1" but different names. Each
+        // entry is its own container boundary, so patA's #org1 must resolve to OrgA and patB's to
+        // OrgB. A single merged pool would collapse both to whichever was indexed first.
+        var bundle = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var context = new EvaluationContext { Resource = bundle };
+
+        // Act
+        var resolvedA = _evaluator.Evaluate(
+            bundle,
+            _parser.Parse("Bundle.entry.resource.ofType(Patient).where(id = 'patA').managingOrganization.resolve().name"),
+            context).Single();
+        var resolvedB = _evaluator.Evaluate(
+            bundle,
+            _parser.Parse("Bundle.entry.resource.ofType(Patient).where(id = 'patB').managingOrganization.resolve().name"),
+            context).Single();
+
+        // Assert
+        resolvedA.Value.ShouldBe("OrgA");
+        resolvedB.Value.ShouldBe("OrgB");
+    }
+
+    [Fact]
+    public void GivenParametersWithContainedFragmentsAtTopAndUnderPart_WhenResolving_ThenEachResolvesWithinItsOwnContainer()
+    {
+        // Arrange - the Parameters equivalent of the Bundle isolation case, including a resource
+        // nested under parameter.part.resource. Each parameter.resource is a container boundary.
+        var parameters = ToElement(ParametersWithContainedFragmentsJson);
+        var context = new EvaluationContext { Resource = parameters };
+
+        // Act
+        var resolvedTop = _evaluator.Evaluate(
+            parameters,
+            _parser.Parse("Parameters.parameter.resource.ofType(Patient).where(id = 'ptop').managingOrganization.resolve().name"),
+            context).Single();
+        var resolvedNested = _evaluator.Evaluate(
+            parameters,
+            _parser.Parse("Parameters.parameter.part.resource.ofType(Patient).where(id = 'pnested').managingOrganization.resolve().name"),
+            context).Single();
+
+        // Assert
+        resolvedTop.Value.ShouldBe("TopOrg");
+        resolvedNested.Value.ShouldBe("NestedOrg");
+    }
+
+    [Fact]
+    public void GivenBareHashFromContainedInsideBundleEntry_WhenResolving_ThenReturnsEntryResourceNotBundle()
+    {
+        // Arrange - bare '#' from inside a contained resource resolves to that contained resource's
+        // container, which inside a Bundle entry is the ENTRY resource (Patient patA), never the
+        // Bundle root (R4 references.html §2.3.0.8: "there is only one container resource"). Children()
+        // returns a fresh wrapper each call, so the entry resource cannot be compared by identity;
+        // assert on its content instead.
+        var bundle = ToElement(BundleWithTwoEntriesSharingContainedIdJson);
+        var containedOrg = bundle.Children("entry")[0].Children("resource").Single().Children("contained").Single();
+        var expr = _parser.Parse("'#'.resolve()");
+        var context = new EvaluationContext { Resource = containedOrg, RootResource = bundle };
+
+        // Act
+        var result = _evaluator.Evaluate(containedOrg, expr, context).Single();
+
+        // Assert
+        result.InstanceType.ShouldBe("Patient");
+        result.Children("id").Single().Value.ShouldBe("patA");
+    }
+
+    private const string BundleWithTwoEntriesSharingContainedIdJson = @"{
+        ""resourceType"": ""Bundle"",
+        ""type"": ""collection"",
+        ""entry"": [
+            {
+                ""resource"": {
+                    ""resourceType"": ""Patient"",
+                    ""id"": ""patA"",
+                    ""managingOrganization"": { ""reference"": ""#org1"" },
+                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgA"" } ]
+                }
+            },
+            {
+                ""resource"": {
+                    ""resourceType"": ""Patient"",
+                    ""id"": ""patB"",
+                    ""managingOrganization"": { ""reference"": ""#org1"" },
+                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""OrgB"" } ]
+                }
+            }
+        ]
+    }";
+
+    private const string ParametersWithContainedFragmentsJson = @"{
+        ""resourceType"": ""Parameters"",
+        ""parameter"": [
+            {
+                ""name"": ""top"",
+                ""resource"": {
+                    ""resourceType"": ""Patient"",
+                    ""id"": ""ptop"",
+                    ""managingOrganization"": { ""reference"": ""#org1"" },
+                    ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""TopOrg"" } ]
+                }
+            },
+            {
+                ""name"": ""group"",
+                ""part"": [
+                    {
+                        ""name"": ""nested"",
+                        ""resource"": {
+                            ""resourceType"": ""Patient"",
+                            ""id"": ""pnested"",
+                            ""managingOrganization"": { ""reference"": ""#org1"" },
+                            ""contained"": [ { ""resourceType"": ""Organization"", ""id"": ""org1"", ""name"": ""NestedOrg"" } ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }";
+
     /// <summary>
     /// Minimal <see cref="IElement"/> whose <see cref="Children"/> always throws, used to prove that
     /// a pathological instance cannot make <c>resolve()</c> throw while building its in-instance index.

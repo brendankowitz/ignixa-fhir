@@ -120,7 +120,7 @@ internal static class FhirSpecificFunctions
                 continue;
             }
 
-            var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver, context.Resource);
+            var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver, context.Resource, element.Location);
             if (resolved != null)
             {
                 results.Add(resolved);
@@ -170,14 +170,15 @@ internal static class FhirSpecificFunctions
         string referenceValue,
         ReferenceIndex? referenceIndex,
         Func<string, IElement?>? elementResolver,
-        IElement? currentResource)
+        IElement? currentResource,
+        string? focusLocation)
     {
         if (referenceValue == "#")
         {
             return TryResolveContainerScope(referenceIndex, currentResource);
         }
 
-        var resolved = TryResolveInInstance(referenceIndex, referenceValue);
+        var resolved = TryResolveInInstance(referenceIndex, referenceValue, focusLocation);
 
         if (resolved != null || elementResolver == null)
         {
@@ -218,7 +219,7 @@ internal static class FhirSpecificFunctions
     /// pathological instance falls through to the <see cref="FhirEvaluationContext.ElementResolver"/>
     /// fallback instead of propagating.
     /// </summary>
-    private static IElement? TryResolveInInstance(ReferenceIndex? referenceIndex, string referenceValue)
+    private static IElement? TryResolveInInstance(ReferenceIndex? referenceIndex, string referenceValue, string? focusLocation)
     {
         if (referenceIndex == null)
         {
@@ -227,7 +228,7 @@ internal static class FhirSpecificFunctions
 
         try
         {
-            return referenceIndex.Resolve(referenceValue);
+            return referenceIndex.Resolve(referenceValue, focusLocation);
         }
         catch
         {

@@ -13,34 +13,48 @@ namespace Ignixa.FhirPath.Evaluation;
 /// sibling entry resources (by <c>fullUrl</c>, <c>Type/id</c>, and <c>Type/id/_history/versionId</c>);
 /// when the root is a Parameters resource, nested <c>parameter</c>/<c>part</c> resources (by
 /// <c>Type/id</c> only - a Parameters entry has no <c>fullUrl</c>). A bare <c>#</c> resolves to the
-/// root only when the current evaluation scope is itself one of the root's contained resources;
-/// see <see cref="ResolveContainerScope"/>. Root-level and Bundle-entry-level scope both see an
-/// empty result for bare <c>#</c>, matching Firely's <c>ScopedNode</c> (empirically verified against
-/// Firely 5.13.1/6.0.1 and asserted by its own <c>ScopedNodeOnBaseTests</c>).
+/// container only when the current evaluation scope is itself one of that container's contained
+/// resources; see <see cref="ResolveContainerScope"/>. Root-level and Bundle-entry-level scope both
+/// see an empty result for bare <c>#</c>, matching Firely's <c>ScopedNode</c> (empirically verified
+/// against Firely 5.13.1/6.0.1 and asserted by its own <c>ScopedNodeOnBaseTests</c>).
 /// </summary>
 /// <remarks>
+/// <para>
 /// Built once per resource root (O(entries)); the closure injected as the FHIRPath element
 /// resolver chains a contained-of-current scope to its parent scope. Mirrors the
 /// contained + bundle resolution algorithm of Firely's <c>ScopedNode.BundledResources()</c> /
 /// <c>ContainedResources()</c> / <c>locateContainer()</c> without per-node parent pointers.
+/// </para>
+/// <para>
+/// Containment isolation without a parent pointer: <see cref="IElement"/> has no parent link, so
+/// each container boundary - the root, plus every <c>Bundle.entry.resource</c> and
+/// <c>Parameters.parameter[.part].resource</c> - keys its own contained pool by that container's
+/// absolute <see cref="IElement.Location"/> prefix. A <c>#frag</c> is resolved against the pool of
+/// the longest indexed prefix that encloses the focus element, so a fragment inside one entry can
+/// never see a sibling entry's contained resources. Per FHIR R4 references.html §2.3.0.8, resolution
+/// stops at those <c>entry.resource</c>/<c>parameter.resource</c> boundaries.
+/// </para>
 /// </remarks>
 public sealed class ReferenceIndex
 {
     private readonly IElement _root;
-    private readonly Dictionary<string, IElement> _byContainedId;
+    private readonly Dictionary<string, IElement> _rootContainedById;
+    private readonly IReadOnlyList<ContainedScope> _nestedScopes;
     private readonly Dictionary<string, IElement> _byBundleKey;
-    private readonly HashSet<string> _containedLocations;
+    private readonly Dictionary<string, IElement> _containerByContainedLocation;
 
     private ReferenceIndex(
         IElement root,
-        Dictionary<string, IElement> byContainedId,
+        Dictionary<string, IElement> rootContainedById,
+        IReadOnlyList<ContainedScope> nestedScopes,
         Dictionary<string, IElement> byBundleKey,
-        HashSet<string> containedLocations)
+        Dictionary<string, IElement> containerByContainedLocation)
     {
         _root = root;
-        _byContainedId = byContainedId;
+        _rootContainedById = rootContainedById;
+        _nestedScopes = nestedScopes;
         _byBundleKey = byBundleKey;
-        _containedLocations = containedLocations;
+        _containerByContainedLocation = containerByContainedLocation;
     }
 
     /// <summary>
@@ -53,28 +67,32 @@ public sealed class ReferenceIndex
     {
         ArgumentNullException.ThrowIfNull(root);
 
-        var byContainedId = new Dictionary<string, IElement>(StringComparer.Ordinal);
         var byBundleKey = new Dictionary<string, IElement>(StringComparer.Ordinal);
-        var containedLocations = new HashSet<string>(StringComparer.Ordinal);
+        var containerByContainedLocation = new Dictionary<string, IElement>(StringComparer.Ordinal);
+        var nestedScopes = new List<ContainedScope>();
 
-        IndexContained(root, byContainedId, containedLocations);
+        // Root scope: the root's own contained pool. Empty for a Bundle/Parameters container (neither
+        // is a DomainResource, so neither has a `contained` element), non-empty for a DomainResource.
+        var rootContainedById = IndexContained(root, containerByContainedLocation);
 
         if (root.InstanceType == "Bundle")
         {
-            IndexBundleEntries(root, byBundleKey);
+            IndexBundleEntries(root, byBundleKey, nestedScopes, containerByContainedLocation);
         }
         else if (root.InstanceType == "Parameters")
         {
-            IndexParametersEntries(root, byBundleKey);
+            IndexParametersEntries(root, byBundleKey, nestedScopes, containerByContainedLocation);
         }
 
-        return new ReferenceIndex(root, byContainedId, byBundleKey, containedLocations);
+        return new ReferenceIndex(root, rootContainedById, nestedScopes, byBundleKey, containerByContainedLocation);
     }
 
     /// <summary>
     /// Resolves a reference to its target element within this index. Bare <c>#</c> is never
     /// resolved here - deciding what it means needs the current evaluation scope, which this
-    /// string-only overload does not have; see <see cref="ResolveContainerScope"/>.
+    /// string-only overload does not have; see <see cref="ResolveContainerScope"/>. Fragment
+    /// (<c>#id</c>) lookups use the ROOT container's contained pool only; callers that need
+    /// entry-scoped fragment isolation must use <see cref="Resolve(string, string?)"/>.
     /// </summary>
     /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle/Parameters key (<c>fullUrl</c> / <c>Type/id</c>).</param>
     /// <returns>The matching element, or null when the reference is not present in this index.</returns>
@@ -86,50 +104,148 @@ public sealed class ReferenceIndex
         }
 
         return reference.StartsWith('#')
-            ? _byContainedId.GetValueOrDefault(reference[1..])
+            ? _rootContainedById.GetValueOrDefault(reference[1..])
             : _byBundleKey.GetValueOrDefault(reference);
     }
 
     /// <summary>
-    /// Resolves a bare <c>#</c> for the resource currently being evaluated. Returns the root only
-    /// when <paramref name="currentResource"/> is itself one of the root's contained resources -
-    /// Firely's ScopedNode returns the container from inside a contained resource's own scope, but
-    /// null from root-level or Bundle-entry-level scope (its <c>ScopedNodeOnBaseTests</c> asserts
-    /// <c>Resolve("#")</c> is null for both a Bundle and a Bundle entry resource). Membership is
-    /// checked by <see cref="IElement.Location"/> rather than reference identity - callers such as
-    /// <c>ContainedResourceCheck</c> re-derive the contained element via their own
-    /// <c>Children("contained")</c> call, which returns a distinct wrapper instance for the same
-    /// underlying node, so identity would never match; <c>Location</c> is a deterministic,
-    /// instance-independent path (e.g. <c>Patient.contained[0]</c>) that is stable across separate
-    /// wrappers of the same node. Checked against every contained child - including one with no
-    /// <c>id</c>, which <see cref="Resolve"/>'s <c>#id</c> lookup can never reach.
+    /// Resolves a reference to its target element, scoping a fragment (<c>#id</c>) lookup to the
+    /// container that encloses <paramref name="focusLocation"/>. A fragment is resolved against the
+    /// pool of the longest indexed container <see cref="IElement.Location"/> prefix that encloses
+    /// the focus element (falling back to the root's own contained pool when no nested container
+    /// encloses it), which enforces the FHIR containment rule that a fragment inside one
+    /// <c>Bundle.entry.resource</c> / <c>Parameters.parameter.resource</c> never resolves against a
+    /// sibling entry's contained resources. Bundle/Parameters entry keys (<c>fullUrl</c> /
+    /// <c>Type/id</c>) are cross-entry by design and are resolved independently of the focus.
+    /// </summary>
+    /// <param name="reference">A fragment reference (<c>#id</c>) or a Bundle/Parameters key (<c>fullUrl</c> / <c>Type/id</c>).</param>
+    /// <param name="focusLocation">The <see cref="IElement.Location"/> of the reference element being resolved, or null.</param>
+    /// <returns>The matching element, or null when the reference is not present in the enclosing scope.</returns>
+    public IElement? Resolve(string reference, string? focusLocation)
+    {
+        if (string.IsNullOrEmpty(reference) || reference == "#")
+        {
+            return null;
+        }
+
+        return reference.StartsWith('#')
+            ? SelectContainedPool(focusLocation).GetValueOrDefault(reference[1..])
+            : _byBundleKey.GetValueOrDefault(reference);
+    }
+
+    /// <summary>
+    /// Resolves a bare <c>#</c> for the resource currently being evaluated. Returns that resource's
+    /// container only when <paramref name="currentResource"/> is itself one of a container's
+    /// contained resources - for a plain DomainResource this is the root; for a contained resource
+    /// nested inside a <c>Bundle.entry.resource</c> / <c>Parameters.parameter.resource</c> it is
+    /// that entry resource, not the Bundle/Parameters root (R4 references.html §2.3.0.8: "there is
+    /// only one container resource"). Firely's ScopedNode returns the container from inside a
+    /// contained resource's own scope, but null from root-level or Bundle-entry-level scope (its
+    /// <c>ScopedNodeOnBaseTests</c> asserts <c>Resolve("#")</c> is null for both a Bundle and a
+    /// Bundle entry resource). Membership is checked by <see cref="IElement.Location"/> rather than
+    /// reference identity - callers such as <c>ContainedResourceCheck</c> re-derive the contained
+    /// element via their own <c>Children("contained")</c> call, which returns a distinct wrapper
+    /// instance for the same underlying node, so identity would never match; <c>Location</c> is a
+    /// deterministic, instance-independent path (e.g. <c>Patient.contained[0]</c>) that is stable
+    /// across separate wrappers of the same node. A null or empty <c>Location</c> is never a member,
+    /// so a hand-rolled element with no location cannot falsely resolve bare <c>#</c>.
     /// </summary>
     /// <param name="currentResource">The resource currently in scope (<c>%resource</c>), or null.</param>
     /// <returns>
-    /// The root/container element when <paramref name="currentResource"/> is one of its contained
+    /// The container element when <paramref name="currentResource"/> is one of its contained
     /// resources, otherwise null.
     /// </returns>
-    public IElement? ResolveContainerScope(IElement? currentResource) =>
-        currentResource is not null && _containedLocations.Contains(currentResource.Location) ? _root : null;
-
-    private static void IndexContained(
-        IElement root,
-        Dictionary<string, IElement> byContainedId,
-        HashSet<string> containedLocations)
+    public IElement? ResolveContainerScope(IElement? currentResource)
     {
-        foreach (var contained in root.Children("contained"))
+        var location = currentResource?.Location;
+        if (string.IsNullOrEmpty(location))
         {
-            containedLocations.Add(contained.Location);
+            return null;
+        }
+
+        return _containerByContainedLocation.GetValueOrDefault(location);
+    }
+
+    private Dictionary<string, IElement> SelectContainedPool(string? focusLocation)
+    {
+        if (string.IsNullOrEmpty(focusLocation))
+        {
+            return _rootContainedById;
+        }
+
+        Dictionary<string, IElement>? best = null;
+        var bestLength = -1;
+
+        foreach (var scope in _nestedScopes)
+        {
+            if (scope.Prefix.Length > bestLength && IsInScope(focusLocation, scope.Prefix))
+            {
+                best = scope.ById;
+                bestLength = scope.Prefix.Length;
+            }
+        }
+
+        return best ?? _rootContainedById;
+    }
+
+    private static bool IsInScope(string location, string prefix)
+    {
+        // An empty prefix must never behave as a wildcard that captures every focus element.
+        if (prefix.Length == 0 || !location.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Guard the boundary so "Bundle.entry[1].resource" does not falsely enclose
+        // "Bundle.entry[10].resource...": the next character after the prefix must start a child.
+        return location.Length == prefix.Length || location[prefix.Length] == '.';
+    }
+
+    private static Dictionary<string, IElement> IndexContained(
+        IElement container,
+        Dictionary<string, IElement> containerByContainedLocation)
+    {
+        var byId = new Dictionary<string, IElement>(StringComparer.Ordinal);
+
+        foreach (var contained in container.Children("contained"))
+        {
+            var location = contained.Location;
+            if (!string.IsNullOrEmpty(location))
+            {
+                // WHY: bare '#' from inside a contained resource resolves to its container.
+                containerByContainedLocation.TryAdd(location, container);
+            }
 
             var id = FirstChildValue(contained, "id");
             if (!string.IsNullOrEmpty(id))
             {
-                byContainedId.TryAdd(id, contained);
+                byId.TryAdd(id, contained);
             }
+        }
+
+        return byId;
+    }
+
+    private static void AddNestedContainer(
+        IElement container,
+        List<ContainedScope> nestedScopes,
+        Dictionary<string, IElement> containerByContainedLocation)
+    {
+        var byId = IndexContained(container, containerByContainedLocation);
+
+        // Only a container with contained resources AND a usable Location prefix can scope a
+        // fragment lookup; an empty prefix would match every focus element, so it is skipped.
+        if (byId.Count > 0 && !string.IsNullOrEmpty(container.Location))
+        {
+            nestedScopes.Add(new ContainedScope(container.Location, byId));
         }
     }
 
-    private static void IndexBundleEntries(IElement bundle, Dictionary<string, IElement> byBundleKey)
+    private static void IndexBundleEntries(
+        IElement bundle,
+        Dictionary<string, IElement> byBundleKey,
+        List<ContainedScope> nestedScopes,
+        Dictionary<string, IElement> containerByContainedLocation)
     {
         foreach (var entry in bundle.Children("entry"))
         {
@@ -140,6 +256,8 @@ public sealed class ReferenceIndex
             }
 
             var resource = resourceChildren[0];
+
+            AddNestedContainer(resource, nestedScopes, containerByContainedLocation);
 
             var fullUrl = FirstChildValue(entry, "fullUrl");
             if (!string.IsNullOrEmpty(fullUrl))
@@ -164,14 +282,20 @@ public sealed class ReferenceIndex
         }
     }
 
-    private static void IndexParametersEntries(IElement parameters, Dictionary<string, IElement> byBundleKey)
+    private static void IndexParametersEntries(
+        IElement parameters,
+        Dictionary<string, IElement> byBundleKey,
+        List<ContainedScope> nestedScopes,
+        Dictionary<string, IElement> containerByContainedLocation)
     {
-        IndexParameterList(parameters.Children("parameter"), byBundleKey);
+        IndexParameterList(parameters.Children("parameter"), byBundleKey, nestedScopes, containerByContainedLocation);
     }
 
     private static void IndexParameterList(
         IReadOnlyList<IElement> parameterEntries,
-        Dictionary<string, IElement> byBundleKey)
+        Dictionary<string, IElement> byBundleKey,
+        List<ContainedScope> nestedScopes,
+        Dictionary<string, IElement> containerByContainedLocation)
     {
         foreach (var parameter in parameterEntries)
         {
@@ -179,6 +303,9 @@ public sealed class ReferenceIndex
             if (resourceChildren.Count > 0)
             {
                 var resource = resourceChildren[0];
+
+                AddNestedContainer(resource, nestedScopes, containerByContainedLocation);
+
                 var id = FirstChildValue(resource, "id");
                 if (!string.IsNullOrEmpty(id))
                 {
@@ -190,7 +317,7 @@ public sealed class ReferenceIndex
             var parts = parameter.Children("part");
             if (parts.Count > 0)
             {
-                IndexParameterList(parts, byBundleKey);
+                IndexParameterList(parts, byBundleKey, nestedScopes, containerByContainedLocation);
             }
         }
     }
@@ -206,4 +333,10 @@ public sealed class ReferenceIndex
         var meta = resource.Children("meta");
         return meta.Count == 0 ? null : FirstChildValue(meta[0], "versionId");
     }
+
+    /// <summary>
+    /// A single container boundary's contained pool, keyed for longest-prefix scope selection by the
+    /// container's absolute <see cref="IElement.Location"/>.
+    /// </summary>
+    private sealed record ContainedScope(string Prefix, Dictionary<string, IElement> ById);
 }
