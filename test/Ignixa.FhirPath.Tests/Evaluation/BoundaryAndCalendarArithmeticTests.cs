@@ -38,16 +38,35 @@ public class BoundaryAndCalendarArithmeticTests
         Assert.Equal(expectedString, actual.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
+    /// <summary>
+    /// FHIRPath "Date/Time Arithmetic": "If there is more than one item, an item of an incompatible type, or
+    /// an unsupported unit for the type, the evaluation of the expression will end and signal an error to the
+    /// calling environment. This includes attempting to add date components to a Time." The unit table pairs
+    /// years through days with Date/DateTime and hours through milliseconds with DateTime/Time, so a Date has
+    /// no component to receive an hour and a Time none to receive a day.
+    /// </summary>
+    /// <remarks>
+    /// These previously asserted empty. FHIRPath N1 already required the error for the DateTime and Time
+    /// rows ("the quantity unit must be one of ... or the evaluation will end and signal an error to the
+    /// calling environment"); the current build extends it to Date and states the Time case outright.
+    /// Firely 6.0.1 throws for every expression here, so erroring closes a divergence rather than opening
+    /// one.
+    /// </remarks>
     [Theory]
     [InlineData("@1973-12-25 + 1 'h'")]
     [InlineData("@1973-12-25 + 1 'min'")]
+    [InlineData("@1973-12-25 + 1 hour")]
+    [InlineData("@1973-12-25 + 1 second")]
+    [InlineData("@1973-12-25 - 1 'ms'")]
     [InlineData("@T10:00 + 1 'd'")]
-    public void GivenInvalidUnitForOperandType_WhenDateTimeArithmetic_ThenReturnsEmpty(string expression)
+    [InlineData("@T10:00 + 1 day")]
+    [InlineData("@T10:00 + 1 year")]
+    [InlineData("@T10:00 - 1 week")]
+    public void GivenInvalidUnitForOperandType_WhenDateTimeArithmetic_ThenSignalsError(string expression)
     {
         var expr = _parser.Parse(expression);
-        var result = _evaluator.Evaluate(Root(), expr).ToList();
 
-        Assert.Empty(result);
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(Root(), expr).ToList());
     }
 
     /// <summary>
@@ -178,15 +197,112 @@ public class BoundaryAndCalendarArithmeticTests
         Assert.Equal(expected, result.Value);
     }
 
+    /// <summary>
+    /// A unit finer than the operand does not promote the result's precision. FHIRPath "Date/Time Arithmetic"
+    /// converts the quantity down to "the highest precision in the partial (truncating any decimal fraction)"
+    /// and adds at that precision, so 30 seconds on a minute-precision operand is 30/60 = 0.5 minutes, which
+    /// truncates to nothing.
+    /// </summary>
+    /// <remarks>
+    /// These previously asserted <c>1973-12-25T10:00:30</c> and <c>10:00:30</c> under a
+    /// <c>MaxPrecision(operand, unit)</c> result precision - the exact promotion the quoted rule forbids.
+    /// Firely 6.0.1 likewise keeps the operand's precision (<c>@2014-03 + 1 day</c> is <c>@2014-03</c>).
+    /// No official test case covers this shape, so nothing in the suite moves either way.
+    /// </remarks>
     [Theory]
-    [InlineData("@1973-12-25T10:00 + 30 second", "1973-12-25T10:00:30", "dateTime")]
-    [InlineData("@T10:00 + 30 's'", "10:00:30", "time")]
-    public void GivenMorePreciseUnit_WhenDateTimeArithmetic_ThenPromotesResultPrecision(string expression, string expected, string expectedType)
+    [InlineData("@1973-12-25T10:00 + 30 second", "1973-12-25T10:00", "dateTime")]
+    [InlineData("@1973-12-25T10:00 + 90 second", "1973-12-25T10:01", "dateTime")]
+    [InlineData("@T10:00 + 30 's'", "10:00", "time")]
+    [InlineData("@T10:00 + 120 's'", "10:02", "time")]
+    [InlineData("@2014-03 + 1 day", "2014-03", "date")]
+    public void GivenMorePreciseUnit_WhenDateTimeArithmetic_ThenKeepsOperandPrecision(string expression, string expected, string expectedType)
     {
         var expr = _parser.Parse(expression);
         var result = _evaluator.Evaluate(Root(), expr).Single();
 
         Assert.Equal(expectedType, result.InstanceType);
+        Assert.Equal(expected, result.Value);
+    }
+
+    /// <summary>
+    /// The worked examples from FHIRPath "Date/Time Arithmetic", verbatim. Each pins the rule that the
+    /// quantity is converted to the partial's precision, truncated, and then applied - which requires
+    /// year-precision operands to be parseable at all, and forbids the result gaining precision.
+    /// </summary>
+    [Theory]
+    [InlineData("@2014 + 24 months", "2016", "date")]
+    [InlineData("@2014 + 23 months", "2015", "date")]
+    [InlineData("@2014 + 11 months", "2014", "date")]
+    [InlineData("@2016 + 365 days", "2017", "date")]
+    [InlineData("@2014 - 24 months", "2012", "date")]
+    [InlineData("@2014 - 1 month", "2014", "date")]
+    [InlineData("@2026-02 + 5 weeks", "2026-03", "date")]
+    [InlineData("@2026-02 + 4 weeks", "2026-02", "date")]
+    [InlineData("@2026-02 - 1 day", "2026-02", "date")]
+    [InlineData("@2019-03-01 + 24 months", "2021-03-01", "date")]
+    [InlineData("@2019-03-01 - 24 months", "2017-03-01", "date")]
+    [InlineData("@2026-01-31 + 1 month", "2026-02-28", "date")]
+    [InlineData("@1973-12-25 + 7 days", "1974-01-01", "date")]
+    [InlineData("@1973-12-25 + 7.9 days", "1974-01-01", "date")]
+    [InlineData("@1973-12-25 + 1 week", "1974-01-01", "date")]
+    [InlineData("@1973-12-25 + 1 'd'", "1973-12-26", "date")]
+    [InlineData("@2026-01-01T13:00:00 + 30 minutes", "2026-01-01T13:30:00", "dateTime")]
+    [InlineData("@1973-12-25T00:00:00.000+10:00 + 42.53 seconds", "1973-12-25T00:00:42.530+10:00", "dateTime")]
+    [InlineData("@T23:30:00 + 1 hour", "00:30:00", "time")]
+    [InlineData("@T01:00:00 + 48 hour", "01:00:00", "time")]
+    public void GivenASpecWorkedExample_WhenTemporalArithmetic_ThenMatchesTheSpecifiedResult(string expression, string expected, string expectedType)
+    {
+        var expr = _parser.Parse(expression);
+        var result = _evaluator.Evaluate(Root(), expr).Single();
+
+        Assert.Equal(expectedType, result.InstanceType);
+        Assert.Equal(expected, result.Value);
+    }
+
+    /// <summary>
+    /// Sub-month units reach years through the 365-day factor, not by chaining days to months to years:
+    /// "If the date/time value only has years present then when adding month quantities; use the direct
+    /// conversion from months to years, otherwise convert the quantity to days, then to years". Chaining
+    /// would put a year at 30 x 12 = 360 days and turn the first case below into @2017.
+    /// </summary>
+    [Theory]
+    [InlineData("@2016 + 360 days", "2016")]
+    [InlineData("@2016 + 364 days", "2016")]
+    [InlineData("@2016 + 366 days", "2017")]
+    [InlineData("@2016 + 52 weeks", "2016")]
+    [InlineData("@2016 + 53 weeks", "2017")]
+    public void GivenASubMonthUnitOnAYearPrecisionDate_WhenAdded_ThenConvertsThroughDaysAtThreeSixtyFive(string expression, string expected)
+    {
+        var expr = _parser.Parse(expression);
+        var result = _evaluator.Evaluate(Root(), expr).Single();
+
+        Assert.Equal("date", result.InstanceType);
+        Assert.Equal(expected, result.Value);
+    }
+
+    /// <summary>
+    /// FHIRPath "Date/Time Arithmetic": "The decimal portion of the time-valued quantity is only applied for
+    /// second or millisecond precisions; for all other precisions, the decimal portion is ignored, since
+    /// date/time arithmetic is performed with calendar duration semantics."
+    /// </summary>
+    /// <remarks>
+    /// Hours and minutes previously kept their fraction, so <c>+ 1.5 hours</c> advanced 90 minutes. Firely
+    /// 6.0.1 still does that (it truncates only at day precision and coarser), so this is a deliberate
+    /// divergence in favour of the spec text, which is unchanged from N1.
+    /// </remarks>
+    [Theory]
+    [InlineData("@2014-01-01T10:00:00 + 1.5 hours", "2014-01-01T11:00:00")]
+    [InlineData("@2014-01-01T10:00:00 + 1.5 minutes", "2014-01-01T10:01:00")]
+    [InlineData("@2014-01-01T10:00:00 - 1.5 hours", "2014-01-01T09:00:00")]
+    [InlineData("@2014-01-01T10:00:00 + 1.9 days", "2014-01-02T10:00:00")]
+    [InlineData("@2014-01-01T10:00:00 + 1.5 seconds", "2014-01-01T10:00:01")]
+    [InlineData("@2014-01-01T10:00:00.000 + 1.5 seconds", "2014-01-01T10:00:01.500")]
+    public void GivenAFractionalQuantity_WhenTemporalArithmetic_ThenAppliesTheFractionOnlyBelowMinutes(string expression, string expected)
+    {
+        var expr = _parser.Parse(expression);
+        var result = _evaluator.Evaluate(Root(), expr).Single();
+
+        Assert.Equal("dateTime", result.InstanceType);
         Assert.Equal(expected, result.Value);
     }
 }
