@@ -180,10 +180,24 @@ public static class TypedElementExtensions
     /// var hasAddress = element.Select("address.exists()").AsString(); // "false", not "False"
     /// </code>
     /// </example>
+    /// <remarks>
+    /// The arity check is made here rather than delegated to
+    /// <see cref="TypeConversionFunctions.ToString"/>, which signals an error on a multi-item collection
+    /// as FHIRPath's Conversion section requires. That rule governs the <c>toString()</c> <i>function</i>,
+    /// reached by evaluating an expression; this is a host-side accessor whose whole contract is "the
+    /// string, or nothing", and whose callers - TestScript variable extraction - hand it expressions over
+    /// repeating elements precisely because a miss is an ordinary outcome. Letting the spec's error escape
+    /// through here would turn a documented <see langword="null"/> into a throw at four call sites that
+    /// have no way to act on it.
+    /// </remarks>
     public static string? AsString(this IEnumerable<IElement> elements)
     {
         ArgumentNullException.ThrowIfNull(elements);
-        return TypeConversionFunctions.ToString(elements).SingleOrDefault()?.Value as string;
+
+        var list = elements.ToList();
+        return list.Count == 1
+            ? TypeConversionFunctions.ToString(list).SingleOrDefault()?.Value as string
+            : null;
     }
 
     /// <summary>

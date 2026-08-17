@@ -8,6 +8,7 @@
 
 using System.Collections.Frozen;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
@@ -291,15 +292,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftResult = EvaluateExpression(context.Focus, expression.Left, context).ToList();
         var rightResult = EvaluateExpression(context.Focus, expression.Right, context).ToList();
 
+        if (operatorName is "+" or "-" or "*" or "/" or "div" or "mod")
+        {
+            return EvaluateArithmetic(operatorName, leftResult, rightResult);
+        }
+
         return operatorName switch
         {
-            "+" => EvaluateAddition(leftResult, rightResult),
-            "-" => EvaluateSubtraction(leftResult, rightResult),
-            "*" => EvaluateMultiplication(leftResult, rightResult),
-            "/" => EvaluateDivision(leftResult, rightResult),
-            "div" => EvaluateIntegerDivision(leftResult, rightResult),
-            "mod" => EvaluateModulo(leftResult, rightResult),
-
             "&" => EvaluateStringConcatenation(leftResult, rightResult),
 
             "is" => EvaluateTypeIs(leftResult, expression.Right, context),
@@ -317,7 +316,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             "<" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: false)),
             "<=" => FunctionHelpers.ReturnBoolean(CompareOrder(leftResult, rightResult, greater: false, orEqual: true)),
 
-            "xor" => EvaluateXor(GetBooleanValue(leftResult), GetBooleanValue(rightResult)),
+            "xor" => EvaluateXor(GetBooleanValue(leftResult, "xor"), GetBooleanValue(rightResult, "xor")),
 
             _ => throw new NotSupportedException($"Binary operator '{expression.Operator}' is not yet implemented")
         };
@@ -344,14 +343,14 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// </remarks>
     private IEnumerable<IElement> EvaluateShortCircuitingLogic(string operatorName, BinaryExpression expression, EvaluationContext context)
     {
-        var left = GetBooleanValue(EvaluateExpression(context.Focus, expression.Left, context).ToList());
+        var left = GetBooleanValue(EvaluateExpression(context.Focus, expression.Left, context).ToList(), operatorName);
 
         if (DecideFromLeftOperand(operatorName, left) is { } decided)
         {
             return FunctionHelpers.ReturnBoolean(decided);
         }
 
-        var right = GetBooleanValue(EvaluateExpression(context.Focus, expression.Right, context).ToList());
+        var right = GetBooleanValue(EvaluateExpression(context.Focus, expression.Right, context).ToList(), operatorName);
 
         return operatorName switch
         {
@@ -457,22 +456,45 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     }
 
     /// <summary>
-    /// Converts a collection to a boolean value for use in logical operators (and, or, xor, implies).
-    /// Per FHIRPath spec:
-    /// - Empty collection returns null (unknown)
-    /// - Single boolean element returns that boolean value
-    /// - Non-empty collection (including non-boolean values) returns true (truthy/exists)
+    /// Applies FHIRPath's Singleton Evaluation of Collections to one operand of a boolean operator,
+    /// returning <see langword="null"/> for the empty collection (the third state of the truth tables).
     /// </summary>
-    private static bool? GetBooleanValue(List<IElement> elements)
+    /// <remarks>
+    /// <para>
+    /// §Boolean logic: "For all boolean operators, the collections passed as operands are first evaluated
+    /// as Booleans (as described in Singleton Evaluation of Collections)." That algorithm has exactly one
+    /// case that is not a value: a collection of more than one item, where "the evaluation will end and
+    /// signal an error to the calling environment". The spec works the case through by name -
+    /// <c>Patient.active and Patient.gender and Patient.telecom</c> "will result in an error because of
+    /// the multiple telecom elements" - so the multi-item arm is a mandated error, not a truthiness test.
+    /// A single non-boolean item does evaluate to true; that arm is the "expected input type is Boolean"
+    /// branch of the same algorithm and stays.
+    /// </para>
+    /// <para>
+    /// This is called at the point an operand is actually consumed, never before, which is what keeps the
+    /// rule from colliding with short-circuiting: <see cref="EvaluateShortCircuitingLogic"/> only reaches
+    /// the right operand once the left has failed to decide the result, so <c>false and (1 | 2)</c> is
+    /// still false rather than an error. Hoisting the check to the top of the operator would make the
+    /// three short-circuited rows throw and silently break R4's <c>tim-9</c>.
+    /// </para>
+    /// <para>
+    /// <c>not()</c> has enforced the same rule since <c>testNotInvalid</c> (see
+    /// <see cref="Functions.BooleanFunctions.Not"/>); erroring here is what stops the operators and the
+    /// function reading the same clause two different ways.
+    /// </para>
+    /// </remarks>
+    private static bool? GetBooleanValue(List<IElement> elements, string operatorName)
     {
         if (elements.Count == 0)
             return null;
 
-        if (elements.Count == 1 && elements[0].Value is bool b)
-            return b;
+        if (elements.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"Operator '{operatorName}' requires singleton operands, but was given a collection of {elements.Count} items.");
+        }
 
-        // Non-empty collection (non-boolean or multiple elements) is truthy
-        return true;
+        return elements[0].Value is bool b ? b : true;
     }
 
     private static bool IsTemporalInstanceType(string? instanceType)
@@ -521,6 +543,47 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private static string DescribeOperandType(IElement element)
         => element.InstanceType ?? element.Value?.GetType().Name ?? "unknown";
+
+    /// <summary>
+    /// Dispatches the six math operators, turning an arithmetic overflow into an empty collection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §Math: "Operations that cause arithmetic overflow or underflow will result in empty ({ })." The
+    /// six operators below reach overflow in two distinct ways - the <c>decimal</c> accumulation itself
+    /// (<c>1e28 * 1e28</c>) and the narrowing <c>(int)</c> casts that re-type an integer result
+    /// (<c>2147483647 + 1</c>), which .NET always checks whether or not the assembly is compiled
+    /// <c>/checked</c>. Neither was caught, so both escaped as a raw <see cref="OverflowException"/>:
+    /// not merely the wrong answer, but an exception type from outside this engine's error surface,
+    /// which callers like <c>FhirPathInvariantCheck</c> can only classify as an unexpected internal
+    /// fault. <see cref="VisitUnary"/> has always had this catch; putting it on one router rather than
+    /// on six evaluators is what stops the next operator being added without it.
+    /// </para>
+    /// <para>
+    /// Catching only <see cref="OverflowException"/> keeps the deliberate errors intact: the math
+    /// preamble's "incompatible items" rule still surfaces as <see cref="FhirPathEvaluationException"/>
+    /// from <see cref="UndefinedForOperandTypes"/>, which this does not intercept.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<IElement> EvaluateArithmetic(string operatorName, List<IElement> left, List<IElement> right)
+    {
+        try
+        {
+            return operatorName switch
+            {
+                "+" => EvaluateAddition(left, right),
+                "-" => EvaluateSubtraction(left, right),
+                "*" => EvaluateMultiplication(left, right),
+                "/" => EvaluateDivision(left, right),
+                "div" => EvaluateIntegerDivision(left, right),
+                _ => EvaluateModulo(left, right)
+            };
+        }
+        catch (OverflowException)
+        {
+            return [];
+        }
+    }
 
     private IEnumerable<IElement> EvaluateAddition(List<IElement> left, List<IElement> right)
     {
@@ -678,21 +741,54 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         throw UndefinedForOperandTypes(left[0], right[0], "mod");
     }
 
+    /// <summary>
+    /// Evaluates <c>&amp;</c>, which concatenates two Strings and treats an empty operand as the empty
+    /// string.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The operator is a subsection of §Math, so it inherits that preamble: "If there is more than one
+    /// item, or incompatible items, the evaluation of the expression will end and signal an error to the
+    /// calling environment." Its own text defines it only "For strings", and the conversion table makes
+    /// Integer-to-String an <i>explicit</i> conversion, not an implicit one - so a non-String operand is
+    /// an incompatible item. Coercing through <c>ToString()</c> instead made <c>1 &amp; 'a'</c> answer
+    /// <c>'1a'</c>, silently performing a conversion the language reserves for <c>toString()</c>.
+    /// </para>
+    /// <para>
+    /// The multi-item rule comes from the same preamble and is what official test <c>testConcatenate4</c>
+    /// (<c>(1 | 2 | 3) &amp; 'b'</c>) encodes. Emptiness is checked before type, because
+    /// <c>'ABC' &amp; { } &amp; 'DEF'</c> is the spec's own worked example of the empty-as-empty-string
+    /// rule and must not be reinterpreted as an incompatible operand.
+    /// </para>
+    /// </remarks>
     private IEnumerable<IElement> EvaluateStringConcatenation(List<IElement> left, List<IElement> right)
     {
-        // FHIRPath spec: Empty collections are treated as empty strings for concatenation
-        // '1' & {} = '1', {} & 'b' = 'b'
         if (left.Count > 1 || right.Count > 1)
         {
-            // Official test testConcatenate4: (1 | 2 | 3) & 'b' is an error, not an empty result.
             throw new FhirPathEvaluationException(
                 $"Operator '&' requires singleton operands, but was given {left.Count} item(s) on the left and {right.Count} item(s) on the right.");
         }
 
-        var leftStr = left.Count == 1 ? (left[0].Value?.ToString() ?? string.Empty) : string.Empty;
-        var rightStr = right.Count == 1 ? (right[0].Value?.ToString() ?? string.Empty) : string.Empty;
+        return [CreateString(AsConcatenationOperand(left, "left") + AsConcatenationOperand(right, "right"))];
+    }
 
-        return [new PrimitiveElement(leftStr + rightStr, "string")];
+    /// <remarks>
+    /// A temporal is rejected even though this engine happens to carry <c>@2024-01-15</c> as a CLR
+    /// <see cref="string"/>: what makes an operand compatible is its FHIRPath type, not its storage, and
+    /// Date-to-String is no more implicit than Integer-to-String. Firely rejects <c>@2024-01-15 &amp; 'x'</c>
+    /// for the same reason, so testing storage alone would have left this one case silently divergent.
+    /// </remarks>
+    private static string AsConcatenationOperand(List<IElement> operand, string side)
+    {
+        if (operand.Count == 0)
+            return string.Empty;
+
+        if (operand[0].Value is string text && !IsTemporalElement(operand[0]))
+            return text;
+
+        throw new FhirPathEvaluationException(
+            $"Operator '&' is defined for String operands, but the {side} operand was of type " +
+            $"'{DescribeOperandType(operand[0])}'.");
     }
 
     private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr, EvaluationContext context)
@@ -1184,46 +1280,84 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     }
 
     /// <summary>
-    /// Evaluates unary <c>+</c>/<c>-</c>. A non-numeric operand of unary <c>-</c> is an error
-    /// (official tests <c>testLiteralIntegerNegative1Invalid</c>, <c>testPrecedence1</c>,
-    /// <c>testLiteralDecimalNegative01Invalid</c>, all of which parse as <c>-(&lt;boolean&gt;)</c>).
+    /// Evaluates unary <c>+</c>/<c>-</c>, which the spec types as taking "a single item input operand of
+    /// type Integer, Long, Decimal, or Quantity" and makes an error for anything else.
     /// </summary>
     /// <remarks>
-    /// This arm previously returned empty, on the premise that the spec left a non-numeric operand
-    /// undefined. It does not: the Unary Operators clause types the operand, and the worked example
-    /// <c>-7.combine(3) // ERROR</c> says the same. Firely and HAPI both error. Note the clause is new in
-    /// 3.0.0-ballot and marked STU - under 2.0.0 only the worked example backs it - but no engine reads it
-    /// the lenient way. The typed switch itself must stay: before it, <c>Convert.ToDecimal(true)</c> made
-    /// <c>-true</c> evaluate to <c>-1</c>, which is worse than either empty or an error.
+    /// <para>
+    /// Three arms, each backed by a different sentence of the same clause. A non-numeric single operand is
+    /// an error ("Using with any incompatible type will end and signal an error to the calling
+    /// environment"), which the official <c>testLiteralIntegerNegative1Invalid</c>, <c>testPrecedence1</c>
+    /// and <c>testLiteralDecimalNegative01Invalid</c> all encode - they parse as <c>-(&lt;boolean&gt;)</c>
+    /// because <c>.</c> binds tighter than unary minus. An empty operand is empty ("If the input collection
+    /// is empty, the result is empty"). A multi-item operand is an error, from "a single item input
+    /// operand" and from the precedence section's worked example, which annotates <c>-(7.combine(3))</c>
+    /// as <c>// ERROR</c> and gives the reason: "unary negation cannot be applied to a list".
+    /// </para>
+    /// <para>
+    /// The multi-item arm previously fell into the same pass-through as unary <c>+</c>, so
+    /// <c>-(7.combine(3))</c> returned <c>7, 3</c> un-negated - a silently wrong value rather than the
+    /// mandated error. Unary <c>+</c> is a pass-through by definition ("returns the value of its operand
+    /// unchanged") but is typed by the same sentence, so <c>+true</c> is an error too, not the <c>true</c>
+    /// it used to yield.
+    /// </para>
+    /// <para>
+    /// Note the clause is new in 3.0.0 and marked STU - under 2.0.0 only the precedence example backs it -
+    /// but no engine reads it the lenient way; Firely and HAPI both error. The typed switch in
+    /// <see cref="NegateNumeric"/> must stay: before it, <c>Convert.ToDecimal(true)</c> made <c>-true</c>
+    /// evaluate to <c>-1</c>, which is worse than either empty or an error.
+    /// </para>
     /// </remarks>
     public IEnumerable<IElement> VisitUnary(UnaryExpression expression, EvaluationContext context)
     {
         var operand = EvaluateExpression(context.Focus, expression.Operand, context).ToList();
 
-        if (expression.Operator != "-" || operand.Count != 1)
+        if (expression.Operator is not ("-" or "+") || operand.Count == 0)
             return operand;
 
-        var value = operand[0].Value;
+        if (operand.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"Unary '{expression.Operator}' is defined for a single item operand, but was given a collection of {operand.Count} items.");
+        }
+
+        EnsureNumericUnaryOperand(operand[0], expression.Operator);
+
+        if (expression.Operator == "+")
+            return operand;
+
         try
         {
-            return value switch
-            {
-                int i => [CreateInteger(checked(-i))],
-                long l when l >= int.MinValue && l <= int.MaxValue => [CreateInteger(checked(-(int)l))],
-                long l => [CreateDecimal(-(decimal)l)],
-                decimal d => [CreateDecimal(-d)],
-                double d => [CreateDecimal(-(decimal)d)],
-                float f => [CreateDecimal(-(decimal)f)],
-                Types.Quantity q => [FunctionHelpers.CreateQuantity(new Types.Quantity(-q.Value, q.Unit))],
-                _ => throw new FhirPathEvaluationException(
-                    $"Unary '-' is only defined for Integer, Decimal and Quantity, but the operand was of type '{DescribeOperandType(operand[0])}'.")
-            };
+            return [NegateNumeric(operand[0])];
         }
         catch (OverflowException)
         {
+            // "If the result of negating the number cannot be represented, the result is empty ({ })."
             return [];
         }
     }
+
+    private static void EnsureNumericUnaryOperand(IElement operand, string operatorSymbol)
+    {
+        if (operand.Value is int or long or decimal or double or float or Types.Quantity)
+            return;
+
+        throw new FhirPathEvaluationException(
+            $"Unary '{operatorSymbol}' is only defined for Integer, Long, Decimal and Quantity, " +
+            $"but the operand was of type '{DescribeOperandType(operand)}'.");
+    }
+
+    private IElement NegateNumeric(IElement operand) => operand.Value switch
+    {
+        int i => CreateInteger(checked(-i)),
+        long l when l >= int.MinValue && l <= int.MaxValue => CreateInteger(checked(-(int)l)),
+        long l => CreateDecimal(-(decimal)l),
+        decimal d => CreateDecimal(-d),
+        double d => CreateDecimal(-(decimal)d),
+        float f => CreateDecimal(-(decimal)f),
+        Types.Quantity q => FunctionHelpers.CreateQuantity(new Types.Quantity(-q.Value, q.Unit)),
+        _ => throw new UnreachableException($"EnsureNumericUnaryOperand admitted '{DescribeOperandType(operand)}'.")
+    };
 
 
     /// <summary>
