@@ -1,8 +1,15 @@
 # Investigation: Typed Primitive Values
 
 **Feature**: typed-models
-**Status**: Proposed
+**Status**: Implemented — see [ADR-2610](../adr-2610-typed-temporal-values.md)
 **Created**: 2026-08-13
+
+> **Implemented (2026-08-13).** `IElement.Value` now returns `FhirTemporal` for `date`/`dateTime`/
+> `instant`/`time`, scoped to temporals as recommended (`Quantity` untouched). See
+> [ADR-2610](../adr-2610-typed-temporal-values.md) for the decision record — including the
+> conformance argument (Finding (j)) that made this a pre-1.0 requirement rather than a deferred
+> refactor, and the two open design points (the `Value` property's silent-null shape at partial
+> precision, and the sealed-class-vs-struct allocation cost) flagged for revisit before 1.0.
 
 ## Approach
 
