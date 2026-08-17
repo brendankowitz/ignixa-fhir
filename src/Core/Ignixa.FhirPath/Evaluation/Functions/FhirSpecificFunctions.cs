@@ -74,8 +74,10 @@ internal static class FhirSpecificFunctions
     /// entries by <c>fullUrl</c> or <c>Type/id</c>, and bare <c>#</c> when currently evaluating from
     /// inside one of the root's contained resources - see <see cref="ReferenceIndex.ResolveContainerScope"/>),
     /// then falls back to the caller-supplied <see cref="FhirEvaluationContext.ElementResolver"/>.
-    /// Returns empty if the reference cannot be resolved by either path.
-    /// Per FHIR spec: resolve() returns empty on failure (does not throw).
+    /// Returns empty when a reference does not resolve, per the FHIR spec's resolve() contract - but
+    /// that contract covers a reference failing to resolve, not a defect in our own engine: a failure
+    /// while building or querying the in-instance index (a broken <see cref="IElement"/> implementation)
+    /// propagates rather than being reported as an empty result.
     /// </summary>
     [FhirPathFunction("resolve",
         SupportedContexts = "Reference-Resource",
@@ -93,7 +95,8 @@ internal static class FhirSpecificFunctions
         // In-instance resolution (contained/bundle/parameters, via ReferenceIndex) is tried first,
         // matching Firely's ScopedNode.Resolve<T>; the host ElementResolver is a fallback, not the
         // only path, so contained and intra-Bundle references resolve with no external resolver at all.
-        // Per FHIR spec: resolve() returns empty on failure (does not throw).
+        // A reference that fails to resolve returns empty per spec; a defect in our own in-instance
+        // resolution propagates instead of being masked as "not found".
 
         var results = new List<IElement>();
 
@@ -104,7 +107,7 @@ internal static class FhirSpecificFunctions
         // ScopedNodeOnBaseTests asserts Resolve("#") is null for both a Bundle and a Bundle entry
         // resource (measured against Firely 5.13.1/6.0.1).
         var root = context.RootResource ?? context.Resource;
-        var referenceIndex = TryBuildReferenceIndex(context.ReferenceIndexCache, root);
+        var referenceIndex = context.ReferenceIndexCache.GetOrBuild(root);
         var elementResolver = (context as FhirEvaluationContext)?.ElementResolver;
 
         if (referenceIndex == null && elementResolver == null)
@@ -159,12 +162,17 @@ internal static class FhirSpecificFunctions
     }
 
     /// <summary>
-    /// Resolves a single reference value: in-instance first, then the host resolver. Per FHIR spec,
-    /// a host resolver failure is swallowed rather than propagated - resolve() returns empty on failure.
-    /// A bare <c>#</c> is scope-dependent (see <see cref="ReferenceIndex.ResolveContainerScope"/>) and
-    /// is decided entirely in-instance: never falls through to the host resolver, matching Firely and HAPI.
-    /// Every other reference shape tries in-instance first, then falls back to the host resolver if no
-    /// in-instance result is found.
+    /// Resolves a single reference value: in-instance first, then the host resolver. An in-instance
+    /// lookup failure (a defect in our own engine, e.g. a broken <see cref="IElement"/> implementation)
+    /// propagates rather than being swallowed - only a HOST resolver failure is treated as "not found",
+    /// because <see cref="FhirEvaluationContext.ElementResolver"/> is caller-supplied code we do not
+    /// control, unlike <paramref name="referenceIndex"/>. A bare <c>#</c> is scope-dependent (see
+    /// <see cref="ReferenceIndex.ResolveContainerScope"/>): when an in-instance index exists it is
+    /// decided entirely in-instance and never falls through to the host resolver, matching Firely and
+    /// HAPI; when there is no in-instance index at all (no <see cref="EvaluationContext.Resource"/> /
+    /// <see cref="EvaluationContext.RootResource"/>), there is no scope to decide it from, so it falls
+    /// through to the host resolver like any other reference. Every other reference shape tries
+    /// in-instance first, then falls back to the host resolver if no in-instance result is found.
     /// </summary>
     private static IElement? ResolveReferenceValue(
         string referenceValue,
@@ -173,12 +181,12 @@ internal static class FhirSpecificFunctions
         IElement? currentResource,
         string? focusLocation)
     {
-        if (referenceValue == "#")
+        if (referenceValue == "#" && referenceIndex != null)
         {
-            return TryResolveContainerScope(referenceIndex, currentResource);
+            return referenceIndex.ResolveContainerScope(currentResource);
         }
 
-        var resolved = TryResolveInInstance(referenceIndex, referenceValue, focusLocation);
+        var resolved = referenceIndex?.Resolve(referenceValue, focusLocation);
 
         if (resolved != null || elementResolver == null)
         {
@@ -189,70 +197,11 @@ internal static class FhirSpecificFunctions
         {
             return elementResolver(referenceValue);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Builds the in-instance <see cref="ReferenceIndex"/> for <paramref name="root"/>, swallowing a
-    /// build failure so resolve() keeps its never-throws contract even against a pathological
-    /// <see cref="IElement.Children"/> implementation; a failed build still leaves the
-    /// <see cref="FhirEvaluationContext.ElementResolver"/> fallback available.
-    /// </summary>
-    private static ReferenceIndex? TryBuildReferenceIndex(ReferenceIndexCache cache, IElement? root)
-    {
-        try
-        {
-            return cache.GetOrBuild(root);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Looks up <paramref name="referenceValue"/> in the in-instance index, swallowing a lookup
-    /// failure for the same never-throws reason as <see cref="TryBuildReferenceIndex"/> so a
-    /// pathological instance falls through to the <see cref="FhirEvaluationContext.ElementResolver"/>
-    /// fallback instead of propagating.
-    /// </summary>
-    private static IElement? TryResolveInInstance(ReferenceIndex? referenceIndex, string referenceValue, string? focusLocation)
-    {
-        if (referenceIndex == null)
-        {
-            return null;
-        }
-
-        try
-        {
-            return referenceIndex.Resolve(referenceValue, focusLocation);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Resolves a bare '#' against the current containment scope, swallowing a lookup failure for
-    /// the same never-throws reason as <see cref="TryResolveInInstance"/>.
-    /// </summary>
-    private static IElement? TryResolveContainerScope(ReferenceIndex? referenceIndex, IElement? currentResource)
-    {
-        if (referenceIndex == null)
-        {
-            return null;
-        }
-
-        try
-        {
-            return referenceIndex.ResolveContainerScope(currentResource);
-        }
-        catch
-        {
+            // WHY: the host resolver is a trust boundary (caller-supplied code), so an ordinary
+            // failure there is "reference not found" per spec - but cancellation/OOM are not that,
+            // and must propagate rather than being reported as an empty resolve() result.
             return null;
         }
     }

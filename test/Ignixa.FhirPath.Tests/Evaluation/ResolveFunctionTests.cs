@@ -169,6 +169,30 @@ public class ResolveFunctionTests
     }
 
     [Fact]
+    public void GivenBareHashWithNoResourceOrRootResource_WhenElementResolverIsConfigured_ThenReturnsResolverResult()
+    {
+        // Arrange - with neither %resource nor %rootResource set there is no in-instance index at
+        // all (referenceIndex is null), so there is no containment scope to decide bare '#' against.
+        // Unlike the root-scope case above (which HAS an index and legitimately short-circuits to
+        // empty), this must fall through to the host resolver like any other reference - matching
+        // pre-existing behaviour and Firely's ScopedNode, which only short-circuits '#' for a
+        // ScopedNode and otherwise defers to the external resolver.
+        var input = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""example"" }");
+        var resolverElement = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""resolved-via-host"" }");
+        var expr = _parser.Parse("'#'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            ElementResolver = reference => reference == "#" ? resolverElement : null,
+        };
+
+        // Act
+        var result = _evaluator.Evaluate(input, expr, context).Single();
+
+        // Assert
+        result.ShouldBeSameAs(resolverElement);
+    }
+
+    [Fact]
     public void GivenRootResourceItself_WhenResolvingBareHash_ThenReturnsEmpty()
     {
         // Arrange - Firely's ScopedNodeOnBaseTests asserts Resolve("#") is null for a
@@ -261,18 +285,41 @@ public class ResolveFunctionTests
     }
 
     [Fact]
-    public void GivenRootWhoseChildrenThrows_WhenResolving_ThenReturnsEmptyWithoutThrowing()
+    public void GivenElementResolverThatThrowsOperationCanceledException_WhenResolving_ThenPropagates()
     {
-        // Arrange
+        // Arrange - the host resolver is the one genuine trust boundary in resolve(), but
+        // cancellation is not "reference not found": swallowing it would let a caller mistake
+        // request abort for a missing reference.
+        var observation = ToElement(ObservationWithContainedPatientJson);
+        var expr = _parser.Parse("'Patient/unresolvable'.resolve()");
+        var context = new FhirEvaluationContext
+        {
+            Resource = observation,
+            ElementResolver = _ => throw new OperationCanceledException(),
+        };
+
+        // Act
+        var act = () => _evaluator.Evaluate(observation, expr, context).ToList();
+
+        // Assert
+        Should.Throw<OperationCanceledException>(act);
+    }
+
+    [Fact]
+    public void GivenRootWhoseChildrenThrows_WhenResolving_ThenPropagatesTheException()
+    {
+        // Arrange - a ThrowingElement is a broken IElement, not a reference that failed to
+        // resolve: resolve()'s spec-mandated empty-on-failure contract covers the latter, not a
+        // defect in our own in-instance resolution, which must propagate instead of being masked.
         var root = new ThrowingElement();
         var expr = _parser.Parse("'#'.resolve()");
         var context = new EvaluationContext { Resource = root };
 
         // Act
-        var result = _evaluator.Evaluate(root, expr, context).ToList();
+        var act = () => _evaluator.Evaluate(root, expr, context).ToList();
 
         // Assert
-        result.ShouldBeEmpty();
+        Should.Throw<InvalidOperationException>(act);
     }
 
     [Fact]
