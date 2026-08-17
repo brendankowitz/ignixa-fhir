@@ -13,7 +13,7 @@ Built using the [Superpower](https://github.com/datalust/superpower) parser comb
 ## Key Features
 
 - **Visitor Pattern Architecture** - Clean separation between AST structure and operations
-- **Compile-Time Optimization** - Constant folding, short-circuiting, and algebraic simplification
+- **Compile-Time Optimization** - Constant folding and short-circuiting, applied only where they provably preserve semantics
 - **Expression Caching** - Parsed ASTs cached for repeated evaluations
 - **Type Inference** - Static analyzer validates expressions before execution
 - **High Performance** - Significant improvements over traditional switch-based evaluators
@@ -60,15 +60,23 @@ var options = new CompilationOptions { Optimize = true };
 var expr1 = parser.Parse("1 + 1", options);              // Optimized to: 2
 var expr2 = parser.Parse("'hello' + 'world'", options);  // Optimized to: 'helloworld'
 
-// Short-circuit evaluation
+// Short-circuit evaluation, matching the three rows the evaluator itself short-circuits
 var expr3 = parser.Parse("false and X", options);        // Optimized to: false (X not evaluated)
 var expr4 = parser.Parse("true or X", options);          // Optimized to: true (X not evaluated)
+var expr5 = parser.Parse("false implies X", options);    // Optimized to: true (X not evaluated)
 
-// Algebraic simplification
-var expr5 = parser.Parse("X + 0", options);              // Optimized to: X
-var expr6 = parser.Parse("X * 1", options);              // Optimized to: X
-var expr7 = parser.Parse("X and true", options);         // Optimized to: X
+// Left alone: X is always evaluated, so folding it away would discard an error it may signal
+var expr6 = parser.Parse("X and false", options);        // Unchanged
+var expr7 = parser.Parse("X + 0", options);              // Unchanged
+var expr8 = parser.Parse("X and true", options);         // Unchanged
 ```
+
+:::note
+An optimization may only drop an operand that is itself a literal, or one the evaluator would not have
+evaluated either. Every FHIRPath operand can signal an error, so rewriting `X and false` to `false`
+would turn an expression that throws into one that quietly answers - and a rewrite that returns `X` in
+place of the whole expression changes its type whenever `X` is not a boolean singleton.
+:::
 
 :::tip
 The `Select()` extension methods automatically use optimized parsing. Manual optimization is only needed when using the parser API directly.

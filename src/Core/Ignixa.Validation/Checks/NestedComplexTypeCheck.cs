@@ -98,7 +98,8 @@ public class NestedComplexTypeCheck : IValidationCheck
 
                 // Validate nested element using the nested schema
                 var nestedResult = NestedSchema.Validate(elementNode, settings, nestedState);
-                issues.AddRange(nestedResult.Issues);
+                issues.AddRange(nestedResult.IssuesOrSynthesizedFailure(
+                    elementNode.Location, $"'{elementPath}' ({NestedSchema.ResourceType})"));
                 isValid &= nestedResult.IsValid;
             }
         }
@@ -110,7 +111,8 @@ public class NestedComplexTypeCheck : IValidationCheck
 
             // Validate nested element using the nested schema
             var nestedResult = NestedSchema.Validate(elementNode, settings, nestedState);
-            issues.AddRange(nestedResult.Issues);
+            issues.AddRange(nestedResult.IssuesOrSynthesizedFailure(
+                elementNode.Location, $"'{ElementName}' ({NestedSchema.ResourceType})"));
             isValid &= nestedResult.IsValid;
         }
 

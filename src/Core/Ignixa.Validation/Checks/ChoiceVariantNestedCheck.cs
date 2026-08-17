@@ -83,7 +83,8 @@ public sealed class ChoiceVariantNestedCheck : IValidationCheck
             var location = _isCollection ? $"{_variantName}[{i}]" : _variantName;
             var nestedState = descended.WithLocation(location);
             var nestedResult = _variantSchema.Validate(variantNodes[i], settings, nestedState);
-            issues.AddRange(nestedResult.Issues);
+            issues.AddRange(nestedResult.IssuesOrSynthesizedFailure(
+                variantNodes[i].Location, $"'{location}' ({_variantSchema.ResourceType})"));
             isValid &= nestedResult.IsValid;
         }
 
