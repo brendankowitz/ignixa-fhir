@@ -411,10 +411,12 @@ public class FhirPathDelegateCompiler
         {
             TypeMatcher.EnsureTypeIdentifierResolves(typeName, ctx.Schema, "ofType()");
 
-            var focusResults = focusFunc(input, ctx);
-            // Case-insensitive type matching per FHIRPath spec
-            return focusResults.Where(e => !string.IsNullOrEmpty(e.InstanceType) &&
-                                           e.InstanceType.Equals(typeName, StringComparison.OrdinalIgnoreCase));
+            // Routed through the shared matcher rather than comparing InstanceType inline: this is the
+            // COMPILED spelling of the same ofType() that CollectionFunctions.OfType interprets, and an
+            // expression must not change meaning because it happened to be compilable. The inline
+            // comparison this replaces was exact, so a compiled ofType(Quantity) silently dropped the
+            // SimpleQuantity that the interpreted one keeps.
+            return TypeMatcher.FilterByType(focusFunc(input, ctx), typeName);
         };
     }
 

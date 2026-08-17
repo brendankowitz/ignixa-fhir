@@ -302,7 +302,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
             "&" => EvaluateStringConcatenation(leftResult, rightResult),
 
-            "is" => EvaluateTypeIs(leftResult, expression.Right),
+            "is" => EvaluateTypeIs(leftResult, expression.Right, context),
             "as" => EvaluateTypeAs(leftResult, expression.Right, context),
 
             "in" => FunctionHelpers.ReturnBoolean(EvaluateMembership(leftResult, rightResult, isIn: true)),
@@ -695,16 +695,31 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return [new PrimitiveElement(leftStr + rightStr, "string")];
     }
 
-    private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr)
+    private IEnumerable<IElement> EvaluateTypeIs(List<IElement> left, Expression typeExpr, EvaluationContext context)
     {
-        if (left.Count != 1)
-            return [];
-
         var typeName = TypeMatcher.ExtractTypeName(typeExpr);
         if (string.IsNullOrEmpty(typeName))
             return [];
 
-        return FunctionHelpers.ReturnBoolean(TypeMatcher.IsTypeMatch(left[0], typeName));
+        // Both of these are mandated by the same two sentences of the spec, and both are checked before
+        // the empty-input exit for the same reason 'as' checks them first: whether the identifier names a
+        // type, and whether the operand is a collection, are facts about the expression, so hiding them
+        // behind the data would let a nonsense type sit undetected until a resource happened to populate
+        // the path. See TypeMatcher.EnsureSingletonTypeTestInput for why this one is not version gated
+        // while the matching rule on 'as' is.
+        TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "operator 'is'");
+        TypeMatcher.EnsureSingletonTypeTestInput(left.Count, "operator 'is'");
+
+        // Empty input yields empty, NOT false. The specs disagree here and the disagreement is real:
+        // FHIRPath N1 (2.0.0), which every published FHIR version normatively references, ends the
+        // paragraph "In all other cases this operator returns the empty collection", while the 3.0.0
+        // build changed that sentence to "returns false". Empty is deliberate - it matches N1 and both
+        // reference engines. Do not "fix" it to false without also deciding to target 3.0.0.
+        if (left.Count == 0)
+            return [];
+
+        return FunctionHelpers.ReturnBoolean(
+            TypeMatcher.IsTypeMatch(left[0], typeName, TypeMatchMode.TypeTest));
     }
 
     private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr, EvaluationContext context)
@@ -729,8 +744,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         //
         // Calling the same helper CollectionFunctions.As uses, rather than reimplementing its body, is
         // what stops the operator and the function drifting apart again - which is the defect this line
-        // exists to fix.
-        return TypeMatcher.FilterByType(left, typeName, useInheritance: false);
+        // exists to fix. FilterByType is subclass-aware over complex types, so this now agrees with
+        // 'is' on an Age: both see a Quantity. It stays exact over primitives; see TypeMatcher.
+        return TypeMatcher.FilterByType(left, typeName);
     }
 
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)

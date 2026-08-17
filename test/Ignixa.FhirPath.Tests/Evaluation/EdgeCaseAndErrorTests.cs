@@ -842,15 +842,13 @@ public class EdgeCaseAndErrorTests
 
     [Theory]
     [InlineData("(1 | 2 | 3).ofType(`integer`)")]
-    [InlineData("(1 | 2 | 3) is `integer`")]
     public void GivenMultipleItemsUnderR5_WhenOfType_ThenDoesNotThrow(string expression)
     {
-        // The singleton rule is specific to the cast operators. ofType() is specified as a filter
-        // over a collection, so a multi-item input is its normal case - the two share
-        // TypeMatcher.FilterByType, which is exactly why the guard must not live inside it.
-        // 'is' is included because it sits next to 'as' in the same spec section and returns empty
-        // rather than throwing for a non-singleton, which is easy to conflate. Run under R5, the
-        // version that does enforce the rule for 'as', so the exemption is what is being asserted.
+        // The singleton rule is specific to the cast and type-test operators. ofType() is specified as a
+        // filter over a collection, so a multi-item input is its normal case - it shares
+        // TypeMatcher.FilterByType with 'as', which is exactly why the guard must not live inside it.
+        // Run under R5, the version that does enforce the rule for 'as', so the exemption is what is
+        // being asserted.
 
         // Arrange
         var expr = _parser.Parse(expression);
@@ -862,6 +860,34 @@ public class EdgeCaseAndErrorTests
 
         // Assert
         Assert.NotNull(result);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) is `integer`", FhirVersion.R5)]
+    [InlineData("(1 | 2 | 3).is(`integer`)", FhirVersion.R5)]
+    [InlineData("(1 | 2 | 3) is `integer`", FhirVersion.R4)]
+    [InlineData("(1 | 2 | 3).is(`integer`)", FhirVersion.R4)]
+    public void GivenMultipleItems_WhenTypeIs_ThenThrowsOnEveryVersion(string expression, FhirVersion version)
+    {
+        // FHIRPath for the 'is' operator, unchanged between N1 6.3.1 and the 3.0.0 build: "If the input
+        // collections contains more than one item, the evaluator will throw an error". The operator used
+        // to return empty here while is() the function threw, so the same question got two answers
+        // depending on spelling - both forms are asserted for that reason.
+        //
+        // Unlike 'as' this is NOT version gated, and R4 is included to pin that. The 'as' gate exists
+        // because HL7's R4/R4B SearchParameters put 0..* paths on the left of 'as'; no shipped artifact
+        // does the same to 'is', which appears only as where(resolve() is Patient) and STU3's
+        // Condition.abatement.is(dateTime) over a 0..1 choice. See
+        // TypeMatcher.EnsureSingletonTypeTestInput.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(version);
+
+        // Act & Assert
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr, context).ToList());
+        Assert.Contains("single item", exception.Message, StringComparison.Ordinal);
     }
 
     private static EvaluationContext ContextFor(FhirVersion version) => new()
