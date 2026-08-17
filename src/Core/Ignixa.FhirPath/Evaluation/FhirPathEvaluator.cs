@@ -1711,9 +1711,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         }
     }
 
-    private static FhirTemporalPrecision MaxPrecision(FhirTemporalPrecision left, FhirTemporalPrecision right)
-        => left >= right ? left : right;
-
     /// <summary>
     /// Every unit FHIRPath accepts as time-valued, in both the calendar-keyword and UCUM-code spellings.
     /// A unit outside this set (<c>'cm'</c>, <c>'kg'</c>, ...) is not a duration at all, which is a
@@ -1760,6 +1757,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             $"'{keyword}' instead.");
     }
 
+    /// <summary>
+    /// Maps an operand type and unit onto the precision the unit operates at, or <see langword="null"/> when
+    /// the type does not accept the unit at all. The pairs are exactly the FHIRPath "Date/Time Arithmetic"
+    /// table's Datatype/Quantity Unit rows: years through days for <c>Date</c>, everything for
+    /// <c>DateTime</c>, and hours through milliseconds for <c>Time</c>. <c>instant</c> shares
+    /// <c>dateTime</c>'s wire format and is a fixed point on the calendar, so it takes the same units.
+    /// </summary>
     private static FhirTemporalPrecision? GetDateTimeArithmeticUnitPrecision(string instanceType, string unit)
         => (instanceType, unit) switch
         {
@@ -1767,20 +1771,96 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             ("date", "month" or "months") => FhirTemporalPrecision.Month,
             ("date", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
             ("date", "d" or "day" or "days") => FhirTemporalPrecision.Day,
-            ("dateTime", "year" or "years") => FhirTemporalPrecision.Year,
-            ("dateTime", "month" or "months") => FhirTemporalPrecision.Month,
-            ("dateTime", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
-            ("dateTime", "d" or "day" or "days") => FhirTemporalPrecision.Day,
-            ("dateTime", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
-            ("dateTime", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
-            ("dateTime", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
-            ("dateTime", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
+            ("dateTime" or "instant", "year" or "years") => FhirTemporalPrecision.Year,
+            ("dateTime" or "instant", "month" or "months") => FhirTemporalPrecision.Month,
+            ("dateTime" or "instant", "wk" or "week" or "weeks") => FhirTemporalPrecision.Day,
+            ("dateTime" or "instant", "d" or "day" or "days") => FhirTemporalPrecision.Day,
+            ("dateTime" or "instant", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
+            ("dateTime" or "instant", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
+            ("dateTime" or "instant", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
+            ("dateTime" or "instant", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
             ("time", "h" or "hour" or "hours") => FhirTemporalPrecision.Hour,
             ("time", "min" or "minute" or "minutes") => FhirTemporalPrecision.Minute,
             ("time", "s" or "second" or "seconds") => FhirTemporalPrecision.Second,
             ("time", "ms" or "millisecond" or "milliseconds") => FhirTemporalPrecision.Millisecond,
             _ => null
         };
+
+    private static bool IsWeekUnit(string unit) => unit is "wk" or "week" or "weeks";
+
+    /// <summary>
+    /// Enforces the FHIRPath rule that a unit the operand type cannot take signals an error rather than an
+    /// empty result: "If there is more than one item, an item of an incompatible type, or an unsupported unit
+    /// for the type, the evaluation of the expression will end and signal an error to the calling
+    /// environment. This includes attempting to add date components to a Time." Firely 6.0.1 throws for the
+    /// same inputs (<c>@2014-01-01 + 1 hour</c>, <c>@T12:00:00 + 1 day</c>), so this is the interoperable
+    /// reading as well as the specified one.
+    /// </summary>
+    /// <remarks>
+    /// Non-temporal operands reach the arithmetic path only because the caller routes any lexical value
+    /// paired with a Quantity through it, so they fall through unchanged rather than erroring here.
+    /// </remarks>
+    private static void ThrowIfUnsupportedUnit(string instanceType, Types.Quantity quantity)
+    {
+        if (!IsTemporalInstanceType(instanceType))
+        {
+            return;
+        }
+
+        // The two failures are distinct: 'cm' is not a duration at all (official testMinus6), whereas
+        // 'h' is a perfectly good duration that a Date simply has no component to receive.
+        var message = _timeValuedUnits.Contains(quantity.Unit)
+            ? $"'{quantity}' is not a unit that {instanceType} arithmetic supports."
+            : $"'{quantity}' is not a time-valued quantity, so it cannot be used in {instanceType} arithmetic.";
+
+        throw new FhirPathEvaluationException(message);
+    }
+
+    /// <summary>
+    /// Converts a time-valued quantity to the precision the operation runs at.
+    /// </summary>
+    /// <remarks>
+    /// Two FHIRPath rules meet here. "The decimal portion of the time-valued quantity is only applied for
+    /// second or millisecond precisions; for all other precisions, the decimal portion is ignored" governs
+    /// the quantity as written, and the partial-precision rule - "converting the time-valued quantity to the
+    /// highest precision in the partial (truncating any decimal fraction)" - governs the step down to a
+    /// coarser operand, using the spec's calendar conversion factors (1 year = 12 months or 365 days,
+    /// 1 month = 30 days, 1 day = 24 hours, 1 hour = 60 minutes, 1 minute = 60 seconds). Days convert
+    /// straight to years at 365 rather than chaining through months, which the spec calls out explicitly
+    /// ("If the date/time value only has years present then when adding month quantities; use the direct
+    /// conversion from months to years, otherwise convert the quantity to days, then to years"). Chaining
+    /// through months instead would put a year at 360 days, so <c>@2016 + 360 days</c> would wrongly reach
+    /// <c>@2017</c>.
+    /// </remarks>
+    private static double ConvertQuantityToPrecision(
+        double value,
+        FhirTemporalPrecision unitPrecision,
+        int unitsPerQuantity,
+        FhirTemporalPrecision target)
+    {
+        var amount = DropIgnoredFraction(value, unitPrecision) * unitsPerQuantity;
+        var current = unitPrecision;
+
+        while (current > target)
+        {
+            (amount, current) = current switch
+            {
+                FhirTemporalPrecision.Millisecond => (amount / 1000, FhirTemporalPrecision.Second),
+                FhirTemporalPrecision.Second => (amount / 60, FhirTemporalPrecision.Minute),
+                FhirTemporalPrecision.Minute => (amount / 60, FhirTemporalPrecision.Hour),
+                FhirTemporalPrecision.Hour => (amount / 24, FhirTemporalPrecision.Day),
+                FhirTemporalPrecision.Day when target == FhirTemporalPrecision.Year => (amount / 365, FhirTemporalPrecision.Year),
+                FhirTemporalPrecision.Day => (amount / 30, FhirTemporalPrecision.Month),
+                FhirTemporalPrecision.Month => (amount / 12, FhirTemporalPrecision.Year),
+                _ => (amount, target)
+            };
+        }
+
+        return DropIgnoredFraction(amount, target);
+    }
+
+    private static double DropIgnoredFraction(double value, FhirTemporalPrecision precision)
+        => precision >= FhirTemporalPrecision.Second ? value : Math.Truncate(value);
 
     private static string TruncateToDateTimePrecision(string value, FhirTemporalPrecision precision)
     {
@@ -2019,53 +2099,79 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var precision = FhirTemporal.GetLiteralPrecision(parseStr);
         if (precision == FhirTemporalPrecision.Invalid)
             return [];
-        if (!TryParseFhirDateTime(parseStr, out var dt))
-            return [];
 
         var unitPrecision = GetDateTimeArithmeticUnitPrecision(instanceType, quantity.Unit);
         if (unitPrecision is null)
         {
-            // A unit that is not time-valued at all is a spec error, not an empty result (official
-            // testMinus6: @1974-12-25 - 1 'cm'). A time-valued unit that is merely finer than the operand
-            // can carry (@1973-12-25 + 1 'h') is a separate question the official suite does not settle,
-            // so that case keeps returning empty. Non-temporal operands reach here only because the caller
-            // routes any lexical value paired with a Quantity through this method; leave them unchanged.
-            if (IsTemporalInstanceType(instanceType) && !_timeValuedUnits.Contains(quantity.Unit))
-            {
-                throw new FhirPathEvaluationException(
-                    $"'{quantity}' is not a time-valued quantity, so it cannot be used in {instanceType} arithmetic.");
-            }
-
+            ThrowIfUnsupportedUnit(instanceType, quantity);
             return [];
         }
 
-        var value = (double)quantity.Value * (add ? 1 : -1);
+        if (!TryParsePartialDateTime(parseStr, precision, out var dt))
+            return [];
+
+        // The operation runs at the coarser of the operand's precision and the unit's, so a quantity finer
+        // than the partial is converted down to it rather than promoting the result: @2014 + 24 months is
+        // @2016, not @2016-01-01.
+        var operationPrecision = unitPrecision.Value <= precision ? unitPrecision.Value : precision;
+        var amount = ConvertQuantityToPrecision(
+            (double)quantity.Value * (add ? 1 : -1),
+            unitPrecision.Value,
+            IsWeekUnit(quantity.Unit) ? 7 : 1,
+            operationPrecision);
+
         DateTimeOffset result;
 
         try
         {
-            result = quantity.Unit switch
-            {
-                "year" or "years" => dt.AddYears((int)Math.Truncate(value)),
-                "month" or "months" => dt.AddMonths((int)Math.Truncate(value)),
-                "wk" or "week" or "weeks" => dt.AddDays(Math.Truncate(value) * 7),
-                "d" or "day" or "days" => dt.AddDays(Math.Truncate(value)),
-                "h" or "hour" or "hours" => dt.AddHours(value),
-                "min" or "minute" or "minutes" => dt.AddMinutes(value),
-                "s" or "second" or "seconds" => dt.AddMilliseconds(value * 1000),
-                "ms" or "millisecond" or "milliseconds" => dt.AddMilliseconds(value),
-                _ => throw new InvalidOperationException("Unsupported date/time arithmetic unit.")
-            };
+            result = AddAtPrecision(dt, amount, operationPrecision);
         }
-        catch
+        catch (ArgumentOutOfRangeException)
         {
+            // FHIRPath Math: "Operations that cause arithmetic overflow or underflow will result in empty".
             return [];
         }
 
-        var resultPrecision = MaxPrecision(precision, unitPrecision.Value);
-        var resultStr = FormatDateTimeWithPrecision(result, resultPrecision, dateTimeStr, isTimeOnly);
+        var resultStr = FormatDateTimeWithPrecision(result, precision, dateTimeStr, isTimeOnly);
         return [new PrimitiveElement(resultStr, instanceType)];
     }
+
+    /// <summary>
+    /// Resolves the operand to the first instant its precision covers. Year- and month-precision literals
+    /// are anchored explicitly because <see cref="DateTimeOffset"/> cannot parse them - <c>"2014"</c> is not
+    /// a date to <see cref="DateTimeOffset.TryParse(string, IFormatProvider, System.Globalization.DateTimeStyles, out DateTimeOffset)"/>,
+    /// which is why year-precision arithmetic used to yield empty. The month and day this fabricates never
+    /// reach the output, which is re-formatted at the operand's own precision.
+    /// </summary>
+    private bool TryParsePartialDateTime(string value, FhirTemporalPrecision precision, out DateTimeOffset result)
+    {
+        if (precision > FhirTemporalPrecision.Month)
+        {
+            return TryParseFhirDateTime(value, out result);
+        }
+
+        var anchor = GetDateTimeLowerBound(value, precision);
+        result = anchor is null ? default : new DateTimeOffset(anchor.Value);
+
+        return anchor is not null;
+    }
+
+    private static DateTimeOffset AddAtPrecision(DateTimeOffset value, double amount, FhirTemporalPrecision precision)
+        => precision switch
+        {
+            FhirTemporalPrecision.Year => value.AddYears(ToWholeUnits(amount)),
+            FhirTemporalPrecision.Month => value.AddMonths(ToWholeUnits(amount)),
+            FhirTemporalPrecision.Day => value.AddDays(amount),
+            FhirTemporalPrecision.Hour => value.AddHours(amount),
+            FhirTemporalPrecision.Minute => value.AddMinutes(amount),
+            FhirTemporalPrecision.Second => value.AddMilliseconds(amount * 1000),
+            _ => value.AddMilliseconds(amount)
+        };
+
+    private static int ToWholeUnits(double amount)
+        => amount is >= int.MinValue and <= int.MaxValue
+            ? (int)amount
+            : throw new ArgumentOutOfRangeException(nameof(amount), amount, "Date/time arithmetic overflowed.");
 
     private string FormatDateTimeWithPrecision(DateTimeOffset dt, FhirTemporalPrecision precision, string originalStr, bool isTimeOnly)
     {
