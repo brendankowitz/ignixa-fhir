@@ -4,7 +4,9 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Ignixa.Abstractions;
+using Ignixa.Models;
 
 namespace Ignixa.Serialization.SourceNodes;
 
@@ -14,11 +16,9 @@ namespace Ignixa.Serialization.SourceNodes;
 /// facades for DomainResources derive from this rather than directly from <see cref="ResourceJsonNode"/>.
 /// </summary>
 /// <remarks>
-/// This type adds no members of its own in the current cut; it exists so the generated base/version
-/// facades have a stable DomainResource-shaped base and so future shared DomainResource members
-/// (text, contained, extension, modifierExtension) can be lifted here without touching consumers.
-/// The constructor contract is identical to <see cref="ResourceJsonNode"/> and is chainable by
-/// subclasses in other assemblies.
+/// Provides the shared DomainResource-level properties: <c>text</c>, <c>contained</c>,
+/// <c>extension</c>, and <c>modifierExtension</c>. These are defined once here so the generator
+/// does not duplicate them on every concrete DomainResource facade.
 /// </remarks>
 public class DomainResourceJsonNode : ResourceJsonNode
 {
@@ -47,4 +47,20 @@ public class DomainResourceJsonNode : ResourceJsonNode
         : base(jsonObject, fhirVersion)
     {
     }
+
+    [JsonIgnore]
+    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
+
+    [JsonIgnore]
+    public Narrative? Text
+    {
+        get => GetComplexProperty<Narrative>("text");
+        set => SetProperty("text", value?.MutableNode);
+    }
+
+    [JsonIgnore]
+    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
+
+    [JsonIgnore]
+    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 }

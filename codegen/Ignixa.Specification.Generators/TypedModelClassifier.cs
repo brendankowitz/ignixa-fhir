@@ -234,7 +234,12 @@ internal sealed class TypedModelClassifier
         {
             string jsonName = element.cgName();
 
-            if (isResource && (jsonName is "id" or "meta" or "resourceType"))
+            if (isResource && (jsonName is "id" or "meta" or "resourceType" or "implicitRules" or "language"))
+            {
+                continue;
+            }
+
+            if (kind is FacadeKind.DomainResource && (jsonName is "contained" or "text" or "extension" or "modifierExtension"))
             {
                 continue;
             }
