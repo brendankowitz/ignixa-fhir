@@ -5,7 +5,6 @@
  * Provides API compatibility with Firely SDK FhirPath implementation.
  */
 
-using System.Collections.Concurrent;
 using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
@@ -20,13 +19,25 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </summary>
 public static class TypedElementExtensions
 {
+    /// <summary>
+    /// Entries retained per generation by each expression cache, so twice this in the worst case.
+    /// </summary>
+    /// <remarks>
+    /// Sized from the shipped corpus rather than guessed: the generated SearchParameter definitions for
+    /// STU3, R4, R4B, R5 and R6 carry 2,396 distinct expressions between them, so this holds every
+    /// version's parameters at once - a host serving one version uses a fraction of it - with headroom
+    /// for the hand-written expressions in Search, IPS, DeId and TestScript. Custom SearchParameters
+    /// push past it, which is the point: past it the cache evicts instead of growing.
+    /// </remarks>
+    private const int ExpressionCacheCapacity = 4096;
+
     // Thread-safe cache for compiled expressions (string -> Expression AST)
-    private static readonly ConcurrentDictionary<string, Expression> _astCache = new();
+    private static readonly BoundedExpressionCache<Expression> _astCache = new(ExpressionCacheCapacity);
 
     // Thread-safe cache for compiled delegates (Expression -> compiled delegate)
     // Key: Expression object hash code and expression string combined
     // Value: Compiled delegate or null if compilation not supported
-    private static readonly ConcurrentDictionary<string, Func<IElement, EvaluationContext, IEnumerable<IElement>>?> _delegateCache = new();
+    private static readonly BoundedExpressionCache<Func<IElement, EvaluationContext, IEnumerable<IElement>>?> _delegateCache = new(ExpressionCacheCapacity);
 
     // Shared compiler instances
     private static readonly FhirPathParser AstParser = new FhirPathParser(preserveTrivia: false);
