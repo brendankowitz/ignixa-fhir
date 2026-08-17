@@ -6,9 +6,8 @@
 using Ignixa.DataLayer.SqlEntityFramework.Search;
 using Ignixa.Search.Expressions;
 using Shouldly;
-using Xunit;
 
-namespace Ignixa.DataLayer.SqlEntityFramework.Tests.Search;
+namespace Ignixa.DataLayer.SqlEntityFramework.IntegrationTests;
 
 /// <summary>
 /// The SQL-only date-index optimization: on a containment-shaped date predicate it injects a redundant
@@ -24,7 +23,7 @@ public class DateTimeEqualityRewriterTests
     [Fact]
     public void GivenAContainmentShape_WhenRewritten_ThenARedundantDateTimeStartBoundIsInjected()
     {
-        // DateTimeStart >= x AND DateTimeEnd <= y  (the shape :ap lowers to)
+        // DateTimeStart >= x AND DateTimeEnd <= y  (the shape eq lowers to)
         Expression containment = Expression.And(
             Expression.GreaterThanOrEqual(FieldName.DateTimeStart, null, Start),
             Expression.LessThanOrEqual(FieldName.DateTimeEnd, null, End));
@@ -37,7 +36,7 @@ public class DateTimeEqualityRewriterTests
     [Fact]
     public void GivenAnOverlapShape_WhenRewritten_ThenItIsLeftUnchanged()
     {
-        // DateTimeStart <= y AND DateTimeEnd >= x  (the shape date equality lowers to)
+        // DateTimeStart <= y AND DateTimeEnd >= x  (the shape ap lowers to)
         Expression overlap = Expression.And(
             Expression.LessThanOrEqual(FieldName.DateTimeStart, null, End),
             Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, null, Start));

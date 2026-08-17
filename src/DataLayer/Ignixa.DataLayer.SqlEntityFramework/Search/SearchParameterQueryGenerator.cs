@@ -1046,6 +1046,17 @@ public class SearchParameterQueryGenerator
             return GenerateDateTimeOrQuery(resourceTypeId, searchParamId, multiaryExpr);
         }
 
+        // Special handling for DateTime AND expressions - every bound must apply to the SAME row.
+        // A date comparator that lowers to a conjunction (eq's containment, ap's overlap) is a statement
+        // about one stored range, so intersecting per-bound resource-id sets is not equivalent: a resource
+        // whose parameter reaches a repeating element carries several rows, and one row can clear the lower
+        // bound while a different row clears the upper, matching a resource nothing is indexed near.
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
+            IsDateTimeAndExpression(multiaryExpr))
+        {
+            return GenerateDateTimeAndQuery(resourceTypeId, searchParamId, multiaryExpr);
+        }
+
         // Special handling for Quantity AND expressions - all filters must apply to the SAME row
         // Without this, each condition (system, code, value) would match independently and incorrectly combine
         if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
@@ -1108,12 +1119,7 @@ public class SearchParameterQueryGenerator
         {
             if (expr is BinaryExpression binaryExpr)
             {
-                DateTime value = binaryExpr.Value switch
-                {
-                    DateTime dt => dt,
-                    DateTimeOffset dto => dto.UtcDateTime,
-                    _ => Convert.ToDateTime(binaryExpr.Value)
-                };
+                DateTime value = ToDateTime(binaryExpr.Value);
 
                 conditions.Add((binaryExpr.FieldName, binaryExpr.BinaryOperator, value));
 
@@ -1220,19 +1226,67 @@ public class SearchParameterQueryGenerator
                 .Select(sp => sp.ResourceSurrogateId);
         }
 
-        // Case: StartDateTime GreaterThanOrEqual AND EndDateTime LessThanOrEqual (eq search - though this is AND, not OR)
-        // This shouldn't happen for OR, but handle it just in case
+        // The containment operand pair (StartDateTime >= x, EndDateTime <= y) is what eq lowers to, and eq is
+        // a conjunction. Disjoining those two bounds does not weaken eq, it inverts it into "starts after the
+        // window OR ends before it" - close to ne, and true of almost every row. Reaching here means an AND
+        // was routed into the OR builder, which no operand-shape guess can repair, so say so instead.
         if (c1.Field == FieldName.DateTimeStart && c1.Op == BinaryOperator.GreaterThanOrEqual &&
             c2.Field == FieldName.DateTimeEnd && c2.Op == BinaryOperator.LessThanOrEqual)
         {
-            return baseQuery.Where(sp => sp.StartDateTime >= c1.Value || sp.EndDateTime <= c2.Value)
-                .Select(sp => sp.ResourceSurrogateId);
+            throw new InvalidOperationException(
+                "A containment-shaped date operand pair (DateTimeStart >= x, DateTimeEnd <= y) reached the " +
+                "DateTime OR builder. Containment is the shape 'eq' lowers to and it is a conjunction; " +
+                "combining these bounds with OR would match nearly every indexed row.");
         }
 
         // Generic fallback: use UNION for any other combination
         var q1 = BuildSingleConditionDateTimeQuery(baseQuery, c1);
         var q2 = BuildSingleConditionDateTimeQuery(baseQuery, c2);
         return q1.Union(q2);
+    }
+
+    /// <summary>
+    /// Checks whether every conjunct is a bound on the same indexed date range, which is what the date
+    /// comparators that lower to a conjunction produce: <c>eq</c> as containment
+    /// (<c>DateTimeStart &gt;= x AND DateTimeEnd &lt;= y</c>), <c>ap</c> as overlap. Requiring a single
+    /// ComponentIndex keeps composite components, which are keyed per component and routed to the composite
+    /// tables, off this path.
+    /// </summary>
+    private static bool IsDateTimeAndExpression(MultiaryExpression multiaryExpr)
+    {
+        if (!multiaryExpr.Expressions.All(e => e is BinaryExpression { FieldName: FieldName.DateTimeStart or FieldName.DateTimeEnd }))
+        {
+            return false;
+        }
+
+        return multiaryExpr.Expressions
+            .Select(e => ((BinaryExpression)e).ComponentIndex)
+            .Distinct()
+            .Count() == 1;
+    }
+
+    /// <summary>
+    /// Generates a single DateTime query with every bound applied to the SAME row.
+    /// This is essential for correctness - a resource may carry many rows on one date parameter, and the
+    /// conjunction is a claim about one of them, not about their union.
+    /// </summary>
+    private IQueryable<long> GenerateDateTimeAndQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr)
+    {
+        _logger.LogDebug("Using single-row DateTime AND query generation for {Count} bounds", multiaryExpr.Expressions.Count);
+
+        var query = _context.DateTimeSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            query = ApplyDateTimeBound(query, (BinaryExpression)expr);
+        }
+
+        return query.Select(sp => sp.ResourceSurrogateId);
     }
 
     /// <summary>
@@ -1848,19 +1902,11 @@ public class SearchParameterQueryGenerator
 
     private IQueryable<long> GenerateDateTimeQuery(short? resourceTypeId, short? searchParamId, BinaryExpression binaryExpr)
     {
-        // Handle both DateTime and DateTimeOffset
-        DateTime value = binaryExpr.Value switch
-        {
-            DateTime dt => dt,
-            DateTimeOffset dto => dto.UtcDateTime,
-            _ => Convert.ToDateTime(binaryExpr.Value)
-        };
-
         _logger.LogDebug(
             "GenerateDateTimeQuery: FieldName={FieldName}, Operator={Operator}, Value={Value}, ResourceTypeId={ResourceTypeId}, SearchParamId={SearchParamId}",
             binaryExpr.FieldName,
             binaryExpr.BinaryOperator,
-            value.ToString("o"),
+            ToDateTime(binaryExpr.Value).ToString("o"),
             resourceTypeId,
             searchParamId);
 
@@ -1870,11 +1916,24 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
+        return ApplyDateTimeBound(query, binaryExpr).Select(sp => sp.ResourceSurrogateId);
+    }
+
+    /// <summary>
+    /// Narrows a DateTimeSearchParam query by one bound, so that the single-bound and conjoined paths cannot
+    /// disagree about which column a comparator names.
+    /// </summary>
+    private static IQueryable<Entities.DateTimeSearchParamEntity> ApplyDateTimeBound(
+        IQueryable<Entities.DateTimeSearchParamEntity> query,
+        BinaryExpression binaryExpr)
+    {
+        DateTime value = ToDateTime(binaryExpr.Value);
+
         // Apply comparison based on FieldName (Start vs End) and operator
         // The expression parser creates expressions targeting specific fields:
         // - DateTimeStart comparisons filter on sp.StartDateTime
         // - DateTimeEnd comparisons filter on sp.EndDateTime
-        query = (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
+        return (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
         {
             (FieldName.DateTimeStart, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.StartDateTime >= value),
             (FieldName.DateTimeStart, BinaryOperator.GreaterThan) => query.Where(sp => sp.StartDateTime > value),
@@ -1892,9 +1951,15 @@ public class SearchParameterQueryGenerator
 
             _ => throw new NotSupportedException($"DateTime search with FieldName {binaryExpr.FieldName} and BinaryOperator {binaryExpr.BinaryOperator} is not supported")
         };
-
-        return query.Select(sp => sp.ResourceSurrogateId);
     }
+
+    /// <summary>Normalizes a date bound's value to the UTC <see cref="DateTime"/> the index columns store.</summary>
+    private static DateTime ToDateTime(object value) => value switch
+    {
+        DateTime dt => dt,
+        DateTimeOffset dto => dto.UtcDateTime,
+        _ => Convert.ToDateTime(value)
+    };
 
     private Task<IQueryable<long>> GenerateQuantityQueryAsync(
         short? resourceTypeId,
