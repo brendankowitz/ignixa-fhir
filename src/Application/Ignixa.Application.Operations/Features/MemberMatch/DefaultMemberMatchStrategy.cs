@@ -24,7 +24,7 @@ namespace Ignixa.Application.Operations.Features.MemberMatch;
 /// Uses identifier-based matching to find a unique patient.
 ///
 /// Matching algorithm:
-/// 1. Extract subscriber ID from Coverage.subscriberId
+/// 1. Extract subscriber identifiers from Coverage.subscriberId
 /// 2. Extract member ID from Patient.identifier
 /// 3. Search for Patient with matching identifier
 /// 4. Return unique match or error if no match/multiple matches found
@@ -73,9 +73,9 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
 
         // Extract identifiers from input resources using FhirPath
         var patientIdentifiers = ExtractIdentifiers(patientElement);
-        var subscriberId = ExtractSubscriberId(coverageElement);
+        var subscriberIds = ExtractSubscriberIds(coverageElement);
 
-        if (patientIdentifiers.Count == 0 && string.IsNullOrEmpty(subscriberId))
+        if (patientIdentifiers.Count == 0 && subscriberIds.Count == 0)
         {
             _logger.LogWarning("No identifiers found in MemberPatient or CoverageToMatch");
             return MemberMatchResult.NoMatch(
@@ -96,9 +96,9 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
         }
 
         // Add identifier search from Coverage.subscriberId
-        if (!string.IsNullOrEmpty(subscriberId))
+        foreach (var subscriberId in subscriberIds)
         {
-            var subscriberExpression = BuildIdentifierExpression(new IdentifierInfo(null, subscriberId));
+            var subscriberExpression = BuildIdentifierExpression(subscriberId);
             if (subscriberExpression != null)
             {
                 searchExpressions.Add(subscriberExpression);
@@ -185,11 +185,50 @@ public class DefaultMemberMatchStrategy : IMemberMatchStrategy
     }
 
     /// <summary>
-    /// Extracts subscriberId from a Coverage resource using FhirPath.
+    /// Extracts every subscriber identifier from a Coverage resource using FhirPath.
     /// </summary>
-    private static string? ExtractSubscriberId(IElement coverage)
+    /// <remarks>
+    /// <para>
+    /// <c>Coverage.subscriberId</c> is not the same element in every version. STU3, R4 and R4B declare
+    /// it <c>string 0..1</c>; R5 and R6 redeclare it <c>Identifier 0..*</c>. Both shapes are read here
+    /// off the element itself rather than by branching on the negotiated version: <see cref="IElement.Value"/>
+    /// is the primitive value for a primitive and null for a complex type, so the element is
+    /// self-describing and this strategy keeps no opinion about which version it is serving.
+    /// </para>
+    /// <para>
+    /// Every subscriberId present is returned, and the caller ORs them all into the same identifier
+    /// search as the Patient identifiers. That is the semantic R5 intends: a member's subscriber
+    /// identifiers are alternative names for one member - which is why the element became repeating
+    /// and gained a system - not criteria to be intersected. Returning only the first would discard
+    /// criteria the caller supplied while still answering as though it had used them, and rejecting a
+    /// Coverage with more than one would reject input the specification permits. Widening the OR can
+    /// only surface an ambiguity as <c>multiple-matches</c>, which $member-match is required to report,
+    /// never to resolve silently.
+    /// </para>
+    /// <para>
+    /// The previous implementation called <c>Scalar("subscriberId")</c>, which returns null both when
+    /// the collection has more than one item and when the single item is a complex type with no
+    /// primitive value. On R5 that is every Coverage: the subscriberId vanished and the operation
+    /// matched on Patient identifiers alone, or reported that no identifiers had been supplied at all.
+    /// </para>
+    /// </remarks>
+    private static List<IdentifierInfo> ExtractSubscriberIds(IElement coverage)
     {
-        return coverage.Scalar("subscriberId") as string;
+        var subscriberIds = new List<IdentifierInfo>();
+
+        foreach (var subscriberId in coverage.Select("subscriberId"))
+        {
+            var identifier = subscriberId.Value is null
+                ? new IdentifierInfo(subscriberId.Scalar("system") as string, subscriberId.Scalar("value") as string ?? string.Empty)
+                : new IdentifierInfo(null, subscriberId.Value as string ?? string.Empty);
+
+            if (!string.IsNullOrEmpty(identifier.Value))
+            {
+                subscriberIds.Add(identifier);
+            }
+        }
+
+        return subscriberIds;
     }
 
     /// <summary>

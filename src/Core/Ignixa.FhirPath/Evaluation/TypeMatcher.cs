@@ -130,16 +130,43 @@ internal static class TypeMatcher
     /// <c>NutritionIntake.reported as Reference</c> (0..1), and
     /// <c>AdverseEvent.suspectEntity.instance as Reference</c>, which is genuinely repeating - see the
     /// note below. Enforcing the rule below R5 would make <c>ElementSearchIndexer</c> throw on any
-    /// resource populating one of those repeating paths, and its non-composite path logs and continues -
-    /// so the values would vanish from the search index with nothing surfaced to the caller.
+    /// resource populating one of those repeating paths - once it supplies a schema, which today it
+    /// deliberately does not - and its non-composite path logs and continues, so the values would vanish
+    /// from the search index with nothing surfaced to the caller. The version gate is what keeps that
+    /// true if the schema is ever supplied.
     /// </para>
     /// <para>
-    /// The one R5 casualty is <c>AdverseEvent</c>'s <c>substance</c> parameter on a resource with more
-    /// than one <c>suspectEntity</c>. It costs no index data: <c>instance</c> is a
-    /// <c>CodeableReference</c> in R5 and resolves as <c>CodeableConcept</c> here, so
-    /// <c>as Reference</c> already matched nothing and the parameter yielded zero entries for one
-    /// suspectEntity as much as for two. Enforcement turns a silent zero into a logged zero. The real
-    /// defect there is the unresolved <c>CodeableReference</c>, which is out of scope for this rule.
+    /// The one R5 candidate is <c>AdverseEvent</c>'s <c>substance</c> parameter -
+    /// <c>(AdverseEvent.suspectEntity.instance as Reference)</c> - on a resource with more than one
+    /// <c>suspectEntity</c>. It costs no index data, for two independent reasons, and it is worth being
+    /// precise about both because each one on its own is something a reasonable person might remove.
+    /// </para>
+    /// <para>
+    /// First, the cast matches nothing to begin with. R5 declares <c>instance</c> as a
+    /// <c>CodeableReference</c>; the generated schema flattens that into a choice of
+    /// <c>CodeableConcept | Reference</c> whose <c>defaultTypeName</c> is <c>CodeableConcept</c>, so real
+    /// R5 wire data - <c>"instance": { "reference": { "reference": "Substance/s1" } }</c> - resolves with
+    /// an <c>InstanceType</c> of <c>CodeableConcept</c>. Measured through the indexer: <c>instance</c>
+    /// resolves to 2 elements for two suspectEntity, <c>as Reference</c> selects 0 of them, and the
+    /// parameter yields zero entries for one suspectEntity as much as for two.
+    /// </para>
+    /// <para>
+    /// Second, and this is the part that is easy to state wrongly: enforcement does not reach the write
+    /// path at all. <c>ElementSearchIndexer.Extract</c> builds its <see cref="FhirEvaluationContext"/>
+    /// without a <c>Schema</c>, and both this method and
+    /// <see cref="EnsureTypeIdentifierResolves"/> no-op when the schema is null - so on the indexing path
+    /// the input count of 2 is never tested and nothing is thrown or logged. The zero above is silent
+    /// today and stays silent; do not read this rule as converting it into a reported error.
+    /// </para>
+    /// <para>
+    /// The trap is that those two protections are independent, so removing either alone looks safe while
+    /// removing both is not. Fixing the <c>CodeableReference</c> resolution so <c>instance</c> resolves as
+    /// <c>Reference</c> would, on its own, make the parameter start indexing 2 entries - an improvement,
+    /// because the schema is still null there. Setting <c>Schema</c> on the indexer would, on its own,
+    /// change nothing observable, because the cast still matches nothing. Doing both turns those 2 entries
+    /// into a thrown <see cref="FhirPathEvaluationException"/> that the non-composite path logs and
+    /// swallows, and the data that the first fix recovered is lost again. Whoever fixes the
+    /// <c>CodeableReference</c> resolution owns this interaction.
     /// </para>
     /// <para>
     /// This is exactly HAPI's rule (<c>doNotEnforceAsSingletonRule</c> is true below R5, for the same

@@ -59,7 +59,25 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
         var entries = new List<SearchIndexEntry>();
 
-        // Use immutable pattern for FhirEvaluationContext
+        // Schema is deliberately left unset. That omission is load-bearing: it is the only thing keeping
+        // TypeMatcher's two schema-gated errors off the write path. Both no-op on a null schema -
+        // EnsureTypeIdentifierResolves returns early, and EnsureSingletonInput's EnforcesSingletonCast
+        // requires a non-null schema at R5 or later - so setting Schema here arms both for every
+        // expression the indexer evaluates, and ProcessNonCompositeSearchParameter logs and continues,
+        // which means anything they throw becomes a search parameter that silently indexes nothing.
+        //
+        // Measured, not assumed: doing this today costs no index entries. The one R5 expression that
+        // casts a repeating path with `as` is AdverseEvent-substance, and it already yields zero entries
+        // because suspectEntity.instance resolves as CodeableConcept, so `as Reference` matches nothing
+        // whether or not the rule is armed. The cost is latent rather than current, and it is of two
+        // kinds. First, arming EnsureTypeIdentifierResolves makes every type identifier in every shipped
+        // and custom search parameter a potential write-path failure, which is a far wider blast radius
+        // than the one parameter above and is not covered by tests. Second, and more insidiously, it
+        // puts a tripwire under the CodeableReference fix: once instance resolves as Reference the cast
+        // matches 2 items, and an armed singleton rule turns that recovered data straight back into a
+        // swallowed exception. See the remarks on TypeMatcher.EnsureSingletonInput for the full
+        // interaction. Do not set Schema here without first exempting indexing from the singleton rule
+        // by some other means.
         var context = new FhirEvaluationContext
         {
             ElementResolver = str => _referenceToElementResolver.Resolve(str),
