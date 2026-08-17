@@ -93,24 +93,26 @@ internal static class FhirSpecificFunctions
         // resolve() : collection
         // Takes a Reference element and resolves it to the actual resource.
         // In-instance resolution (contained/bundle/parameters, via ReferenceIndex) is tried first,
-        // matching Firely's ScopedNode.Resolve<T>; the host ElementResolver is a fallback, not the
-        // only path, so contained and intra-Bundle references resolve with no external resolver at all.
-        // A reference that fails to resolve returns empty per spec; a defect in our own in-instance
-        // resolution propagates instead of being masked as "not found".
+        // matching the bare-'#' short-circuit in Firely's ScopedNodeExtensions.Resolve<T>; the host
+        // ElementResolver is a fallback, not the only path, so contained and intra-Bundle references
+        // resolve with no external resolver at all. A reference that fails to resolve returns empty
+        // per spec; a defect in our own in-instance resolution propagates instead of being masked as
+        // "not found".
 
         var results = new List<IElement>();
 
         // The root the in-instance index is built from. Bare '#' does NOT resolve to this
         // unconditionally: it resolves relative to context.Resource's containment scope (see
-        // ReferenceIndex.ResolveContainerScope). Firely's ScopedNode returns the container only
-        // from inside a contained resource's own scope, and null at root/Bundle-entry scope - its
-        // ScopedNodeOnBaseTests asserts Resolve("#") is null for both a Bundle and a Bundle entry
-        // resource (measured against Firely 5.13.1/6.0.1).
+        // ReferenceIndex.ResolveContainerScope). Firely's ScopedNodeExtensions.Resolve<T> (via its
+        // local locateContainer function) returns the container only from inside a contained
+        // resource's own scope, and null at root/Bundle-entry scope - its own ScopedNodeOnBaseTests
+        // asserts Resolve("#") is null for both a Bundle and a Bundle entry resource (verified
+        // against Firely 5.13.1 and 6.0.1, 2026-08).
         var root = context.RootResource ?? context.Resource;
         var referenceIndex = context.ReferenceIndexCache.GetOrBuild(root);
         var elementResolver = (context as FhirEvaluationContext)?.ElementResolver;
 
-        if (referenceIndex == null && elementResolver == null)
+        if (referenceIndex is null && elementResolver is null)
         {
             return results;
         }
@@ -124,7 +126,7 @@ internal static class FhirSpecificFunctions
             }
 
             var resolved = ResolveReferenceValue(referenceValue, referenceIndex, elementResolver, context.Resource, element.Location);
-            if (resolved != null)
+            if (resolved is not null)
             {
                 results.Add(resolved);
             }
@@ -168,11 +170,17 @@ internal static class FhirSpecificFunctions
     /// because <see cref="FhirEvaluationContext.ElementResolver"/> is caller-supplied code we do not
     /// control, unlike <paramref name="referenceIndex"/>. A bare <c>#</c> is scope-dependent (see
     /// <see cref="ReferenceIndex.ResolveContainerScope"/>): when an in-instance index exists it is
-    /// decided entirely in-instance and never falls through to the host resolver, matching Firely and
-    /// HAPI; when there is no in-instance index at all (no <see cref="EvaluationContext.Resource"/> /
-    /// <see cref="EvaluationContext.RootResource"/>), there is no scope to decide it from, so it falls
-    /// through to the host resolver like any other reference. Every other reference shape tries
-    /// in-instance first, then falls back to the host resolver if no in-instance result is found.
+    /// decided entirely in-instance and never falls through to the host resolver - agreeing with
+    /// Firely and HAPI for this one case, though the two diverge everywhere else: Firely's
+    /// <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c> still consults the host resolver for an
+    /// unresolved <c>#id</c>, while HAPI's <c>FHIRPathEngine.funcResolve</c> short-circuits every
+    /// <c>#</c>-prefixed reference and never does. Ignixa follows Firely here (see
+    /// <c>GivenUnresolvedFragmentReference_WhenElementResolverCanResolveIt_ThenFallsBackToResolver</c>).
+    /// When there is no in-instance index at all (no <see cref="EvaluationContext.Resource"/> /
+    /// <see cref="EvaluationContext.RootResource"/>), there is no scope to decide bare <c>#</c>
+    /// from, so it falls through to the host resolver like any other reference. Every other
+    /// reference shape tries in-instance first, then falls back to the host resolver if no
+    /// in-instance result is found.
     /// </summary>
     private static IElement? ResolveReferenceValue(
         string referenceValue,
@@ -181,14 +189,14 @@ internal static class FhirSpecificFunctions
         IElement? currentResource,
         string? focusLocation)
     {
-        if (referenceValue == "#" && referenceIndex != null)
+        if (referenceValue == "#" && referenceIndex is not null)
         {
             return referenceIndex.ResolveContainerScope(currentResource);
         }
 
         var resolved = referenceIndex?.Resolve(referenceValue, focusLocation);
 
-        if (resolved != null || elementResolver == null)
+        if (resolved is not null || elementResolver is null)
         {
             return resolved;
         }

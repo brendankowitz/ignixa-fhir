@@ -242,11 +242,11 @@ public class TreeContextScopingTests
     [Fact]
     public void GivenBareHashAtRootScope_WhenConstraintUsesResolve_ThenResolvesToEmpty()
     {
-        // Arrange — measured against Firely 5.13.1/6.0.1 (ScopedNodeOnBaseTests asserts
-        // Resolve("#") is null for a non-contained root): bare '#' only resolves to the container
-        // from inside a contained resource's own scope, not at root scope, where the resource is
-        // not contained in anything. This locks in that a root-level invariant calling resolve() on
-        // '#' sees nothing, via the same RootResource/Resource seeding used by
+        // Arrange — verified against Firely 5.13.1 and 6.0.1, 2026-08 (its own ScopedNodeOnBaseTests
+        // asserts Resolve("#") is null for a non-contained root): bare '#' only resolves to the
+        // container from inside a contained resource's own scope, not at root scope, where the
+        // resource is not contained in anything. This locks in that a root-level invariant calling
+        // resolve() on '#' sees nothing, via the same RootResource/Resource seeding used by
         // FhirPathInvariantCheck and SlicingCheck.
         var constraint = new Ignixa.Specification.ConstraintDefinition
         {

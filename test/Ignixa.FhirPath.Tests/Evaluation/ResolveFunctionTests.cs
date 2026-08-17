@@ -147,11 +147,16 @@ public class ResolveFunctionTests
     [Fact]
     public void GivenBareHashAtRootScope_WhenElementResolverWouldReturnNonNull_ThenReturnsEmptyWithoutConsultingResolver()
     {
-        // Arrange - Firely (5.13.1/6.0.1) and HAPI (org.hl7.fhir.core 8.10.0) both short-circuit a
-        // bare '#' at root scope and never consult the host resolver. This test proves Ignixa does the
-        // same: resolving '#' at root (where in-instance lookup returns null) with an ElementResolver
-        // that would return a non-null element must still return empty, proving the resolver was never
-        // consulted.
+        // Arrange - at root scope, bare '#' happens to yield the same outcome (empty, resolver never
+        // consulted) in both reference engines, even though they get there differently and diverge
+        // elsewhere (see FhirSpecificFunctions.ResolveReferenceValue for the full divergence). Firely's
+        // ScopedNodeExtensions.Resolve<T> returns null for bare '#' at root scope - asserted by its own
+        // ScopedNodeOnBaseTests, verified against Firely 5.13.1 and 6.0.1, 2026-08. HAPI's
+        // FHIRPathEngine.funcResolve short-circuits every '#'-prefixed reference unconditionally, so it
+        // never reaches the host resolver for '#' at any scope. This test proves Ignixa matches that
+        // root-scope outcome: resolving '#' at root (where in-instance lookup returns null) with an
+        // ElementResolver that would return a non-null element must still return empty, proving the
+        // resolver was never consulted.
         var observation = ToElement(ObservationWithContainedPatientJson);
         var resolverElement = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""resolver-decoy"" }");
         var expr = _parser.Parse("'#'.resolve()");
@@ -175,8 +180,9 @@ public class ResolveFunctionTests
         // all (referenceIndex is null), so there is no containment scope to decide bare '#' against.
         // Unlike the root-scope case above (which HAS an index and legitimately short-circuits to
         // empty), this must fall through to the host resolver like any other reference - matching
-        // pre-existing behaviour and Firely's ScopedNode, which only short-circuits '#' for a
-        // ScopedNode and otherwise defers to the external resolver.
+        // pre-existing behaviour and Firely's ScopedNodeExtensions.Resolve<T>, which only
+        // short-circuits '#' when it actually has a ScopedNode scope to decide it from, and otherwise
+        // defers to the external resolver.
         var input = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""example"" }");
         var resolverElement = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""resolved-via-host"" }");
         var expr = _parser.Parse("'#'.resolve()");
@@ -196,9 +202,9 @@ public class ResolveFunctionTests
     public void GivenRootResourceItself_WhenResolvingBareHash_ThenReturnsEmpty()
     {
         // Arrange - Firely's ScopedNodeOnBaseTests asserts Resolve("#") is null for a
-        // non-contained root (measured against Firely 5.13.1/6.0.1); bare '#' only resolves to the
-        // container from inside a contained resource's own scope (see the sibling test below), not
-        // at root/self scope.
+        // non-contained root (verified against Firely 5.13.1 and 6.0.1, 2026-08); bare '#' only
+        // resolves to the container from inside a contained resource's own scope (see the sibling
+        // test below), not at root/self scope.
         var observation = ToElement(ObservationWithContainedPatientJson);
         var expr = _parser.Parse("'#'.resolve()");
         var context = new EvaluationContext { Resource = observation };
@@ -369,10 +375,11 @@ public class ResolveFunctionTests
     public void GivenBareHashFromInsideAContainedResourceScope_WhenResolving_ThenReturnsTheParentNotTheContainedResource()
     {
         // Arrange
-        // Measured against Firely 5.13.1/6.0.1 (ScopedNode): resolving '#' from inside a contained
-        // resource's own scope yields the parent (RootResource), never the contained resource being
-        // evaluated - consistent with R4 references.html §2.3.0.8 ("there is only one container
-        // resource"). This mirrors ValidationState.EnterContainedResource, which sets RootResource
+        // Verified against Firely 5.13.1 and 6.0.1, 2026-08 (ScopedNodeExtensions.Resolve<T>):
+        // resolving '#' from inside a contained resource's own scope yields the parent
+        // (RootResource), never the contained resource being evaluated - consistent with R4
+        // references.html §2.3.0.8 ("there is only one container resource"). This mirrors
+        // ValidationState.EnterContainedResource, which sets RootResource
         // to the parent while Resource becomes the contained resource being validated.
         var observation = ToElement(ObservationWithContainedPatientJson);
         var containedPatient = observation.Children("contained").Single();
@@ -607,13 +614,13 @@ public class ResolveFunctionTests
     public void GivenUnresolvedFragmentReference_WhenElementResolverCanResolveIt_ThenFallsBackToResolver()
     {
         // Arrange - deliberate Firely-over-HAPI choice. Firely short-circuits only the exact string
-        // "#": for an unresolved "#unknownId" its ScopedNode still consults the external resolver
-        // (its own ScopedNodeOnBaseTests asserts Assert.IsNull(inner7.Resolve("#d", externalResolve));
-        // Assert.AreEqual("#d", lastUrlResolved);) - the host WAS called. HAPI instead
-        // short-circuits every "#"-prefixed reference and never consults the host resolver for any
-        // fragment. Ignixa follows Firely: a "#id" that misses the in-instance index falls through
-        // to the host ElementResolver, while a bare "#" never does (see the sibling bare-hash tests
-        // above).
+        // "#": for an unresolved "#unknownId" its ScopedNodeExtensions.Resolve<T> still consults the
+        // external resolver (its own ScopedNodeOnBaseTests asserts Assert.IsNull(inner7.Resolve("#d",
+        // externalResolve)); Assert.AreEqual("#d", lastUrlResolved);) - the host WAS called. HAPI
+        // instead short-circuits every "#"-prefixed reference and never consults the host resolver
+        // for any fragment. Ignixa follows Firely: a "#id" that misses the in-instance index falls
+        // through to the host ElementResolver, while a bare "#" never does (see the sibling
+        // bare-hash tests above).
         var observation = ToElement(ObservationWithContainedPatientJson);
         var resolverElement = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""from-resolver"" }");
         var expr = _parser.Parse("'#unknownId'.resolve()");

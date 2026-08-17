@@ -23,6 +23,20 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <see cref="WithFocus"/>, <see cref="PushThis"/>, <see cref="WithEnvironmentVariable"/>.
 /// </para>
 /// <para>
+/// <b>Two deliberate exceptions:</b> <see cref="DefinedVariables"/> and
+/// <see cref="ReferenceIndexCache"/> are mutable holders, and a plain <c>with</c> copy carries the
+/// same reference forward rather than cloning it - so every derived context still mutates and sees
+/// the one shared <see cref="DefinedVariables"/> dictionary and the one shared
+/// <see cref="ReferenceIndexCache"/> instance. This is intentional, not an oversight: it is what
+/// lets <c>defineVariable()</c> stay visible across <c>with</c>-derived copies within the same
+/// expression, and what lets <see cref="ReferenceIndexCache"/> build its index once per root instead
+/// of once per copy. <see cref="ForkForBranch"/> is the one place that deliberately breaks the
+/// sharing - it clones <see cref="DefinedVariables"/> so union branches cannot leak variables to
+/// each other. Do not "fix" the sharing elsewhere by cloning these two properties on every
+/// <c>with</c>; that would silently defeat the reference index cache and break variable visibility
+/// across nested evaluation.
+/// </para>
+/// <para>
 /// <b>Runtime vs Static Analysis Context:</b>
 /// </para>
 /// <para>

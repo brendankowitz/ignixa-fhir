@@ -15,15 +15,18 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <c>Type/id</c> only - a Parameters entry has no <c>fullUrl</c>). A bare <c>#</c> resolves to the
 /// container only when the current evaluation scope is itself one of that container's contained
 /// resources; see <see cref="ResolveContainerScope"/>. Root-level and Bundle-entry-level scope both
-/// see an empty result for bare <c>#</c>, matching Firely's <c>ScopedNode</c> (empirically verified
-/// against Firely 5.13.1/6.0.1 and asserted by its own <c>ScopedNodeOnBaseTests</c>).
+/// see an empty result for bare <c>#</c>, matching the <c>locateContainer</c> local function inside
+/// Firely's <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c> (verified against Firely 5.13.1 and 6.0.1,
+/// 2026-08; see its own <c>ScopedNodeOnBaseTests</c>).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Built once per resource root (O(entries)); the closure injected as the FHIRPath element
-/// resolver chains a contained-of-current scope to its parent scope. Mirrors the
-/// contained + bundle resolution algorithm of Firely's <c>ScopedNode.BundledResources()</c> /
-/// <c>ContainedResources()</c> / <c>locateContainer()</c> without per-node parent pointers.
+/// Built once per resource root (O(entries)): walks the root's own <c>contained</c> children, and,
+/// for a Bundle or Parameters root, every entry/parameter (and nested <c>part</c>) resource,
+/// indexing each by the keys <see cref="Resolve(string, string?)"/> looks up. Mirrors the contained
+/// + bundle resolution algorithm of Firely's <c>ScopedNode.BundledResources()</c> /
+/// <c>ContainedResources()</c> and the <c>locateContainer</c> local function inside
+/// <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c>, without per-node parent pointers.
 /// </para>
 /// <para>
 /// Containment isolation without a parent pointer: <see cref="IElement"/> has no parent link, so
@@ -139,10 +142,12 @@ public sealed class ReferenceIndex
     /// contained resources - for a plain DomainResource this is the root; for a contained resource
     /// nested inside a <c>Bundle.entry.resource</c> / <c>Parameters.parameter.resource</c> it is
     /// that entry resource, not the Bundle/Parameters root (R4 references.html §2.3.0.8: "there is
-    /// only one container resource"). Firely's ScopedNode returns the container from inside a
-    /// contained resource's own scope, but null from root-level or Bundle-entry-level scope (its
-    /// <c>ScopedNodeOnBaseTests</c> asserts <c>Resolve("#")</c> is null for both a Bundle and a
-    /// Bundle entry resource). Membership is checked by <see cref="IElement.Location"/> rather than
+    /// only one container resource"). Firely's <c>ScopedNodeExtensions.Resolve&lt;T&gt;</c> (via its
+    /// local <c>locateContainer</c> function) returns the container from inside a contained
+    /// resource's own scope, but null from root-level or Bundle-entry-level scope (verified against
+    /// Firely 5.13.1 and 6.0.1, 2026-08; its own <c>ScopedNodeOnBaseTests</c> asserts
+    /// <c>Resolve("#")</c> is null for both a Bundle and a Bundle entry resource). Membership is
+    /// checked by <see cref="IElement.Location"/> rather than
     /// reference identity - callers such as <c>ContainedResourceCheck</c> re-derive the contained
     /// element via their own <c>Children("contained")</c> call, which returns a distinct wrapper
     /// instance for the same underlying node, so identity would never match; <c>Location</c> is a
