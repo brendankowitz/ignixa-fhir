@@ -614,7 +614,9 @@ internal static class CollectionFunctions
     }
 
     /// <summary>
-    /// as() - Type coercion operator (filters by type).
+    /// as() - Type coercion. Returns the input if it is of the given type, otherwise empty; a multi-item
+    /// input is an error. See <see cref="TypeMatcher.EnsureSingletonInput"/> for why, and for how that
+    /// differs from <c>ofType()</c>.
     /// </summary>
     [FhirPathFunction("as",
         SupportedContexts = "any-any",
@@ -638,7 +640,10 @@ internal static class CollectionFunctions
 
         TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "as()");
 
-        return TypeMatcher.FilterByType(focus, typeName, useInheritance: false);
+        var input = focus as IReadOnlyCollection<IElement> ?? focus.ToList();
+        TypeMatcher.EnsureSingletonInput(input.Count, context.Schema, "as()");
+
+        return TypeMatcher.FilterByType(input, typeName, useInheritance: false);
     }
 
     /// <summary>

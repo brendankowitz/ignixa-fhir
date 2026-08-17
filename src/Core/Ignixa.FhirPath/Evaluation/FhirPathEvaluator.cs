@@ -696,11 +696,20 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // cardinality guard below - otherwise 'as' would quietly accept a nonsense type on empty input.
         TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "operator 'as'");
 
-        if (left.Count != 1)
-            return [];
+        TypeMatcher.EnsureSingletonInput(left.Count, context.Schema, "operator 'as'");
 
-        var strippedTypeName = TypeMatcher.StripNamespace(typeName);
-        return TypeMatcher.MatchesType(left[0], strippedTypeName) ? [left[0]] : [];
+        // Reached with more than one item only below R5, where EnsureSingletonInput does not throw.
+        // Filtering element-wise rather than returning empty is what makes the operator agree with the
+        // as() function, with Firely on every version, and with what HL7 meant by 'as' in the R4
+        // SearchParameter expressions - which they rewrote to ofType() in R5, the version where the
+        // singleton rule starts being enforced here. Returning empty instead made
+        // Observation.component.value as Quantity yield nothing for a blood pressure, so
+        // combo-value-quantity and component-value-quantity silently indexed no values at all.
+        //
+        // Calling the same helper CollectionFunctions.As uses, rather than reimplementing its body, is
+        // what stops the operator and the function drifting apart again - which is the defect this line
+        // exists to fix.
+        return TypeMatcher.FilterByType(left, typeName, useInheritance: false);
     }
 
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)

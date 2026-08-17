@@ -931,7 +931,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (leftResult.IsCollection())
         {
-            context.AddWarning("Operator 'as' applied to collection - only first item will be cast", expression);
+            context.AddWarning("Operator 'as' applied to collection - the evaluator throws unless the input is a single item", expression);
         }
     }
 
