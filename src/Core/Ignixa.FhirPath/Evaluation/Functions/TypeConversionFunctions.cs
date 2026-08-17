@@ -6,6 +6,7 @@
  * and their corresponding convertsTo* validation functions.
  */
 
+using System.Collections.Frozen;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
@@ -16,9 +17,63 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// <summary>
 /// Type conversion function implementations for FhirPath expressions.
 /// </summary>
-internal static class TypeConversionFunctions
+internal static partial class TypeConversionFunctions
 {
     #region Conversion Functions
+
+    /// <summary>
+    /// Applies the arity rule shared by every function in FHIRPath's Conversion section, returning the
+    /// sole item, or <see langword="null"/> when the input is empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §Conversion preamble: "The functions in this section operate on collections with a single item. If
+    /// there is more than one item, the evaluation of the expression will end and signal an error to the
+    /// calling environment." All eighteen <c>toX()</c>/<c>convertsToX()</c> sections repeat it in the more
+    /// specific form, so there is no function here it does not apply to.
+    /// </para>
+    /// <para>
+    /// Every one of them previously answered <c>list.Count != 1 ? [] : …</c>, collapsing the two arms the
+    /// spec keeps apart: empty in, empty out (a value) versus multi-item in, error (not a value). That is
+    /// the same clause <c>not()</c> already enforces, so <c>(1|2).not()</c> errored while
+    /// <c>(1|2).toInteger()</c> quietly answered empty. Firely errors on the multi-item case for all of
+    /// these, so signalling here also removes a divergence rather than creating one.
+    /// </para>
+    /// </remarks>
+    private static IElement? SingleOrEmpty(List<IElement> list, string functionName)
+    {
+        if (list.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"{functionName}() requires a single item, but was given a collection of {list.Count} items.");
+        }
+
+        return list.Count == 1 ? list[0] : null;
+    }
+
+    /// <summary>
+    /// Shared body of the <c>convertsToX()</c> family: empty in, empty out; otherwise whether the paired
+    /// <c>toX()</c> produced a value.
+    /// </summary>
+    /// <remarks>
+    /// All nine <c>convertsToX()</c> sections say "If the input collection is empty, the result is empty",
+    /// and <c>convertsToString()</c> spells it out as <c>{}.convertsToString() // empty</c>. Each of these
+    /// was written as <c>ReturnBoolean(ToX(focus).Any())</c>, which turns that empty into <c>false</c> -
+    /// an answer the spec never gives, and one that reads as "this value cannot be converted" when there
+    /// is no value at all. Firely returns empty here too. Non-empty but unconvertible input stays
+    /// <c>false</c>, which is what <c>2.convertsToBoolean()</c> and <c>(-1).convertsToBoolean()</c> assert.
+    /// </remarks>
+    private static IEnumerable<IElement> ReturnConvertibility(
+        IEnumerable<IElement> focus,
+        string functionName,
+        Func<List<IElement>, IEnumerable<IElement>> convert)
+    {
+        var list = focus.ToList();
+        if (SingleOrEmpty(list, functionName) is null)
+            return [];
+
+        return FunctionHelpers.ReturnBoolean(convert(list).Any());
+    }
 
     /// <summary>
     /// toInteger() - Converts a value to an integer.
@@ -32,13 +87,15 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to an integer")]
     public static IEnumerable<IElement> ToInteger(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toInteger")?.Value;
 
-        var value = list[0].Value;
         if (value is int i)
             return [FunctionHelpers.CreateInteger(i)];
+
+        // "the item is an Integer or Long", with the worked example 42L.toInteger() // 42. A Long outside
+        // Integer's range has no Integer to return, so it falls through to empty rather than wrapping.
+        if (value is long l && l >= int.MinValue && l <= int.MaxValue)
+            return [FunctionHelpers.CreateInteger((int)l)];
 
         if (value is string s)
         {
@@ -73,11 +130,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a 64-bit integer (Long)")]
     public static IEnumerable<IElement> ToLong(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toLong")?.Value;
 
-        var value = list[0].Value;
         if (value is long l)
             return [FunctionHelpers.CreateLong(l)];
 
@@ -109,11 +163,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a decimal")]
     public static IEnumerable<IElement> ToDecimal(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toDecimal")?.Value;
 
-        var value = list[0].Value;
         if (value is decimal d)
             return [FunctionHelpers.CreateDecimal(d)];
 
@@ -129,12 +180,29 @@ internal static class TypeConversionFunctions
         if (value is string s)
         {
             s = s.Trim();
-            if (decimal.TryParse(s, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            if (DecimalLiteral().IsMatch(s) &&
+                decimal.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            {
                 return [FunctionHelpers.CreateDecimal(parsed)];
+            }
         }
 
         return [];
     }
+
+    /// <summary>
+    /// The exact string form <c>toDecimal()</c>/<c>convertsToDecimal()</c> accept, quoted from the spec:
+    /// "using the regex format <c>(\+|-)?\d+(\.\d+)?</c>".
+    /// </summary>
+    /// <remarks>
+    /// Parsing under <c>NumberStyles.Number</c> instead admitted group separators and trailing sign, so
+    /// <c>'1,000'.toDecimal()</c> answered <c>1000</c> where the spec - and Firely - give empty. The regex
+    /// is the gate and <c>TryParse</c> only converts what it admits, which keeps the accepted grammar
+    /// where the spec states it rather than spread across a <see cref="System.Globalization.NumberStyles"/>
+    /// flag combination that has to be read backwards to recover it.
+    /// </remarks>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(\+|-)?\d+(\.\d+)?$")]
+    private static partial System.Text.RegularExpressions.Regex DecimalLiteral();
 
     /// <summary>
     /// toString() - Converts a value to a string.
@@ -148,11 +216,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a string")]
     public static IEnumerable<IElement> ToString(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toString")?.Value;
 
-        var value = list[0].Value;
         if (value == null)
             return [];
 
@@ -180,11 +245,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a boolean")]
     public static IEnumerable<IElement> ToBoolean(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toBoolean")?.Value;
 
-        var value = list[0].Value;
         if (value is bool b)
             return [FunctionHelpers.CreateBoolean(b)];
 
@@ -196,14 +258,34 @@ internal static class TypeConversionFunctions
 
         if (value is string s)
         {
-            if (s.Equals("true", StringComparison.OrdinalIgnoreCase))
+            if (TrueStrings.Contains(s))
                 return [FunctionHelpers.CreateBoolean(true)];
-            if (s.Equals("false", StringComparison.OrdinalIgnoreCase))
+            if (FalseStrings.Contains(s))
                 return [FunctionHelpers.CreateBoolean(false)];
         }
 
         return [];
     }
+
+    /// <summary>
+    /// The String representations <c>toBoolean()</c> maps to <see langword="true"/>, verbatim from the
+    /// spec's type-representation table.
+    /// </summary>
+    /// <remarks>
+    /// Only <c>'true'</c> and <c>'false'</c> were recognised, so <c>'yes'.toBoolean()</c> and
+    /// <c>'1'.toBoolean()</c> answered empty. The table is unchanged between FHIRPath 2.0.0 and 3.0.0 and
+    /// Firely implements all of it. Case is ignored per the note under the table ("so that both 'T' and
+    /// 't' are considered true"), which is what the ordinal-ignore-case comparer supplies.
+    /// </remarks>
+    private static readonly FrozenSet<string> TrueStrings =
+        new[] { "true", "t", "yes", "y", "1", "1.0" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The String representations <c>toBoolean()</c> maps to <see langword="false"/>. See
+    /// <see cref="TrueStrings"/>.
+    /// </summary>
+    private static readonly FrozenSet<string> FalseStrings =
+        new[] { "false", "f", "no", "n", "0", "0.0" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// toDate() - Converts a value to a date.
@@ -215,22 +297,34 @@ internal static class TypeConversionFunctions
         MaxArguments = 0,
         Category = "TypeConversion",
         Description = "Converts a value to a date")]
+    /// <remarks>
+    /// The DateTime arm is the spec's second bullet: "the item is a DateTime, in which case the year,
+    /// month, and day components are extracted directly without timezone conversion/normalization", worked
+    /// as <c>@2024-01-15T23:30:00-05:00.toDate() // returns @2024-01-15</c> - the local calendar date, not
+    /// the UTC one. Extraction is deliberately gated on the item being a DateTime rather than on the
+    /// lexical form containing a <c>T</c>, because for a <i>String</i> the spec requires the whole value to
+    /// match <c>yyyy-MM-DD</c>, so <c>'2024-01-15T23:30:00'.toDate()</c> is empty, not truncated.
+    /// </remarks>
     public static IEnumerable<IElement> ToDate(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
+        var element = SingleOrEmpty(focus.ToList(), "toDate");
+        if (element is null || WireValue.AsWireString(element.Value) is not { } s)
             return [];
 
-        var value = list[0].Value;
-        if (WireValue.AsWireString(value) is { } s)
+        s = s.Trim();
+
+        if (IsDateTimeElement(element))
         {
-            s = s.Trim();
-            if (IsValidFhirDate(s))
-                return [FunctionHelpers.CreateDate(s)];
+            var datePart = s.Split('T')[0];
+            return IsValidFhirDate(datePart) ? [FunctionHelpers.CreateDate(datePart)] : [];
         }
 
-        return [];
+        return IsValidFhirDate(s) ? [FunctionHelpers.CreateDate(s)] : [];
     }
+
+    private static bool IsDateTimeElement(IElement element)
+        => element.InstanceType is "dateTime" or "instant"
+           || element.Value is FhirTemporal { Kind: FhirPrimitive.DateTime or FhirPrimitive.Instant };
 
     private static bool IsValidFhirDate(string value)
     {
@@ -280,11 +374,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a dateTime")]
     public static IEnumerable<IElement> ToDateTime(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toDateTime")?.Value;
 
-        var value = list[0].Value;
         if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
@@ -368,20 +459,33 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a time")]
     public static IEnumerable<IElement> ToTime(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toTime")?.Value;
 
-        var value = list[0].Value;
         if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
-            if (TimeSpan.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out _))
+            if (TimeLiteral().IsMatch(s))
                 return [FunctionHelpers.CreateTime(s)];
         }
 
         return [];
     }
+
+    /// <summary>
+    /// The string form <c>toTime()</c>/<c>convertsToTime()</c> accept: the spec's
+    /// <c>hh:mm:ss.fff(+|-)hh:mm</c>, with the minute, second and fraction components optional because
+    /// "If the item contains a partial time (e.g. '10:00'), the result is a partial time".
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TimeSpan"/> parsing is a duration grammar, not a time-of-day one: it accepted
+    /// <c>'25:00'</c> (25 hours) and <c>'1.02:03'</c> (a day-prefixed span), neither of which is a Time.
+    /// Firely gives empty for <c>'25:00'</c>. The hour bound is <c>23</c>; seconds allow <c>60</c> for a
+    /// leap second, matching what FHIR permits on the wire. Official <c>testStringHourConvertsToTime</c>
+    /// (<c>'14'</c>) is why the hour may stand alone.
+    /// </remarks>
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^([01]\d|2[0-3])(:[0-5]\d(:([0-5]\d|60)(\.\d+)?)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)?$")]
+    private static partial System.Text.RegularExpressions.Regex TimeLiteral();
 
     /// <summary>
     /// toQuantity([unit]) - Converts a value to a quantity, optionally converting to specified unit.
@@ -402,10 +506,7 @@ internal static class TypeConversionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        var value = list[0].Value;
+        var value = SingleOrEmpty(list, "toQuantity")?.Value;
         Quantity? quantity = null;
 
         // If already a quantity, use it
@@ -764,10 +865,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to integer")]
     public static IEnumerable<IElement> ConvertsToInteger(IEnumerable<IElement> focus)
-    {
-        var result = ToInteger(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToInteger", ToInteger);
 
     /// <summary>
     /// convertsToLong() - Returns true if value can be converted to Long.
@@ -784,10 +882,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to Long")]
     public static IEnumerable<IElement> ConvertsToLong(IEnumerable<IElement> focus)
-    {
-        var result = ToLong(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToLong", ToLong);
 
     /// <summary>
     /// convertsToDecimal() - Returns true if value can be converted to decimal.
@@ -800,10 +895,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to decimal")]
     public static IEnumerable<IElement> ConvertsToDecimal(IEnumerable<IElement> focus)
-    {
-        var result = ToDecimal(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToDecimal", ToDecimal);
 
     /// <summary>
     /// convertsToString() - Returns true if value can be converted to string.
@@ -816,10 +908,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to string")]
     public static IEnumerable<IElement> ConvertsToString(IEnumerable<IElement> focus)
-    {
-        var result = ToString(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToString", ToString);
 
     /// <summary>
     /// convertsToBoolean() - Returns true if value can be converted to boolean.
@@ -832,10 +921,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to boolean")]
     public static IEnumerable<IElement> ConvertsToBoolean(IEnumerable<IElement> focus)
-    {
-        var result = ToBoolean(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToBoolean", ToBoolean);
 
     /// <summary>
     /// convertsToDate() - Returns true if value can be converted to date.
@@ -848,10 +934,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to date")]
     public static IEnumerable<IElement> ConvertsToDate(IEnumerable<IElement> focus)
-    {
-        var result = ToDate(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToDate", ToDate);
 
     /// <summary>
     /// convertsToDateTime() - Returns true if value can be converted to dateTime.
@@ -864,10 +947,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to dateTime")]
     public static IEnumerable<IElement> ConvertsToDateTime(IEnumerable<IElement> focus)
-    {
-        var result = ToDateTime(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToDateTime", ToDateTime);
 
     /// <summary>
     /// convertsToTime() - Returns true if value can be converted to time.
@@ -880,10 +960,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to time")]
     public static IEnumerable<IElement> ConvertsToTime(IEnumerable<IElement> focus)
-    {
-        var result = ToTime(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToTime", ToTime);
 
     /// <summary>
     /// convertsToQuantity() - Returns true if value can be converted to quantity.
@@ -901,8 +978,11 @@ internal static class TypeConversionFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var result = ToQuantity(focus, arguments, context, evaluateExpression);
-        return FunctionHelpers.ReturnBoolean(result.Any());
+        var list = focus.ToList();
+        if (SingleOrEmpty(list, "convertsToQuantity") is null)
+            return [];
+
+        return FunctionHelpers.ReturnBoolean(ToQuantity(list, arguments, context, evaluateExpression).Any());
     }
 
     #endregion

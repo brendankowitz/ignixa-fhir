@@ -119,6 +119,74 @@ public class BooleanLogicShortCircuitTests
         Should.Throw<FhirPathEvaluationException>(() => Evaluate(expression));
     }
 
+    /// <summary>
+    /// The two halves meeting: an operand that is actually consumed must be a singleton, but a
+    /// short-circuited right operand is never consumed and so is never checked.
+    /// </summary>
+    /// <remarks>
+    /// This is the pair of tests that pins the placement of the singleton rule. Hoisting the check to the
+    /// top of the operator - the obvious way to implement "operands are first evaluated as Booleans" -
+    /// would keep the second theory passing and silently break the first, turning R4's <c>tim-9</c> guard
+    /// pattern into an error. Neither theory alone would catch that.
+    /// </remarks>
+    [Theory]
+    [InlineData("false and (1 | 2)", false)]
+    [InlineData("true or (1 | 2)", true)]
+    [InlineData("false implies (1 | 2)", true)]
+    public void GivenTheLeftOperandDecidesTheResult_WhenTheRightOperandIsMultiItem_ThenNoErrorIsSignalled(string expression, bool expected)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// Every position where a multi-item operand is actually consumed, on both sides of all four
+    /// operators. A left operand is always consumed, so it errors even in a row that would short-circuit.
+    /// </summary>
+    [Theory]
+    [InlineData("true and (1 | 2)")]
+    [InlineData("(1 | 2) and true")]
+    [InlineData("(1 | 2) and false")]
+    [InlineData("false or (1 | 2)")]
+    [InlineData("(1 | 2) or false")]
+    [InlineData("(1 | 2) or true")]
+    [InlineData("true xor (1 | 2)")]
+    [InlineData("(1 | 2) xor true")]
+    [InlineData("true implies (1 | 2)")]
+    [InlineData("(1 | 2) implies true")]
+    [InlineData("(1 | 2) implies false")]
+    [InlineData("{} and (1 | 2)")]
+    [InlineData("{} or (1 | 2)")]
+    [InlineData("{} implies (1 | 2)")]
+    [InlineData("{} xor (1 | 2)")]
+    public void GivenAMultiItemOperandIsConsumed_WhenEvaluating_ThenAnErrorIsSignalled(string expression)
+    {
+        // Act & Assert
+        Should.Throw<FhirPathEvaluationException>(() => Evaluate(expression));
+    }
+
+    /// <summary>
+    /// A single non-boolean item still evaluates to true - that is the "expected input type is Boolean"
+    /// branch of Singleton Evaluation, not a case the multi-item rule swallows.
+    /// </summary>
+    [Theory]
+    [InlineData("(1).toInteger() and true", true)]
+    [InlineData("'x' and true", true)]
+    [InlineData("'x' or false", true)]
+    public void GivenASingleNonBooleanOperand_WhenEvaluating_ThenItIsTruthy(string expression, bool expected)
+    {
+        // Act
+        var result = Evaluate(expression);
+
+        // Assert
+        result.Count.ShouldBe(1);
+        result[0].Value.ShouldBe(expected);
+    }
+
     private List<IElement> Evaluate(string expression)
     {
         var parsed = _parser.Parse(expression);

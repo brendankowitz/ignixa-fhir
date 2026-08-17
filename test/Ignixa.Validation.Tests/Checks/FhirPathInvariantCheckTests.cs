@@ -491,6 +491,59 @@ public class FhirPathInvariantCheckTests
     }
 
     /// <summary>
+    /// The same contract for the other kind of engine-signalled error: a constraint whose boolean operand
+    /// is a repeating element, which FHIRPath's Singleton Evaluation of Collections makes an error rather
+    /// than a truthy existence check.
+    /// </summary>
+    /// <remarks>
+    /// This is the case the spec works through by name - <c>Patient.active and Patient.gender and
+    /// Patient.telecom</c> "will result in an error because of the multiple telecom elements" - and it is
+    /// exactly the shape a hand-written invariant falls into, so enforcing the rule in the engine has to
+    /// be paired with proof that it cannot reject a conformant resource. The verdict must stay
+    /// <c>IsValid</c>: the defect is in the constraint's text, not in the instance.
+    /// </remarks>
+    [Fact]
+    public void GivenConstraintWithMultiItemBooleanOperand_WhenValidating_ThenResultIsNonFailingWithWarning()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "sing-1",
+            Severity = ConstraintSeverity.Error,
+            Human = "Uses a repeating element as a boolean operand",
+            Expression = "active and gender and telecom",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse("""
+        {
+          "resourceType": "Patient",
+          "active": true,
+          "gender": "male",
+          "telecom": [
+            { "system": "phone", "value": "555-1111" },
+            { "system": "email", "value": "a@b.example" }
+          ]
+        }
+        """);
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var state = new ValidationState();
+
+        // Act
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+
+        // Assert - an ill-formed constraint must not reject a conformant resource
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("sing-1");
+        result.Issues[0].Message.ShouldContain("could not be evaluated");
+    }
+
+    /// <summary>
     /// Tests expression that returns empty collection (treated as false).
     /// </summary>
     [Fact]
