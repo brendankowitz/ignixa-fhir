@@ -531,20 +531,28 @@ public static class ApplicationServicesRegistration
             .InstancePerLifetimeScope();
     }
 
-    private static void RegisterNarrativeServices(ContainerBuilder builder)
+    /// <remarks>
+    /// Internal (not private) so <c>ApplicationServicesRegistrationNarrativeLoggerTests</c> can register
+    /// this delegate over a minimal container and pin that a real <see cref="ILoggerFactory"/> is asked
+    /// for a logger when <see cref="INarrativeGenerator"/> is resolved -- the DI registration used to call
+    /// <c>FhirNarrativeGenerator.Create(schema)</c> with no logger argument at all, silently defaulting to
+    /// <c>NullLogger</c> no matter how well the catch-block logging itself was tested in isolation.
+    /// </remarks>
+    internal static void RegisterNarrativeServices(ContainerBuilder builder)
     {
         // Narrative Generator (scoped per request - requires ISchema)
         builder.Register(c =>
         {
             var versionContext = c.Resolve<IFhirVersionContext>();
             var requestContextAccessor = c.Resolve<IFhirRequestContextAccessor>();
+            var loggerFactory = c.Resolve<ILoggerFactory>();
 
             var requestContext = requestContextAccessor.RequestContext;
             var schema = requestContext is not null
                 ? versionContext.GetSchemaProvider(requestContext.FhirVersion, requestContext.TenantId)
                 : versionContext.GetBaseSchemaProvider(FhirVersion.R4);
 
-            return FhirNarrativeGenerator.Create(schema);
+            return FhirNarrativeGenerator.Create(schema, logger: loggerFactory.CreateLogger<FhirNarrativeGenerator>());
         })
         .As<INarrativeGenerator>()
         .InstancePerLifetimeScope();

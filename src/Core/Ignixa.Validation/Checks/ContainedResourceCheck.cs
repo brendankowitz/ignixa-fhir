@@ -124,7 +124,8 @@ public class ContainedResourceCheck(IValidationSchemaResolver schemaResolver) : 
 
             // Adjust paths to be relative to parent resource
             var parentPrefix = $"{element.Location}.{containedPath}";
-            foreach (var issue in containedResult.Issues)
+            foreach (var issue in containedResult.IssuesOrSynthesizedFailure(
+                parentPrefix, $"contained '{resourceType}' resource"))
             {
                 // The nested validation returns paths relative to the contained resource (e.g., "Patient.unknownField")
                 // We need to replace the resource type prefix with the contained path
