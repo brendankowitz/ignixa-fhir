@@ -13,6 +13,11 @@ namespace Ignixa.Search.Sql.Tests.Compilation;
 /// </summary>
 public class PlanExplainDescribeTests
 {
+    /// <summary>
+    /// Guards the structured plan rows against the flat text they were extracted from. Dozens of goldens across
+    /// the compiler suites assert on <see cref="PlanExplainer.Print"/>'s exact output, so the refactor that
+    /// introduced <see cref="PlanExplainer.Describe"/> is only safe while the two stay one-for-one.
+    /// </summary>
     [Fact]
     public void GivenANonTrivialPlan_WhenPrinted_ThenTheTextIsUnchangedByTheDescribeRefactor()
     {
@@ -27,7 +32,7 @@ public class PlanExplainDescribeTests
             "cte0 = StringSearchParam[103,202]  Text = @p0\n" +
             "cte1 = TokenSearchParam[103,44]  Code = @p1\n" +
             "root = Intersect(cte0, cte1)\n" +
-            "matchPage = MatchPageCte(top=none, sortJoins=true, resourceJoin=true) WHERE ResourceId = @p2 PageSpec(boundary=[@p3], type=none, sid=@p4) OffsetSpec(offset=@p5, fetch=@p6)\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=true, resourceJoin=true) WHERE ResourceId = @p2 OffsetSpec(offset=@p3, fetch=@p4)\n" +
             "matchSeed = MatchSeedCte(limit=10)\n" +
             "sort = SortSpec([String:202 ASC], Valued)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
@@ -234,6 +239,6 @@ public class PlanExplainDescribeTests
                     tokenTable, 103, 44,
                     new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"))),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-            ], new MatchPageSpec(new CteRef(2), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")), Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued), Page: new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L)), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)]);
+            ], new MatchPageSpec(new CteRef(2), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")), Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)]);
     }
 }

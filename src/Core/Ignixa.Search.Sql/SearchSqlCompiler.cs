@@ -103,7 +103,7 @@ public sealed class SearchSqlCompiler(
             return SearchPlanResult.Failed(
                 new SearchCompilationFailure(CompilationStage.Build, ex.Message, ParameterCode: null, Span: null, ex)
                 {
-                    Diagnostics = Diagnostics(traced, outcomes, implicitParameters: [], planTrace: null),
+                    Diagnostics = Diagnostics(traced, outcomes, implicitParameters: [], planTrace: null, planTraceFailure: null),
                 });
         }
 
@@ -137,7 +137,7 @@ public sealed class SearchSqlCompiler(
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Build, ex);
             return SearchPlanResult.Failed(
-                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
+                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
         var resolved = await Resolve.RunAsync(context, _deps, cancellationToken);
@@ -151,7 +151,7 @@ public sealed class SearchSqlCompiler(
 
             var resolveFailure = CompilationDiagnosticsBuilder.ResolveFailure(resolved.Unresolved)!;
             return SearchPlanResult.Failed(
-                resolveFailure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
+                resolveFailure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
         LoweredPlan lowered;
@@ -163,13 +163,30 @@ public sealed class SearchSqlCompiler(
         {
             var failure = CompilationDiagnosticsBuilder.RecordFailure(outcomes, CompilationStage.Lower, ex);
             return SearchPlanResult.Failed(
-                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null) });
+                failure with { Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace: null, planTraceFailure: null) });
         }
 
         QueryPlanTrace? planTrace = null;
+        SearchCompilationFailure? planTraceFailure = null;
         if (options.DiagnosticsLevel == SearchDiagnosticsLevel.Full)
         {
-            planTrace = CompilationDiagnosticsBuilder.BuildPlanTrace(lowered, outcomes);
+            // Diagnostics must not be able to fail a compile that would otherwise succeed. Building the trace
+            // renders the plan, which runs the emitter, so every emit-stage refusal can surface here -- and
+            // for a plan that will not emit, the trace is the thing the caller most wants. The refusal is
+            // carried on the diagnostics rather than dropped: a caller that asked for Full and got no trace
+            // has to be able to find out why, and an explain/emit disagreement does not show up anywhere else
+            // because it never affects the SQL.
+            try
+            {
+                planTrace = CompilationDiagnosticsBuilder.BuildPlanTrace(lowered, outcomes);
+            }
+            catch (Exception ex) when (ex is NotSupportedException or KeyNotFoundException)
+            {
+                planTraceFailure = CompilationDiagnosticsBuilder.RecordFailure(
+                    outcomes,
+                    CompilationStage.Emit,
+                    new NotSupportedException($"Plan trace unavailable: {ex.Message}", ex));
+            }
         }
 
         if (traced)
@@ -182,7 +199,7 @@ public sealed class SearchSqlCompiler(
             Query = lowered.Plan,
             ResourceType = context.TargetResourceType,
             DiagnosticsLevel = options.DiagnosticsLevel,
-            Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace),
+            Diagnostics = Diagnostics(traced, outcomes, implicitParameters, planTrace, planTraceFailure),
         };
 
         return SearchPlanResult.Success(plan);
@@ -192,13 +209,15 @@ public sealed class SearchSqlCompiler(
         bool traced,
         IReadOnlyList<ParameterTrace> outcomes,
         IReadOnlyList<ImplicitParameter> implicitParameters,
-        QueryPlanTrace? planTrace)
+        QueryPlanTrace? planTrace,
+        SearchCompilationFailure? planTraceFailure)
         => traced
             ? new SearchCompilationDiagnostics
             {
                 Parameters = outcomes,
                 Implicit = implicitParameters,
                 PlanTrace = planTrace,
+                PlanTraceFailure = planTraceFailure,
             }
             : null;
 }

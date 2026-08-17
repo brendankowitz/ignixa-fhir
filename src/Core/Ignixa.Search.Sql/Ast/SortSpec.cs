@@ -31,7 +31,14 @@ public sealed record SortKey(
     SortKeyKind Kind,
     SortOrder Direction,
     TableDescriptor? Table = null,
-    ColumnDescriptor? Column = null);
+    ColumnDescriptor? Column = null)
+{
+    /// <summary>
+    /// A search-parameter-backed key (String/Date such as name or birthdate, or Aggregated) as opposed to the
+    /// resource-column keys (_lastUpdated / _type / _id). Its keyset order is type-free: (sortValue…, Sid1).
+    /// </summary>
+    public bool IsCustom => Kind is SortKeyKind.String or SortKeyKind.Date or SortKeyKind.Aggregated;
+}
 
 /// <summary>
 /// Which segment of a two-phase missing-value sort a plan computes. Valued makes Keys[0]'s join INNER (also
@@ -60,6 +67,13 @@ public sealed record SortSpec(IReadOnlyList<SortKey> Keys, SortPhase Phase)
     /// many values, which is why a boundary never survives a phase transition.
     /// </summary>
     public int ActiveKeyCount => Phase == SortPhase.Valued ? Keys.Count : Math.Max(Keys.Count - 1, 0);
+
+    /// <summary>
+    /// True when any key is search-parameter-backed, so the ORDER BY drops m.T1 and orders by (sort keys…, Sid1).
+    /// Decided by the sort's keys, never by the page boundary, so every page of one walk shares one ordering.
+    /// All keys are considered so a custom sort's missing-value segment stays type-free.
+    /// </summary>
+    public bool HasCustomKey => Keys.Any(k => k.IsCustom);
 }
 
 /// <summary>

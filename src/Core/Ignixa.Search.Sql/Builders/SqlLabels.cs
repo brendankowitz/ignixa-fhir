@@ -16,9 +16,9 @@ public static class SqlLabels
 
     /// <summary>
     /// The match-seed CTE: <see cref="MatchPage"/> minus its has-more probe row, which is what
-    /// _include/_revinclude stages seed from. Emitted only when the page over-fetches
-    /// (<c>OffsetSpec.ProbeExtraRow</c>); otherwise stages seed from <see cref="MatchPage"/> itself.
-    /// A real SQL identifier, not just a range label.
+    /// _include/_revinclude stages seed from. Emitted only when the page over-fetches — under either paging
+    /// mechanism, so ask <c>MatchPageSpec.TrimmedPageSize</c> rather than a mechanism's own flag; otherwise
+    /// stages seed from <see cref="MatchPage"/> itself. A real SQL identifier, not just a range label.
     /// </summary>
     public const string MatchSeed = "cteMatchSeed";
 

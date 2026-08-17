@@ -846,7 +846,7 @@ public class EndToEndCompilationTests
         // which only applies at the true top level), the ChainJoin's InnerMatch is that ResourceSource directly
         // (no Intersect needed since _id was the target expression's only predicate).
         plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[105] WHERE ResourceId = @p1\n" +
+            "cte0 = ResourceSource[105] WHERE ResourceId = @p0\n" +
             "root = ChainJoin(cte0, ref=55, inner=105, output=[103], Forward)");
         emitted.Sql.ShouldNotContain("org-1");
     }
@@ -872,7 +872,7 @@ public class EndToEndCompilationTests
 
         // Assert -- identical mechanism to the forward case, just on the referencing (inner) side this time
         plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[106] WHERE ResourceId = @p1\n" +
+            "cte0 = ResourceSource[106] WHERE ResourceId = @p0\n" +
             "root = ChainJoin(cte0, ref=77, inner=106, output=[103], Reverse)");
         emitted.Sql.ShouldNotContain("obs-1");
     }
@@ -910,7 +910,7 @@ public class EndToEndCompilationTests
         // (ResourceSource left, ordinary match right) before feeding ChainJoin's InnerMatch.
         plan.Explain().ShouldBe(
             "cte0 = StringSearchParam[105,202]  Text LIKE @p0 (StartsWith) collate CI_AI\n" +
-            "cte1 = ResourceSource[105] WHERE ResourceId = @p2\n" +
+            "cte1 = ResourceSource[105] WHERE ResourceId = @p1\n" +
             "cte2 = Intersect(cte1, cte0)\n" +
             "root = ChainJoin(cte2, ref=55, inner=105, output=[103], Forward)");
         emitted.Sql.ShouldNotContain("org-1");

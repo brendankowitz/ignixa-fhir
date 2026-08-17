@@ -62,7 +62,7 @@ internal static class LowerHarness
                         ? new ResultShape.IncludesPage(options.IncludeBoundary)
                         : new ResultShape.Matches(options.OffsetPage is { } offset
                             ? new SearchPaging.Offset(offset)
-                            : new SearchPaging.Keyset(options.Top, page)),
+                            : new SearchPaging.Keyset(options.Top, page, options.TopIncludesProbeRow)),
                 IncludeLimit = includeLimit,
                 SortPhase = sortPhase,
                 SearchParameterHash = options.SearchParameterHash?.Value as string,
