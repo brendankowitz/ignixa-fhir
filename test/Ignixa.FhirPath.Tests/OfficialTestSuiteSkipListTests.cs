@@ -16,30 +16,41 @@ namespace Ignixa.FhirPath.Tests;
 
 public class OfficialTestSuiteSkipListTests
 {
-    public static TheoryData<string> DeferredCaseNames()
-    {
-        var data = new TheoryData<string>();
-        foreach (var name in OfficialTestSuiteRunner.DeferredInvalidCaseNames)
-        {
-            data.Add(name);
-        }
-
-        return data;
-    }
-
-    [Theory]
-    [MemberData(nameof(DeferredCaseNames))]
-    public void GivenADeferredInvalidCase_WhenLookedUpInTheOfficialSuites_ThenItExistsAndIsMarkedInvalid(string testName)
+    /// <summary>
+    /// Checks every deferred entry still names a real, still-invalid official case.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="TheoryAttribute"/> over the deferral list would give one case per entry and nicer
+    /// failure isolation, but xunit fails a theory whose data source is empty ("No data found"). The list
+    /// is currently empty because every deferral has been closed, so the guard has to survive its own
+    /// success - a guard that breaks when there is nothing left to guard would push the next person to
+    /// delete it. Failures are therefore accumulated and reported together, which keeps the per-entry
+    /// diagnostic that the theory form gave.
+    /// </remarks>
+    [Fact]
+    public void GivenTheDeferredInvalidCases_WhenLookedUpInTheOfficialSuites_ThenEachExistsAndIsMarkedInvalid()
     {
         // Arrange
-        var matches = AllTestCases().Where(tc => tc.Name == testName).ToList();
+        var allCases = AllTestCases().ToList();
 
         // Act
-        var invalidMatches = matches.Where(tc => tc.IsInvalidTest).ToList();
+        var stale = new List<string>();
+        foreach (var testName in OfficialTestSuiteRunner.DeferredInvalidCaseNames)
+        {
+            var matches = allCases.Where(tc => tc.Name == testName).ToList();
+
+            if (matches.Count == 0)
+            {
+                stale.Add($"'{testName}' is deferred but no official R4/R4B/R5 test has that name - the entry is stale and should be removed.");
+            }
+            else if (!matches.Any(tc => tc.IsInvalidTest))
+            {
+                stale.Add($"'{testName}' is deferred as an unsignalled invalid case but no version marks it invalid - the entry no longer describes a real gap.");
+            }
+        }
 
         // Assert
-        matches.ShouldNotBeEmpty($"'{testName}' is deferred but no official R4/R4B/R5 test has that name - the entry is stale and should be removed.");
-        invalidMatches.ShouldNotBeEmpty($"'{testName}' is deferred as an unsignalled invalid case but no version marks it invalid - the entry no longer describes a real gap.");
+        stale.ShouldBeEmpty(string.Join(Environment.NewLine, stale));
     }
 
     [Fact]
