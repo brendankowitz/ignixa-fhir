@@ -102,6 +102,81 @@ internal static class TypeMatcher
     }
 
     /// <summary>
+    /// Enforces FHIRPath's cardinality rule for the type-cast operators from R5 onwards: "if there is
+    /// more than one item in the input collection, the evaluator will throw an error" (Types and
+    /// Reflection, <c>as</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Applied to <c>as</c> and to <c>as()</c>, which the spec defines as existing "for backwards
+    /// compatibility ... just as with the <c>as</c> keyword", so the keyword's rules carry over. Empty
+    /// input stays empty - the rule is about more than one item, not about exactly one.
+    /// </para>
+    /// <para>
+    /// Deliberately NOT applied to <c>ofType()</c>. That function is specified as a filter over a
+    /// collection ("returns a collection that contains all items in the input collection that are of the
+    /// given type"), so a multi-item input is its normal case, not an error.
+    /// </para>
+    /// <para>
+    /// The version gate is the whole point of this method, and it is not arbitrary leniency: HL7's own
+    /// SearchParameter definitions break the rule below R5. <c>Observation.component.value as Quantity</c>
+    /// - a 0..* path on the left of <c>as</c> - is one of 58 operator-form <c>as</c> expressions in the
+    /// shipped R4 definitions and 59 in R4B, and the same shape covers <c>useContext</c> on the
+    /// canonical resources, Composition's <c>related-id</c>/<c>related-ref</c>, the Medication and
+    /// Substance <c>ingredient</c> parameters, Group's <c>value</c> and Goal's <c>target-date</c>. STU3
+    /// is not affected by the operator at all - it spells all 50 of its casts with the <c>as()</c>
+    /// function. In R5 HL7 rewrote almost every one to <c>ofType()</c>: the operator survives only in
+    /// <c>Bundle.entry[0].resource as X</c> (indexed, so a singleton),
+    /// <c>NutritionIntake.reported as Reference</c> (0..1), and
+    /// <c>AdverseEvent.suspectEntity.instance as Reference</c>, which is genuinely repeating - see the
+    /// note below. Enforcing the rule below R5 would make <c>ElementSearchIndexer</c> throw on any
+    /// resource populating one of those repeating paths, and its non-composite path logs and continues -
+    /// so the values would vanish from the search index with nothing surfaced to the caller.
+    /// </para>
+    /// <para>
+    /// The one R5 casualty is <c>AdverseEvent</c>'s <c>substance</c> parameter on a resource with more
+    /// than one <c>suspectEntity</c>. It costs no index data: <c>instance</c> is a
+    /// <c>CodeableReference</c> in R5 and resolves as <c>CodeableConcept</c> here, so
+    /// <c>as Reference</c> already matched nothing and the parameter yielded zero entries for one
+    /// suspectEntity as much as for two. Enforcement turns a silent zero into a logged zero. The real
+    /// defect there is the unresolved <c>CodeableReference</c>, which is out of scope for this rule.
+    /// </para>
+    /// <para>
+    /// This is exactly HAPI's rule (<c>doNotEnforceAsSingletonRule</c> is true below R5, for the same
+    /// reason), so the two engines now agree on every version. Firely never enforces it and applies
+    /// <c>as</c> element-wise, so <c>Patient.name.as(HumanName)</c> returns three names there and throws
+    /// here on R5+ only. The official suite's <c>testFHIRPathAsFunction21</c> marks the multi-item case
+    /// invalid in all three versions; we follow it from R5, which is where HL7's artifacts stopped
+    /// contradicting it.
+    /// </para>
+    /// <para>
+    /// Failing open is deliberate when the version cannot be established. An absent schema carries no
+    /// version at all, and <see cref="FhirVersion.Unspecified"/> means the version could not be
+    /// determined - even though its numeric value sorts above <see cref="FhirVersion.R5"/> and the
+    /// codebase's usual <c>version &gt;= FhirVersion.R5</c> idiom would therefore enforce. That idiom is
+    /// deliberately not used here: the two ways to be wrong are not symmetric. Enforcing when we should
+    /// not silently drops search index entries; not enforcing when we should returns a collection where
+    /// the spec wanted an error, which is what Firely does anyway.
+    /// </para>
+    /// </remarks>
+    public static void EnsureSingletonInput(int inputCount, ISchema? schema, string operatorDescription)
+    {
+        if (inputCount <= 1 || !EnforcesSingletonCast(schema))
+        {
+            return;
+        }
+
+        throw new FhirPathEvaluationException(
+            $"The input to {operatorDescription} must be a single item, but was a collection of {inputCount} items. " +
+            $"This rule is enforced from FHIR R5 onwards, where HL7's own artifacts use ofType() for repeating paths.");
+    }
+
+    private static bool EnforcesSingletonCast(ISchema? schema) =>
+        schema is not null
+        && schema.Version != FhirVersion.Unspecified
+        && schema.Version >= FhirVersion.R5;
+
+    /// <summary>
     /// Extracts the type name from a FhirPath expression.
     /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`
     /// </summary>

@@ -15,6 +15,7 @@ using Ignixa.Extensions.FirelySdk;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Xunit;
+using IgnixaQuantity = Ignixa.FhirPath.Types.Quantity;
 using P = Hl7.Fhir.ElementModel.Types;
 
 namespace Ignixa.Extensions.Tests.FirelySdk;
@@ -412,20 +413,14 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Fact]
-    public void GivenFirelyQuantityValue_WhenReadThroughIgnixaElementAdapter_ThenPassesThroughUntranslated()
+    public void GivenFirelyQuantityValue_WhenReadThroughIgnixaElementAdapter_ThenReturnsIgnixaQuantity()
     {
-        // Pins a known gap rather than asserting desired behaviour.
-        //
-        // Firely surfaces Quantity as Hl7.Fhir.ElementModel.Types.Quantity. Ignixa's evaluator
-        // tests `element.Value is Ignixa.FhirPath.Types.Quantity` (FhirPathEvaluator.cs:649), a
-        // different type, so it never matches. The consequence is silent: on an adapted Firely
-        // element, `value.toQuantity() = 5 'mg'` and `value.toQuantity() > 1 'mg'` both yield an
-        // empty collection instead of a boolean.
-        //
-        // This shim cannot fix it. Ignixa.FhirPath.Types.Quantity lives in Ignixa.FhirPath, which
-        // Ignixa.Extensions.FirelySdk6 deliberately does not reference - translating here would
-        // invert the layering. The fix belongs either in Ignixa.FhirPath (accept P.Quantity) or in
-        // moving Quantity down to Ignixa.Abstractions. Update this test when that lands.
+        // Firely surfaces Quantity as Hl7.Fhir.ElementModel.Types.Quantity; Ignixa's canonical
+        // quantity is Ignixa.FhirPath.Types.Quantity. Roughly forty sites across the evaluator and
+        // its function libraries reach that type by testing `element.Value is Types.Quantity`
+        // straight off IElement.Value, so an untranslated P.Quantity misses every one of them at
+        // once - equality, equivalence, ordering, arithmetic and aggregation all silently degrade
+        // to an empty collection. Translating here is what closes all of them together.
 
         // Arrange
         var quantity = new P.Quantity(5m, "mg");
@@ -435,7 +430,46 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Same(quantity, value);
+        var translated = Assert.IsType<IgnixaQuantity>(value);
+        Assert.Equal(5m, translated.Value);
+        Assert.Equal("mg", translated.Unit);
+    }
+
+    [Fact]
+    public void GivenIgnixaQuantityValue_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyQuantity()
+    {
+        // The mirror direction, asserted separately because the two adapters translate through
+        // different methods and the asymmetry that integer64 documents is independently
+        // reintroducible here.
+
+        // Arrange
+        var element = new StubElement { InstanceType = "Quantity", Value = new IgnixaQuantity(5m, "mg") };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var translated = Assert.IsType<P.Quantity>(value);
+        Assert.Equal(5m, translated.Value);
+        Assert.Equal("mg", translated.Unit);
+    }
+
+    [Fact]
+    public void GivenWireQuantityElement_WhenReadThroughTypedElementAdapter_ThenValueIsNotSynthesised()
+    {
+        // A Quantity read off the wire is a complex element: it reports InstanceType "Quantity" but
+        // carries no primitive value at all, holding value/unit/code as children instead. The
+        // quantity arm of ToFirely is therefore keyed on the CLR type rather than on InstanceType;
+        // keying it on the name would try to translate this null.
+
+        // Arrange
+        var element = new StubElement { InstanceType = "Quantity", Value = null };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        Assert.Null(value);
     }
 
     #endregion
@@ -522,6 +556,38 @@ public class FirelyPrimitiveValueContractTests
         // Act
         var results = new FhirPathEvaluator()
             .Evaluate(new IgnixaElementAdapter(patient), ast)
+            .ToList();
+
+        // Assert
+        var result = Assert.Single(results);
+        Assert.Equal(true, result.Value);
+    }
+
+    [Theory]
+    [InlineData("value = 5 'mg'")]
+    [InlineData("value > 1 'mg'")]
+    [InlineData("value ~ 5 'mg'")]
+    public void GivenFirelyBackedElement_WhenComparingQuantitiesInFhirPath_ThenYieldsBooleanRatherThanEmpty(string expression)
+    {
+        // The quantity counterpart of the date defect above, and the reason the translation has to
+        // produce Ignixa's own Quantity rather than be matched for structurally in one helper:
+        // equality, ordering and equivalence are three separate call sites that each test
+        // `is Types.Quantity` independently, and an untranslated P.Quantity misses all three.
+
+        // Arrange
+        var value = new StubTypedElement { Name = "value", InstanceType = "Quantity", Value = new P.Quantity(5m, "mg") };
+        var observation = new StubTypedElement
+        {
+            Name = "Observation",
+            InstanceType = "Observation",
+            ChildElements = { value },
+        };
+
+        var ast = new FhirPathParser().Parse(expression);
+
+        // Act
+        var results = new FhirPathEvaluator()
+            .Evaluate(new IgnixaElementAdapter(observation), ast)
             .ToList();
 
         // Assert

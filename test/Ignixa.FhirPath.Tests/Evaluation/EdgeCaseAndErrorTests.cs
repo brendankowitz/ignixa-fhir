@@ -8,6 +8,7 @@ using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
+using Ignixa.Specification.Extensions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
@@ -751,6 +752,122 @@ public class EdgeCaseAndErrorTests
         // Assert
         Assert.Empty(result);
     }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) as `integer`")]
+    [InlineData("(1 | 2 | 3).as(`integer`)")]
+    public void GivenMultipleItemsUnderR5_WhenTypeAs_ThenThrows(string expression)
+    {
+        // FHIRPath 1.6.3 for the 'as' operator: "If there is more than one item in the input
+        // collection, the evaluator will throw an error". as() inherits it, being defined as
+        // backwards compatibility "just as with the 'as' keyword". Asserted for both forms because
+        // they are separate code paths - the operator in FhirPathEvaluator.EvaluateTypeAs, the
+        // function in CollectionFunctions.As - and the rule is independently droppable from either.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R5);
+
+        // Act & Assert
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr, context).ToList());
+        Assert.Contains("single item", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) as `integer`")]
+    [InlineData("(1 | 2 | 3).as(`integer`)")]
+    public void GivenMultipleItemsUnderR4_WhenTypeAs_ThenBothFormsFilterElementWise(string expression)
+    {
+        // The rule is gated on the schema version because HL7's own R4/R4B SearchParameters break it.
+        // See TypeMatcher.EnsureSingletonInput. Asserting the R4 side explicitly means the gate cannot
+        // be dropped without a test going red - the R5 theory above passes either way.
+        //
+        // Both spellings are asserted against the SAME expected count on purpose: the operator used to
+        // return empty for a non-singleton input while as() filtered element-wise, and that disagreement
+        // was the reason Observation.component.value as Quantity indexed nothing for a blood pressure.
+        // Pinning one count for both forms is what stops the two drifting apart again.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R4);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        Assert.Equal(3, result.Count);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) as `integer`")]
+    [InlineData("(1 | 2 | 3).as(`integer`)")]
+    public void GivenMultipleItemsAndNoSchema_WhenTypeAs_ThenBothFormsFilterElementWise(string expression)
+    {
+        // No schema means no version, and the two ways to be wrong are not symmetric: enforcing when
+        // we should not silently drops search index entries, while not enforcing returns a collection
+        // where the spec wanted an error - which is what Firely does on every version anyway.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Equal(3, result.Count);
+    }
+
+    [Theory]
+    [InlineData("(1 | 'two' | 3) as `integer`", 2)]
+    [InlineData("(1 | 'two' | 3).as(`integer`)", 2)]
+    public void GivenAMixedTypeCollectionUnderR4_WhenTypeAs_ThenOnlyMatchingItemsSurvive(string expression, int expectedCount)
+    {
+        // Element-wise means filtering, not passing the whole collection through. A homogeneous
+        // collection cannot tell those two apart - this one can.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R4);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        Assert.Equal(expectedCount, result.Count);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3).ofType(`integer`)")]
+    [InlineData("(1 | 2 | 3) is `integer`")]
+    public void GivenMultipleItemsUnderR5_WhenOfType_ThenDoesNotThrow(string expression)
+    {
+        // The singleton rule is specific to the cast operators. ofType() is specified as a filter
+        // over a collection, so a multi-item input is its normal case - the two share
+        // TypeMatcher.FilterByType, which is exactly why the guard must not live inside it.
+        // 'is' is included because it sits next to 'as' in the same spec section and returns empty
+        // rather than throwing for a non-singleton, which is easy to conflate. Run under R5, the
+        // version that does enforce the rule for 'as', so the exemption is what is being asserted.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R5);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        Assert.NotNull(result);
+    }
+
+    private static EvaluationContext ContextFor(FhirVersion version) => new()
+    {
+        Schema = version.GetSchemaProvider(),
+    };
 
     #endregion
 

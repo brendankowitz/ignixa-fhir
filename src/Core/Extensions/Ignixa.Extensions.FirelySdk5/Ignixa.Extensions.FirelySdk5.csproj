@@ -32,6 +32,9 @@
     <ProjectReference Include="..\..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <!-- Ignixa serialization for SchemaAwareElement (ISourceNavigator → IElement) -->
     <ProjectReference Include="..\..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <!-- Ignixa FHIRPath for Types.Quantity. Must mirror FirelySdk6: the sources above are linked,
+         not copied, so a reference missing here is a compile error rather than a behaviour drift. -->
+    <ProjectReference Include="..\..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
   </ItemGroup>
 
   <ItemGroup>
