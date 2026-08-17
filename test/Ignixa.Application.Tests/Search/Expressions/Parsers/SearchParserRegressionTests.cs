@@ -38,7 +38,8 @@ public class SearchParserRegressionTests
     // Regression 2: the parser now emits a typed IR, so LegacyExpressionLowerer.LowerToLegacy is the
     // shared bridge that lowers it back to the old field-level shape every old-shape backend consumes.
     // It stays pure -- the SQL-only date-index optimization is applied by the SQL backend afterward
-    // (see DateTimeEqualityRewriterTests in the DataLayer tests), not baked into this shared bridge.
+    // (see DateTimeEqualityRewriterTests in Ignixa.DataLayer.SqlEntityFramework.IntegrationTests), not
+    // baked into this shared bridge.
     // These two assertions were previously the other way round, pinning a pair of deviations from
     // search.html#prefix that had been in place long enough to look intentional: eq lowered to an overlap
     // and ap to a containment. That made eq and ne non-complementary -- a month-long Period row satisfied
