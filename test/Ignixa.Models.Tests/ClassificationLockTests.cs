@@ -3,7 +3,11 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Linq;
 using System.Reflection;
+using Ignixa.Abstractions;
+using Ignixa.Serialization;
+using Ignixa.Serialization.SourceNodes;
 using Shouldly;
 using Xunit;
 
@@ -167,4 +171,118 @@ public sealed class ClassificationLockTests
         // Absent from the R4 subclass too (R4 Observation has no bodyStructure element).
         typeof(Ignixa.Models.R4.Observation).GetProperty("BodyStructure").ShouldBeNull();
     }
+
+    [Fact]
+    public void GivenDomainResourceElements_WhenClassified_ThenTheyAreDeclaredOnceOnDomainResourceJsonNode()
+    {
+        foreach (string name in new[] { "Text", "Contained", "Extension", "ModifierExtension" })
+        {
+            PropertyInfo? declared = typeof(DomainResourceJsonNode)
+                .GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+
+            declared.ShouldNotBeNull($"DomainResourceJsonNode must declare {name}");
+            declared!.DeclaringType.ShouldBe(typeof(DomainResourceJsonNode));
+        }
+    }
+
+    [Fact]
+    public void GivenResourceElements_WhenClassified_ThenTheyAreDeclaredOnceOnResourceJsonNode()
+    {
+        foreach (string name in new[] { "Id", "Meta", "ImplicitRules", "Language" })
+        {
+            PropertyInfo? declared = typeof(ResourceJsonNode)
+                .GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+
+            declared.ShouldNotBeNull($"ResourceJsonNode must declare {name}");
+            declared!.DeclaringType.ShouldBe(typeof(ResourceJsonNode));
+        }
+    }
+
+    [Fact]
+    public void GivenResourceFacade_WhenGenerated_ThenItInheritsBaseElementsInsteadOfRedeclaringThem()
+    {
+        // Regression guard for the generator's skip gates: a resource facade that re-emits an inherited
+        // element shadows the base member (CS0108) and forks its storage. Scoped to ResourceJsonNode
+        // subclasses on purpose -- Attachment.Language and CompositionSection.Text are genuine
+        // datatype/backbone elements of the same name and must NOT be caught by this.
+        string[] inherited = ["Id", "Meta", "ImplicitRules", "Language", "Text", "Contained", "Extension", "ModifierExtension"];
+
+        int checkedProperties = 0;
+        foreach (Type facade in AllResourceFacades())
+        {
+            foreach (string name in inherited)
+            {
+                PropertyInfo? property = facade.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+                if (property is null)
+                {
+                    continue;
+                }
+
+                property.DeclaringType.ShouldBeOneOf(
+                    typeof(ResourceJsonNode),
+                    typeof(DomainResourceJsonNode));
+                checkedProperties++;
+            }
+        }
+
+        // Guards the sweep against becoming vacuous if the facade filter ever stops matching.
+        checkedProperties.ShouldBeGreaterThan(50);
+    }
+
+    [Fact]
+    public void GivenResourceFacade_WhenClassified_ThenEverySupportedVersionHasARealSubclassNotAnAlias()
+    {
+        // Resource version identity must not be derived from whether an element happens to diverge.
+        // CompatibleFhirVersionsAttribute is read with inherit:false and a `global using` alias cannot
+        // carry an attribute, so a resource that loses its subclass silently loses the As<T> guard and
+        // untagged-node version stamping. Datatypes are exempt -- As<T> is constrained to ResourceJsonNode.
+        var assembliesByVersion = new Dictionary<FhirVersion, Assembly>
+        {
+            [FhirVersion.R4] = R4Assembly,
+            [FhirVersion.R5] = R5Assembly,
+        };
+
+        var baseResources = SerializationAssembly.GetTypes()
+            .Where(t => t.IsPublic
+                && t.Namespace == "Ignixa.Models"
+                && typeof(ResourceJsonNode).IsAssignableFrom(t)
+                && t.GetCustomAttribute<CompatibleFhirVersionsAttribute>() is not null)
+            .ToList();
+
+        baseResources.ShouldNotBeEmpty();
+
+        int checkedSubclasses = 0;
+        foreach (Type baseResource in baseResources)
+        {
+            FhirVersion[] versions = baseResource
+                .GetCustomAttribute<CompatibleFhirVersionsAttribute>()!
+                .Versions.ToArray();
+
+            foreach (FhirVersion version in versions)
+            {
+                if (!assembliesByVersion.TryGetValue(version, out Assembly? assembly))
+                {
+                    continue;
+                }
+
+                Type? subclass = assembly.GetType($"Ignixa.Models.{version}.{baseResource.Name}");
+
+                subclass.ShouldNotBeNull(
+                    $"{baseResource.Name} supports {version} but has no Ignixa.Models.{version}.{baseResource.Name} "
+                    + "subclass to carry its version tag");
+                subclass!.BaseType.ShouldBe(baseResource);
+                subclass.GetCustomAttribute<CompatibleFhirVersionsAttribute>()!
+                    .Versions.ToArray().ShouldBe([version]);
+                checkedSubclasses++;
+            }
+        }
+
+        // Guards against the resource filter silently narrowing to nothing.
+        checkedSubclasses.ShouldBeGreaterThan(10);
+    }
+
+    private static IEnumerable<Type> AllResourceFacades() =>
+        new[] { SerializationAssembly, R4Assembly, R5Assembly }
+            .SelectMany(a => a.GetTypes())
+            .Where(t => t.IsPublic && typeof(ResourceJsonNode).IsAssignableFrom(t));
 }

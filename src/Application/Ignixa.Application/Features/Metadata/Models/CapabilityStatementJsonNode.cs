@@ -16,8 +16,13 @@ namespace Ignixa.Application.Features.Metadata.Models;
 /// <summary>
 /// Represents a FHIR CapabilityStatement resource.
 /// </summary>
+/// <remarks>
+/// CapabilityStatement is a DomainResource in every supported FHIR version, so this derives from
+/// <see cref="DomainResourceJsonNode"/> to inherit <c>text</c>, <c>contained</c>, <c>extension</c>
+/// and <c>modifierExtension</c> rather than silently omitting them.
+/// </remarks>
 [SuppressMessage("Design", "CA2227", Justification = "Collection properties for JSON serialization")]
-public class CapabilityStatementJsonNode : ResourceJsonNode
+public class CapabilityStatementJsonNode : DomainResourceJsonNode
 {
     /// <summary>
     /// Default constructor for deserialization.
