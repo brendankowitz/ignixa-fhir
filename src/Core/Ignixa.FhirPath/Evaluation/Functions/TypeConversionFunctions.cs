@@ -606,147 +606,32 @@ internal static class TypeConversionFunctions
         MaxArguments = 1,
         Category = "TypeConversion",
         Description = "Returns true if the value is of the specified type")]
-    public static IEnumerable<IElement> Is(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
+    public static IEnumerable<IElement> Is(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context)
     {
         var list = focus.ToList();
-
-        // Empty collection returns empty
-        if (list.Count == 0)
-            return [];
-
-        // Multiple items signals an error
-        if (list.Count > 1)
-            throw new FhirPathEvaluationException("is() function requires input collection to contain at most one item");
 
         // Get the type name from the argument
         if (arguments.Count != 1)
             throw new FhirPathEvaluationException("is() function requires exactly one argument");
 
-        var typeArgument = arguments[0];
-        string? targetTypeName = ExtractTypeName(typeArgument);
+        string? targetTypeName = TypeMatcher.ExtractTypeName(arguments[0]);
 
         if (string.IsNullOrEmpty(targetTypeName))
             throw new FhirPathEvaluationException("is() function requires a type identifier as argument");
 
-        var element = list[0];
+        // "Just as with the is keyword", so the keyword's two mandated errors apply here unchanged.
+        TypeMatcher.EnsureTypeIdentifierResolves(targetTypeName, context.Schema, "is()");
+        TypeMatcher.EnsureSingletonTypeTestInput(list.Count, "is()");
 
-        // Check if the element's type matches the target type
-        var matches = IsTypeMatchWithNamespace(element, targetTypeName);
-        return FunctionHelpers.ReturnBoolean(matches);
-    }
+        // Empty in, empty out - see FhirPathEvaluator.EvaluateTypeIs for why this is not false.
+        if (list.Count == 0)
+            return [];
 
-    /// <summary>
-    /// Extracts the full type name from a type expression, including namespace prefixes.
-    /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`
-    /// </summary>
-    private static string? ExtractTypeName(Expression expr)
-    {
-        return expr switch
-        {
-            // Simple identifier: Boolean, Patient, boolean
-            Expressions.IdentifierExpression idExpr => idExpr.Name,
-
-            // Property access: System.Boolean, FHIR.Patient
-            Expressions.PropertyAccessExpression propExpr => ExtractPropertyAccessTypeName(propExpr),
-
-            // Function call (used for backtick escaping): `Patient`
-            Expressions.FunctionCallExpression funcExpr => funcExpr.FunctionName,
-
-            // Constant (string literal type name)
-            Expressions.ConstantExpression constExpr => constExpr.Value?.ToString(),
-
-            _ => null
-        };
-    }
-
-    private static string ExtractPropertyAccessTypeName(Expressions.PropertyAccessExpression propExpr)
-    {
-        // Build the full qualified name: System.Boolean, FHIR.Patient
-        var parts = new List<string>();
-
-        Expression? current = propExpr;
-        while (current is Expressions.PropertyAccessExpression prop)
-        {
-            parts.Insert(0, prop.PropertyName);
-            current = prop.Focus;
-        }
-
-        // Add the root identifier
-        if (current is Expressions.IdentifierExpression id)
-        {
-            parts.Insert(0, id.Name);
-        }
-
-        return string.Join(".", parts);
-    }
-
-    // System types that are ONLY FHIRPath primitive types (not FHIR types)
-    // These types exist only in FHIRPath, not as FHIR element types
-    // Note: Date and Quantity exist as both System types and FHIR types, so they're NOT in this list.
-    // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
-    //   - Boolean (capitalized) = System type (FHIRPath literal)
-    //   - boolean (lowercase) = FHIR type (element type)
-    private static readonly HashSet<string> SystemOnlyTypes = new(StringComparer.Ordinal)
-    {
-        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
-    };
-
-    private static bool IsTypeMatchWithNamespace(IElement element, string targetTypeName)
-    {
-        // Parse the target type to determine namespace and base type name
-        // System types: System.Boolean, System.Integer, System.Decimal, System.String, System.Date, System.DateTime, System.Time, System.Quantity
-        // FHIR types: FHIR.boolean, FHIR.Patient, FHIR.Quantity, etc.
-        bool explicitSystemNamespace = false;
-        bool explicitFhirNamespace = false;
-        string typeName = targetTypeName;
-
-        if (typeName.StartsWith("System.", StringComparison.OrdinalIgnoreCase))
-        {
-            explicitSystemNamespace = true;
-            typeName = typeName.Substring(7); // Remove "System." prefix
-        }
-        else if (typeName.StartsWith("FHIR.", StringComparison.OrdinalIgnoreCase))
-        {
-            explicitFhirNamespace = true;
-            typeName = typeName.Substring(5); // Remove "FHIR." prefix
-        }
-
-        var elementType = element.InstanceType ?? string.Empty;
-
-        // Check if element is a FHIRPath literal (System type) based on class name
-        var implType = element.GetType().Name;
-        bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
-
-        // With explicit namespace, enforce strict matching
-        if (explicitSystemNamespace)
-        {
-            // System.X requires element to be a FHIRPath literal
-            if (!elementIsSystemType)
-                return false;
-        }
-        else if (explicitFhirNamespace)
-        {
-            // FHIR.X requires element to NOT be a FHIRPath literal
-            if (elementIsSystemType)
-                return false;
-        }
-        else if (SystemOnlyTypes.Contains(typeName))
-        {
-            // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
-            if (!elementIsSystemType)
-                return false;
-        }
-        // For unqualified types that are NOT system-only (Patient, Quantity, code, boolean, etc.):
-        // - Match FHIR element types directly by instance type
-        // - This allows Observation.value.is(Quantity) to match FHIR Quantity elements
-
-        return TypeMatcher.MatchesTypeWithInheritance(element, typeName);
-    }
-
-    private static bool IsTypeMatch(IElement element, string targetTypeName)
-    {
-        // Legacy method for backward compatibility
-        return IsTypeMatchWithNamespace(element, targetTypeName);
+        return FunctionHelpers.ReturnBoolean(
+            TypeMatcher.IsTypeMatch(list[0], targetTypeName, TypeMatchMode.TypeTest));
     }
 
     #endregion

@@ -2,7 +2,7 @@
  * Copyright (c) 2025, Ignixa Contributors
  *
  * Centralized type matching logic for FhirPath type operations.
- * Used by: is operator, as operator, ofType() function, as() function.
+ * Used by: the is and as operators, and the is(), as() and ofType() functions.
  */
 
 using System.Collections.Frozen;
@@ -12,8 +12,61 @@ using Ignixa.FhirPath.Expressions;
 namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
-/// Provides centralized type matching logic for FhirPath type operations.
+/// The single type-matching implementation behind <c>is</c>, <c>is()</c>, <c>as</c>, <c>as()</c> and
+/// <c>ofType()</c>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// FHIRPath gives all five the identical matching clause - "of the type specified in the second
+/// operand, <em>or a subclass thereof</em>" - in both N1/2.0.0 (6.3.1, 6.3.3, 5.2.4) and the 3.0.0
+/// build. Nothing in the LANGUAGE spec distinguishes them, so any divergence has to be justified from
+/// FHIR's own overrides or it is a bug. They all route through <see cref="IsTypeMatch"/> for that
+/// reason: three private copies of this logic had drifted apart, and the drift was invisible because
+/// each copy looked reasonable on its own.
+/// </para>
+/// <para>
+/// <strong>What the operators share</strong> is therefore the subclass walk itself: complex subtyping
+/// (<c>Age</c>, <c>SimpleQuantity</c> -&gt; <c>Quantity</c>) and the resource hierarchy
+/// (<c>Patient</c> -&gt; <c>DomainResource</c> -&gt; <c>Resource</c>). Both are subclass-aware in every
+/// operator, which is what makes <c>value as Quantity</c> agree with <c>value is Quantity</c> on an
+/// <c>Age</c>. Those two used to disagree, and that disagreement had no defence in any spec.
+/// </para>
+/// <para>
+/// <strong>They differ on exactly two axes</strong>, both of which FHIR - not FHIRPath - states
+/// explicitly, and both of which HL7's conformance suite pins. See <see cref="TypeMatchMode"/>.
+/// </para>
+/// <para>
+/// <em>Axis 1, primitive subtyping.</em> R5 2.1.9.1.5 overrides <c>ofType()</c> with "All primitives are
+/// considered to be independent types (so <c>markdown</c> is not a subclass of <c>string</c>)", and R6
+/// files the same note under a section titled "Function Overrides". The note names only <c>ofType()</c>,
+/// but the suite applies it to <c>as()</c> too and pointedly does not apply it to <c>is()</c>: on the
+/// same <c>Patient.gender</c> (a <c>code</c>), <c>is(string)</c> must be <c>true</c>
+/// (testFHIRPathIsFunction2) while <c>as(string)</c> and <c>ofType(string)</c> must be empty
+/// (testFHIRPathAsFunction11/16). It is also load-bearing for indexing: <c>ConceptMap.source</c> is
+/// <c>uri|canonical</c> and <c>ConceptMap-source-uri</c> ships as <c>(ConceptMap.source as uri)</c>, so a
+/// primitive-inheriting cast would index every <c>sourceCanonical</c> into the <c>source-uri</c>
+/// parameter.
+/// </para>
+/// <para>
+/// <em>Axis 2, the System/FHIR namespace.</em> R5 2.1.9.1.2 makes <c>is()</c> the explicit exception -
+/// "<c>Patient.name.given.is(System.string).not()</c>" - and then says of the cast: "Note that
+/// <c>ofType()</c> does not have such restrictions", declaring both <c>ofType(FHIR.string)</c> and
+/// <c>ofType(System.string)</c> valid. HL7's artifacts rely on the leniency: STU3 spells its casts with
+/// capitalized System-style names (<c>Patient.deceased.as(DateTime)</c>,
+/// <c>Observation.value.as(String)</c>), and R4/R4B's <c>code-value-date</c> composite still carries
+/// <c>value.as(DateTime)</c>. Enforcing the namespace distinction on casts would empty those search
+/// parameters.
+/// </para>
+/// <para>
+/// <strong>The tension this leaves.</strong> Subtyping is otherwise read off the StructureDefinition
+/// graph (<c>baseDefinition</c> where <c>derivation = specialization</c>), and that graph flatly
+/// contradicts axis 1: <c>markdown</c> genuinely IS a specialization of <c>string</c>, and R5 declares by
+/// fiat that the cast operators must not see it. So "subclass" here cannot be computed from
+/// <c>baseDefinition</c> alone for primitives - the FHIR override has to be layered on top, and it is
+/// applied narrowly, to the primitive edges of the cast operators only, because that is the only scope
+/// the note claims.
+/// </para>
+/// </remarks>
 internal static class TypeMatcher
 {
     // System-only types that must match FHIRPath literals (capitalized)
@@ -24,26 +77,49 @@ internal static class TypeMatcher
         "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
     }.ToFrozenSet(StringComparer.Ordinal);
 
-    // FHIR type inheritance mappings (subtype -> base type)
-    private static readonly FrozenDictionary<string, string> TypeInheritance = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// Specialization edges between FHIR primitive types, taken from the StructureDefinitions'
+    /// <c>baseDefinition</c> where <c>derivation = specialization</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Followed only under <see cref="TypeMatchMode.TypeTest"/>, i.e. by <c>is</c> and <c>is()</c>.
+    /// </para>
+    /// <para>
+    /// Note what is absent: <c>uri</c> has no entry. Its <c>baseDefinition</c> is <c>Element</c> in R4
+    /// and <c>PrimitiveType</c> in R5 - never <c>string</c> - so <c>Questionnaire.url is string</c> is
+    /// false. An earlier <c>uri -&gt; string</c> edge here contradicted the very hierarchy this table
+    /// claims to encode, and made every URI-flavoured primitive a string by transitivity.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> PrimitiveTypeInheritance = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        // String subtypes
         ["code"] = "string",
         ["id"] = "string",
         ["markdown"] = "string",
-        ["uri"] = "string",
 
-        // URI subtypes (uri -> string)
         ["url"] = "uri",
         ["canonical"] = "uri",
         ["uuid"] = "uri",
         ["oid"] = "uri",
 
-        // Integer subtypes
         ["positiveInt"] = "integer",
-        ["unsignedInt"] = "integer",
+        ["unsignedInt"] = "integer"
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-        // Quantity subtypes
+    /// <summary>
+    /// Specialization edges between FHIR complex types. Followed by every type operator, under both
+    /// <see cref="TypeMatchMode"/> values.
+    /// </summary>
+    /// <remarks>
+    /// <c>SimpleQuantity</c> is a <c>constraint</c> rather than a <c>specialization</c> of
+    /// <c>Quantity</c>, but it is listed because FHIR requires it to be selectable that way: "Profiled
+    /// types are not allowed, so to select <c>SimpleQuantity</c> one would pass <c>Quantity</c> as an
+    /// argument" (R5 2.1.9.1.5). That sentence only means anything if <c>ofType(Quantity)</c> matches a
+    /// <c>SimpleQuantity</c> instance.
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> ComplexTypeInheritance = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
         ["Age"] = "Quantity",
         ["Count"] = "Quantity",
         ["Distance"] = "Quantity",
@@ -76,11 +152,13 @@ internal static class TypeMatcher
     /// an absent schema keeps the pre-existing permissive behaviour rather than guessing.
     /// </para>
     /// <para>
-    /// Applied to <c>as</c>, <c>as()</c> and <c>ofType()</c>. For the first two this is spec compliance.
-    /// For <c>ofType()</c> it is a consistency choice: the spec requires its argument to "resolve to the
-    /// name of a type in a model" but never states the failure mode, and the reference engines disagree
-    /// (HAPI errors, Firely returns empty). Matching <c>as()</c> keeps one answer to one question inside
-    /// this engine, and is not claimed as conformance.
+    /// Applied to all five type operators. For <c>is</c>, <c>is()</c>, <c>as</c> and <c>as()</c> this is
+    /// spec compliance - the sentence quoted above is stated for both keywords, and the function forms
+    /// inherit it by being defined "just as with" their keyword. For <c>ofType()</c> it is a consistency
+    /// choice: the spec requires its argument to "resolve to the name of a type in a model" but never
+    /// states the failure mode, and the reference engines disagree (HAPI errors, Firely returns empty).
+    /// Matching <c>as()</c> keeps one answer to one question inside this engine, and is not claimed as
+    /// conformance.
     /// </para>
     /// </remarks>
     public static void EnsureTypeIdentifierResolves(string typeName, ISchema? schema, string operatorDescription)
@@ -120,12 +198,17 @@ internal static class TypeMatcher
     /// <para>
     /// The version gate is the whole point of this method, and it is not arbitrary leniency: HL7's own
     /// SearchParameter definitions break the rule below R5. <c>Observation.component.value as Quantity</c>
-    /// - a 0..* path on the left of <c>as</c> - is one of 58 operator-form <c>as</c> expressions in the
-    /// shipped R4 definitions and 59 in R4B, and the same shape covers <c>useContext</c> on the
-    /// canonical resources, Composition's <c>related-id</c>/<c>related-ref</c>, the Medication and
-    /// Substance <c>ingredient</c> parameters, Group's <c>value</c> and Goal's <c>target-date</c>. STU3
-    /// is not affected by the operator at all - it spells all 50 of its casts with the <c>as()</c>
-    /// function. In R5 HL7 rewrote almost every one to <c>ofType()</c>: the operator survives only in
+    /// - a 0..* path on the left of <c>as</c> - is one of 135 operator-form <c>as</c> occurrences across
+    /// 63 shipped R4 SearchParameters, and 136 across 63 in R4B, and the same shape covers
+    /// <c>useContext</c> on the canonical resources, Composition's <c>related-id</c>/<c>related-ref</c>,
+    /// the Medication and Substance <c>ingredient</c> parameters, Group's <c>value</c> and Goal's
+    /// <c>target-date</c>. STU3 is not affected by the operator at all - it spells all of its casts with
+    /// the <c>as()</c> function, 57 occurrences across 42 SearchParameters. The composite components add
+    /// 57 more <c>as()</c> occurrences in R4 and R4B apiece. (Counts are over
+    /// <c>{Version}SearchParameterDefinitions.g.cs</c>, resolving <c>Constants.Expr_*</c> references and
+    /// reading both the top-level <c>expression:</c> and the <c>SearchParameterComponentInfo</c>
+    /// expressions; recount there rather than trusting these if it matters.) In R5 HL7 rewrote almost
+    /// every one to <c>ofType()</c>: the operator survives only in
     /// <c>Bundle.entry[0].resource as X</c> (indexed, so a singleton),
     /// <c>NutritionIntake.reported as Reference</c> (0..1), and
     /// <c>AdverseEvent.suspectEntity.instance as Reference</c>, which is genuinely repeating - see the
@@ -175,6 +258,40 @@ internal static class TypeMatcher
         schema is not null
         && schema.Version != FhirVersion.Unspecified
         && schema.Version >= FhirVersion.R5;
+
+    /// <summary>
+    /// Enforces FHIRPath's cardinality rule for the type-TEST operators: "If the input collections
+    /// contains more than one item, the evaluator will throw an error" (Types and Reflection, <c>is</c>;
+    /// identical in N1 6.3.1 and the 3.0.0 build).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unlike <see cref="EnsureSingletonInput"/> this takes no schema and is <strong>not</strong> version
+    /// gated, and the asymmetry is evidence-based rather than stylistic. The <c>as</c> gate exists solely
+    /// because HL7's own R4/R4B SearchParameter definitions put 0..* paths on the left of <c>as</c>, so
+    /// enforcing there would silently empty the search index. No shipped artifact does the same to
+    /// <c>is</c>: across STU3, R4, R4B, R5 and R6 every <c>is</c> in a SearchParameter expression is the
+    /// shape <c>where(resolve() is Patient)</c>, whose focus is a single item by construction, and the
+    /// only other occurrence anywhere is STU3's <c>Condition.abatement.is(dateTime)</c> over a 0..1
+    /// choice. The invariants agree - they use <c>$this is X</c>, <c>%resource is X</c>, or <c>is</c>
+    /// inside <c>where()</c>/<c>exists()</c>/<c>all()</c>, all singletons. With no artifact to break,
+    /// there is nothing for a gate to protect and the rule is simply enforced.
+    /// </para>
+    /// <para>
+    /// This is also what <c>is()</c> the function has always done, and the two spellings returning
+    /// different answers for the same input was the defect this method removes.
+    /// </para>
+    /// </remarks>
+    public static void EnsureSingletonTypeTestInput(int inputCount, string operatorDescription)
+    {
+        if (inputCount <= 1)
+        {
+            return;
+        }
+
+        throw new FhirPathEvaluationException(
+            $"The input to {operatorDescription} must be a single item, but was a collection of {inputCount} items.");
+    }
 
     /// <summary>
     /// Extracts the type name from a FhirPath expression.
@@ -232,51 +349,20 @@ internal static class TypeMatcher
     }
 
     /// <summary>
-    /// Removes namespace prefix from a type name for simple matching.
-    /// </summary>
-    public static string StripNamespace(string typeName)
-    {
-        // Optimized to avoid string.Split allocation
-        var dotIndex = typeName.IndexOf('.', StringComparison.Ordinal);
-        if (dotIndex > 0 && typeName.LastIndexOf('.') == dotIndex)
-        {
-            var prefix = typeName.AsSpan(0, dotIndex);
-            if (prefix.Equals("FHIR", StringComparison.OrdinalIgnoreCase) ||
-                prefix.Equals("System", StringComparison.OrdinalIgnoreCase))
-            {
-                return typeName.Substring(dotIndex + 1);
-            }
-        }
-        return typeName;
-    }
-
-    /// <summary>
-    /// Checks if the element's type matches the target type (simple matching, no inheritance).
-    /// </summary>
-    public static bool MatchesType(IElement element, string typeName)
-    {
-        var elementType = element.InstanceType;
-        if (string.IsNullOrEmpty(elementType))
-            return false;
-
-        return elementType.Equals(typeName, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Checks if the element's type matches the target type, considering FHIR type inheritance.
+    /// Checks if the element's type matches the target type, walking the FHIR specialization graph.
     /// </summary>
     /// <remarks>
-    /// Supports:
-    /// - Primitive type inheritance (e.g., code->string, uri->string, positiveInt->integer)
-    /// - Quantity subtypes (e.g., Age->Quantity, Duration->Quantity)
-    /// - FHIR resource hierarchy (e.g., Patient->DomainResource->Resource)
+    /// Covers complex subtypes (Age/SimpleQuantity -&gt; Quantity), the resource hierarchy
+    /// (Patient -&gt; DomainResource -&gt; Resource) and - when <paramref name="mode"/> is
+    /// <see cref="TypeMatchMode.TypeTest"/> - primitive subtypes (code -&gt; string,
+    /// positiveInt -&gt; integer, url -&gt; uri).
     ///
     /// Resource hierarchy is determined using type metadata from the schema provider.
     /// Note: Resource and Element are separate branches under Base in the FHIR type system.
     /// This method does not handle Element/DataType hierarchy as it is not needed for
     /// FHIRPath type operations (the official test suite does not test for is(Element)).
     /// </remarks>
-    public static bool MatchesTypeWithInheritance(IElement element, string typeName)
+    public static bool MatchesTypeWithInheritance(IElement element, string typeName, TypeMatchMode mode)
     {
         var currentType = element.InstanceType;
         if (string.IsNullOrEmpty(currentType))
@@ -287,7 +373,7 @@ internal static class TypeMatcher
             if (currentType.Equals(typeName, StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            if (!TypeInheritance.TryGetValue(currentType, out var baseType))
+            if (!TryGetBaseType(currentType, mode, out var baseType))
                 break;
 
             currentType = baseType;
@@ -308,41 +394,67 @@ internal static class TypeMatcher
         return false;
     }
 
+    private static bool TryGetBaseType(string typeName, TypeMatchMode mode, out string? baseType)
+    {
+        if (ComplexTypeInheritance.TryGetValue(typeName, out baseType))
+            return true;
+
+        if (mode == TypeMatchMode.TypeTest)
+            return PrimitiveTypeInheritance.TryGetValue(typeName, out baseType);
+
+        baseType = null;
+        return false;
+    }
+
     /// <summary>
-    /// Full type checking for the 'is' operator with System/FHIR namespace handling.
+    /// The type test behind every FHIRPath type operator.
     /// </summary>
-    public static bool IsTypeMatch(IElement element, string typeName)
+    /// <remarks>
+    /// <paramref name="mode"/> is the only knob any caller turns, and it selects between the two
+    /// documented axes of divergence; see <see cref="TypeMatcher"/> for why they exist and why nothing
+    /// else about the five operators' matching may differ.
+    /// </remarks>
+    public static bool IsTypeMatch(IElement element, string typeName, TypeMatchMode mode)
     {
         var (baseTypeName, isSystemNamespace, isFhirNamespace) = ParseTypeName(typeName);
-        var elementType = element.InstanceType ?? string.Empty;
 
-        // Check if element is a FHIRPath literal (System type)
+        if (mode == TypeMatchMode.TypeTest && !NamespaceMatches(element, baseTypeName, isSystemNamespace, isFhirNamespace))
+            return false;
+
+        return MatchesTypeWithInheritance(element, baseTypeName, mode);
+    }
+
+    /// <summary>
+    /// Applies FHIR's System-versus-FHIR namespace distinction, which R5 2.1.9.1.2 scopes to the type
+    /// TEST operators and explicitly withholds from the casts.
+    /// </summary>
+    private static bool NamespaceMatches(IElement element, string baseTypeName, bool isSystemNamespace, bool isFhirNamespace)
+    {
+        // A FHIRPath literal is a System value; anything sourced from the resource tree is a FHIR value.
         var implType = element.GetType().Name;
         bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
 
-        // With explicit namespace, enforce strict matching
-        if (isSystemNamespace && !elementIsSystemType)
-            return false;
+        if (isSystemNamespace)
+            return elementIsSystemType;
 
-        if (isFhirNamespace && elementIsSystemType)
-            return false;
+        if (isFhirNamespace)
+            return !elementIsSystemType;
 
-        if (!isSystemNamespace && !isFhirNamespace && SystemOnlyTypes.Contains(baseTypeName) && !elementIsSystemType)
-            return false;
-
-        // Compare types with inheritance
-        return MatchesTypeWithInheritance(element, baseTypeName);
+        // Unqualified and capitalized, e.g. String: the FHIRPath System type, so Patient.active is not a
+        // Boolean even though it is a boolean.
+        return !SystemOnlyTypes.Contains(baseTypeName) || elementIsSystemType;
     }
 
     /// <summary>
-    /// Filters a collection to elements matching the specified type.
+    /// Filters a collection to the elements matching the specified type, for <c>as</c>, <c>as()</c> and
+    /// <c>ofType()</c>.
     /// </summary>
-    public static IEnumerable<IElement> FilterByType(IEnumerable<IElement> elements, string typeName, bool useInheritance = false)
-    {
-        var strippedTypeName = StripNamespace(typeName);
-        
-        return useInheritance 
-            ? elements.Where(e => MatchesTypeWithInheritance(e, strippedTypeName))
-            : elements.Where(e => MatchesType(e, strippedTypeName));
-    }
+    /// <remarks>
+    /// Uses <see cref="TypeMatchMode.Cast"/>: subclass-aware over complex types and resources, exact over
+    /// primitives, and indifferent to the namespace qualifier. That combination is what lets
+    /// <c>ofType(Quantity)</c> select a <c>SimpleQuantity</c> while <c>ofType(string)</c> still rejects a
+    /// <c>code</c> and STU3's <c>as(DateTime)</c> still selects a <c>dateTime</c>.
+    /// </remarks>
+    public static IEnumerable<IElement> FilterByType(IEnumerable<IElement> elements, string typeName) =>
+        elements.Where(e => IsTypeMatch(e, typeName, TypeMatchMode.Cast));
 }
