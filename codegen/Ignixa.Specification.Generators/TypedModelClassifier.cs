@@ -152,6 +152,23 @@ internal sealed class TypedModelClassifier
             }
         }
 
+        // Resources carry version *identity*, not just version-specific members, so their subclass
+        // existence must not be derived from whether any element happens to diverge. The version tag
+        // lives in [CompatibleFhirVersions], which ResourceJsonNode reads with inherit:false, and a
+        // `global using` alias cannot carry an attribute. Without a real per-version type, As<T>()
+        // silently loses its cross-version guard and untagged nodes stop being version-stamped.
+        // Emitting unconditionally also keeps the public API stable: Ignixa.Models.{version}.{Resource}
+        // must not appear or disappear as upstream versions happen to converge or diverge.
+        // Datatypes and backbones are exempt -- As<T> is constrained to ResourceJsonNode, so they can
+        // never participate in the version guard and are free to alias to the shared base.
+        if (kind is FacadeKind.Resource or FacadeKind.DomainResource)
+        {
+            foreach (string version in presentIn)
+            {
+                subclassVersions.Add(version);
+            }
+        }
+
         return new TypeClassification
         {
             TypeName = typeName,
@@ -234,11 +251,16 @@ internal sealed class TypedModelClassifier
         {
             string jsonName = element.cgName();
 
+            // Declared once on ResourceJsonNode; re-emitting them here would hide the inherited member.
+            // Keep in sync with the accessors on Ignixa.Serialization.SourceNodes.ResourceJsonNode.
             if (isResource && (jsonName is "id" or "meta" or "resourceType" or "implicitRules" or "language"))
             {
                 continue;
             }
 
+            // Declared once on DomainResourceJsonNode. Only DomainResource facades inherit these --
+            // Bundle/Parameters/Binary extend Resource directly and legitimately have no such elements.
+            // Keep in sync with the accessors on Ignixa.Serialization.SourceNodes.DomainResourceJsonNode.
             if (kind is FacadeKind.DomainResource && (jsonName is "contained" or "text" or "extension" or "modifierExtension"))
             {
                 continue;

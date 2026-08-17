@@ -450,11 +450,6 @@ public sealed class CSharpTypedModelLanguage : ILanguage
     {
         string jsonName = element.cgName();
 
-        if (isResource && (jsonName is "id" or "meta" or "resourceType"))
-        {
-            return;
-        }
-
         bool isChoice = element.Path.EndsWith("[x]", StringComparison.Ordinal);
         if (isChoice)
         {
