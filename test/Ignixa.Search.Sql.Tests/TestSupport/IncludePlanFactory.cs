@@ -30,7 +30,7 @@ internal static class IncludePlanFactory
         planCtes.Add(new CteDefinition.MatchPage(spec));
 
         var includeSeed = matchPage;
-        if (spec.OffsetPage is { ProbeExtraRow: true } && includes.Any(stage => stage.SeedFromMatch))
+        if (spec.TrimmedPageSize is not null && includes.Any(stage => stage.SeedFromMatch))
         {
             includeSeed = new CteRef(planCtes.Count);
             planCtes.Add(new CteDefinition.MatchSeed(matchPage, spec));

@@ -604,4 +604,66 @@ public class PlanExplainerTests
         offsetExplained.ShouldNotContain("offsetPage = ");
         offsetExplained.ShouldContain("countOnly = true");
     }
+
+    [Fact]
+    public void GivenAParameterBindingCteAfterTheMatchRoot_WhenExplained_ThenTheOuterPredicateTakesTheOrdinalEmissionBoundIt()
+    {
+        // Emission binds every CTE body before the outer predicate (SqlBuilder.Run calls EmitCteBodies, then
+        // the shape emitter). Explain used to read the outer predicate mid-loop, which only agreed when the
+        // match root was the last parameter-binding CTE. An access constraint or a count shape can append one
+        // after it -- and then every name from the predicate on was off. Reachable from Lower, not just from
+        // hand-built plans.
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.ResourceSource(105),
+            ],
+            new MatchPageSpec(
+                new CteRef(0),
+                OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "IsDeleted"), new SqlParameterRef(0))));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(short)103, (short)105, 0]);
+        plan.Explain().ShouldBe(
+            "root = ResourceSource[103] WHERE IsDeleted = @p2\n" +
+            "cte1 = ResourceSource[105]");
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceCarryingAPredicate_WhenExplained_ThenItNamesTheParameterEmissionBinds()
+    {
+        // The type ids are literals but the predicate is bound, so an explain that rendered only the type
+        // list under-counted every later @pN. This is the shape a system-level SMART compartment union leg
+        // lowers to; no test explained one, which is why the omission survived.
+        var predicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.AllTypes(predicate)],
+            new MatchPageSpec(new CteRef(0)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["abc"]);
+        plan.Explain().ShouldBe("root = MultiTypeResourceSource[*]  ResourceId = @p0");
+    }
+
+    [Fact]
+    public void GivenAResourceSourceCarryingAPredicate_WhenEmittedAndExplained_ThenBothAgreeOnWhichValueTakesWhichOrdinal()
+    {
+        // Emit binds the predicate value BEFORE ResourceTypeId even though the WHERE renders ResourceTypeId
+        // first, so the two @pN tokens appear in the text out of numeric order. The explainer had it the
+        // other way round and printed the wrong name for every ResourceSource carrying a predicate; four
+        // goldens had that wrong output baked in. No golden pinned the emitted SQL for this shape, which is
+        // why nothing caught it.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103, new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc")))],
+            new MatchPageSpec(new CteRef(0)),
+            Visibility: ResourceVisibility.Current);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("    WHERE ResourceTypeId = @p1 AND IsHistory = 0 AND IsDeleted = 0 AND ResourceId = @p0");
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["abc", (short)103]);
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceId = @p0");
+    }
 }

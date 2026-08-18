@@ -347,9 +347,10 @@ public class PatientEverythingLoweringTests
     public void GivenAFullyFeaturedPatientEverythingPlan_WhenExplained_ThenEveryParameterOrdinalMatchesTheEmittedSql()
     {
         // The three $everything CTE kinds bind parameters (the date range and the _since instant) or bind
-        // none (the expansion's type ids are literals). PlanExplainer keeps its own ordinal counter, so a
-        // kind that consumes the wrong number of ordinals silently renumbers every later @pN in the
-        // explained plan relative to the SQL. Asserting the two agree is what catches that.
+        // none (the expansion's type ids are literals). PlanExplainer names parameters through
+        // EmittedParameterCursor, which fails on the first row whose expected value disagrees with the one
+        // emission bound, so this golden pins WHICH ordinal each kind takes rather than merely that the
+        // counts line up.
         var symbols = BuildSymbols();
         var expression = new PatientEverythingExpression(
             "pat-1",
@@ -363,7 +364,7 @@ public class PatientEverythingLoweringTests
         var explained = plan.Explain();
 
         plan.Explain().ShouldBe(
-            "cte0 = ResourceSource[103] WHERE ResourceId = @p1\n" +
+            "cte0 = ResourceSource[103] WHERE ResourceId = @p0\n" +
             "cte1 = CompartmentSource[104,77]  ReferenceResourceTypeId = @p2 AND ReferenceResourceId = @p3\n" +
             "cte2 = Union(cte1)\n" +
             "cte3 = TableExistsPredicate[DateTimeSearchParam]  EndDateTime >= @p4 AND StartDateTime <= @p5\n" +
@@ -381,8 +382,9 @@ public class PatientEverythingLoweringTests
         // reference type and id, the two date bounds, and the _since instant. The second
         // TableExistsPredicate carries no predicate and binds nothing, cte10's Union of the patient-itself
         // and filtered-compartment branches binds nothing of its own, and the expansion's type ids are
-        // literals. @p0 is the ResourceSource type id, which PlanExplainer counts but renders inline as
-        // [103] rather than as @p0, so the highest printed ordinal is the assertion available here.
+        // literals. The ResourceSource binds its predicate BEFORE its type id, so @p0 is the ResourceId and
+        // @p1 is the type id -- which the plan renders inline as [103] rather than as a parameter, so the
+        // highest printed ordinal is the assertion available here.
         emitted.Parameters.Count.ShouldBe(7);
         explained.ShouldContain("@p6");
         explained.ShouldNotContain("@p7");

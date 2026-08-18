@@ -23,15 +23,27 @@ namespace Ignixa.Serialization;
             return (node, fhirVersion) => (T)ctor.Invoke([node, fhirVersion]);
         }
 
-        private JsonArray JsonArray => _jsonArray ??= arrayFactory();
+        /// <summary>
+        /// The backing array as it exists today, or null when the element is absent. Reads must use this:
+        /// resolving the factory on a read would inject an empty array into the document, which is both
+        /// invalid FHIR (arrays must have at least one element) and a mutation of a resource nobody edited.
+        /// </summary>
+        private JsonArray? ReadArray => _jsonArray;
+
+        /// <summary>
+        /// The backing array, creating and attaching it if absent. Only mutating members may use this.
+        /// </summary>
+        private JsonArray MutableArray => _jsonArray ??= arrayFactory();
+
+        private int ReadCount => _jsonArray?.Count ?? 0;
 
         public T this[int index]
         {
             get
             {
                 System.ArgumentOutOfRangeException.ThrowIfNegative(index);
-                System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, JsonArray.Count, nameof(index));
-                var node = JsonArray[index];
+                System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, ReadCount, nameof(index));
+                var node = ReadArray![index];
                 if (node == null)
                 {
                     return default!;
@@ -41,36 +53,36 @@ namespace Ignixa.Serialization;
             set
             {
                 System.ArgumentOutOfRangeException.ThrowIfNegative(index);
-                System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, JsonArray.Count, nameof(index));
-                JsonArray[index] = value?.MutableNode;
+                System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, ReadCount, nameof(index));
+                MutableArray[index] = value?.MutableNode;
             }
         }
 
-        public int Count => JsonArray.Count;
+        public int Count => ReadCount;
 
         public bool IsReadOnly => false;
 
         public void Add(T item)
         {
-            JsonArray.Add(item?.MutableNode);
+            MutableArray.Add(item?.MutableNode);
         }
 
         public void Clear()
         {
-            JsonArray.Clear();
+            _jsonArray?.Clear();
         }
 
         public bool Contains(T item)
         {
             if (item == null)
             {
-                foreach (var node in JsonArray)
+                foreach (var node in ReadArray ?? [])
                 {
                     if (node == null) return true;
                 }
                 return false;
             }
-            foreach (var node in JsonArray)
+            foreach (var node in ReadArray ?? [])
             {
                 if (node == null) continue; // Skip null entries if item is not null
                 if (JsonNode.DeepEquals(node, item.MutableNode))
@@ -85,11 +97,11 @@ namespace Ignixa.Serialization;
         {
             System.ArgumentNullException.ThrowIfNull(array);
             System.ArgumentOutOfRangeException.ThrowIfNegative(arrayIndex);
-            if (array.Length - arrayIndex < JsonArray.Count) System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(arrayIndex + JsonArray.Count, array.Length, nameof(arrayIndex));
+            if (array.Length - arrayIndex < ReadCount) System.ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(arrayIndex + ReadCount, array.Length, nameof(arrayIndex));
 
-            for (int i = 0; i < JsonArray.Count; i++)
+            for (int i = 0; i < ReadCount; i++)
             {
-                var node = JsonArray[i];
+                var node = ReadArray![i];
                 if (node == null)
                 {
                     array[arrayIndex + i] = default!; // Use default!
@@ -103,7 +115,7 @@ namespace Ignixa.Serialization;
 
         public IEnumerator<T> GetEnumerator()
         {
-            foreach (var node in JsonArray)
+            foreach (var node in ReadArray ?? [])
             {
                 if (node == null)
                 {
@@ -120,15 +132,15 @@ namespace Ignixa.Serialization;
         {
             if (item == null)
             {
-                for (int i = 0; i < JsonArray.Count; i++)
+                for (int i = 0; i < ReadCount; i++)
                 {
-                    if (JsonArray[i] == null) return i;
+                    if (ReadArray![i] == null) return i;
                 }
                 return -1;
             }
-            for (int i = 0; i < JsonArray.Count; i++)
+            for (int i = 0; i < ReadCount; i++)
             {
-                var node = JsonArray[i];
+                var node = ReadArray![i];
                 if (node == null) continue; // Skip null entries if item is not null
                 if (JsonNode.DeepEquals(node, item.MutableNode))
                 {
@@ -140,30 +152,30 @@ namespace Ignixa.Serialization;
 
         public void Insert(int index, T item)
         {
-            JsonArray.Insert(index, item?.MutableNode);
+            MutableArray.Insert(index, item?.MutableNode);
         }
 
         public bool Remove(T item)
         {
             if (item == null)
             {
-                for (int i = 0; i < JsonArray.Count; i++)
+                for (int i = 0; i < ReadCount; i++)
                 {
-                    if (JsonArray[i] == null)
+                    if (ReadArray![i] == null)
                     {
-                        JsonArray.RemoveAt(i);
+                        ReadArray!.RemoveAt(i);
                         return true;
                     }
                 }
                 return false;
             }
-            for (int i = 0; i < JsonArray.Count; i++)
+            for (int i = 0; i < ReadCount; i++)
             {
-                var node = JsonArray[i];
+                var node = ReadArray![i];
                 if (node == null) continue; // Skip null entries if item is not null
                 if (JsonNode.DeepEquals(node, item.MutableNode))
                 {
-                    JsonArray.RemoveAt(i);
+                    ReadArray!.RemoveAt(i);
                     return true;
                 }
             }
@@ -172,7 +184,7 @@ namespace Ignixa.Serialization;
 
         public void RemoveAt(int index)
         {
-            JsonArray.RemoveAt(index);
+            MutableArray.RemoveAt(index);
         }
 
         IEnumerator IEnumerable.GetEnumerator()

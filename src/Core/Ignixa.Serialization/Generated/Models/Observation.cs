@@ -59,9 +59,6 @@ public partial class Observation : DomainResourceJsonNode
     public MutableJsonList<ObservationComponent> Component => GetListProperty<ObservationComponent>("component");
 
     [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
-    [JsonIgnore]
     public CodeableConcept? DataAbsentReason
     {
         get => GetComplexProperty<CodeableConcept>("dataAbsentReason");
@@ -186,9 +183,6 @@ public partial class Observation : DomainResourceJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
     public MutableJsonList<Reference> Focus => GetListProperty<Reference>("focus");
 
     [JsonIgnore]
@@ -196,16 +190,6 @@ public partial class Observation : DomainResourceJsonNode
 
     [JsonIgnore]
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
-
-    [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
 
     [JsonIgnore]
     public MutableJsonList<CodeableConcept> Interpretation => GetListProperty<CodeableConcept>("interpretation");
@@ -226,9 +210,6 @@ public partial class Observation : DomainResourceJsonNode
         get => GetComplexProperty<CodeableConcept>("method");
         set => SetProperty("method", value?.MutableNode);
     }
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     [JsonIgnore]
     public MutableJsonList<Annotation> Note => GetListProperty<Annotation>("note");
@@ -261,12 +242,5 @@ public partial class Observation : DomainResourceJsonNode
     {
         get => GetComplexProperty<Reference>("subject");
         set => SetProperty("subject", value?.MutableNode);
-    }
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
     }
 }
