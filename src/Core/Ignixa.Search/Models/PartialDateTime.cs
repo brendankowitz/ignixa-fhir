@@ -164,7 +164,7 @@ public class PartialDateTime
 
         Match match = DateTimeRegex.Match(inputString);
 
-        int year = int.Parse(match.Groups[YearCapture].Value);
+        int year = int.Parse(match.Groups[YearCapture].Value, NumberStyles.None, CultureInfo.InvariantCulture);
         int? month = GetIsDateTimePartSpecified(MonthCapture) ? parsedDateTimeOffset.Month : null;
         int? day = GetIsDateTimePartSpecified(DayCapture) ? parsedDateTimeOffset.Day : null;
         int? hour = GetIsDateTimePartSpecified(HourCapture) ? parsedDateTimeOffset.Hour : null;
@@ -296,31 +296,31 @@ public class PartialDateTime
     {
         var sb = new StringBuilder();
 
-        sb.Append(Year);
+        sb.Append(Year.ToString(CultureInfo.InvariantCulture));
 
         AppendIfNotNull('-', Month);
         AppendIfNotNull('-', Day);
 
         if (Hour != null)
         {
-            sb.AppendFormat("T{0:D2}:{1:D2}", Hour, Minute);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "T{0:D2}:{1:D2}", Hour, Minute);
 
             if (Second != null)
             {
                 if (Fraction == null)
-                    sb.AppendFormat(":{0:D2}", Second);
+                    sb.AppendFormat(CultureInfo.InvariantCulture, ":{0:D2}", Second);
                 else
-                    sb.AppendFormat(":{0:00.0000000}", Second + Fraction);
+                    sb.AppendFormat(CultureInfo.InvariantCulture, ":{0:00.0000000}", Second + Fraction);
             }
 
-            sb.AppendFormat("{0:+00;-00}:{1:D2}", UtcOffset.Value.Hours, UtcOffset.Value.Minutes);
+            sb.AppendFormat(CultureInfo.InvariantCulture, "{0:+00;-00}:{1:D2}", UtcOffset.Value.Hours, UtcOffset.Value.Minutes);
         }
 
         return sb.ToString();
 
         void AppendIfNotNull(char separator, int? value)
         {
-            if (value != null) sb.AppendFormat("{0}{1:D2}", separator, value.Value);
+            if (value != null) sb.AppendFormat(CultureInfo.InvariantCulture, "{0}{1:D2}", separator, value.Value);
         }
     }
 }
