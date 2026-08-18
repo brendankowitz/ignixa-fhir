@@ -240,16 +240,33 @@ public sealed class RangeComparatorQueryGeneratorTests : IDisposable
     }
 
     [Fact]
-    public async Task GivenRangeValuedNumberRows_WhenSearchingWithAp_ThenTheWindowWidensButStaysContainment()
+    public async Task GivenRangeValuedNumberRows_WhenSearchingWithAp_ThenTheWidenedWindowIsOverlappedNotContained()
     {
-        // Arrange — ap widens to max(precision, |5.4| * 0.1) = 0.54, giving [4.86, 5.94]. Row 1's [5.0, 6.0]
-        // still escapes the top of that window; the rows that fit inside it come in.
+        // Arrange — ap widens to max(precision, |5.4| * 0.1) = 0.54, giving [4.86, 5.94], and the spec defines
+        // ap as "the range of the search value overlaps with the range of the target value". Only rows 2 and 7
+        // ([6.0, 7.0] and the point 6.0) sit entirely above the window and are excluded.
+        //
+        // This test previously asserted containment, dropping rows 1, 3, 4 and 5 — every row that straddles a
+        // window edge. That was the live behaviour, since this EF path answers real requests, so ap was
+        // silently under-matching in production. See NumericRangeComparisonSemantics.
 
         // Act
         var matches = await MatchAsync(NumberExpression(SearchComparator.Ap));
 
         // Assert
-        matches.ShouldBe([6L, 8L, 9L, 10L, 11L, 12L, 13L, 14L]);
+        matches.ShouldBe([1L, 3L, 4L, 5L, 6L, 8L, 9L, 10L, 11L, 12L, 13L, 14L]);
+    }
+
+    [Fact]
+    public async Task GivenRangeValuedQuantityRows_WhenSearchingWithAp_ThenTheWidenedWindowIsOverlappedNotContained()
+    {
+        // Arrange — quantity shares the number range semantics, so the ap window is the same [4.86, 5.94].
+
+        // Act
+        var matches = await MatchAsync(QuantityExpression(SearchComparator.Ap));
+
+        // Assert
+        matches.ShouldBe([1L, 3L, 4L, 5L, 6L, 8L, 9L, 10L, 11L, 12L, 13L, 14L]);
     }
 
     [Fact]

@@ -90,7 +90,7 @@ var hasTimeZone = originalStr.Contains('+', ...) ||
 The parsed `DateTimeOffset` and the computed precision are both discarded at the end. The next
 operation on the result starts from the string again.
 
-`GetDateTimePrecision` is called from **8 sites** across two files
+`GetDateTimePrecision` is called from **9 sites** across two files
 (`FhirPathEvaluator.cs:751,752,1128,1129,1380,1381,1744` and `BoundaryFunctions.cs:586,657`), each
 performing `Split('-')`, `Count(c => c == ':')`, `Substring`, and `Contains('.')` on a string whose
 precision was fully determined the moment it was read.
@@ -201,7 +201,7 @@ So the proposal is not "adopt Firely's model". It is "apply the pattern Ignixa a
 
 | | Firely | Ignixa today |
 |---|---|---|
-| Precision | parsed once into a field | re-derived per operation by string splitting (8 call sites, 2 divergent impls) |
+| Precision | parsed once into a field | re-derived per operation by string splitting (9 call sites, 2 divergent impls) |
 | Partial-precision comparison | falls out of `TryCompareDateTimeParts` | hand-rolled in `CompareDateTimesWithPrecision` |
 | `is System.Date` / `type().name` | conformant | conformant via `InstanceType`; `GetFhirPathTypeName` fallback is narrow |
 | Calendar arithmetic (`+ 1 year`) | native on the value | full parse/compute/re-format cycle (Finding (b)) |
@@ -390,7 +390,7 @@ Three consequences:
 |------|------|
 | Retires the `_ => null` bug class (4 known instances, Finding (d)) — type and value stop travelling separately | Breaking change to the `IElement.Value` contract; every temporal consumer must be audited |
 | Removes ~500 lines of string-parsing compensation and lets two divergent helper copies collapse to one (Finding (c)) | Migration must prove serialization fidelity is untouched — the whole point of the current design |
-| Precision computed once, not per operation across 8 call sites (Finding (b)) | Real refactor cost against a system whose tests currently pass |
+| Precision computed once, not per operation across 9 call sites (Finding (b)) | Real refactor cost against a system whose tests currently pass |
 | Extends a pattern Ignixa already ships and validated for `Quantity` (Finding (g)) | Temporal semantics are subtler than `Quantity`'s; new type is easy to get wrong |
 | Lossless — the wire literal is retained, as Firely proves is achievable (Finding (e)) | Consumers pattern-matching `is string` on temporals break **silently**, not loudly — see the note below |
 | Ignixa-native, consistent with `CLAUDE.md`'s layer rule and the ADR-2510 precedent | Reimplements what Firely already solved, for dependency reasons rather than technical ones |
@@ -496,7 +496,7 @@ typing. Ignixa evaluated one candidate container, found it lossy, and generalise
 confirms it wasn't applied as a principle anyway: `decimal` is typed despite documented loss.
 
 The cost is measurable and compounding: ~500 lines of compensation, two already-divergent copies of
-the same helper, precision re-derived at 8 sites, and a bug class (Finding (d)) that has produced
+the same helper, precision re-derived at 9 sites, and a bug class (Finding (d)) that has produced
 four instances with one still open.
 
 **Recommendation — not a decision; per the Transformer Mandate this is a human call:**

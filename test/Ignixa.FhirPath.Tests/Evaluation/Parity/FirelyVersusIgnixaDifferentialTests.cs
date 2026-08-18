@@ -95,8 +95,11 @@ public class FirelyVersusIgnixaDifferentialTests
 
     /// <summary>
     /// <c>Predicate</c> and <c>IsTrue</c> disagree with each other on empty within Firely itself.
-    /// Ignixa ships no <c>Predicate</c>, which is why ADR 2608 derives it in the seam rather than
-    /// asking the provider for it.
+    /// This asserts against <see cref="IgnixaEngine.IsTrue"/>, not an Ignixa <c>Predicate</c> -
+    /// <see cref="IgnixaEngine"/> exposes no <c>Predicate</c> wrapper. Ignixa's own <c>Predicate</c>
+    /// methods (two of them, disagreeing with each other) are why ADR 2608 derives <c>Predicate</c>
+    /// in the seam rather than asking the provider for it; see docs/features/fhirpath/firely-parity.md,
+    /// entry 7.
     /// </summary>
     [Fact]
     public void GivenAnEmptyResult_WhenAskedAsPredicateAndAsIsTrue_ThenFirelyDisagreesWithItselfAndIgnixaMatchesIsTrue()

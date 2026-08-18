@@ -240,13 +240,37 @@ supply — year/month precision, and every `time` (a time of day is not a point 
 a timezone-bearing value against a timezone-less one) rather than an arbitrary `true`/`false` — use it
 instead of `CompareTo`, which is a total order for collections and does not carry FHIRPath semantics.
 
-### ResourceIdentifier
+### ResourceKey
+
+Identifies a FHIR resource by type, ID, and optional version/tenant (`Ignixa.Abstractions`):
 
 ```csharp
-public record ResourceIdentifier(string ResourceType, string Id)
+public record ResourceKey(
+    string ResourceType,
+    string Id,
+    string? VersionId = null,
+    int? TenantId = null)
 {
-    public static ResourceIdentifier Parse(string reference);
-    public string ToReference(); // "Patient/123"
+    public override string ToString(); // "Patient/123", "Patient/123/_history/2", or "1/Patient/123" (tenant-scoped)
+}
+```
+
+### ResourceReference
+
+Represents a FHIR reference found while walking a resource — the element it was found at, the raw
+reference value, and (when parseable) the resource type/ID it points to. Declared in namespace
+`Ignixa.Serialization.Models` despite living in the Abstractions project:
+
+```csharp
+public sealed class ResourceReference
+{
+    public required string ElementPath { get; init; }         // e.g. "subject", "generalPractitioner"
+    public required string Value { get; init; }                // e.g. "Patient/123", "urn:uuid:..."
+    public required IReadOnlyList<string> TargetResourceTypes { get; init; } // empty = any type allowed
+    public bool IsCollection { get; init; }
+    public ReferenceType Type { get; init; }                   // Relative, Absolute, or Logical
+    public string? ResourceType { get; init; }                 // null for logical/absolute references
+    public string? ResourceId { get; init; }                   // null if unparseable
 }
 ```
 

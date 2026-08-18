@@ -19,8 +19,9 @@ representation still held up and found:
   a non-BCL typed object, and `Types.Quantity` already carries an optional precision field
   (Finding (g)).
 - Collapsing fidelity and evaluation into one `string`-shaped slot forced ~500 lines of
-  string-parsing compensation in `FhirPathEvaluator.cs` (precision re-derived at 8 call sites, two
-  already-divergent copies of `GetDateTimePrecision`), and produced a recurring silent-empty bug
+  string-parsing compensation in `FhirPathEvaluator.cs` (precision re-derived at 7 call sites in
+  that file — 9 across both files together with `BoundaryFunctions.cs` — two already-divergent
+  copies of `GetDateTimePrecision`), and produced a recurring silent-empty bug
   class: four found instances of a helper narrowing `object?` to `string` and returning nothing on
   a type it didn't expect (Findings (a)-(d)).
 - **The strongest argument surfaced late (Finding (j)) and is a conformance gap, not a style

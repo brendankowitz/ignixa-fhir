@@ -24,8 +24,11 @@ Neither cause changes an indexed *value*; one changes an element's declared type
 *when* an already-broken parameter fails.
 
 The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces 39 outcomes from 9 root causes. **None of those 9 is reachable from any shipped R4
-SearchParameter expression.**
+changed) produces 38 outcomes from 8 open root causes (Tier 2 below has 9 headings; entry 5 is
+closed, leaving 8). Of those 8, only 7 are actually pinned by the construct sweep - entry 7
+(`Scalar`) never appears in it and is instead pinned by a standalone test (see "Expectations
+tested"), so `KnownDivergences.ConstructSignatures` has 11 signatures grouped under 7 causes, not 8.
+**None of those root causes is reachable from any shipped R4 SearchParameter expression.**
 
 The practical read: FHIRPath evaluation is not the risky part of the migration. Two items need a
 decision before enabling Ignixa; the rest are documentation.
@@ -186,7 +189,17 @@ inside the seam precisely so the provider's own helper is never consulted. **The
 exists to say that derivation is load-bearing** - if a future refactor delegates `Scalar` to the
 provider, ambiguous search parameter definitions stop throwing and start silently returning null.
 Related: Firely's `Predicate` returns **true** on empty while its `IsTrue` returns **false**. Ignixa
-ships no `Predicate` at all. Both pinned by tests.
+does not ship *no* `Predicate` - it ships two, and they disagree with each other and with Firely.
+`TypedElementExtensions.Predicate` (the FHIRPath engine's own copy) is a pure delegation to `IsTrue`,
+so it returns **false** on empty - the opposite of Firely's contract. A second, unrelated `Predicate`
+in `Ignixa.DeId.Extensions.FhirPathExtensions` (the one actually bound at the `GeneralizeProcessor`
+call site) returns false on empty but **true** on 2+ results, disagreeing with the first Ignixa copy
+too. This is a worse failure mode than "no equivalent": a seam author who reached for the engine's
+`Predicate` would silently invert the empty case rather than get a compile error. The gap went
+unnoticed because the differential test below compares Firely's `Predicate` against
+`IgnixaEngine.IsTrue` - the harness's `IgnixaEngine` wrapper exposes no `Predicate` at all, so the
+two real Ignixa `Predicate` methods were never in the comparison. Both Firely behaviours are pinned
+by tests.
 
 ### 8. Boundary functions carry timezone extremes in Ignixa
 
@@ -235,7 +248,7 @@ The brief predicted four findings. Two were confirmed, two refuted.
 | `%resource`/`%rootResource` - Ignixa less capable, no parent link on `IElement` | **Refuted.** Both engines agree on `%resource`, `%rootResource` and `%context`, including from inside a Bundle entry (`Bundle.entry.resource.select(%resource.id)`). The underlying premise is true - `IElement` has no parent link, so nothing can *infer* these - but the evaluation-context bridge binds them explicitly and the observable result is identical. **This makes the binding load-bearing rather than redundant**, which is why it has its own test. |
 | ~12 constructs signal errors where Firely returns empty | **Refuted in direction.** The asymmetry mostly runs the other way: Firely throws where Ignixa answers (`@T10:30:00 + 1 hour`) or returns empty where Ignixa answers (`- multipleBirthInteger`, `deceasedBoolean`). Only `hasExtension` has Ignixa erroring where Firely does not - and Firely does not return empty there either, it throws earlier. |
 | `as` filters element-wise below R5; at R5+ Ignixa throws where Firely does not | **Not covered** - see below. At R4, `name as HumanName`, `name.as(HumanName)` and `name.ofType(HumanName)` all agree. |
-| Ignixa's `Scalar`/`IsTrue`/`IsBoolean` differ from Firely's | **Confirmed for `Scalar`** (entry 7). `IsTrue` agrees. `Predicate` has no Ignixa equivalent, which is why ADR 2608 derives it in the seam. |
+| Ignixa's `Scalar`/`IsTrue`/`IsBoolean` differ from Firely's | **Confirmed for `Scalar`** (entry 7). `IsTrue` agrees. `Predicate` is worse than absent - Ignixa ships two same-named methods with different, mutually disagreeing empty/multi-item contracts, neither matching Firely's empty-collection-is-true rule (see entry 7). ADR 2608 derives `Predicate` in the seam because Firely's is `internal`; the divergence is the reason that derivation cannot instead delegate to either Ignixa copy. |
 
 ---
 
