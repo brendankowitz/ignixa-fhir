@@ -27,8 +27,15 @@ internal class SchemaAwareElement : IElement
     // OPTIMIZATION: Cache type definition (immutable, safe to cache per-instance)
     private readonly Lazy<IType?> _typeDefinition;
 
-    // OPTIMIZATION: Cache parsed Value — see ComputeValue() and _cachedValue initialization in ctor.
-    private readonly Lazy<object?> _cachedValue;
+    // OPTIMIZATION: Memoise the parsed Value without a Lazy<T>, which cost a Lazy, its LazyHelper lock
+    // object and a closure delegate on every element constructed — allocation the navigation and
+    // search-indexing paths pay whether or not Value is ever read.
+    // ComputeValue() can legitimately return null, so null cannot mark "not computed": a sentinel does.
+    // The field is volatile so the reference publishes with release semantics. ComputeValue() is pure,
+    // so a race can only duplicate the work, never publish a half-built value.
+    private static readonly object ValueNotComputed = new();
+
+    private volatile object? _cachedValue = ValueNotComputed;
 
     // OPTIMIZATION: Cache for child element definitions (avoid repeated lookups)
     // Key: element name, Value: IType (can be null)
@@ -82,8 +89,6 @@ internal class SchemaAwareElement : IElement
 
             return null;
         });
-
-        _cachedValue = new Lazy<object?>(ComputeValue);
     }
 
     /// <summary>
@@ -175,7 +180,20 @@ internal class SchemaAwareElement : IElement
 
     public string InstanceType => _instanceType ?? string.Empty;
 
-    public object? Value => _cachedValue.Value;
+    public object? Value
+    {
+        get
+        {
+            var cached = _cachedValue;
+            if (ReferenceEquals(cached, ValueNotComputed))
+            {
+                cached = ComputeValue();
+                _cachedValue = cached;
+            }
+
+            return cached;
+        }
+    }
 
     private object? ComputeValue()
     {

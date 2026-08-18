@@ -886,4 +886,95 @@ public class SchemaAwareElementTests
     }
 
     #endregion
+
+    #region Value Memoisation Tests
+
+    [Fact]
+    public void GivenATemporalElement_WhenReadingValueTwice_ThenTheParsedValueIsMemoised()
+    {
+        // Arrange
+        var element = ParseObservation("\"effectiveDateTime\": \"2013-04-02T10:30:10+01:00\"")
+            .Children("effective")
+            .Single();
+
+        // Act
+        var first = element.Value;
+        var second = element.Value;
+
+        // Assert
+        Assert.IsType<FhirTemporal>(first);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void GivenAnElementWithoutPrimitiveValue_WhenReadingValueTwice_ThenBothReadsAreNull()
+    {
+        // Arrange
+        var element = ParseObservation("\"valueString\": \"foo\"")
+            .Children("code")
+            .Single();
+
+        // Act
+        var first = element.Value;
+        var second = element.Value;
+
+        // Assert
+        Assert.Null(first);
+        Assert.Null(second);
+    }
+
+    [Fact]
+    public void GivenAnUnparseableTemporal_WhenReadingValueTwice_ThenBothReadsFallBackToTheRawString()
+    {
+        // Arrange
+        var element = ParseObservation("\"effectiveDateTime\": \"not-a-date\"")
+            .Children("effective")
+            .Single();
+
+        // Act
+        var first = element.Value;
+        var second = element.Value;
+
+        // Assert
+        Assert.Equal("not-a-date", first);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void GivenASharedElement_WhenReadingValueConcurrently_ThenEveryReaderSeesTheSameValue()
+    {
+        // Arrange
+        var element = ParseObservation("\"effectiveDateTime\": \"2013-04-02T10:30:10+01:00\"")
+            .Children("effective")
+            .Single();
+
+        var expected = FhirTemporal.TryParse("2013-04-02T10:30:10+01:00", FhirPrimitive.DateTime, out var parsed)
+            ? parsed
+            : null;
+
+        // Act
+        var observed = new object[256];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Value);
+
+        // Assert
+        Assert.NotNull(expected);
+        Assert.All(observed, value => Assert.Equal(expected, value));
+    }
+
+    private IElement ParseObservation(string discriminatingProperty)
+    {
+        var observationJson = $$"""
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "text": "test" },
+          {{discriminatingProperty}}
+        }
+        """;
+
+        return ResourceJsonNode.Parse(observationJson).ToElement(_r4Provider);
+    }
+
+    #endregion
 }
