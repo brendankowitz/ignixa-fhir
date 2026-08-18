@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------------------------------
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -54,32 +54,6 @@ public class FhirTemporalTests
         result.ShouldNotBeNull();
         result.Literal.ShouldBe("1974-12-25");
         result.ToString().ShouldBe("1974-12-25");
-    }
-
-    [Theory]
-    [InlineData("1974", FhirPrimitive.Date)]
-    [InlineData("1974-12", FhirPrimitive.Date)]
-    [InlineData("13:45:00", FhirPrimitive.Time)]
-    public void GivenLiteralWithoutResolvableInstant_WhenParsed_ThenValueIsNull(string literal, FhirPrimitive kind)
-    {
-        // Act
-        FhirTemporal.TryParse(literal, kind, out var result);
-
-        // Assert
-        result.ShouldNotBeNull();
-        result.Value.ShouldBeNull();
-    }
-
-    [Fact]
-    public void GivenDayPrecisionLiteral_WhenParsed_ThenValueIsResolved()
-    {
-        // Act
-        FhirTemporal.TryParse("1974-12-25", FhirPrimitive.Date, out var result);
-
-        // Assert
-        result.ShouldNotBeNull();
-        result.Value.ShouldNotBeNull();
-        result.Value.Value.UtcDateTime.ShouldBe(new DateTime(1974, 12, 25, 0, 0, 0, DateTimeKind.Utc));
     }
 
     [Fact]
@@ -311,28 +285,44 @@ public class FhirTemporalTests
         result.ShouldBeNull();
     }
 
-    [Fact]
-    public void GivenOffsetBearingDateTime_WhenParsed_ThenValueReflectsCorrectUtcInstant()
+    [Theory]
+    [InlineData(FhirPrimitive.DateTime)]
+    [InlineData(FhirPrimitive.Instant)]
+    public void GivenAnOffsetBearingLiteral_WhenComparedToTheSameInstantWrittenInUtc_ThenTheyAgree(FhirPrimitive kind)
     {
+        // The offset has to be applied when the ordering keys are derived, not just displayed: +01:00 at
+        // 09:30:10 is 08:30:10Z, so the two literals are one instant and must be indistinguishable to
+        // equality and ordering alike.
+
         // Act
-        FhirTemporal.TryParse("2013-04-02T09:30:10+01:00", FhirPrimitive.DateTime, out var result);
+        FhirTemporal.TryParse("2013-04-02T09:30:10+01:00", kind, out var offsetBearing);
+        FhirTemporal.TryParse("2013-04-02T08:30:10Z", kind, out var utc);
 
         // Assert
-        result.ShouldNotBeNull();
-        result.Value.ShouldNotBeNull();
-        result.Value.Value.UtcDateTime.ShouldBe(new DateTime(2013, 4, 2, 8, 30, 10, DateTimeKind.Utc));
+        offsetBearing.ShouldNotBeNull();
+        utc.ShouldNotBeNull();
+        offsetBearing.Equals(utc).ShouldBeTrue();
+        offsetBearing.CompareTo(utc).ShouldBe(0);
+        offsetBearing.Literal.ShouldBe("2013-04-02T09:30:10+01:00");
     }
 
-    [Fact]
-    public void GivenOffsetBearingInstant_WhenParsed_ThenValueReflectsCorrectUtcInstant()
+    [Theory]
+    [InlineData(FhirPrimitive.DateTime)]
+    [InlineData(FhirPrimitive.Instant)]
+    public void GivenAnOffsetBearingLiteral_WhenComparedToADifferentInstant_ThenTheOffsetIsNotIgnored(FhirPrimitive kind)
     {
+        // Guards the above against passing for the wrong reason: if the offset were dropped rather than
+        // applied, 09:30:10+01:00 would compare equal to 09:30:10Z instead of to 08:30:10Z.
+
         // Act
-        FhirTemporal.TryParse("2013-04-02T09:30:10+01:00", FhirPrimitive.Instant, out var result);
+        FhirTemporal.TryParse("2013-04-02T09:30:10+01:00", kind, out var offsetBearing);
+        FhirTemporal.TryParse("2013-04-02T09:30:10Z", kind, out var sameClockDifferentInstant);
 
         // Assert
-        result.ShouldNotBeNull();
-        result.Value.ShouldNotBeNull();
-        result.Value.Value.UtcDateTime.ShouldBe(new DateTime(2013, 4, 2, 8, 30, 10, DateTimeKind.Utc));
+        offsetBearing.ShouldNotBeNull();
+        sameClockDifferentInstant.ShouldNotBeNull();
+        offsetBearing.Equals(sameClockDifferentInstant).ShouldBeFalse();
+        offsetBearing.CompareTo(sameClockDifferentInstant).ShouldBeLessThan(0);
     }
 
     [Fact]
@@ -594,8 +584,7 @@ public class FhirTemporalTests
         parsed.ShouldBeTrue();
         result.ShouldNotBeNull();
         result.Literal.ShouldBe(literal);
-        result.Value.ShouldNotBeNull();
-        result.Value.Value.UtcDateTime.Date.ShouldBe(new DateTime(int.Parse(literal[..4], CultureInfo.InvariantCulture), 2, 29));
+        result.ToString().ShouldBe(literal);
     }
 
     [Theory]
@@ -709,9 +698,9 @@ public class FhirTemporalTests
     public void GivenAKindThatDisagreesWithTheLiteral_WhenParsed_ThenHasTimezoneStillFollowsTheLiteral()
     {
         // Kind is unvalidated schema metadata, so a dateTime-shaped literal can arrive labelled as a date.
-        // Value is resolved from the literal, so HasTimezone must be too -- otherwise the instance reports
-        // a floating local time while holding a fixed UTC instant, and because HasTimezone is an equality
-        // and ordering key that inconsistency propagates into collections.
+        // The ordering keys are derived from the literal, so HasTimezone must be too -- otherwise the
+        // instance reports a floating local time while ordering as a fixed instant, and because
+        // HasTimezone is an equality and ordering key that inconsistency propagates into collections.
         FhirTemporal.TryParse("2012-01-01T14:30:00Z", FhirPrimitive.Date, out var mislabelled);
         FhirTemporal.TryParse("2012-01-01T14:30:00Z", FhirPrimitive.DateTime, out var correctlyLabelled);
 
@@ -719,7 +708,6 @@ public class FhirTemporalTests
         mislabelled.ShouldNotBeNull();
         correctlyLabelled.ShouldNotBeNull();
         mislabelled.HasTimezone.ShouldBeTrue();
-        mislabelled.Value.ShouldBe(correctlyLabelled.Value);
         mislabelled.Equals(correctlyLabelled).ShouldBeTrue();
         mislabelled.CompareTo(correctlyLabelled).ShouldBe(0);
     }

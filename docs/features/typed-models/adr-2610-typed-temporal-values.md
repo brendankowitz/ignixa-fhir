@@ -52,10 +52,11 @@ there is no public constructor that could yield a half-populated instance). It e
 - `Literal` — the wire text verbatim (the `@` sigil stripped), the fidelity half of the type.
 - `Precision` — computed once at construction, not re-derived per operation.
 - `Kind` — the FHIR primitive the literal was read as.
-- `Value` — a `DateTimeOffset?`, the resolved instant.
 - `HasTimezone` — whether the literal's time-of-day carried an offset, scanned from the literal
   itself rather than inferred, because a fixed instant and a floating local time compare
-  indeterminately in FHIRPath and the distinction cannot be recovered from `Value` alone.
+  indeterminately in FHIRPath and normalising to UTC erases the distinction.
+
+There is deliberately no resolved-instant member; see the design note below.
 
 Comparison (`FhirTemporal.Compare`) implements FHIRPath's tri-state partial-precision ordering
 directly on the type, replacing the hand-rolled string-splitting helpers.
@@ -89,19 +90,30 @@ FHIRPath `@`-literals inside expressions are still parsed as raw strings by the 
 normalization chokepoint the engine's string-oriented paths route through to reconcile the two; it
 exists precisely because the union has more than one shape carrying a lexical form.
 
-**Two design points are flagged for revisit before 1.0, not deferred indefinitely:**
+**One design point was flagged for revisit before 1.0 and has since been resolved by deletion.**
+`FhirTemporal.Value` was a `DateTimeOffset?` that returned `null` at `Year`/`Month` precision and for
+every `time` — structurally the same silent-empty shape this type was built to eliminate, and one
+dereference away from colliding with `IElement.Value`. Rather than rename it to `Instant`, which
+would have relabelled the ambiguous null without removing it, the member is gone.
 
-1. **`FhirTemporal.Value` is a `DateTimeOffset?` named `Value`, and it is `null` at `Year`/`Month`
-   precision and for every `time`.** That is structurally the same silent-empty shape this type was
-   built to eliminate elsewhere — a consumer reading `.Value` on a year-precision date gets `null`
-   with no signal that the value is a legitimate partial-precision temporal rather than absent data.
-   Renaming it (to something like `Instant`) is a source change now and a breaking one after 1.0.
-2. **`FhirTemporal` is a sealed class, not the `readonly struct` the investigation sketched.** That
+The deciding evidence was that it had no consumer. Renaming it and building `All.sln` produced
+compile errors in exactly two files, both of them tests of `Value` itself — nothing in `src/`,
+`tools/`, the benchmarks, or the Firely adapter shims. Since `FhirTemporal` had not yet shipped in
+any package, removing it broke nothing that existed.
+
+Nothing is lost with it: `Literal` is the wire truth, `Precision` states what is known, and the
+ordering bounds already back comparison. A caller needing a `DateTimeOffset` must say *which* one —
+lower bound, upper bound, or a UTC normalisation — so if the need arises it returns as a member named
+for the answer it gives, not as a bare `Value` whose meaning changes with precision.
+
+**One design point remains flagged for revisit before 1.0, not deferred indefinitely:**
+
+1. **`FhirTemporal` is a sealed class, not the `readonly struct` the investigation sketched.** That
    costs an allocation per temporal per navigation on hot paths (every `IElement.Value` read for a
    date/dateTime/instant/time element). The class shape was taken because `FhirTemporal?` needs
    reference-type null semantics against the existing `object? Value` contract without a second
    nullable-wrapping layer; revisiting it means resolving that against `IElement.Value`'s type,
-   which is a larger change than the property rename above.
+   which is a larger change than the removal above.
 
 **`InternalsVisibleTo` grants a pre-1.0 API-surface decision, made deliberately:**
 

@@ -1,4 +1,4 @@
-// -------------------------------------------------------------------------------------------------
+﻿// -------------------------------------------------------------------------------------------------
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -25,10 +25,11 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// <see cref="FhirTemporal.ToString"/> returns <see cref="FhirTemporal.Literal"/> verbatim.
 /// </summary>
 /// <remarks>
-/// Switching any converter to <see cref="FhirTemporal.Value"/> would look like a type-safety improvement
-/// and would silently break two things at once: partial-precision literals resolve to <see langword="null"/>
+/// Reaching for a resolved <see cref="DateTimeOffset"/> instead would look like a type-safety improvement
+/// and would silently break two things at once: partial-precision literals have no determinate instant
 /// and would stop being indexed entirely, and timezone-less literals would be coerced to UTC, moving every
-/// index row by the local offset. Neither shows up as an exception.
+/// index row by the local offset. Neither shows up as an exception. This is why <see cref="FhirTemporal"/>
+/// exposes no such member -- see ADR-2610.
 /// </remarks>
 public class TemporalSearchValueConverterContractTests
 {
@@ -61,8 +62,8 @@ public class TemporalSearchValueConverterContractTests
     [InlineData("2013")]
     public void GivenAFhirTemporalBackedDateTimeElement_WhenConverted_ThenItIndexesAsTheRawWireStringDid(string literal)
     {
-        // The timezone-less case is the one with teeth: FhirTemporal.Value resolves it to a UTC instant,
-        // so a converter reading Value instead of the literal would move the indexed row by the offset
+        // The timezone-less case is the one with teeth: resolving it to an instant has to assume a zone,
+        // so a converter reading anything but the literal would move the indexed row by the local offset
         // and no test that only covers offset-bearing literals would notice.
 
         // Arrange

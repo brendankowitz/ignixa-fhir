@@ -17,8 +17,17 @@ namespace Ignixa.Abstractions;
 /// <see cref="DateTimeOffset"/> alone cannot represent a FHIR temporal value without loss: it has no
 /// notion of partial precision, so <c>"1974"</c> and <c>"1974-01-01T00:00:00Z"</c> collapse onto the
 /// same instant, and round-tripping the element back to the wire invents digits the source never had.
-/// Keeping <see cref="Literal"/> alongside <see cref="Value"/> makes the value typed and lossless at
+/// <see cref="Literal"/> and <see cref="Precision"/> together make the value typed and lossless at
 /// once.
+/// </para>
+/// <para>
+/// There is deliberately no resolved-instant property. One existed and had no consumer outside its
+/// own tests: it was <see langword="null"/> at <see cref="FhirTemporalPrecision.Year"/> and
+/// <see cref="FhirTemporalPrecision.Month"/> precision and for every <c>time</c>, which is the same
+/// ambiguous null this type exists to remove, and it collided with <c>IElement.Value</c> one
+/// dereference away. Anything needing a <see cref="DateTimeOffset"/> has to say which one it means --
+/// the lower bound, the upper bound, or a UTC normalisation -- so it belongs on a member named for
+/// the answer it gives rather than on a bare <c>Value</c> whose meaning changes with precision.
 /// </para>
 /// <para>
 /// Instances are only produced by <see cref="TryParse"/>. Malformed wire data is an expected input,
@@ -38,7 +47,6 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         string literal,
         FhirTemporalPrecision precision,
         FhirPrimitive kind,
-        DateTimeOffset? value,
         DateTime lowerBound,
         DateTime upperBound,
         bool hasTimezone)
@@ -46,7 +54,6 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         Literal = literal;
         Precision = precision;
         Kind = kind;
-        Value = value;
         _lowerBound = lowerBound;
         _upperBound = upperBound;
         HasTimezone = hasTimezone;
@@ -74,32 +81,21 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     public FhirPrimitive Kind { get; }
 
     /// <summary>
-    /// Gets the resolved instant, or <see langword="null"/> when the literal does not denote one.
-    /// </summary>
-    /// <remarks>
-    /// This is <see langword="null"/> for <see cref="FhirTemporalPrecision.Year"/> and
-    /// <see cref="FhirTemporalPrecision.Month"/> precision, because materialising a
-    /// <see cref="DateTimeOffset"/> would fabricate a month and day the source never supplied, and for
-    /// every <c>time</c> value, because a time of day is not a point on the calendar.
-    /// </remarks>
-    public DateTimeOffset? Value { get; }
-
-    /// <summary>
     /// Gets a value indicating whether the source literal carried a timezone (a <c>Z</c> or a
     /// <c>±hh:mm</c> offset) on its time-of-day component.
     /// </summary>
     /// <remarks>
-    /// This is a genuine, observable fact about the wire value, distinct from <see cref="Value"/>: a
-    /// timezone-less <c>dateTime</c> denotes a floating local time, whereas a timezone-bearing one
-    /// denotes a fixed instant, and FHIRPath treats a comparison between the two as indeterminate.
-    /// <see cref="Value"/> cannot preserve the distinction because it resolves everything to UTC.
-    /// It is derived by scanning the literal after the <c>T</c>, not from the parsed instant, because
+    /// This is a genuine, observable fact about the wire value, and one no resolved instant could
+    /// carry: a timezone-less <c>dateTime</c> denotes a floating local time, whereas a
+    /// timezone-bearing one denotes a fixed instant, and FHIRPath treats a comparison between the two
+    /// as indeterminate. Normalising to UTC erases exactly that distinction.
+    /// It is derived by scanning the literal after the <c>T</c>, not from a parsed instant, because
     /// <see cref="DateTimeOffset"/> exposes no "an offset was present" flag, and not from
     /// <see cref="Kind"/>, which is unvalidated caller-supplied metadata that may disagree with the
     /// literal. A well-formed <c>date</c> has no time component and a well-formed <c>time</c> never
     /// carries a timezone, so both report <see langword="false"/> because the scan finds nothing, not
-    /// because the kind suppresses it. That keeps this property consistent with <see cref="Value"/> and
-    /// with the ordering keys, which are likewise derived from the literal.
+    /// because the kind suppresses it. That keeps this property consistent with the ordering keys,
+    /// which are likewise derived from the literal.
     /// </remarks>
     public bool HasTimezone { get; }
 
@@ -149,8 +145,8 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// </para>
     /// <para>
     /// <paramref name="kind"/> nonetheless selects an interpretation rather than merely labelling one:
-    /// <see cref="FhirPrimitive.Time"/> anchors the literal to a placeholder date and suppresses
-    /// <see cref="Value"/>, because a time of day is not a point on the calendar. What it must never do is
+    /// <see cref="FhirPrimitive.Time"/> anchors the literal to a placeholder date, because a time of
+    /// day is not a point on the calendar. What it must never do is
     /// override a fact the literal already states. <see cref="HasTimezone"/> is read from the literal for
     /// that reason -- forcing it off for <see cref="FhirPrimitive.Date"/> once let a mislabelled
     /// <c>dateTime</c> report a floating local time while holding a resolved UTC instant, and because
@@ -196,7 +192,6 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
             wire,
             precision,
             kind,
-            ResolveValue(normalized, precision, kind),
             lowerBound.Value,
             upperBound.Value,
             HasTimezoneComponent(normalized));
@@ -615,16 +610,6 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         var offsetIndex = Math.Max(trimmed.LastIndexOf('+'), trimmed.LastIndexOf('-'));
 
         return offsetIndex >= 0 ? trimmed[..offsetIndex] : trimmed;
-    }
-
-    private static DateTimeOffset? ResolveValue(string normalized, FhirTemporalPrecision precision, FhirPrimitive kind)
-    {
-        if (kind == FhirPrimitive.Time || precision < FhirTemporalPrecision.Day)
-        {
-            return null;
-        }
-
-        return TryParseTemporal(normalized, out var value) ? value : null;
     }
 
     private static DateTime? GetLowerBound(string value, FhirTemporalPrecision precision)

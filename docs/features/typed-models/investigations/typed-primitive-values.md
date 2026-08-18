@@ -8,8 +8,10 @@
 > `instant`/`time`, scoped to temporals as recommended (`Quantity` untouched). See
 > [ADR-2610](../adr-2610-typed-temporal-values.md) for the decision record — including the
 > conformance argument (Finding (j)) that made this a pre-1.0 requirement rather than a deferred
-> refactor, and the two open design points (the `Value` property's silent-null shape at partial
-> precision, and the sealed-class-vs-struct allocation cost) flagged for revisit before 1.0.
+> refactor. Of the two design points it flagged for revisit before 1.0, the `Value` property's
+> silent-null shape at partial precision is resolved — the member was removed once a compile check
+> showed it had no consumer outside its own tests — leaving the sealed-class-vs-struct allocation
+> cost.
 
 ## Approach
 

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2025, Ignixa Contributors
  *
  * Unit tests for SchemaAwareElement - validates choice type navigation,
@@ -848,8 +848,9 @@ public class SchemaAwareElementTests
     /// <summary>
     /// Exercises the <c>time</c> arm of <see cref="FhirTemporal"/>.
     /// A bare FHIR <c>time</c> is anchored internally to a synthetic 1900-01-01 date and is not a
-    /// determinate calendar instant, so <see cref="FhirTemporal.Value"/> must be <see langword="null"/>
-    /// and <see cref="FhirTemporal.Kind"/> must be <see cref="FhirPrimitive.Time"/>.
+    /// determinate calendar instant, so the anchor must stay invisible: <see cref="FhirTemporal.Literal"/>
+    /// must round-trip the source text and <see cref="FhirTemporal.Kind"/> must be
+    /// <see cref="FhirPrimitive.Time"/>.
     /// Field used: <c>HealthcareService.availableTime.availableStartTime</c> (typed as <c>time</c>
     /// in R4 and therefore a clean, shallow path that the schema provider resolves without fabricating
     /// wrapper elements).
@@ -883,7 +884,7 @@ public class SchemaAwareElementTests
         var temporal = Assert.IsType<FhirTemporal>(startTimeChildren[0].Value);
         Assert.Equal(FhirPrimitive.Time, temporal.Kind);
         Assert.Equal("09:00:00", temporal.Literal);
-        Assert.Null(temporal.Value); // time-only; no determinate calendar instant
+        Assert.Equal(FhirTemporalPrecision.Second, temporal.Precision);
     }
 
     #endregion
