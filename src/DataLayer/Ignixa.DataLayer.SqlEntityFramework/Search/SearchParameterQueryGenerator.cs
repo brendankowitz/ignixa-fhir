@@ -1259,21 +1259,17 @@ public class SearchParameterQueryGenerator
     /// <summary>
     /// Checks whether every conjunct is a bound on the same indexed date range, which is what the date
     /// comparators that lower to a conjunction produce: <c>eq</c> as containment
-    /// (<c>DateTimeStart &gt;= x AND DateTimeEnd &lt;= y</c>), <c>ap</c> as overlap. Requiring a single
-    /// ComponentIndex keeps composite components, which are keyed per component and routed to the composite
-    /// tables, off this path.
+    /// (<c>DateTimeStart &gt;= x AND DateTimeEnd &lt;= y</c>), <c>ap</c> as overlap. Requiring every
+    /// ComponentIndex to be null keeps composite components off this path: they are keyed per component and
+    /// belong to the composite tables, which this base-table generator does not read.
     /// </summary>
     private static bool IsDateTimeAndExpression(MultiaryExpression multiaryExpr)
     {
-        if (!multiaryExpr.Expressions.All(e => e is BinaryExpression { FieldName: FieldName.DateTimeStart or FieldName.DateTimeEnd }))
-        {
-            return false;
-        }
-
-        return multiaryExpr.Expressions
-            .Select(e => ((BinaryExpression)e).ComponentIndex)
-            .Distinct()
-            .Count() == 1;
+        // Checked per conjunct rather than by counting distinct indices. N bounds that share one non-null
+        // index are also "a single ComponentIndex", so a count-based guard admits exactly the composite
+        // components it is supposed to exclude.
+        return multiaryExpr.Expressions.All(e =>
+            e is BinaryExpression { FieldName: FieldName.DateTimeStart or FieldName.DateTimeEnd, ComponentIndex: null });
     }
 
     /// <summary>

@@ -86,6 +86,11 @@ public partial class ElementSearchIndexer : ISearchIndexer
 
         IEnumerable<SearchParameterInfo> searchParameters = _searchParameterDefinitionManager.GetSearchParameters(resource.InstanceType);
 
+        // Resolved once, up front: every failure below is logged per search parameter, and without this the
+        // logs name an expression and a type but not which resource carried them, so a resource left
+        // permanently unindexed cannot be found again to reindex it.
+        string resourceIdentity = DescribeResource(resource);
+
         foreach (SearchParameterInfo searchParameter in searchParameters)
         {
             // Intrinsic parameters are read from the resource record itself, so no index entry is emitted.
@@ -93,9 +98,9 @@ public partial class ElementSearchIndexer : ISearchIndexer
                 continue;
 
             if (searchParameter.Type == SearchParamType.Composite)
-                entries.AddRange(ProcessCompositeSearchParameter(searchParameter, resource, context));
+                entries.AddRange(ProcessCompositeSearchParameter(searchParameter, resource, context, resourceIdentity));
             else
-                entries.AddRange(ProcessNonCompositeSearchParameter(searchParameter, resource, context));
+                entries.AddRange(ProcessNonCompositeSearchParameter(searchParameter, resource, context, resourceIdentity));
         }
 
         MarkMinMaxValues(entries);
@@ -165,13 +170,30 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
     }
 
-    private IEnumerable<SearchIndexEntry> ProcessCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context)
+    private IEnumerable<SearchIndexEntry> ProcessCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context, string resourceIdentity)
     {
         Debug.Assert(searchParameter?.Type == SearchParamType.Composite, "The search parameter must be composite.");
 
         SearchParameterInfo compositeSearchParameterInfo = searchParameter;
 
-        IEnumerable<IElement> rootObjects = resource.Select(searchParameter.Expression, context);
+        // Materialized inside the try for the same reason as the two ExtractSearchValues paths below: this
+        // method is itself a yield iterator, so a lazy enumerable escaping here would not be enumerated until
+        // Extract's entries.AddRange, well past this catch and outside ISearchIndexer.Extract's control -
+        // turning one malformed composite expression into a failed create or update of the whole resource.
+        IEnumerable<IElement> rootObjects = Enumerable.Empty<IElement>();
+
+        try
+        {
+            rootObjects = resource.Select(searchParameter.Expression, context).ToList();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log.FailedToExtractValues(_logger, ex, searchParameter.Expression, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+        }
 
         foreach (IElement rootObject in rootObjects)
         {
@@ -210,7 +232,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
                     componentSearchParameterDefinition.TargetResourceTypes,
                     rootObject,
                     component.Expression,
-                    context);
+                    context,
+                    resourceIdentity);
 
                 // Filter out any search value that's not valid as a composite component.
                 extractedComponentValues = extractedComponentValues
@@ -233,7 +256,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         }
     }
 
-    private IEnumerable<SearchIndexEntry> ProcessNonCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context)
+    private IEnumerable<SearchIndexEntry> ProcessNonCompositeSearchParameter(SearchParameterInfo searchParameter, IElement resource, EvaluationContext context, string resourceIdentity)
     {
         EnsureArg.IsNotNull(searchParameter, nameof(searchParameter));
         Debug.Assert(searchParameter.Type != SearchParamType.Composite, "The search parameter must be non-composite.");
@@ -252,7 +275,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
                      searchParameter.TargetResourceTypes,
                      resource,
                      searchParameter.Expression,
-                     context))
+                     context,
+                     resourceIdentity))
             yield return new SearchIndexEntry(searchParameterInfo, searchValue);
     }
 
@@ -262,7 +286,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
         IReadOnlyList<string> allowedReferenceResourceTypes,
         IElement element,
         string fhirPathExpression,
-        EvaluationContext context)
+        EvaluationContext context,
+        string resourceIdentity)
     {
         // Use the component definition type to determine the search value type.
         // This ensures consistency between indexing and querying.
@@ -278,9 +303,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             extractedValues = element.Select(fhirPathExpression, context).ToList();
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl);
+            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -289,7 +318,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             if (string.IsNullOrEmpty(extractedValue.InstanceType))
             {
-                Log.SkippingElementNullOrEmptyInstanceType(_logger);
+                Log.SkippingElementNullOrEmptyInstanceType(_logger, searchParameterDefinitionUrl, resourceIdentity);
                 continue;
             }
 
@@ -327,7 +356,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
                 }
             }
 
-            IEnumerable<ISearchValue> searchValues = converter.ConvertTo(extractedValue);
+            IEnumerable<ISearchValue> searchValues = ConvertOrLog(converter, extractedValue, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
 
             if (searchValues != null)
             {
@@ -362,7 +391,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
         IReadOnlyList<string> allowedReferenceResourceTypes,
         IElement element,
         string fhirPathExpression,
-        EvaluationContext context)
+        EvaluationContext context,
+        string resourceIdentity)
     {
         Debug.Assert(searchParameterType != SearchParamType.Composite, "The search parameter must be non-composite.");
 
@@ -377,9 +407,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             extractedValues = element.Select(fhirPathExpression, context).ToList();
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl);
+            Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -418,7 +452,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             if (string.IsNullOrEmpty(extractedValue.InstanceType))
             {
-                Log.SkippingElementNullOrEmptyInstanceType(_logger);
+                Log.SkippingElementNullOrEmptyInstanceType(_logger, searchParameterDefinitionUrl, resourceIdentity);
                 continue;
             }
 
@@ -429,7 +463,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
                 continue;
             }
 
-            IEnumerable<ISearchValue> searchValues = converter.ConvertTo(extractedValue);
+            IEnumerable<ISearchValue> searchValues = ConvertOrLog(converter, extractedValue, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
 
             if (searchValues != null)
             {
@@ -500,6 +534,59 @@ public partial class ElementSearchIndexer : ISearchIndexer
         };
     }
 
+    /// <summary>
+    /// Runs a converter and contains anything it throws to the one value being converted.
+    /// <para>
+    /// Converters are free to return a lazy sequence - several are <c>yield</c> iterators, so no conversion
+    /// work happens until the caller enumerates. That enumeration used to sit outside the try guarding
+    /// <c>element.Select</c>, which meant a single malformed literal (a <c>Timing.event</c> that
+    /// <c>PartialDateTime.Parse</c> rejects, say) escaped the indexer and failed the entire create or update.
+    /// Materializing here puts every converter, lazy or eager, inside this catch.
+    /// </para>
+    /// </summary>
+    private IReadOnlyList<ISearchValue> ConvertOrLog(
+        IElementToSearchValueConverter converter,
+        IElement extractedValue,
+        string fhirPathExpression,
+        string searchParameterDefinitionUrl,
+        string resourceIdentity)
+    {
+        try
+        {
+            IEnumerable<ISearchValue> converted = converter.ConvertTo(extractedValue);
+
+            // Already-materialized results are passed straight through: the base converter now returns a
+            // List, and copying it again would cost an allocation per indexed element on the write path.
+            // Anything still lazy is materialized here, inside the catch, which is the point of this method.
+            return converted as IReadOnlyList<ISearchValue> ?? converted?.ToList() ?? [];
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log.ConverterFailed(_logger, ex, converter.GetType().Name, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Builds the "ResourceType/id" label the indexing warnings are tagged with.
+    /// <para>
+    /// Read through <see cref="IElement.Children"/> rather than a FHIRPath expression on purpose: this label
+    /// exists to describe evaluation failures, so resolving it must not re-enter the evaluator that just
+    /// failed, and must not become a new way for indexing to throw.
+    /// </para>
+    /// </summary>
+    private static string DescribeResource(IElement resource)
+    {
+        IReadOnlyList<IElement> idElements = resource.Children("id");
+        string id = idElements.Count > 0 ? idElements[0]?.Value?.ToString() : null;
+
+        return string.IsNullOrEmpty(id) ? $"{resource.InstanceType}/(no id)" : $"{resource.InstanceType}/{id}";
+    }
+
     internal static Type GetSearchValueTypeForSearchParamType(SearchParamType? searchParamType)
     {
         switch (searchParamType)
@@ -535,11 +622,14 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Component {ComponentIndex} of composite search parameter '{SearchParameterCode}' has null or empty Expression. Skipping this composite value.")]
         public static partial void ComponentNullOrEmptyExpression(ILogger logger, int componentIndex, string searchParameterCode);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}'.")]
-        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl);
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'.")]
+        public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
 
-        [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType during search indexing.")]
-        public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger);
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' during search indexing.")]
+        public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger, string searchParameterUrl, string resourceIdentity);
+
+        [LoggerMessage(Level = LogLevel.Warning, Message = "Converter '{ConverterType}' failed on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. Skipping this value.")]
+        public static partial void ConverterFailed(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);

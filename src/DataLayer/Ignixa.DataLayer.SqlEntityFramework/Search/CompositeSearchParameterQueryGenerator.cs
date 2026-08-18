@@ -11,6 +11,8 @@ using Ignixa.Search.Expressions;
 using Ignixa.Search.Models;
 using Ignixa.Specification.ValueSets.Normative;
 
+using DateTimeCompositePredicate = System.Linq.Expressions.Expression<System.Func<Ignixa.DataLayer.SqlEntityFramework.Entities.TokenDateTimeCompositeSearchParamEntity, bool>>;
+
 namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 
 /// <summary>
@@ -776,83 +778,113 @@ public class CompositeSearchParameterQueryGenerator
                 $"Composite Quantity search with FieldName {field} and BinaryOperator {op} is not supported."),
         };
 
-    private IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> ApplyDateTimeFilter(
+    /// <summary>
+    /// Builds the date component's predicate from its whole conjunct/disjunct tree, rather than keeping one
+    /// bound per field.
+    /// <para>
+    /// A date comparator can put two bounds on the same field: <c>DateTimeEqualityRewriter</c> opts composites
+    /// in and turns <c>eq</c>'s containment shape into <c>Start &gt;= x AND Start &lt;= y AND End &lt;= y</c>,
+    /// so a last-writer-wins fold over the tree silently discards <c>Start &gt;= x</c> and leaves a predicate
+    /// with no lower bound at all. Every bound is therefore combined, not assigned.
+    /// </para>
+    /// <para>
+    /// <see cref="MultiaryOperator"/> is honoured too: <c>ne</c> lowers to a disjunction, and folding its
+    /// operands together with AND asks for a row that is simultaneously before and after the window, which no
+    /// row satisfies. An operand the walk does not recognise is unconstrained, so it is dropped from an AND
+    /// but collapses the enclosing OR to "no filter" - dropping a disjunct would narrow the result instead.
+    /// </para>
+    /// </summary>
+    private static IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> ApplyDateTimeFilter(
         IQueryable<Entities.TokenDateTimeCompositeSearchParamEntity> query,
         Expression expression)
     {
-        // Extract datetime components
-        DateTime? startValue = null;
-        DateTime? endValue = null;
-        BinaryOperator? startOp = null;
-        BinaryOperator? endOp = null;
+        var predicate = BuildDateTimePredicate(expression);
 
-        void ProcessExpression(Expression expr)
+        return predicate is null ? query : query.Where(predicate);
+    }
+
+    private static DateTimeCompositePredicate? BuildDateTimePredicate(Expression expression)
+    {
+        return expression switch
         {
-            if (expr is BinaryExpression binaryExpr)
-            {
-                var dateValue = binaryExpr.Value switch
-                {
-                    DateTime dt => dt,
-                    DateTimeOffset dto => dto.UtcDateTime,
-                    _ => default(DateTime?)
-                };
+            BinaryExpression binaryExpr => BuildDateTimeBound(binaryExpr),
+            MultiaryExpression { MultiaryOperation: MultiaryOperator.And } and1 => CombineConjuncts(and1),
+            MultiaryExpression { MultiaryOperation: MultiaryOperator.Or } or1 => CombineDisjuncts(or1),
+            _ => null
+        };
+    }
 
-                if (dateValue.HasValue)
-                {
-                    if (binaryExpr.FieldName == FieldName.DateTimeStart)
-                    {
-                        startValue = dateValue;
-                        startOp = binaryExpr.BinaryOperator;
-                    }
-                    else if (binaryExpr.FieldName == FieldName.DateTimeEnd)
-                    {
-                        endValue = dateValue;
-                        endOp = binaryExpr.BinaryOperator;
-                    }
-                }
-            }
-            else if (expr is MultiaryExpression multiary)
+    private static DateTimeCompositePredicate? CombineConjuncts(MultiaryExpression multiary)
+    {
+        DateTimeCompositePredicate? combined = null;
+
+        foreach (var subExpr in multiary.Expressions)
+        {
+            var operand = BuildDateTimePredicate(subExpr);
+
+            if (operand is not null)
             {
-                foreach (var subExpr in multiary.Expressions)
-                {
-                    ProcessExpression(subExpr);
-                }
+                combined = combined is null ? operand : PredicateComposer.And(combined, operand);
             }
         }
 
-        ProcessExpression(expression);
+        return combined;
+    }
 
-        // Apply start datetime filter
-        if (startValue.HasValue && startOp.HasValue)
+    private static DateTimeCompositePredicate? CombineDisjuncts(MultiaryExpression multiary)
+    {
+        DateTimeCompositePredicate? combined = null;
+
+        foreach (var subExpr in multiary.Expressions)
         {
-            var value = startValue.Value;
-            query = startOp.Value switch
+            var operand = BuildDateTimePredicate(subExpr);
+
+            if (operand is null)
             {
-                BinaryOperator.GreaterThanOrEqual => query.Where(t => t.StartDateTime2 >= value),
-                BinaryOperator.GreaterThan => query.Where(t => t.StartDateTime2 > value),
-                BinaryOperator.LessThanOrEqual => query.Where(t => t.StartDateTime2 <= value),
-                BinaryOperator.LessThan => query.Where(t => t.StartDateTime2 < value),
-                BinaryOperator.Equal => query.Where(t => t.StartDateTime2 == value),
-                _ => query
-            };
+                return null;
+            }
+
+            combined = combined is null ? operand : PredicateComposer.Or(combined, operand);
         }
 
-        // Apply end datetime filter
-        if (endValue.HasValue && endOp.HasValue)
+        return combined;
+    }
+
+    private static DateTimeCompositePredicate? BuildDateTimeBound(BinaryExpression binaryExpr)
+    {
+        var dateValue = binaryExpr.Value switch
         {
-            var value = endValue.Value;
-            query = endOp.Value switch
-            {
-                BinaryOperator.GreaterThanOrEqual => query.Where(t => t.EndDateTime2 >= value),
-                BinaryOperator.GreaterThan => query.Where(t => t.EndDateTime2 > value),
-                BinaryOperator.LessThanOrEqual => query.Where(t => t.EndDateTime2 <= value),
-                BinaryOperator.LessThan => query.Where(t => t.EndDateTime2 < value),
-                BinaryOperator.Equal => query.Where(t => t.EndDateTime2 == value),
-                _ => query
-            };
+            DateTime dt => dt,
+            DateTimeOffset dto => dto.UtcDateTime,
+            _ => default(DateTime?)
+        };
+
+        if (!dateValue.HasValue)
+        {
+            return null;
         }
 
-        return query;
+        // Each arm closes over `value` so EF Core sees a captured variable and parameterizes the comparison,
+        // exactly as it did when these were chained Where calls. An inlined constant would bake the date into
+        // the SQL text and give every distinct date its own plan-cache entry.
+        var value = dateValue.Value;
+
+        return (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
+        {
+            (FieldName.DateTimeStart, BinaryOperator.GreaterThanOrEqual) => t => t.StartDateTime2 >= value,
+            (FieldName.DateTimeStart, BinaryOperator.GreaterThan) => t => t.StartDateTime2 > value,
+            (FieldName.DateTimeStart, BinaryOperator.LessThanOrEqual) => t => t.StartDateTime2 <= value,
+            (FieldName.DateTimeStart, BinaryOperator.LessThan) => t => t.StartDateTime2 < value,
+            (FieldName.DateTimeStart, BinaryOperator.Equal) => t => t.StartDateTime2 == value,
+
+            (FieldName.DateTimeEnd, BinaryOperator.GreaterThanOrEqual) => t => t.EndDateTime2 >= value,
+            (FieldName.DateTimeEnd, BinaryOperator.GreaterThan) => t => t.EndDateTime2 > value,
+            (FieldName.DateTimeEnd, BinaryOperator.LessThanOrEqual) => t => t.EndDateTime2 <= value,
+            (FieldName.DateTimeEnd, BinaryOperator.LessThan) => t => t.EndDateTime2 < value,
+            (FieldName.DateTimeEnd, BinaryOperator.Equal) => t => t.EndDateTime2 == value,
+
+            _ => null
+        };
     }
 }
 
