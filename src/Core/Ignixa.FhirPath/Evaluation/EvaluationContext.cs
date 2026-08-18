@@ -85,7 +85,11 @@ public record EvaluationContext
         ImmutableList<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
-        ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase),
+        // Ordinal for the same reason as VariableScope: host-supplied names are read back through the same
+        // case-sensitive %name syntax, a few lines below the ordinal switch that resolves %resource and
+        // friends. A lenient comparer here would make %v and %V collide for hosts only, which is a
+        // difference no caller asked for rather than a convenience.
+        ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal),
         null,
         null,
         null)

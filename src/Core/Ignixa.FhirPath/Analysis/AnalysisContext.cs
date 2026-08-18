@@ -42,7 +42,7 @@ public sealed record AnalysisContext
         RootType = rootType;
         _issues = issues;
         Variables = variables;
-        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.OrdinalIgnoreCase);
+        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.Ordinal);
         TypeStack = typeStack;
         ExpressionContextStack = expressionContextStack;
         AggregateTotalStack = aggregateTotalStack;
@@ -122,7 +122,7 @@ public sealed record AnalysisContext
         }
 
         var variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty
-            .WithComparers(StringComparer.OrdinalIgnoreCase)
+            .WithComparers(StringComparer.Ordinal)
             .Add("resource", rootProps)
             .Add("rootResource", rootProps)
             .Add("context", rootProps)
@@ -327,7 +327,7 @@ public sealed record AnalysisContext
     public AnalysisContext ForkVariableScope()
     {
         return new AnalysisContext(Schema, RootType, _issues, Variables,
-            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.Ordinal),
             TypeStack, ExpressionContextStack, AggregateTotalStack, CurrentFocus);
     }
 

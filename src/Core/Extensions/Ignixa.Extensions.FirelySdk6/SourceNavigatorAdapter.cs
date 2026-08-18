@@ -51,6 +51,14 @@ public class SourceNavigatorAdapter : ISourceNavigator
     public string Name => _firelyNode.Name;
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Inherits its stability from the wrapped node, so the caller picks whether the contract holds.
+    /// Firely's own parse-backed nodes (<c>FhirJsonNode</c>, <c>FhirXmlNode</c>) are fixed once parsed and
+    /// satisfy it. A POCO-backed node — <c>ITypedElement.ToSourceNode()</c> over a mutable
+    /// <c>Hl7.Fhir.Model.Resource</c> — does not: reassigning a property changes <c>Text</c> on the same
+    /// node instance, and consumers that memoise (<c>SchemaAwareElement.Value</c>) will keep reporting the
+    /// value read before the edit. Re-adapt the POCO after mutating it rather than reusing the adapter.
+    /// </remarks>
     public string Text => _firelyNode.Text;
 
     /// <inheritdoc/>

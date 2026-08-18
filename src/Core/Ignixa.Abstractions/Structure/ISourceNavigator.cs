@@ -34,6 +34,21 @@ public interface ISourceNavigator
     /// Gets the text of the primitive value of the node.
     /// </summary>
     /// <value>Returns the raw textual value as represented in the serialization, or null if there is no value in this node.</value>
+    /// <remarks>
+    /// <para>
+    /// <b>Stability contract:</b> a navigator is a snapshot. <see cref="Text"/> must return the same value for
+    /// the lifetime of a given instance, even if the document it was parsed from is subsequently edited.
+    /// Callers observe an edit by re-deriving the navigator from the mutated document, not by re-reading an
+    /// instance they already hold - which is what <c>ResourceJsonNode.InvalidateCaches()</c> exists to force.
+    /// </para>
+    /// <para>
+    /// This is a real constraint on implementers, not a description of what they happen to do. Consumers are
+    /// entitled to memoise anything derived from <see cref="Text"/>, and <c>SchemaAwareElement.Value</c> does.
+    /// An implementation that reads through to a live mutable backing store - a POCO whose properties can be
+    /// reassigned, say - violates the contract and will make those consumers return values that are correct
+    /// for the snapshot but stale for the document, with no error to signal it.
+    /// </para>
+    /// </remarks>
     string Text { get; }
 
     /// <summary>

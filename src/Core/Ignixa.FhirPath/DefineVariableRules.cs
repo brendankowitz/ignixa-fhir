@@ -26,10 +26,17 @@ internal static class DefineVariableRules
     /// external constants and the implicit iteration variables (official test
     /// <c>dvCantOverwriteSystemVar</c>: <c>defineVariable('context', 'oops')</c>).
     /// </summary>
+    /// <remarks>
+    /// Ordinal, so the guard is exactly as wide as the thing it guards. The engine resolves these names
+    /// with a case-sensitive switch and <c>StartsWith(StringComparison.Ordinal)</c>
+    /// (<see cref="Evaluation.EvaluationContext.TryGetEnvironmentVariable"/>), so <c>%Context</c> never
+    /// reaches the system binding and <c>defineVariable('Context', …)</c> collides with nothing. Rejecting
+    /// it anyway would refuse a legal name on the strength of a collision that cannot happen.
+    /// </remarks>
     public static readonly FrozenSet<string> ReservedVariableNames = new[]
     {
         "context", "resource", "rootResource", "this", "index", "total", "ucum", "sct", "loinc"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
     /// Reports whether an earlier link of this invocation chain already defines <paramref name="variableName"/>
@@ -75,9 +82,13 @@ internal static class DefineVariableRules
         _ => null
     };
 
+    // The variable name is compared ordinally because %v and %V are distinct variables, so defining both
+    // is not the redefinition dvRedefiningVariableThrowsError describes. The function name keeps the
+    // lenient comparison it has always had, to stay consistent with how this engine dispatches every other
+    // function name; tightening that is a separate change with a far wider blast radius.
     private static bool DefinesVariable(FunctionCallExpression call, string variableName)
         => call.FunctionName.Equals("defineVariable", StringComparison.OrdinalIgnoreCase)
            && call.Arguments.Count > 0
            && call.Arguments[0] is ConstantExpression { Value: string definedName }
-           && definedName.Equals(variableName, StringComparison.OrdinalIgnoreCase);
+           && definedName.Equals(variableName, StringComparison.Ordinal);
 }

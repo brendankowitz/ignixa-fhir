@@ -66,7 +66,14 @@ public sealed class VariableScope
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(value);
 
-        _definitions ??= new Dictionary<string, ImmutableList<IElement>>(StringComparer.OrdinalIgnoreCase);
+        // Ordinal, because FHIRPath is a case-sensitive language: "FHIRPath identifiers and function names
+        // are case-sensitive. This means that Patient and patient are distinct identifiers"
+        // (FHIRPath N1 2.0.0 section 8.7), and %name is built from the same `identifier` production the
+        // grammar lexes with a plain case-sensitive character class. So %v and %V are two variables, and
+        // defining both is not a redefinition. This also matches how the engine already resolves the names
+        // it owns - the switch and the StartsWith(Ordinal) calls in
+        // EvaluationContext.TryGetEnvironmentVariable are ordinal, so %Context has never reached %context.
+        _definitions ??= new Dictionary<string, ImmutableList<IElement>>(StringComparer.Ordinal);
         _definitions[name] = value;
     }
 

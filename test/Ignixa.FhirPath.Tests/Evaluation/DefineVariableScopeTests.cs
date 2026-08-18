@@ -106,6 +106,54 @@ public class DefineVariableScopeTests
         Assert.False(context.Variables.TryResolve("leaked", out _));
     }
 
+    [Fact]
+    public void GivenTwoVariablesDifferingOnlyInCase_WhenBothAreRead_ThenTheyAreDistinctBindings()
+    {
+        // FHIRPath N1 2.0.0 section 8.7: "FHIRPath identifiers and function names are case-sensitive.
+        // This means that Patient and patient are distinct identifiers." %name is built from the same
+        // `identifier` production, so %v and %V name two variables - defining both is not a redefinition.
+        var expr = _parser.Parse("1.defineVariable('v', 'lower').defineVariable('V', 'upper').select(%v | %V)");
+
+        var result = _evaluator.Evaluate(CreateInteger(0), expr).ToList();
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("lower", result[0].Value);
+        Assert.Equal("upper", result[1].Value);
+    }
+
+    [Fact]
+    public void GivenAVariableDefinedInLowerCase_WhenReadInUpperCase_ThenTheNameIsUnresolved()
+    {
+        // The other half of case sensitivity: %V must not silently resolve to the binding made for %v.
+        var expr = _parser.Parse("1.defineVariable('v', 'lower').select(%V)");
+
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(CreateInteger(0), expr).ToList());
+
+        Assert.Contains("V", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GivenAVariableNamedLikeASystemVariableButCased_WhenDefined_ThenItIsNotTreatedAsReserved()
+    {
+        // %Context never reached the system binding - TryGetEnvironmentVariable switches ordinally - so
+        // rejecting defineVariable('Context', ...) refused a legal name over a collision that cannot happen.
+        var expr = _parser.Parse("1.defineVariable('Context', 'mine').select(%Context)");
+
+        var result = _evaluator.Evaluate(CreateInteger(0), expr).ToList();
+
+        Assert.Single(result);
+        Assert.Equal("mine", result[0].Value);
+    }
+
+    [Fact]
+    public void GivenAVariableNamedExactlyLikeASystemVariable_WhenDefined_ThenItIsStillRejected()
+    {
+        // Official dvCantOverwriteSystemVar - narrowing the guard to ordinal must not disarm it.
+        var expr = _parser.Parse("1.defineVariable('context', 'oops').select(%context)");
+
+        Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(CreateInteger(0), expr).ToList());
+    }
+
     private static IElement CreateInteger(int value) => new TestElement(value);
 
     private sealed class TestElement(object value) : IElement

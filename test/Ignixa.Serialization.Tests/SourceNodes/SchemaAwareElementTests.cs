@@ -979,6 +979,87 @@ public class SchemaAwareElementTests
 
     #endregion
 
+    #region Snapshot Invariant Tests
+
+    // Memoising Value is only sound because an element is a snapshot of its source node. These tests pin
+    // that invariant at the layer that actually supplies it, so a future live-reading ISourceNavigator
+    // cannot make Value silently stale without turning a test red.
+
+    [Fact]
+    public void GivenARetainedSourceNavigator_WhenTheUnderlyingJsonIsReplaced_ThenTextStillReportsTheSnapshot()
+    {
+        // Arrange - ISourceNavigator.Text has never been memoised, at any point in this file's history.
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        var gender = resource.ToSourceNavigator().Children("gender").Single();
+        var textBeforeMutation = gender.Text;
+
+        // Act
+        MutableNodeOf(resource)["gender"] = "male";
+
+        // Assert - the capture is frozen by JsonNodeSourceNode, not by any cache above it.
+        Assert.Equal("female", textBeforeMutation);
+        Assert.Equal("female", gender.Text);
+        Assert.Equal("male", MutableNodeOf(resource)["gender"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void GivenARetainedElement_WhenTheUnderlyingJsonIsReplaced_ThenValueStillReportsTheSnapshot()
+    {
+        // Arrange
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        var gender = resource.ToElement(_r4Provider).Children("gender").Single();
+        var valueBeforeMutation = gender.Value;
+
+        // Act
+        MutableNodeOf(resource)["gender"] = "male";
+
+        // Assert
+        Assert.Equal("female", valueBeforeMutation);
+        Assert.Equal("female", gender.Value);
+    }
+
+    [Fact]
+    public void GivenAMutatedResource_WhenCachesAreInvalidatedAndTheTreeIsRebuilt_ThenTheNewValueIsVisible()
+    {
+        // Arrange
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        Assert.Equal("female", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+
+        // Act - the supported way to observe an edit: re-derive rather than re-read.
+        MutableNodeOf(resource)["gender"] = "male";
+        resource.InvalidateCaches();
+
+        // Assert
+        Assert.Equal("male", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+    }
+
+    [Fact]
+    public void GivenAMutatedResource_WhenTheTreeIsRebuiltWithoutInvalidatingCaches_ThenTheOldValuePersists()
+    {
+        // Arrange
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        Assert.Equal("female", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+
+        // Act - ToElement() returns the cached tree, so re-deriving without invalidating changes nothing.
+        MutableNodeOf(resource)["gender"] = "male";
+
+        // Assert - this is why ResourceJsonNode.InvalidateCaches() exists.
+        Assert.Equal("female", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+    }
+
+    private const string PatientJson = """
+    {
+      "resourceType": "Patient",
+      "id": "pat1",
+      "gender": "female"
+    }
+    """;
+
+    private static System.Text.Json.Nodes.JsonObject MutableNodeOf(ResourceJsonNode resource)
+        => ((IMutableJsonNode)resource).MutableNode;
+
+    #endregion
+
     #region Type Definition Memoisation Tests
 
     [Fact]

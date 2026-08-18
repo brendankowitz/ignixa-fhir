@@ -30,6 +30,18 @@ internal class SchemaAwareElement : IElement
     // ComputeValue() can legitimately return null, so null cannot mark "not computed": a sentinel does.
     // The field is volatile so the reference publishes with release semantics. ComputeValue() is pure,
     // so a race can only duplicate the work, never publish a half-built value.
+    //
+    // CORRECTNESS PRECONDITION: an element is a snapshot of its source node, not a live view of the
+    // document. Memoising is only sound because ISourceNavigator.Text is contractually stable for the
+    // lifetime of a navigator instance (see ISourceNavigator.Text) — so this caches a value that could
+    // not have changed anyway, rather than freezing one that could. JsonNodeSourceNode upholds it by
+    // capturing the backing JsonValue by reference at construction: System.Text.Json edits replace a
+    // node in its parent instead of mutating it, so the captured instance never changes, and the node
+    // already snapshots its children into _cachedNodes on first navigation for the same reason.
+    // The way to observe an edit is therefore to re-derive the tree — ResourceJsonNode.InvalidateCaches()
+    // followed by ToElement() — never to re-read an element captured before the edit. Callers that hold
+    // an element tree across a mutation of the same document already read pre-mutation values without
+    // this memo; removing it would not make them correct.
     private static readonly object ValueNotComputed = new();
 
     private volatile object? _cachedValue = ValueNotComputed;
