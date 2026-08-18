@@ -37,16 +37,6 @@ public sealed partial class SearchParameter : Ignixa.Models.SearchParameter
     }
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public PrimitiveElement<string> XpathElement => new(MutableNode, "xpath");
 
     [JsonIgnore]

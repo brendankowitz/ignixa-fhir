@@ -137,29 +137,51 @@ public abstract class BaseJsonNode : IMutableJsonNode
 
     protected MutableJsonList<T> GetListProperty<T>(string name) where T : BaseJsonNode
     {
-        if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
-        {
-            jsonArray = null;
-        }
+        JsonArray? jsonArray = ReadArrayOrThrow(name);
         return new MutableJsonList<T>(() => GetOrCreateArray(name), jsonArray, FhirVersion);
     }
 
     protected MutablePrimitiveList<T> GetPrimitiveListProperty<T>(string name)
     {
-        if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
-        {
-            jsonArray = null;
-        }
+        JsonArray? jsonArray = ReadArrayOrThrow(name);
         return new MutablePrimitiveList<T>(() => GetOrCreateArray(name), jsonArray);
+    }
+
+    /// <summary>
+    /// Returns the array at <paramref name="name"/>, or null when the element is absent (or explicitly
+    /// JSON null, which FHIR does not distinguish from absent).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The element is present but is not an array. Treating that as "absent" would let the first write
+    /// overwrite author-supplied content, so it is surfaced rather than coerced.
+    /// </exception>
+    private JsonArray? ReadArrayOrThrow(string name)
+    {
+        if (!MutableNode.TryGetPropertyValue(name, out JsonNode? node) || node is null)
+        {
+            return null;
+        }
+
+        if (node is not JsonArray jsonArray)
+        {
+            throw new InvalidOperationException(
+                $"Element '{name}' on {GetType().Name} is {node.GetValueKind()} but FHIR defines it as an "
+                + "array. Fix the resource payload; Ignixa will not coerce or discard it.");
+        }
+
+        return jsonArray;
     }
 
     private JsonArray GetOrCreateArray(string name)
     {
-        if (!MutableNode.TryGetPropertyValue(name, out var node) || node is not JsonArray jsonArray)
+        JsonArray? existing = ReadArrayOrThrow(name);
+        if (existing is not null)
         {
-            jsonArray = new JsonArray();
-            MutableNode[name] = jsonArray;
+            return existing;
         }
+
+        var jsonArray = new JsonArray();
+        MutableNode[name] = jsonArray;
         return jsonArray;
     }
 }

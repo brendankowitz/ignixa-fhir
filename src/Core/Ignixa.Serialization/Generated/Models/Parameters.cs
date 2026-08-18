@@ -35,15 +35,5 @@ public partial class Parameters : ResourceJsonNode
     }
 
     [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutableJsonList<ParametersParameter> Parameter => GetListProperty<ParametersParameter>("parameter");
 }

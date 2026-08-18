@@ -46,23 +46,7 @@ public partial class Provenance : DomainResourceJsonNode
     public MutableJsonList<ProvenanceAgent> Agent => GetListProperty<ProvenanceAgent>("agent");
 
     [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
-    [JsonIgnore]
     public MutableJsonList<ProvenanceEntity> Entity => GetListProperty<ProvenanceEntity>("entity");
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
 
     [JsonIgnore]
     public Reference? Location
@@ -70,9 +54,6 @@ public partial class Provenance : DomainResourceJsonNode
         get => GetComplexProperty<Reference>("location");
         set => SetProperty("location", value?.MutableNode);
     }
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     private static readonly string[] OccurredVariantKeys =
         ["occurredPeriod", "occurredDateTime"];
@@ -168,11 +149,4 @@ public partial class Provenance : DomainResourceJsonNode
 
     [JsonIgnore]
     public MutableJsonList<Reference> Target => GetListProperty<Reference>("target");
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
-    }
 }

@@ -45,16 +45,6 @@ public partial class Bundle : ResourceJsonNode
     }
 
     [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutableJsonList<BundleLink> Link => GetListProperty<BundleLink>("link");
 
     [JsonIgnore]

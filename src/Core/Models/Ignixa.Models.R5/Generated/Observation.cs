@@ -120,16 +120,6 @@ public sealed partial class Observation : Ignixa.Models.Observation
     }
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutableJsonList<ObservationTriggeredBy> TriggeredBy => GetListProperty<ObservationTriggeredBy>("triggeredBy");
 
     private static readonly string[] ValueVariantKeys =

@@ -35,14 +35,4 @@ public sealed partial class Patient : Ignixa.Models.Patient
         : base(jsonObject, fhirVersion)
     {
     }
-
-    [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
 }
