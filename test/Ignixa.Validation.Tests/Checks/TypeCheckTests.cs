@@ -27,10 +27,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("gender", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -45,10 +46,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("active", "boolean");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -63,10 +65,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("multipleBirthInteger", "integer");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -81,10 +84,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("multipleBirthInteger", "integer");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -99,10 +103,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("value", "decimal");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -117,10 +122,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -135,10 +141,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -153,10 +160,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -171,10 +179,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid); // Missing fields handled by RequiredFieldCheck
@@ -189,10 +198,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recorded", "instant");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -207,10 +217,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recorded", "instant");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -225,10 +236,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recorded", "instant");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -243,10 +255,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recorded", "instant");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -262,10 +275,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("url", "canonical");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -285,7 +299,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -306,7 +320,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -325,10 +339,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("active", "boolean");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -346,7 +361,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -365,10 +380,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("multipleBirthInteger", "integer");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -383,10 +399,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("active", "boolean");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -403,7 +420,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -421,10 +438,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("multipleBirthInteger", "integer");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -444,10 +462,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert - element has no primitive value, so type check should pass (not fail on JSON Object kind)
         result.IsValid.ShouldBeTrue();
@@ -463,10 +482,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -483,10 +503,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -502,10 +523,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("active", "boolean");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -521,10 +543,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("active", "boolean");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -542,7 +565,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -562,10 +585,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("url", "canonical");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -586,10 +610,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("url", "canonical");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue($"Canonical '{canonicalValue}' should be valid");
@@ -605,10 +630,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("url", "canonical");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -624,10 +650,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("url", "canonical");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -645,10 +672,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recordedDate", "dateTime");
         var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -666,10 +694,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recordedDate", "dateTime");
         var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue($"dateTime '{dateTimeValue}' should be valid at Spec depth");
@@ -689,10 +718,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recordedDate", "dateTime");
         var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Full };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse($"dateTime '{dateTimeValue}' should fail at Full depth (R4 strict)");
@@ -708,10 +738,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recordedDate", "dateTime");
         var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -727,10 +758,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recordedDate", "dateTime");
         var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -749,10 +781,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("recordedDate", "dateTime");
         var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Full };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -780,10 +813,11 @@ public class TypeCheckTests
             var sourceNode = JsonNodeSourceNode.Create(json);
             var check = new TypeCheck("recordedDate", "dateTime");
             var settings = new ValidationSettings { Depth = Ignixa.Validation.Abstractions.ValidationDepth.Full };
-            var state = new ValidationState();
+            var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+            var state = ValidationState.ForRoot(element);
 
             // Act
-            var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+            var result = check.Validate(element, settings, state);
 
             // Assert
             result.IsValid.ShouldBeTrue($"dateTime '{dateTime}' should be valid even at Full depth");
@@ -802,7 +836,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -822,10 +856,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -842,10 +877,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -864,7 +900,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -886,10 +922,11 @@ public class TypeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new TypeCheck("birthDate", "date");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue($"date '{dateValue}' should be valid");
@@ -907,7 +944,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -928,7 +965,7 @@ public class TypeCheckTests
         var nameElement = element.Children("name")[0];
         var check = new TypeCheck("family", "string");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(nameElement);
 
         // Act
         var result = check.Validate(nameElement, settings, state);
@@ -949,7 +986,7 @@ public class TypeCheckTests
         var contentElement = element.Children("content")[0];
         var check = new TypeCheck("data", "base64Binary");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(contentElement);
 
         // Act
         var result = check.Validate(contentElement, settings, state);
@@ -970,7 +1007,7 @@ public class TypeCheckTests
         var contentElement = element.Children("content")[0];
         var check = new TypeCheck("data", "base64Binary");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(contentElement);
 
         // Act
         var result = check.Validate(contentElement, settings, state);

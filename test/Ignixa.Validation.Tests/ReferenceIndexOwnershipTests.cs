@@ -82,7 +82,7 @@ public class ReferenceIndexOwnershipTests
             ToElement("""{ "resourceType": "Patient", "id": "p1" }"""));
 
         // Act
-        var state = new ValidationState().EnterRootResource(recording);
+        var state = ValidationState.ForRoot(recording);
 
         // Assert — seeding a scope records two element references and walks nothing.
         state.Scope.Resource.ShouldBeSameAs(recording);
@@ -105,8 +105,7 @@ public class ReferenceIndexOwnershipTests
         var recordingContained = new ChildAccessRecordingElement(parent.Children("contained")[0]);
 
         // Act
-        var state = new ValidationState()
-            .EnterRootResource(recordingParent)
+        var state = ValidationState.ForRoot(recordingParent)
             .EnterContainedResource(recordingContained);
 
         // Assert
@@ -129,7 +128,7 @@ public class ReferenceIndexOwnershipTests
             "generalPractitioner": [ { "reference": "#missing" } ]
         }
         """));
-        var state = new ValidationState().EnterRootResource(recording);
+        var state = ValidationState.ForRoot(recording);
 
         // Act
         var result = Evaluate(recording, state, "generalPractitioner.reference.resolve().empty()", "Patient");
@@ -159,8 +158,7 @@ public class ReferenceIndexOwnershipTests
         """);
         var recordingParent = new ChildAccessRecordingElement(parent);
         var recordingContained = new ChildAccessRecordingElement(parent.Children("contained")[0]);
-        var state = new ValidationState()
-            .EnterRootResource(recordingParent)
+        var state = ValidationState.ForRoot(recordingParent)
             .EnterContainedResource(recordingContained);
 
         // Act
@@ -194,7 +192,7 @@ public class ReferenceIndexOwnershipTests
         }
         """);
         var contained = parent.Children("contained")[0];
-        var state = new ValidationState().EnterRootResource(parent).EnterContainedResource(contained);
+        var state = ValidationState.ForRoot(parent).EnterContainedResource(contained);
 
         // Act
         var result = Evaluate(
@@ -220,7 +218,7 @@ public class ReferenceIndexOwnershipTests
         }
         """);
         var contained = parent.Children("contained")[0];
-        var state = new ValidationState().EnterRootResource(parent).EnterContainedResource(contained);
+        var state = ValidationState.ForRoot(parent).EnterContainedResource(contained);
 
         // Act
         var result = Evaluate(contained, state, "'#'.resolve().is(Observation)", "Patient");
@@ -244,7 +242,7 @@ public class ReferenceIndexOwnershipTests
             ]
         }
         """));
-        var state = new ValidationState().EnterRootResource(recording);
+        var state = ValidationState.ForRoot(recording);
 
         // Act
         var result = Evaluate(
@@ -279,7 +277,7 @@ public class ReferenceIndexOwnershipTests
         }
         """);
         var contained = parent.Children("contained")[0];
-        var state = new ValidationState().EnterRootResource(parent).EnterContainedResource(contained);
+        var state = ValidationState.ForRoot(parent).EnterContainedResource(contained);
 
         // Act
         var result = new ReferenceResolutionCheck().Validate(
@@ -313,7 +311,7 @@ public class ReferenceIndexOwnershipTests
             ]
         }
         """);
-        var state = new ValidationState().EnterRootResource(bundle);
+        var state = ValidationState.ForRoot(bundle);
 
         // Act
         var result = new ReferenceResolutionCheck().Validate(

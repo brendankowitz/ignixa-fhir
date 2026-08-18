@@ -111,12 +111,7 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
                     Depth = validationDepth,
                     TerminologyService = _terminologyService
                 };
-                // Seed the resource scope: %resource / %rootResource / resolve() come from here, and an
-                // unseeded state makes every root-referencing invariant evaluate to empty, which reads as a
-                // failed constraint and rejects a conformant resource. IElement has no parent link, so the
-                // engine cannot recover this downstream - the caller is the only party that knows the resource.
-                var state = new ValidationState().EnterRootResource(element);
-                var validationResult = schema.Validate(element, settings, state);
+                var validationResult = schema.Validate(element, settings);
 
                 if (!validationResult.IsValid)
                 {

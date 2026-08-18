@@ -110,7 +110,7 @@ public class IgnixaFirelyIntegrationTests
         var validationSchema = builder.BuildSchema(patientType!, schema);
 
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(element);
         var result = validationSchema.Validate(element, settings, state);
 
         // Assert
@@ -143,7 +143,7 @@ public class IgnixaFirelyIntegrationTests
         var validationSchema = builder.BuildSchema(observationType!, schema);
 
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(element);
         var result = validationSchema.Validate(element, settings, state);
 
         // Assert

@@ -40,7 +40,7 @@ public class ElementScopedInvariantTests
         schema.ShouldNotBeNull();
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Full };
-        return schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
+        return schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class ElementScopedInvariantTests
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Full };
         var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
         return schema!.Validate(element, settings, state);
     }
 }

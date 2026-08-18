@@ -114,7 +114,7 @@ public class UnsupportedContextTypeInvariantTests
         };
 
         return new FhirPathInvariantCheck(constraint, _schema, _parser)
-            .Validate(snapshot, new ValidationSettings { Depth = ValidationDepth.Spec }, new ValidationState());
+            .Validate(snapshot, new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(snapshot));
     }
 
     private IConstraint ShippedSnapshotConstraint(string key)

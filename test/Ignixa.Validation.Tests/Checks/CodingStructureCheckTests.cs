@@ -28,10 +28,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("maritalStatus");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -47,10 +48,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("maritalStatus");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -66,10 +68,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("class");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -87,10 +90,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("maritalStatus");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         // CodingStructureCheck returns failure if any issues exist (including warnings)
@@ -109,10 +113,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("maritalStatus");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -130,10 +135,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("maritalStatus");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         // CodingStructureCheck treats missing coding array as a direct Coding
@@ -153,10 +159,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("class");
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -172,10 +179,11 @@ public class CodingStructureCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CodingStructureCheck("class");
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -211,7 +219,7 @@ public class CodingStructureCheckTests
 
         var check = new CodingStructureCheck("tag");
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(meta);
 
         // Act
         var result = check.Validate(meta, settings, state);

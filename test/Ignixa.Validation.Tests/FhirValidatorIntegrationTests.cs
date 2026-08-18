@@ -46,8 +46,9 @@ public class FhirValidatorIntegrationTests
         }
 
         var settings = new ValidationSettings { Depth = depth };
-        var state = new ValidationState();
-        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+        return schema.Validate(element, settings, state);
     }
 
     #region Tier-Aware Validation
@@ -536,7 +537,7 @@ public class FhirValidatorIntegrationTests
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
 
         // Act - Explicitly pass null for ValidationState
-        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, null);
+        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings);
 
         // Assert - Should not throw NullReferenceException
         result.ShouldNotBeNull();
@@ -562,7 +563,7 @@ public class FhirValidatorIntegrationTests
         var settings = new ValidationSettings { Depth = ValidationDepth.Full };
 
         // Act - Pass null for ValidationState (should handle nested complex types)
-        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, null);
+        var result = schema!.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings);
 
         // Assert - Should not throw NullReferenceException in NestedComplexTypeCheck
         result.ShouldNotBeNull();

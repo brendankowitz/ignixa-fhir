@@ -314,10 +314,8 @@ public class ChoiceVariantInvariantTests
         var schema = _resolver.GetSchema($"http://hl7.org/fhir/StructureDefinition/{resourceType}")
             ?? throw new InvalidOperationException($"No schema for {resourceType}");
 
-        // Omit the ValidationState so ValidationSchema.Validate self-seeds the resource scope from
-        // `element`, exactly as the write path does (ValidationBehavior no longer passes a bare state
-        // either). Passing an explicit new ValidationState() here would exercise the unseeded branch
-        // instead of production behavior - see ValidationSchema.Validate's remarks.
+        // Omit the ValidationState so ValidationSchema.Validate seeds it from `element`, exactly as the
+        // write path does.
         return schema.Validate(
             sourceNode.ToElement(_schema),
             new ValidationSettings { Depth = depth });

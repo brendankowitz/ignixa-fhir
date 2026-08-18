@@ -39,10 +39,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -68,10 +69,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -99,10 +101,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -129,10 +132,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -156,10 +160,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -185,10 +190,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -214,10 +220,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -242,10 +249,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -269,10 +277,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -297,10 +306,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -323,10 +333,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -349,10 +360,11 @@ public class NarrativeCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new NarrativeCheck();
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);

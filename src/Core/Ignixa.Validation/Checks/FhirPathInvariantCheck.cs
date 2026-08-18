@@ -157,8 +157,7 @@ public class FhirPathInvariantCheck : IValidationCheck
         // (datatypes, backbones) still get ele-1; empty complex datatypes remain covered structurally
         // by StructuralShapeCheck.
         if (string.Equals(_constraint.Key, "ele-1", StringComparison.Ordinal)
-            && state.Scope.Resource is { } resourceRoot
-            && ReferenceEquals(element, resourceRoot))
+            && ReferenceEquals(element, state.Scope.Resource))
         {
             return ValidationResult.Success();
         }
@@ -292,20 +291,15 @@ public class FhirPathInvariantCheck : IValidationCheck
     /// <summary>
     /// Builds the FHIRPath evaluation context from the validation scope. Always carries the
     /// instance-creation delegate so instance selectors (<c>Type { ... }</c>) construct
-    /// schema-backed nodes; resource scope (%resource / %rootResource / resolve()) is layered
-    /// on when seeded. A fresh context is returned per evaluation because
-    /// <see cref="EvaluationContext.DefinedVariables"/> is mutated by <c>defineVariable()</c>;
-    /// sharing one instance would leak variables between constraints and race across threads.
+    /// schema-backed nodes, and always carries the resource scope (%resource / %rootResource /
+    /// resolve()) — <see cref="ValidationState"/> cannot exist without one. A fresh context is returned
+    /// per evaluation because <see cref="EvaluationContext.DefinedVariables"/> is mutated by
+    /// <c>defineVariable()</c>; sharing one instance would leak variables between constraints and race
+    /// across threads.
     /// </summary>
     private EvaluationContext BuildEvaluationContext(ValidationState state)
     {
         var scope = state.Scope;
-        if (scope.Resource is null)
-        {
-            return new EvaluationContext()
-                .WithInstanceCreator(_instanceCreator.Value)
-                .WithSchema(_schema);
-        }
 
         // No ElementResolver: resolve() resolves in-instance from Resource/RootResource via
         // EvaluationContext.ReferenceIndexCache. ElementResolver is the seam for a HOST resolver

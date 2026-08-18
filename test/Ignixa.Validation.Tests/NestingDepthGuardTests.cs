@@ -35,7 +35,8 @@ public class NestingDepthGuardTests
     public void GivenAFreshState_WhenDescending_ThenTheDepthIncrementsWithoutMutatingTheOriginal()
     {
         // Arrange
-        var state = new ValidationState();
+        var element = MinimalPatient();
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var descended = state.TryDescend(out var next);
@@ -50,7 +51,7 @@ public class NestingDepthGuardTests
     public void GivenAStateAtTheDepthLimit_WhenDescending_ThenItRefuses()
     {
         // Arrange
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(MinimalPatient());
         for (var i = 0; i < ValidationState.MaxNestingDepth; i++)
         {
             state.TryDescend(out state).ShouldBeTrue();
@@ -107,6 +108,10 @@ public class NestingDepthGuardTests
         result.Issues.ShouldNotContain(i => i.Code == "validation-nesting-limit", Describe(result));
     }
 
+    private IElement MinimalPatient() =>
+        JsonNodeSourceNode.Create(JsonNode.Parse("""{"resourceType":"Patient","id":"p"}""")!)
+            .ToElement(_schema);
+
     /// <summary>
     /// Builds <paramref name="levels"/> Patients each contained in the one above.
     /// </summary>
@@ -137,11 +142,8 @@ public class NestingDepthGuardTests
         var schema = _resolver.GetSchema($"http://hl7.org/fhir/StructureDefinition/{resourceType}")
             ?? throw new InvalidOperationException($"No schema for {resourceType}");
 
-        // Omit the ValidationState so ValidationSchema.Validate self-seeds the resource scope from
-        // `element`, exactly as the write path does. Passing an explicit new ValidationState() here
-        // would exercise the unseeded branch instead of production behavior - see ValidationSchema
-        // .Validate's remarks. Self-seeding does not reset NestingDepth (EnterRootResource is a
-        // `with`-expression over the existing state), so this does not change the guard's behavior.
+        // Omit the ValidationState so ValidationSchema.Validate seeds it from `element`, exactly as the
+        // write path does. The seeded state starts at NestingDepth 0, which is what the guard counts from.
         return schema.Validate(
             sourceNode.ToElement(_schema),
             new ValidationSettings { Depth = depth });

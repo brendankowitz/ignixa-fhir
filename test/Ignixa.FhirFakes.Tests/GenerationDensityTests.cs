@@ -161,7 +161,7 @@ public class GenerationDensityTests
 
         var sourceNode = JsonNodeSourceNode.Create(resource.MutableNode());
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        return schema.Validate(sourceNode.ToElement(_schemaProvider), settings, new ValidationState());
+        return schema.Validate(sourceNode.ToElement(_schemaProvider), settings, ValidationState.ForRoot(sourceNode.ToElement(_schemaProvider)));
     }
 
     private static int MeasureMaxDepth(JsonNode? node)
