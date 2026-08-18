@@ -3,6 +3,7 @@
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
@@ -102,8 +103,11 @@ internal static class ElementJsonConverter
             decimal d => JsonValue.Create(d),
             double db => JsonValue.Create(db),
             float f => JsonValue.Create(f),
-            DateTime dt => JsonValue.Create(dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
-            DateTimeOffset dto => JsonValue.Create(dto.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK")),
+            // InvariantCulture is load-bearing: without it the calendar comes from CurrentCulture, so
+            // "yyyy" renders the Buddhist year on th-TH (2567), the UmAlQura year on ar-SA (1445) and the
+            // Persian year on fa-IR (1402) — writing a wrong date into the FHIR payload.
+            DateTime dt => JsonValue.Create(dt.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK", CultureInfo.InvariantCulture)),
+            DateTimeOffset dto => JsonValue.Create(dto.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK", CultureInfo.InvariantCulture)),
             FhirTemporal temporal => JsonValue.Create(temporal.Literal),
             _ => JsonNode.Parse(JsonSerializer.Serialize(value)),
         };
