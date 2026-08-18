@@ -41,20 +41,46 @@ internal static class QuantityEvaluator
     }
 
     /// <summary>
-    /// Evaluates arithmetic operations on quantities.
+    /// Evaluates arithmetic operations where at least one operand is a Quantity.
     /// </summary>
     /// <param name="left">Left operand collection</param>
     /// <param name="op">Binary operator</param>
     /// <param name="right">Right operand collection</param>
-    /// <returns>Result of the arithmetic operation, or empty if operands are incompatible</returns>
+    /// <returns>The result, or empty when the operation is defined but has no answer.</returns>
+    /// <exception cref="FhirPathEvaluationException">
+    /// The operator is not defined for the operand types, or an operand is not a singleton.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// The distinction this method has to keep straight is between "defined but with no answer" and "not
+    /// defined at all". <c>1 'mg' + 1 'm'</c> is the first: <c>+</c> is defined for two Quantities and the
+    /// spec's unit-conversion rule resolves incomparable units to empty. <c>1 'mg' + 5</c> is the second:
+    /// <c>+</c> on a Quantity is defined only for a Quantity operand, so an Integer is one of §Math's
+    /// "incompatible items" and the evaluation must signal an error.
+    /// </para>
+    /// <para>
+    /// Everything unimplemented used to fall out of here as empty, which collapsed those two cases onto
+    /// the same answer. That is not a cosmetic difference: <c>FhirPathInvariantCheck.IsResultTrue</c> maps
+    /// empty to <see langword="false"/>, so a mistyped operand in a quantity-valued invariant rejected the
+    /// resource instead of reporting that the constraint could not be evaluated.
+    /// </para>
+    /// </remarks>
     public static IEnumerable<IElement> EvaluateArithmetic(
         IReadOnlyList<IElement> left,
         string op,
         IReadOnlyList<IElement> right)
     {
-        // FhirPath arithmetic requires single values on both sides
-        if (left.Count != 1 || right.Count != 1)
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        if (left.Count == 0 || right.Count == 0)
             return [];
+
+        if (left.Count > 1 || right.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"Operator '{op}' requires singleton operands, but was given {left.Count} item(s) on the left and {right.Count} item(s) on the right.");
+        }
 
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
@@ -68,7 +94,7 @@ internal static class QuantityEvaluator
                 "-" => EvaluateQuantitySubtraction(leftQty, rightQty),
                 "*" => EvaluateQuantityMultiplication(leftQty, rightQty),
                 "/" => EvaluateQuantityDivision(leftQty, rightQty),
-                _ => []
+                _ => throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op)
             };
         }
 
@@ -81,38 +107,70 @@ internal static class QuantityEvaluator
                 return EvaluateQuantityScalarDivide(leftQuantity, ToDecimal(rightValue));
         }
 
-        if (IsScalar(leftValue) && leftValue != null && rightValue is Quantity rightQuantity)
+        if (IsScalar(leftValue) && leftValue != null && rightValue is Quantity rightQuantity && op == "*")
         {
-            if (op == "*")
-                return EvaluateQuantityScalarMultiply(rightQuantity, ToDecimal(leftValue));
+            return EvaluateQuantityScalarMultiply(rightQuantity, ToDecimal(leftValue));
         }
 
-        return [];
+        throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op);
     }
 
     /// <summary>
-    /// Evaluates comparison operations on quantities.
+    /// Evaluates comparison operations where at least one operand is a Quantity.
     /// </summary>
     /// <param name="left">Left operand collection</param>
     /// <param name="op">Comparison operator (=, !=, <, <=, >, >=)</param>
     /// <param name="right">Right operand collection</param>
-    /// <returns>Boolean result, or null if comparison is not possible</returns>
+    /// <returns>Boolean result, or null when the comparison is undecidable and must yield empty.</returns>
+    /// <exception cref="FhirPathEvaluationException">
+    /// An ordering operator was applied to a Quantity and an operand that no implicit conversion can make
+    /// a Quantity, or an operand was not a singleton.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// A bare number is a Quantity in the unity unit: the FHIRPath conversion table makes Integer and
+    /// Decimal <i>implicitly</i> convertible to Quantity, so <c>1 'mg' &gt; 5</c> is <c>1 'mg'</c> against
+    /// <c>5 '1'</c> and yields empty by the unit-compatibility rule below rather than by "the right
+    /// operand is not a Quantity". Same answer, but for a reason that also gets <c>5 '1' = 5</c> right,
+    /// and one that does not swallow the operands no conversion reaches.
+    /// </para>
+    /// <para>
+    /// A String, Boolean or temporal operand has no such conversion, so it is a genuine type mismatch.
+    /// Ordering signals an error there, exactly as <c>Observation.value.value &lt; 'test'</c> does on the
+    /// non-Quantity path (official <c>testLiteralDecimalLessThanInvalid</c>); this branch sits above that
+    /// check in the evaluator and used to return empty instead, which
+    /// <c>FhirPathInvariantCheck.IsResultTrue</c> then reported as a failed constraint. Equality does not
+    /// error: FHIRPath equality between values of different types is decidably <see langword="false"/>,
+    /// not undecidable.
+    /// </para>
+    /// </remarks>
     public static bool? EvaluateComparison(
         IReadOnlyList<IElement> left,
         string op,
         IReadOnlyList<IElement> right)
     {
-        // FhirPath comparisons require single values on both sides
-        if (left.Count != 1 || right.Count != 1)
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        if (left.Count == 0 || right.Count == 0)
             return null;
+
+        if (left.Count > 1 || right.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"Operator '{op}' requires singleton operands, but was given {left.Count} item(s) on the left and {right.Count} item(s) on the right.");
+        }
 
         // Try to extract Quantity from elements (handles both FhirPath literals and FHIR Quantity elements)
         var leftQty = ExtractQuantity(left[0]);
         var rightQty = ExtractQuantity(right[0]);
 
-        // Both must be quantities
         if (leftQty == null || rightQty == null)
-            return null;
+        {
+            return op is "=" or "!="
+                ? op == "!="
+                : throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op);
+        }
 
         // Check if units are compatible (can be converted)
         if (!UnitConverter.IsCompatible(leftQty.Unit, rightQty.Unit))
@@ -132,19 +190,23 @@ internal static class QuantityEvaluator
             "<=" => leftQty.CompareTo(convertedRight) <= 0,
             ">" => leftQty.CompareTo(convertedRight) > 0,
             ">=" => leftQty.CompareTo(convertedRight) >= 0,
-            _ => null
+            _ => throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op)
         };
     }
 
     /// <summary>
-    /// Extracts a Quantity from an IElement, handling both FhirPath Quantity literals
-    /// and FHIR Quantity elements (which have value/unit/code children).
+    /// Extracts a Quantity from an IElement, handling FhirPath Quantity literals, FHIR Quantity elements
+    /// (which have value/unit/code children), and the implicit conversion from a bare number.
     /// </summary>
     private static Quantity? ExtractQuantity(IElement element)
     {
         // If the value is already a Quantity (FhirPath literal), return it directly
         if (element.Value is Quantity qty)
             return qty;
+
+        // Integer and Decimal are implicitly convertible to Quantity, in the unity unit.
+        if (element.Value is not null && IsScalar(element.Value))
+            return new Quantity(ToDecimal(element.Value), "1");
 
         // If it's a FHIR Quantity element, extract value and unit from children
 #pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are case-insensitive

@@ -112,7 +112,7 @@ internal static class CollectionFunctions
         Description = "Returns a collection containing only the distinct elements")]
     public static IEnumerable<IElement> Distinct(IEnumerable<IElement> focus)
     {
-        return focus.Distinct(new FunctionHelpers.ElementEqualityComparer());
+        return FunctionHelpers.Distinct(focus);
     }
 
     /// <summary>
@@ -130,8 +130,7 @@ internal static class CollectionFunctions
     public static IEnumerable<IElement> IsDistinct(IEnumerable<IElement> focus)
     {
         var list = focus.ToList();
-        var distinctCount = list.Select(e => e.Value).Distinct(new FunctionHelpers.ObjectEqualityComparer()).Count();
-        var isDistinct = distinctCount == list.Count;
+        var isDistinct = FunctionHelpers.Distinct(list).Count == list.Count;
         return [(IElement)FunctionHelpers.CreateBoolean(isDistinct)];
     }
 
@@ -672,7 +671,7 @@ internal static class CollectionFunctions
 
         foreach (var item in focus)
         {
-            if (other.Any(o => FunctionHelpers.AreEqual(o.Value, item.Value)) && !result.Any(r => FunctionHelpers.AreEqual(r.Value, item.Value)))
+            if (other.Any(o => FunctionHelpers.AreElementsEqual(o, item)) && !result.Any(r => FunctionHelpers.AreElementsEqual(r, item)))
             {
                 result.Add(item);
             }
@@ -707,7 +706,7 @@ internal static class CollectionFunctions
 
         foreach (var item in focus)
         {
-            if (!other.Any(o => FunctionHelpers.AreEqual(o.Value, item.Value)))
+            if (!other.Any(o => FunctionHelpers.AreElementsEqual(o, item)))
             {
                 result.Add(item);
             }
@@ -1139,7 +1138,7 @@ internal static class CollectionFunctions
         }
 
         // For primitive types, use value comparison
-        return FunctionHelpers.AreEqual(left.Value, right.Value);
+        return FunctionHelpers.AreElementsEqual(left, right);
     }
 
     /// <summary>
