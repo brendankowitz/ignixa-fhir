@@ -120,9 +120,9 @@ public class ReferenceResolutionCheckTests
     public void GivenBundleEntryResourceWithRelativeReferenceToSiblingEntry_WhenValidating_ThenNoIssue()
     {
         // entry[0].resource holds a RELATIVE reference that does NOT resolve within its own (empty)
-        // contained set - it only resolves by falling through to the outer Bundle resolver, which
-        // indexes entry[1]'s resource by Type/id. Regression guard: dropping the nested resolver's
-        // "?? outerResolver" chain would falsely flag this as unresolved.
+        // contained set - it resolves only because the Bundle-rooted index keys entry[1]'s resource by
+        // Type/id. Regression guard: scoping the whole lookup to the entry (rather than only the
+        // FRAGMENT lookup, which is what ReferenceIndex actually does) would falsely flag this.
         var result = Validate(@"{
             ""resourceType"": ""Bundle"",
             ""type"": ""collection"",

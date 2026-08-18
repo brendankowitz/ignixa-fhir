@@ -47,7 +47,6 @@ public class TreeContextScopingTests
         // Assert
         state.Scope.Resource.ShouldBeSameAs(element);
         state.Scope.RootResource.ShouldBeSameAs(element);
-        state.Scope.Resolver.ShouldNotBeNull();
     }
 
     [Fact]

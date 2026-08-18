@@ -67,7 +67,6 @@ public class ValidationBehaviorResourceScopeTests
         recordingCheck.ObservedResource.ShouldNotBeNull();
         recordingCheck.ObservedResource!.InstanceType.ShouldBe("Patient");
         recordingCheck.ObservedRootResource.ShouldNotBeNull();
-        recordingCheck.ObservedResolver.ShouldNotBeNull();
     }
 
     [Fact]
@@ -182,14 +181,11 @@ public class ValidationBehaviorResourceScopeTests
 
         public IElement? ObservedRootResource { get; private set; }
 
-        public Func<string, IElement?>? ObservedResolver { get; private set; }
-
         public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
         {
             WasInvoked = true;
             ObservedResource = state.Scope.Resource;
             ObservedRootResource = state.Scope.RootResource;
-            ObservedResolver = state.Scope.Resolver;
             return ValidationResult.Success();
         }
     }

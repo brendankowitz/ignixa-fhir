@@ -307,11 +307,13 @@ public class FhirPathInvariantCheck : IValidationCheck
                 .WithSchema(_schema);
         }
 
+        // No ElementResolver: resolve() resolves in-instance from Resource/RootResource via
+        // EvaluationContext.ReferenceIndexCache. ElementResolver is the seam for a HOST resolver
+        // reaching OUTSIDE the instance, and validation has no such host - see ResourceScope.
         return new FhirEvaluationContext
         {
             Resource = scope.Resource,
             RootResource = scope.RootResource,
-            ElementResolver = scope.Resolver,
             InstanceCreator = _instanceCreator.Value,
             Schema = _schema
         };

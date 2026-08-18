@@ -308,11 +308,12 @@ public sealed class SlicingCheck : IValidationCheck
             return new FhirEvaluationContext();
         }
 
+        // No ElementResolver: a discriminator's resolve() resolves in-instance from
+        // Resource/RootResource via EvaluationContext.ReferenceIndexCache - see ResourceScope.
         return new FhirEvaluationContext
         {
             Resource = scope.Resource,
             RootResource = scope.RootResource,
-            ElementResolver = scope.Resolver,
         };
     }
 
