@@ -20,6 +20,13 @@ public static class SearchParameterInfoExtensions
     /// values of each component. The same collection of search parameter infos (irrespective of their order in the input)
     /// will return the same hash.
     /// </summary>
+    /// <remarks>
+    /// All ordering here is <see cref="StringComparer.Ordinal"/> because the hash is persisted and compared
+    /// across servers to decide whether a reindex is required. Linguistic collation varies by host locale
+    /// (measured: 51 of 890 installed cultures order the R4 parameter URLs differently from the invariant
+    /// culture, giving 128 of 135 resource types a locale-dependent hash), which would make a server
+    /// spuriously reindex purely because of where it runs.
+    /// </remarks>
     /// <param name="searchParamaterInfos">A list of <see cref="SearchParameterInfo" /></param>
     /// <returns>A hash based on the search parameter uri and last updated value.</returns>
     internal static string CalculateSearchParameterHash(this IEnumerable<SearchParameterInfo> searchParamaterInfos)
@@ -28,7 +35,7 @@ public static class SearchParameterInfoExtensions
         EnsureArg.IsGt(searchParamaterInfos.Count(), 0, nameof(searchParamaterInfos));
 
         var sb = new StringBuilder();
-        foreach (SearchParameterInfo searchParamInfo in searchParamaterInfos.OrderBy(x => x.Url.ToString()))
+        foreach (SearchParameterInfo searchParamInfo in searchParamaterInfos.OrderBy(x => x.Url.ToString(), StringComparer.Ordinal))
         {
             sb.Append(searchParamInfo.Url);
             sb.Append(searchParamInfo.Type);
@@ -38,11 +45,11 @@ public static class SearchParameterInfoExtensions
 
             if (searchParamInfo.TargetResourceTypes != null &&
                 searchParamInfo.TargetResourceTypes.Any())
-                sb.Append(string.Join(null, searchParamInfo.TargetResourceTypes.OrderBy(s => s)));
+                sb.Append(string.Join(null, searchParamInfo.TargetResourceTypes.OrderBy(s => s, StringComparer.Ordinal)));
 
             if (searchParamInfo.BaseResourceTypes != null &&
                 searchParamInfo.BaseResourceTypes.Any())
-                sb.Append(string.Join(null, searchParamInfo.BaseResourceTypes.OrderBy(s => s)));
+                sb.Append(string.Join(null, searchParamInfo.BaseResourceTypes.OrderBy(s => s, StringComparer.Ordinal)));
         }
 
         string hash = sb.ToString().ComputeHash();

@@ -5,6 +5,7 @@
 
 #nullable enable
 
+using System.Globalization;
 using EnsureThat;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Exceptions;
@@ -124,7 +125,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                         break;
 
                     case ParameterCategory.Count:
-                        if (!int.TryParse(param.Value, out int count))
+                        if (!int.TryParse(param.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
                         {
                             throw new BadSearchRequestException(
                                 $"The '_count' parameter value '{param.Value}' is not a valid integer.");
@@ -212,7 +213,7 @@ public class SearchOptionsBuilder : ISearchOptionsBuilder
                                 "The '_includesCount' parameter is not supported for system-level searches.");
                         }
 
-                        if (!int.TryParse(param.Value, out int includesCount))
+                        if (!int.TryParse(param.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int includesCount))
                         {
                             throw new BadSearchRequestException(
                                 $"The '_includesCount' parameter value '{param.Value}' is not a valid integer.");
