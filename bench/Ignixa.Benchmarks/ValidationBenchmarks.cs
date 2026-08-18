@@ -28,6 +28,7 @@ public class ValidationBenchmarks
     private ValidationSchema _observationSchema = null!;
     private ValidationSettings _fastSettings = null!;
     private ValidationSettings _specSettings = null!;
+    private ValidationSettings _fullSettings = null!;
     private ValidationState _state = null!;
 
     [GlobalSetup]
@@ -119,6 +120,7 @@ public class ValidationBenchmarks
 
         _fastSettings = new ValidationSettings { Depth = ValidationDepth.Minimal };
         _specSettings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        _fullSettings = new ValidationSettings { Depth = ValidationDepth.Full };
         _state = new ValidationState();
     }
 
@@ -144,5 +146,17 @@ public class ValidationBenchmarks
     public ValidationResult ValidateObservationSpec()
     {
         return _observationSchema.Validate(_observationElement, _specSettings, _state);
+    }
+
+    [Benchmark(Description = "Ignixa: Validate Patient (Full tier)")]
+    public ValidationResult ValidatePatientFull()
+    {
+        return _patientSchema.Validate(_patientElement, _fullSettings, _state);
+    }
+
+    [Benchmark(Description = "Ignixa: Validate Observation (Full tier)")]
+    public ValidationResult ValidateObservationFull()
+    {
+        return _observationSchema.Validate(_observationElement, _fullSettings, _state);
     }
 }

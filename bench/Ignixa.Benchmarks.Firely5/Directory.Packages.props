@@ -1,0 +1,17 @@
+<Project>
+  <!--
+    Local package version overrides for the Ignixa-versus-Firely indexing head-to-head.
+
+    The seam this benchmark exists to justify targets Firely SDK 5.11.4, not the 6.0.1 the rest of
+    the solution pins, so this project overrides the solution-level Directory.Packages.props. Keeping
+    it in its own project rather than in bench/Ignixa.Benchmarks avoids a diamond with
+    Ignixa.Extensions.FirelySdk6, which requires the 6.x assemblies.
+  -->
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <ItemGroup>
+    <PackageVersion Update="Hl7.Fhir.Base" Version="5.11.4" />
+    <PackageVersion Update="Hl7.Fhir.R4" Version="5.11.4" />
+  </ItemGroup>
+</Project>
