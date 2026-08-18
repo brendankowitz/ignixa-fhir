@@ -537,11 +537,17 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// (<c>1 * {}</c> is empty) and its divide-by-zero rule (<c>1 / 0</c> is empty) are already satisfied by
     /// the guards above every call site.
     /// </remarks>
-    private static FhirPathEvaluationException UndefinedForOperandTypes(IElement left, IElement right, string operatorSymbol)
+    /// <remarks>
+    /// Internal so that <see cref="QuantityEvaluator"/> raises the identical error for the identical
+    /// situation. Its arithmetic used to <c>return []</c> for every shape it did not implement, so
+    /// <c>1 'mg' + 5</c> answered empty while the structurally identical <c>1 + 'mg'</c> four lines below
+    /// threw - the Quantity branch sits above this one and swallowed it.
+    /// </remarks>
+    internal static FhirPathEvaluationException UndefinedForOperandTypes(IElement left, IElement right, string operatorSymbol)
         => new($"Operator '{operatorSymbol}' is not defined for operands of type " +
                $"'{DescribeOperandType(left)}' and '{DescribeOperandType(right)}'.");
 
-    private static string DescribeOperandType(IElement element)
+    internal static string DescribeOperandType(IElement element)
         => element.InstanceType ?? element.Value?.GetType().Name ?? "unknown";
 
     /// <summary>
@@ -594,13 +600,13 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time + Quantity
-        if (WireValue.AsWireString(leftValue) is { } leftDateStr && rightValue is Types.Quantity rightQty)
+        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftDateStr && rightValue is Types.Quantity rightQty)
         {
             return EvaluateDateTimeArithmetic(leftDateStr, rightQty, add: true, left[0].InstanceType);
         }
 
         // Quantity + Date/DateTime/Time
-        if (leftValue is Types.Quantity leftQty && WireValue.AsWireString(rightValue) is { } rightDateStr)
+        if (leftValue is Types.Quantity leftQty && IsTemporalElement(right[0]) && WireValue.AsWireString(rightValue) is { } rightDateStr)
         {
             return EvaluateDateTimeArithmetic(rightDateStr, leftQty, add: true, right[0].InstanceType);
         }
@@ -638,7 +644,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time - Quantity
-        if (WireValue.AsWireString(leftValue) is { } leftStr && rightValue is Types.Quantity qty)
+        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftStr && rightValue is Types.Quantity qty)
         {
             return EvaluateDateTimeArithmetic(leftStr, qty, add: false, left[0].InstanceType);
         }
@@ -870,8 +876,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (collection.Count == 0)
             return false;
 
-        var itemValue = singleItem[0].Value;
-        return collection.Any(c => FunctionHelpers.AreEqual(c.Value, itemValue));
+        var item = singleItem[0];
+        return collection.Any(c => FunctionHelpers.AreElementsEqual(c, item));
     }
 
     private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent)
@@ -1424,29 +1430,22 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private bool? CompareDateTimeEquality(object? leftValue, object? rightValue, string? leftType, string? rightType, bool equals)
     {
-        // Prefer the typed FhirTemporal path whenever both operands resolve to a temporal. It now
-        // expresses the FHIRPath indeterminacy of a timezone-bearing value compared to a timezone-less
-        // one (e.g. @...T15:00:00Z = @...T10:00:00, official testEquality23/testNEquality17): AsTemporal
-        // routes string operands through FhirTemporal.TryParse, which records timezone presence from the
-        // literal, and FhirTemporal.Compare returns null on a timezone mismatch. This agrees with the
-        // string fallback below, so it is safe for all operands, not only when one is already a
-        // FhirTemporal.
+        // Prefer the typed FhirTemporal path whenever both operands resolve to a temporal. It expresses
+        // the FHIRPath indeterminacy of a timezone-bearing value compared to a timezone-less one (e.g.
+        // @...T15:00:00Z = @...T10:00:00, official testEquality23/testNEquality17): AsTemporal routes
+        // string operands through FhirTemporal.TryParse, which records timezone presence from the literal,
+        // and FhirTemporal.Compare returns null on a timezone mismatch. This agrees with the string
+        // fallback below, so it is safe for all operands, not only when one is already a FhirTemporal.
+        // TemporalOperand.AreEqual is the same call FunctionHelpers.AreElementsEqual makes, which is what
+        // stops this operator and the collection functions answering differently.
         if (AsTemporal(leftValue, leftType) is { } leftTemporal
             && AsTemporal(rightValue, rightType) is { } rightTemporal)
         {
-            // A time of day and a calendar value are different types, not overlapping intervals, so
-            // equality is definitely false where ordering is indeterminate (official testDateNotEqualTime*).
-            // FhirTemporal.Compare cannot express that distinction: it returns null for both.
-            if ((leftTemporal.Kind == FhirPrimitive.Time) != (rightTemporal.Kind == FhirPrimitive.Time))
-            {
-                return !equals;
-            }
-
-            return FhirTemporal.Compare(leftTemporal, rightTemporal) switch
+            return TemporalOperand.AreEqual(leftTemporal, rightTemporal) switch
             {
                 null => null,
-                0 => equals,
-                _ => !equals
+                true => equals,
+                false => !equals
             };
         }
 
@@ -1714,39 +1713,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return null;
         }
     private static FhirTemporal? AsTemporal(object? value, string? instanceType)
-    {
-        switch (value)
-        {
-            case FhirTemporal temporal:
-                return temporal;
-            case string text:
-                return FhirTemporal.TryParse(text, InferTemporalKind(text, instanceType), out var parsed) ? parsed : null;
-            case DateTime dateTime:
-                return FhirTemporal.TryParse(dateTime.ToString("o"), FhirPrimitive.DateTime, out var fromDateTime) ? fromDateTime : null;
-            case DateTimeOffset dateTimeOffset:
-                return FhirTemporal.TryParse(dateTimeOffset.ToString("o"), FhirPrimitive.DateTime, out var fromOffset) ? fromOffset : null;
-            default:
-                return null;
-        }
-    }
-
-    private static FhirPrimitive InferTemporalKind(string literal, string? instanceType)
-    {
-        if (string.Equals(instanceType, "date", StringComparison.OrdinalIgnoreCase))
-            return FhirPrimitive.Date;
-        if (string.Equals(instanceType, "datetime", StringComparison.OrdinalIgnoreCase))
-            return FhirPrimitive.DateTime;
-        if (string.Equals(instanceType, "instant", StringComparison.OrdinalIgnoreCase))
-            return FhirPrimitive.Instant;
-        if (string.Equals(instanceType, "time", StringComparison.OrdinalIgnoreCase))
-            return FhirPrimitive.Time;
-
-        var wire = literal.Length > 0 && literal[0] == '@' ? literal[1..] : literal;
-        if (wire.StartsWith('T') || (wire.Contains(':', StringComparison.Ordinal) && !wire.Contains('-', StringComparison.Ordinal)))
-            return FhirPrimitive.Time;
-
-        return wire.Contains('T', StringComparison.Ordinal) ? FhirPrimitive.DateTime : FhirPrimitive.Date;
-    }
+        => TemporalOperand.AsTemporal(value, instanceType);
 
     private bool? CompareDateTimesWithPrecision(object? leftValue, object? rightValue, string? leftType, string? rightType, bool greater, bool orEqual)
     {
@@ -2077,20 +2044,8 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return string.IsNullOrEmpty(tzSuffix) ? result : result + tzSuffix;
     }
 
-    /// <summary>
-    /// Checks whether an operand should be compared as a temporal value.
-    /// </summary>
-    /// <remarks>
-    /// The declared type is authoritative for FHIRPath literals, whose values are plain strings, but it is
-    /// not sufficient on its own: an element carrying a <see cref="FhirTemporal"/> is a temporal regardless
-    /// of what its instance type says. Testing the value as well keeps the two comparison paths from
-    /// disagreeing when a typed value arrives with a type name the gate does not enumerate.
-    /// </remarks>
     private static bool IsTemporalOperand(object? value, string? typeName)
-    {
-        return value is FhirTemporal
-            || typeName is "date" or "datetime" or "instant" or "time";
-    }
+        => TemporalOperand.IsTemporal(value, typeName);
 
     /// <summary>
     /// Checks if a type name represents a FHIR Quantity type (or subtype).
