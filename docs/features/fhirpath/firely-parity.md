@@ -24,7 +24,7 @@ Neither cause changes an indexed *value*; one changes an element's declared type
 *when* an already-broken parameter fails.
 
 The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces PLACEHOLDER_OUTCOMES outcomes from PLACEHOLDER_CAUSES open root causes.
+changed) produces 38 outcomes from 6 open root causes.
 **None of them is reachable from any shipped R4 SearchParameter expression.**
 Two entries have since closed: entry 5 (`is` on a multi-item collection), fixed by enforcing the
 singleton rule the spec mandates for `is`; and entry 6 (`highBoundary()` at year precision), which
