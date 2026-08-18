@@ -172,9 +172,9 @@ internal static class MathFunctions
             throw new FhirPathEvaluationException("abs() requires a single input value");
 
         // Handle Quantity types
-        if (list[0].Value is Types.Quantity qty)
+        if (list[0].Value is FhirQuantity qty)
         {
-            var absQty = new Types.Quantity(Math.Abs(qty.Value), qty.Unit);
+            var absQty = new FhirQuantity(Math.Abs(qty.Value), qty.Unit);
             return [FunctionHelpers.CreateQuantity(absQty)];
         }
 

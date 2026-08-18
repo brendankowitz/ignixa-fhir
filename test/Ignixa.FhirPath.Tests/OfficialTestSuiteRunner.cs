@@ -730,6 +730,9 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
                 FhirPrimitive.Time => "time",
                 _ => "dateTime"
             },
+            // Named explicitly rather than left to the CLR-name fallback below: the suite asserts the
+            // FHIRPath system type, which is Quantity regardless of what the carrier class is called.
+            FhirQuantity => "Quantity",
             _ => value.GetType().Name
         };
     }

@@ -12,6 +12,7 @@ using System.Diagnostics;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation.Functions;
+using Ignixa.FhirPath.Types;
 using Ignixa.FhirPath.Visitors;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -600,18 +601,18 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time + Quantity
-        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftDateStr && rightValue is Types.Quantity rightQty)
+        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftDateStr && rightValue is FhirQuantity rightQty)
         {
             return EvaluateDateTimeArithmetic(leftDateStr, rightQty, add: true, left[0].InstanceType);
         }
 
         // Quantity + Date/DateTime/Time
-        if (leftValue is Types.Quantity leftQty && IsTemporalElement(right[0]) && WireValue.AsWireString(rightValue) is { } rightDateStr)
+        if (leftValue is FhirQuantity leftQty && IsTemporalElement(right[0]) && WireValue.AsWireString(rightValue) is { } rightDateStr)
         {
             return EvaluateDateTimeArithmetic(rightDateStr, leftQty, add: true, right[0].InstanceType);
         }
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "+", right);
         }
@@ -644,12 +645,12 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var rightValue = right[0].Value;
 
         // Date/DateTime/Time - Quantity
-        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftStr && rightValue is Types.Quantity qty)
+        if (IsTemporalElement(left[0]) && WireValue.AsWireString(leftValue) is { } leftStr && rightValue is FhirQuantity qty)
         {
             return EvaluateDateTimeArithmetic(leftStr, qty, add: false, left[0].InstanceType);
         }
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "-", right);
         }
@@ -675,7 +676,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "*", right);
         }
@@ -699,7 +700,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         var leftValue = left[0].Value;
         var rightValue = right[0].Value;
 
-        if (leftValue is Types.Quantity || rightValue is Types.Quantity)
+        if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
             return QuantityEvaluator.EvaluateArithmetic(left, "/", right);
         }
@@ -920,10 +921,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Extracts a Quantity from an IElement, handling both FhirPath Quantity literals
     /// and FHIR Quantity elements (which have value/unit/code children).
     /// </summary>
-    private Types.Quantity? TryExtractQuantity(IElement element)
+    private FhirQuantity? TryExtractQuantity(IElement element)
     {
         // If the value is already a Quantity (FhirPath literal), return it directly
-        if (element.Value is Types.Quantity qty)
+        if (element.Value is FhirQuantity qty)
             return qty;
 
         // If it's a FHIR Quantity element, extract value and unit from children
@@ -943,7 +944,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// <summary>
     /// Extracts value and unit from a FHIR Quantity element's children.
     /// </summary>
-    private static Types.Quantity? ExtractQuantityFromFhirElement(IElement element)
+    private static FhirQuantity? ExtractQuantityFromFhirElement(IElement element)
     {
         decimal? value = null;
         string? unit = null;
@@ -978,7 +979,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
         if (value.HasValue)
         {
-            return new Types.Quantity(value.Value, unit ?? "1");
+            return new FhirQuantity(value.Value, unit ?? "1");
         }
 
         return null;
@@ -990,7 +991,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         if (left == null || right == null) return false;
 
         // Handle quantity equivalence with unit conversion
-        if (left is Types.Quantity leftQty && right is Types.Quantity rightQty)
+        if (left is FhirQuantity leftQty && right is FhirQuantity rightQty)
         {
             // Try to compare after converting to same unit
             var converter = Types.QuantityUnitConverter.Instance;
@@ -1345,7 +1346,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private static void EnsureNumericUnaryOperand(IElement operand, string operatorSymbol)
     {
-        if (operand.Value is int or long or decimal or double or float or Types.Quantity)
+        if (operand.Value is int or long or decimal or double or float or FhirQuantity)
             return;
 
         throw new FhirPathEvaluationException(
@@ -1361,7 +1362,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         decimal d => CreateDecimal(-d),
         double d => CreateDecimal(-(decimal)d),
         float f => CreateDecimal(-(decimal)f),
-        Types.Quantity q => FunctionHelpers.CreateQuantity(new Types.Quantity(-q.Value, q.Unit)),
+        FhirQuantity q => FunctionHelpers.CreateQuantity(new FhirQuantity(-q.Value, q.Unit)),
         _ => throw new UnreachableException($"EnsureNumericUnaryOperand admitted '{DescribeOperandType(operand)}'.")
     };
 
@@ -1396,7 +1397,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
             // Handle quantity comparisons (both FhirPath literals and FHIR Quantity elements)
-            if (leftVal is Types.Quantity || rightVal is Types.Quantity ||
+            if (leftVal is FhirQuantity || rightVal is FhirQuantity ||
                 IsQuantityType(leftType) || IsQuantityType(rightType))
             {
                 var result = QuantityEvaluator.EvaluateComparison(left, equals ? "=" : "!=", right);
@@ -1639,7 +1640,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 #pragma warning restore CA1308 // Normalize strings to uppercase
 
             // Handle quantity comparisons (both FhirPath literals and FHIR Quantity elements)
-            if (leftValue is Types.Quantity || rightValue is Types.Quantity ||
+            if (leftValue is FhirQuantity || rightValue is FhirQuantity ||
                 IsQuantityType(leftType) || IsQuantityType(rightType))
             {
                 var op = (greater, orEqual) switch
@@ -1860,7 +1861,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// and the month row "using 'mo' will signal an error"; official cases <c>testPlusDate14</c>,
     /// <c>testPlusDate16</c> and <c>testPlusDate17</c>).
     /// </summary>
-    private static void ThrowIfCalendarIncompatibleUnit(string instanceType, Types.Quantity quantity)
+    private static void ThrowIfCalendarIncompatibleUnit(string instanceType, FhirQuantity quantity)
     {
         if (!IsTemporalInstanceType(instanceType) || !_calendarIncompatibleDurationUnits.Contains(quantity.Unit))
         {
@@ -1917,7 +1918,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     /// Non-temporal operands reach the arithmetic path only because the caller routes any lexical value
     /// paired with a Quantity through it, so they fall through unchanged rather than erroring here.
     /// </remarks>
-    private static void ThrowIfUnsupportedUnit(string instanceType, Types.Quantity quantity)
+    private static void ThrowIfUnsupportedUnit(string instanceType, FhirQuantity quantity)
     {
         if (!IsTemporalInstanceType(instanceType))
         {
@@ -2190,7 +2191,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             }
         }
 
-    private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, Types.Quantity quantity, bool add, string instanceType)
+    private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, FhirQuantity quantity, bool add, string instanceType)
     {
         ThrowIfCalendarIncompatibleUnit(instanceType, quantity);
 

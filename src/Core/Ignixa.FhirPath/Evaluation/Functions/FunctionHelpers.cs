@@ -397,9 +397,9 @@ internal static class FunctionHelpers
     /// </summary>
     public sealed class QuantityElement : IElement
     {
-        private readonly Types.Quantity _quantity;
+        private readonly FhirQuantity _quantity;
 
-        public QuantityElement(Types.Quantity quantity)
+        public QuantityElement(FhirQuantity quantity)
         {
             ArgumentNullException.ThrowIfNull(quantity);
             _quantity = quantity;
@@ -440,7 +440,7 @@ internal static class FunctionHelpers
     /// <summary>
     /// Creates an IElement wrapping a Quantity value.
     /// </summary>
-    public static IElement CreateQuantity(Types.Quantity quantity) => new QuantityElement(quantity);
+    public static IElement CreateQuantity(FhirQuantity quantity) => new QuantityElement(quantity);
 
     #endregion
 }

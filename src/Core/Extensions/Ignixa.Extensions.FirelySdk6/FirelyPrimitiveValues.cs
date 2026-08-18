@@ -7,7 +7,6 @@ using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Globalization;
 using Ignixa.Abstractions;
-using I = Ignixa.FhirPath.Types;
 using P = Hl7.Fhir.ElementModel.Types;
 
 namespace Ignixa.Extensions.FirelySdk;
@@ -45,22 +44,21 @@ namespace Ignixa.Extensions.FirelySdk;
 /// close.
 /// </para>
 /// <para>
-/// <c>Quantity</c> is translated for the same reason as the temporals, and is why this shim now
-/// references <c>Ignixa.FhirPath</c>. Ignixa's canonical quantity value is
-/// <see cref="I.Quantity"/>, and roughly forty sites across the evaluator, the aggregate, math,
-/// boundary and conversion functions, and <c>QuantityEvaluator</c> reach it by testing
-/// <c>element.Value is Types.Quantity</c> directly off <see cref="IElement.Value"/>. There is no
-/// single choke point downstream to normalise at, so translating once here is what fixes equality,
-/// equivalence, ordering, arithmetic and aggregation together; anything narrower - a structural
-/// match inside one helper, or a second quantity carrier in <c>Ignixa.Abstractions</c> - fixes one
-/// of those forty and leaves the rest silently empty. Moving <see cref="I.Quantity"/> down to
-/// <c>Ignixa.Abstractions</c> instead would drag <c>IQuantityUnitConverter</c> and its
-/// <c>Fhir.Metrics</c> dependency with it.
+/// <c>Quantity</c> is translated for the same reason as the temporals. Ignixa's canonical quantity
+/// value is <see cref="FhirQuantity"/>, and roughly forty sites across the evaluator, the
+/// aggregate, math, boundary and conversion functions, and <c>QuantityEvaluator</c> reach it by
+/// testing <c>element.Value is FhirQuantity</c> directly off <see cref="IElement.Value"/>. There is
+/// no single choke point downstream to normalise at, so translating once here is what fixes
+/// equality, equivalence, ordering, arithmetic and aggregation together; anything narrower - a
+/// structural match inside one helper, or a second quantity carrier declared in this shim - fixes
+/// one of those forty and leaves the rest silently empty.
 /// </para>
 /// <para>
-/// The cost is that <c>Ignixa.Extensions.FirelySdk5</c>/<c>6</c> now carry a package dependency on
-/// <c>Ignixa.FhirPath</c>. Both are Core peers of <c>Ignixa.Serialization</c>, which this shim
-/// already referenced, so the graph stays a DAG.
+/// <see cref="FhirQuantity"/> lives in <c>Ignixa.Abstractions</c>, beside <see cref="FhirTemporal"/>
+/// and the <see cref="IElement"/> whose <see cref="IElement.Value"/> carries it, so this shim needs
+/// no reference beyond the one it already had. The unit-conversion contract and its UCUM
+/// implementation stay in <c>Ignixa.FhirPath</c>: a value has to be shared to be recognised across
+/// the boundary, whereas an opinion about how two quantities combine does not.
 /// </para>
 /// <para>
 /// The other FHIRPath system types Firely's evaluator can surface - <c>P.Code</c>,
@@ -118,7 +116,7 @@ internal static class FirelyPrimitiveValues
         P.DateTime dateTime => ToTemporalOrFallback(dateTime.ToString(), FhirPrimitive.DateTime),
         P.Date date => ToTemporalOrFallback(date.ToString(), FhirPrimitive.Date),
         P.Time time => ToTemporalOrFallback(time.ToString(), FhirPrimitive.Time),
-        P.Quantity quantity => new I.Quantity(quantity.Value, quantity.Unit),
+        P.Quantity quantity => new FhirQuantity(quantity.Value, quantity.Unit),
         _ => value,
     };
 
@@ -149,8 +147,8 @@ internal static class FirelyPrimitiveValues
         // Keyed off the CLR type rather than instanceType, unlike everything below it. A FHIR
         // Quantity read from the wire also reports instanceType "Quantity" but carries no value at
         // all - it is a complex element with value/unit/code children - so gating on the name would
-        // try to translate a null. An I.Quantity value, by contrast, can only be a quantity.
-        if (value is I.Quantity ignixaQuantity)
+        // try to translate a null. A FhirQuantity value, by contrast, can only be a quantity.
+        if (value is FhirQuantity ignixaQuantity)
         {
             return new P.Quantity(ignixaQuantity.Value, ignixaQuantity.Unit);
         }

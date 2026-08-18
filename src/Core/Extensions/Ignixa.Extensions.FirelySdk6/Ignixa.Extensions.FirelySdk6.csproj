@@ -20,10 +20,6 @@
     <ProjectReference Include="..\..\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
     <!-- Ignixa serialization for SchemaAwareElement (ISourceNavigator → IElement) -->
     <ProjectReference Include="..\..\Ignixa.Serialization\Ignixa.Serialization.csproj" />
-    <!-- Ignixa FHIRPath for Types.Quantity, the representation Ignixa's evaluator matches on.
-         See the Quantity remarks in FirelyPrimitiveValues for why the translation needs the real
-         type rather than a structural stand-in. -->
-    <ProjectReference Include="..\..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
   </ItemGroup>
 
   <ItemGroup>
