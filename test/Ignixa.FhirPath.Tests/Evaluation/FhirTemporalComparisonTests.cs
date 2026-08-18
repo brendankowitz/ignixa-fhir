@@ -147,13 +147,18 @@ public class FhirTemporalComparisonTests
         result.Value.ShouldBe(true);
     }
 
-    #region Aggregate min/max regression — FhirTemporal routing
-
     [Fact]
     public void GivenFhirTemporalDateCollection_WhenMin_ThenReturnsEarliestDate()
     {
         // Regression: MinMaxDate had no FhirTemporal arm, so min() on a FhirTemporal date
         // collection returned empty instead of the earliest element.
+        //
+        // The assertion pins the typed value, not just its text. MinMaxDate used to rebuild the
+        // winner as a PrimitiveElement over its literal, handing back a string where every sibling
+        // (MinMaxTime, MinMaxNumeric, MinMaxString) returns the element it selected. That de-typing
+        // is invisible to a ShouldBe("2019-01-01") assertion, because a FhirTemporal and the wire
+        // string it was parsed from compare equal to nothing and render the same - which is how the
+        // wrong shape got blessed here in the first place.
 
         // Arrange
         var d1 = CreateTemporalElement("birthDate", "2020-06-15", FhirPrimitive.Date, "date");
@@ -166,7 +171,7 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        result.Value.ShouldBe("2019-01-01");
+        result.Value.ShouldBeOfType<FhirTemporal>().Literal.ShouldBe("2019-01-01");
         result.InstanceType.ShouldBe("date");
     }
 
@@ -184,7 +189,7 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        result.Value.ShouldBe("2021-12-31");
+        result.Value.ShouldBeOfType<FhirTemporal>().Literal.ShouldBe("2021-12-31");
         result.InstanceType.ShouldBe("date");
     }
 
@@ -206,7 +211,8 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        result.Value.ShouldBe("2024-01-01T00:00:00Z");
+        result.Value.ShouldBeOfType<FhirTemporal>().Literal.ShouldBe("2024-01-01T00:00:00Z");
+        result.InstanceType.ShouldBe("instant");
     }
 
     [Fact]
@@ -223,7 +229,8 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        result.Value.ShouldBe("2024-06-30T23:59:59Z");
+        result.Value.ShouldBeOfType<FhirTemporal>().Literal.ShouldBe("2024-06-30T23:59:59Z");
+        result.InstanceType.ShouldBe("instant");
     }
 
     [Fact]
@@ -245,7 +252,7 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        ((FhirTemporal)result.Value!).Literal.ShouldBe("08:00:00");
+        result.Value.ShouldBeOfType<FhirTemporal>().Literal.ShouldBe("08:00:00");
         result.InstanceType.ShouldBe("time");
     }
 
@@ -263,11 +270,9 @@ public class FhirTemporalComparisonTests
         var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        ((FhirTemporal)result.Value!).Literal.ShouldBe("23:59:59");
+        result.Value.ShouldBeOfType<FhirTemporal>().Literal.ShouldBe("23:59:59");
         result.InstanceType.ShouldBe("time");
     }
-
-    #endregion
 
     private static IElement CreateTemporalElement(string name, string literal, FhirPrimitive kind, string instanceType)
     {

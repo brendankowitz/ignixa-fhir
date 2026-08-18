@@ -680,8 +680,11 @@ internal static class BoundaryFunctions
             return $"{parsed.year:D4}";
         }
         
-        // For month: maximize only if output precision is exactly at month level (6) AND input doesn't have month
-        var month = (outputPrecision == 6 && inputPrecision <= 4) ? 12 : parsed.month;
+        // For month: maximize if we're outputting at month level or finer AND input doesn't have month.
+        // This must be >=, not ==, to match every other component below: an unspecified month is still
+        // unspecified when the caller asks for day or millisecond precision, so @2012.highBoundary()
+        // is December 2012, not the 31st of an invented January.
+        var month = (outputPrecision >= 6 && inputPrecision <= 4) ? 12 : parsed.month;
         if (outputPrecision <= 6)
         {
             return $"{parsed.year:D4}-{month:D2}";

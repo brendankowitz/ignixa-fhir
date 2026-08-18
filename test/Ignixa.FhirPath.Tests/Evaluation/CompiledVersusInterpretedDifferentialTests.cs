@@ -34,9 +34,9 @@ public class CompiledVersusInterpretedDifferentialTests
     public static TheoryData<string> MustCompile => new()
     {
         "birthDate = @1974-12-25",
-        "issued > @2024-01-01T00:00:00Z",
-        "birthTime = @T10:30:00",
-        "period.start < period.end",
+        "meta.lastUpdated > @2024-01-01T00:00:00Z",
+        "extension.value = @T10:30:00",
+        "contact.period.start < contact.period.end",
         "telecom.where(system = 'phone')",
         "gender = 'male'",
     };
@@ -104,20 +104,7 @@ public class CompiledVersusInterpretedDifferentialTests
         var subject = DifferentialFixture.CreateSubject();
 
         // Act
-        var result = subject.Select("issued > @2024-01-01T00:00:00Z").Single();
-
-        // Assert
-        result.Value.ShouldBe(true);
-    }
-
-    [Fact]
-    public void GivenATimeEqualToItsLiteral_WhenEvaluatedByBothPaths_ThenBothReportTrue()
-    {
-        // Arrange
-        var subject = DifferentialFixture.CreateSubject();
-
-        // Act
-        var result = subject.Select("birthTime = @T10:30:00").Single();
+        var result = subject.Select("meta.lastUpdated > @2024-01-01T00:00:00Z").Single();
 
         // Assert
         result.Value.ShouldBe(true);

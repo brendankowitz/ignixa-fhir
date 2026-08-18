@@ -24,11 +24,15 @@ Neither cause changes an indexed *value*; one changes an element's declared type
 *when* an already-broken parameter fails.
 
 The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces 38 outcomes from 8 open root causes (Tier 2 below has 9 headings; entry 5 is
-closed, leaving 8). Of those 8, only 7 are actually pinned by the construct sweep - entry 7
-(`Scalar`) never appears in it and is instead pinned by a standalone test (see "Expectations
-tested"), so `KnownDivergences.ConstructSignatures` has 11 signatures grouped under 7 causes, not 8.
-**None of those root causes is reachable from any shipped R4 SearchParameter expression.**
+changed) produces PLACEHOLDER_OUTCOMES outcomes from PLACEHOLDER_CAUSES open root causes.
+**None of them is reachable from any shipped R4 SearchParameter expression.**
+Two entries have since closed: entry 5 (`is` on a multi-item collection), fixed by enforcing the
+singleton rule the spec mandates for `is`; and entry 6 (`highBoundary()` at year precision), which
+was the one outright Ignixa defect in the list. Entry 6's expression still diverges, but now only by
+the timezone offset already documented as entry 8.
+Note entry 7 (`Scalar`) never appears in the construct sweep and is pinned by a standalone test
+instead, so the signature count in `KnownDivergences.ConstructSignatures` is grouped under fewer
+causes than the total.
 
 The practical read: FHIRPath evaluation is not the risky part of the migration. Two items need a
 decision before enabling Ignixa; the rest are documentation.
@@ -172,13 +176,25 @@ The harness is what closed this entry: it failed with *"pinned divergence(s) no 
 the fix landed, rather than silently continuing to assert a divergence that had gone. That is the
 mechanism working — the inventory cannot quietly rot.
 
-### 6. `@2012.highBoundary()` returns January, not December
+### 6. `@2012.highBoundary()` returned January, not December
 
-**An Ignixa defect.** Firely returns `2012-12-31T23:59:59.999`; Ignixa returns
-`2012-01-31T23:59:59.999-12:00`. Month-precision input (`@2012-06`) is handled correctly, so the bug
-is specific to year precision - the month component is not widened before the day component is
-computed. Pinned by `GivenAYearPrecisionDate_WhenTakingItsHighBoundary_...`.
-Unreachable from search parameters, but it is wrong and cheap to fix.
+**An Ignixa defect. Fixed.** Firely returns `2012-12-31T23:59:59.999`; Ignixa returned
+`2012-01-31T23:59:59.999-12:00`. Month-precision input (`@2012-06`) was handled correctly, which
+localised it to year precision.
+
+The cause was a single comparison in `FormatDateTimeHighBoundary`: the month was widened to December
+only when the requested output precision was *exactly* month level (`outputPrecision == 6`). The
+default `highBoundary()` call asks for full millisecond precision, so that test failed, the
+unspecified month stayed at its parsed default of January, and the day component was then computed
+as the last day of January. Every other component in the method already used a "this precision or
+finer" test (`>= 8`, `>= 10`, `>= 12`); month was the only equality check, and
+`FhirTemporal.GetUpperBound` had year precision right all along, so the two disagreed internally.
+
+What remains is only the timezone-offset difference described in entry 8, so this expression's pin
+moves into that benign class rather than disappearing. Guarded by
+`GivenAYearPrecisionDate_WhenTakingItsHighBoundary_ThenBothEnginesReportDecember` plus a
+precision-sweep theory covering coarser and finer input, including February in leap and non-leap
+years.
 
 ### 7. `Scalar` with 2+ results
 

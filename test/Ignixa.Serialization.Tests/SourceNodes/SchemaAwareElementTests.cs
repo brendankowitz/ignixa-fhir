@@ -908,10 +908,23 @@ public class SchemaAwareElementTests
     }
 
     [Fact]
-    public void GivenAnElementWithoutPrimitiveValue_WhenReadingValueTwice_ThenBothReadsAreNull()
+    public void GivenAnElementWithoutPrimitiveValue_WhenReadingValueTwice_ThenTheSourceIsReadOnlyOnce()
     {
-        // Arrange
-        var element = ParseObservation("\"valueString\": \"foo\"")
+        // Arrange - a recording navigator observes ISourceNavigator.Text reads directly, so removing
+        // the memoisation of Value (both reads recomputing null independently) would still leave a
+        // plain Assert.Null(first)/Assert.Null(second) test green. Asserting the read count instead
+        // makes that regression fail.
+        var resource = ResourceJsonNode.Parse($$"""
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "text": "test" },
+          "valueString": "foo"
+        }
+        """);
+        var recordingNavigator = new TextAccessRecordingSourceNavigator(resource.ToSourceNavigator());
+        var element = recordingNavigator.ToElement(_r4Provider)
             .Children("code")
             .Single();
 
@@ -922,6 +935,7 @@ public class SchemaAwareElementTests
         // Assert
         Assert.Null(first);
         Assert.Null(second);
+        Assert.Equal(1, recordingNavigator.TextReadCount(element.Location));
     }
 
     [Fact]

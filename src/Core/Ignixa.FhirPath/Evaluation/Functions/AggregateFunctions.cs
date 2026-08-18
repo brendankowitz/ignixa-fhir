@@ -404,68 +404,53 @@ internal static class AggregateFunctions
         return result != null ? [result] : [];
     }
 
+    /// <summary>
+    /// Selects the earliest or latest element of a date/dateTime/instant collection.
+    /// </summary>
+    /// <remarks>
+    /// The winning <see cref="IElement"/> is returned as-is rather than reconstructed as a
+    /// <see cref="FunctionHelpers.PrimitiveElement"/> over its literal. Rebuilding it re-typed a
+    /// resource-backed <see cref="FhirTemporal"/> back down to a wire string, so everything
+    /// downstream that dispatches on the typed value - arithmetic, ordering, boundary functions -
+    /// silently fell through to its string branch. min()/max() select an item; they do not
+    /// construct one, and every sibling here (MinMaxTime, MinMaxNumeric, MinMaxString,
+    /// MinMaxQuantities) already returns the element it picked.
+    /// </remarks>
     private static IEnumerable<IElement> MinMaxDate(List<IElement> list, bool isMax)
     {
-        string? extremeValue = null;
-        string? extremeType = null;
+        IElement? result = null;
+        DateTime extreme = default;
 
         foreach (var element in list)
         {
-            string? dateString = null;
-            string? inferredType = null;
-
-            if (element.Value is DateTime dt)
-            {
-                dateString = dt.ToString("yyyy-MM-dd");
-                inferredType = "date";
-            }
-            else if (element.Value is DateTimeOffset dto)
-            {
-                dateString = dto.ToString("yyyy-MM-ddTHH:mm:ssZ");
-                inferredType = "dateTime";
-            }
-            else if (element.Value is FhirTemporal fhirTemporal)
-            {
-                dateString = fhirTemporal.Literal;
-                inferredType = element.InstanceType;
-            }
-            else if (element.Value is string s && s.StartsWith('@'))
-            {
-                // Strip @ prefix
-                dateString = s.Substring(1);
-                // Infer type from format: if it has 'T', it's dateTime, otherwise date
-                inferredType = dateString.Contains('T', StringComparison.Ordinal) ? "dateTime" : "date";
-            }
-            else if (element.Value is string s2)
-            {
-                dateString = s2;
-                inferredType = element.InstanceType;
-            }
-
-            if (dateString == null || !TryParseDate(dateString, out var parsed))
+            if (!TryGetComparableDate(element, out var parsed))
                 continue;
 
-            if (extremeValue == null)
+            if (result is null || (isMax ? parsed > extreme : parsed < extreme))
             {
-                extremeValue = dateString;
-                extremeType = inferredType ?? element.InstanceType;
-            }
-            else if (TryParseDate(extremeValue, out var currentExtreme))
-            {
-                if ((isMax && parsed > currentExtreme) || (!isMax && parsed < currentExtreme))
-                {
-                    extremeValue = dateString;
-                    extremeType = inferredType ?? element.InstanceType;
-                }
+                extreme = parsed;
+                result = element;
             }
         }
 
-        if (extremeValue != null && extremeType != null)
+        return result is not null ? [result] : [];
+    }
+
+    private static bool TryGetComparableDate(IElement element, out DateTime parsed)
+    {
+        parsed = default;
+
+        var dateString = element.Value switch
         {
-            return [new FunctionHelpers.PrimitiveElement(extremeValue, extremeType)];
-        }
+            DateTime dt => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DateTimeOffset dto => dto.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
+            FhirTemporal fhirTemporal => fhirTemporal.Literal,
+            string s when s.StartsWith('@') => s.Substring(1),
+            string s => s,
+            _ => null
+        };
 
-        return [];
+        return dateString is not null && TryParseDate(dateString, out parsed);
     }
 
     private static IEnumerable<IElement> MinMaxTime(List<IElement> list, bool isMax)

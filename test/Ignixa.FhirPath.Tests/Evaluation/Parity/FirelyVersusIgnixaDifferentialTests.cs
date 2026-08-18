@@ -15,6 +15,19 @@ using System.IO;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
+/// <summary>
+/// Pins every known disagreement between Firely 5.11.4 and Ignixa on the corpora that matter to the
+/// seam, so a new one fails the build instead of shipping unnoticed.
+/// </summary>
+/// <remarks>
+/// A differential harness detects <em>divergence</em>, never <em>shared wrongness</em>: two engines
+/// that are wrong in the same way agree with each other and produce no signal here. A green run over
+/// this suite means Firely and Ignixa answer identically on the corpus exercised - it is a
+/// migration-risk signal for ADR 2608's seam, telling you where behaviour would change if the seam
+/// swapped providers, not a correctness proof for either engine. The FHIRPath conformance suites
+/// elsewhere in this project are what establish correctness against the spec; this one only compares
+/// the two engines to each other.
+/// </remarks>
 public class FirelyVersusIgnixaDifferentialTests
 {
     /// <summary>
@@ -145,12 +158,18 @@ public class FirelyVersusIgnixaDifferentialTests
     }
 
     /// <summary>
-    /// The high boundary of a year is its December, not its January. Ignixa answers 2012-01-31, which
-    /// is a defect rather than a defensible difference - pinned here so the inventory entry has a
-    /// reproducing test and so fixing it is noticed.
+    /// The high boundary of a year is its December, and both engines now agree on the date.
     /// </summary>
+    /// <remarks>
+    /// This was a pinned Ignixa defect: FormatDateTimeHighBoundary maximised the month only when the
+    /// requested output precision was exactly month level, so the default full-precision call left an
+    /// unspecified month at its parsed default of January and answered 2012-01-31. Every other
+    /// component in that method already used a "this precision or finer" test; month was the only
+    /// equality check. Nothing but the timezone offset now separates the two engines here, which is
+    /// the same benign difference the other boundary entries carry.
+    /// </remarks>
     [Fact]
-    public void GivenAYearPrecisionDate_WhenTakingItsHighBoundary_ThenIgnixaReportsJanuaryWhereFirelyReportsDecember()
+    public void GivenAYearPrecisionDate_WhenTakingItsHighBoundary_ThenBothEnginesReportDecember()
     {
         // Arrange
         var patient = FirelyParityFixture.Resources[0].Json;
@@ -161,11 +180,33 @@ public class FirelyVersusIgnixaDifferentialTests
 
         // Assert
         firely.ShouldBe(["2012-12-31T23:59:59.999"]);
-        ignixa.ShouldBe(["2012-01-31T23:59:59.999-12:00"]);
+        ignixa.ShouldBe(["2012-12-31T23:59:59.999-12:00"]);
+    }
 
-        // Month precision is handled correctly, which localises the defect to year precision.
-        IgnixaEngine.RawValues(IgnixaEngine.Parse(patient), "@2012-06.highBoundary()")
-            .ShouldBe(["2012-06-30T23:59:59.999-12:00"]);
+    /// <summary>
+    /// Guards the neighbours of the year-precision fix: coarser input must not start borrowing the
+    /// month, and finer input must keep the month it was given.
+    /// </summary>
+    [Theory]
+    [InlineData("@2012.highBoundary()", "2012-12-31T23:59:59.999-12:00")]
+    [InlineData("@2012.highBoundary(6)", "2012-12")]
+    [InlineData("@2012.highBoundary(8)", "2012-12-31")]
+    [InlineData("@2012-06.highBoundary()", "2012-06-30T23:59:59.999-12:00")]
+    [InlineData("@2012-02.highBoundary(8)", "2012-02-29")]
+    [InlineData("@2011-02.highBoundary(8)", "2011-02-28")]
+    [InlineData("@2012-06-15.highBoundary()", "2012-06-15T23:59:59.999-12:00")]
+    public void GivenADateOfSomePrecision_WhenTakingItsHighBoundary_ThenMaximisesOnlyUnspecifiedComponents(
+        string expression,
+        string expected)
+    {
+        // Arrange
+        var patient = FirelyParityFixture.Resources[0].Json;
+
+        // Act
+        var ignixa = IgnixaEngine.RawValues(IgnixaEngine.Parse(patient), expression);
+
+        // Assert
+        ignixa.ShouldBe([expected]);
     }
 
     private static void AssertPinned(
