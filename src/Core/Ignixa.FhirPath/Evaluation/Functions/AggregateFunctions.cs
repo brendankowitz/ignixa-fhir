@@ -51,7 +51,7 @@ internal static class AggregateFunctions
         var firstValue = list[0].Value;
 
         // Handle Quantity collection
-        if (firstValue is Quantity)
+        if (firstValue is FhirQuantity)
         {
             return SumQuantities(list);
         }
@@ -89,7 +89,7 @@ internal static class AggregateFunctions
         var firstValue = list[0].Value;
 
         // Handle Quantity collection
-        if (firstValue is Quantity)
+        if (firstValue is FhirQuantity)
         {
             return MinMaxQuantities(list, isMax: false);
         }
@@ -164,7 +164,7 @@ internal static class AggregateFunctions
         var firstValue = list[0].Value;
 
         // Handle Quantity collection
-        if (firstValue is Quantity)
+        if (firstValue is FhirQuantity)
         {
             return MinMaxQuantities(list, isMax: true);
         }
@@ -239,7 +239,7 @@ internal static class AggregateFunctions
             var singleValue = list[0].Value;
             if (singleValue is int i)
                 return [CreateDecimal(i)];
-            if (singleValue is Quantity)
+            if (singleValue is FhirQuantity)
                 return [list[0]];
             return [list[0]];
         }
@@ -247,7 +247,7 @@ internal static class AggregateFunctions
         var firstValue = list[0].Value;
 
         // Handle Quantity collection
-        if (firstValue is Quantity)
+        if (firstValue is FhirQuantity)
         {
             return AvgQuantities(list);
         }
@@ -261,7 +261,7 @@ internal static class AggregateFunctions
     private static IEnumerable<IElement> SumQuantities(List<IElement> list)
     {
         // All quantities must have the same unit
-        var quantities = list.Select(e => e.Value as Quantity).ToList();
+        var quantities = list.Select(e => e.Value as FhirQuantity).ToList();
         if (quantities.Any(q => q == null))
             return []; // Mixed types
 
@@ -271,7 +271,7 @@ internal static class AggregateFunctions
 
         // Sum all values
         decimal sum = quantities.Sum(q => q!.Value);
-        var resultQuantity = new Quantity(sum, firstUnit);
+        var resultQuantity = new FhirQuantity(sum, firstUnit);
         return [FunctionHelpers.CreateQuantity(resultQuantity)];
     }
 
@@ -326,7 +326,7 @@ internal static class AggregateFunctions
     private static IEnumerable<IElement> MinMaxQuantities(List<IElement> list, bool isMax)
     {
         // All quantities must have the same unit
-        var quantities = list.Select(e => e.Value as Quantity).ToList();
+        var quantities = list.Select(e => e.Value as FhirQuantity).ToList();
         if (quantities.Any(q => q == null))
             return []; // Mixed types
 
@@ -500,7 +500,7 @@ internal static class AggregateFunctions
     private static IEnumerable<IElement> AvgQuantities(List<IElement> list)
     {
         // All quantities must have the same unit
-        var quantities = list.Select(e => e.Value as Quantity).ToList();
+        var quantities = list.Select(e => e.Value as FhirQuantity).ToList();
         if (quantities.Any(q => q == null))
             return []; // Mixed types
 
@@ -510,7 +510,7 @@ internal static class AggregateFunctions
 
         // Average all values
         decimal avg = quantities.Average(q => q!.Value);
-        var resultQuantity = new Quantity(avg, firstUnit);
+        var resultQuantity = new FhirQuantity(avg, firstUnit);
         return [FunctionHelpers.CreateQuantity(resultQuantity)];
     }
 

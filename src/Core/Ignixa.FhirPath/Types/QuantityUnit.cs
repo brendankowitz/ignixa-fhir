@@ -7,6 +7,7 @@
 
 using System;
 using Fhir.Metrics;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Types;
 
@@ -232,7 +233,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <param name="left">The left quantity</param>
     /// <param name="right">The right quantity</param>
     /// <returns>The resulting quantity with combined units, or null if operation fails</returns>
-    public Quantity? Multiply(Quantity left, Quantity right)
+    public FhirQuantity? Multiply(FhirQuantity left, FhirQuantity right)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -271,7 +272,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             if (string.IsNullOrEmpty(unit))
                 unit = "1";
 
-            return new Quantity(value, unit);
+            return new FhirQuantity(value, unit);
         }
         catch
         {
@@ -285,7 +286,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <param name="left">The left quantity (numerator)</param>
     /// <param name="right">The right quantity (denominator)</param>
     /// <returns>The resulting quantity with divided units, or null if division fails</returns>
-    public Quantity? Divide(Quantity left, Quantity right)
+    public FhirQuantity? Divide(FhirQuantity left, FhirQuantity right)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -328,7 +329,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
                 unit = "1"; // UCUM dimensionless unit
             }
 
-            return new Quantity(value, unit);
+            return new FhirQuantity(value, unit);
         }
         catch
         {

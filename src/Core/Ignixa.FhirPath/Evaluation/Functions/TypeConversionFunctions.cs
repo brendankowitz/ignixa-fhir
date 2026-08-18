@@ -507,10 +507,10 @@ internal static partial class TypeConversionFunctions
     {
         var list = focus.ToList();
         var value = SingleOrEmpty(list, "toQuantity")?.Value;
-        Quantity? quantity = null;
+        FhirQuantity? quantity = null;
 
         // If already a quantity, use it
-        if (value is Quantity q)
+        if (value is FhirQuantity q)
         {
             quantity = q;
         }
@@ -522,16 +522,16 @@ internal static partial class TypeConversionFunctions
         // Convert numeric to dimensionless quantity with unit "1"
         else if (value is int i)
         {
-            quantity = new Quantity(i, "1");
+            quantity = new FhirQuantity(i, "1");
         }
         else if (value is decimal d)
         {
-            quantity = new Quantity(d, "1");
+            quantity = new FhirQuantity(d, "1");
         }
         // Convert boolean to dimensionless quantity (true=1, false=0)
         else if (value is bool b)
         {
-            quantity = new Quantity(b ? 1 : 0, "1");
+            quantity = new FhirQuantity(b ? 1 : 0, "1");
         }
 
         if (quantity == null)
@@ -558,7 +558,7 @@ internal static partial class TypeConversionFunctions
     /// Converts a quantity to the specified target unit.
     /// Supports calendar duration conversions (year/month/day/hour/minute/second).
     /// </summary>
-    private static Quantity? ConvertQuantityToUnit(Quantity source, string targetUnit)
+    private static FhirQuantity? ConvertQuantityToUnit(FhirQuantity source, string targetUnit)
     {
         // Normalize target unit (handle calendar keywords like 'year' → 'a')
         var normalizedTarget = CalendarDuration.GetUcumUnit(targetUnit) ?? targetUnit;
@@ -566,21 +566,21 @@ internal static partial class TypeConversionFunctions
 
         // Same unit - no conversion needed
         if (string.Equals(normalizedSource, normalizedTarget, StringComparison.Ordinal))
-            return new Quantity(source.Value, targetUnit);
+            return new FhirQuantity(source.Value, targetUnit);
 
         // Try calendar duration conversion
         var converted = TryCalendarDurationConversion(source.Value, normalizedSource, normalizedTarget);
         if (converted.HasValue)
         {
             // Use the target unit as specified (preserve keyword form if given)
-            return new Quantity(converted.Value, targetUnit);
+            return new FhirQuantity(converted.Value, targetUnit);
         }
 
         // Try UCUM conversion via the unit converter
         var converter = QuantityUnitConverter.Instance;
         var convertedValue = converter.Convert(source.Value, normalizedSource, normalizedTarget);
         if (convertedValue.HasValue)
-            return new Quantity(convertedValue.Value, targetUnit);
+            return new FhirQuantity(convertedValue.Value, targetUnit);
 
         return null;
     }
@@ -646,7 +646,7 @@ internal static partial class TypeConversionFunctions
     /// - Calendar keywords (year, month, week, etc.) can be unquoted
     /// - UCUM units MUST be quoted (e.g., '5 \'kg\'' not '5 kg')
     /// </summary>
-    private static Quantity? TryParseQuantity(string input)
+    private static FhirQuantity? TryParseQuantity(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return null;
@@ -659,7 +659,7 @@ internal static partial class TypeConversionFunctions
         {
             // No space - might be just a number (dimensionless)
             if (decimal.TryParse(trimmed, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var val))
-                return new Quantity(val, "1");
+                return new FhirQuantity(val, "1");
             return null;
         }
 
@@ -679,14 +679,14 @@ internal static partial class TypeConversionFunctions
             // Remove quotes and use the UCUM unit directly
             var ucumUnit = unitStr.Substring(1, unitStr.Length - 2);
             if (!string.IsNullOrEmpty(ucumUnit))
-                return new Quantity(value, ucumUnit);
+                return new FhirQuantity(value, ucumUnit);
             return null;
         }
 
         // Check if this is a calendar duration keyword (year, month, week, day, etc.)
         var ucumFromKeyword = CalendarDuration.GetUcumUnit(unitStr);
         if (ucumFromKeyword != null)
-            return new Quantity(value, ucumFromKeyword);
+            return new FhirQuantity(value, ucumFromKeyword);
 
         // Unquoted non-keyword unit is not valid per FHIRPath spec
         // (e.g., "1 wk" without quotes is not valid, "1 'wk'" is)

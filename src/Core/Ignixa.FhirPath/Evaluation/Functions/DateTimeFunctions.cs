@@ -584,13 +584,13 @@ public static class DateTimeFunctions
     /// @2020-01-01T10:00:00Z.duration(@2020-01-01T14:30:00Z) // 4.5 hours or 270 minutes
     /// </example>
     [FhirPathFunction("duration",
-        SupportedContexts = "any-Quantity",
+        SupportedContexts = "any-FhirQuantity",
         ReturnType = "Quantity",
         MinArguments = 1,
         MaxArguments = 1,
         TakesExpressionArguments = true,
         Category = "DateTime",
-        Description = "Returns the duration between the input date/time and the argument as a Quantity")]
+        Description = "Returns the duration between the input date/time and the argument as a FhirQuantity")]
     public static IEnumerable<IElement> Duration(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -626,13 +626,13 @@ public static class DateTimeFunctions
     /// @2020-01-31.difference(@2020-02-28) // 28 days (respects calendar)
     /// </example>
     [FhirPathFunction("difference",
-        SupportedContexts = "any-Quantity",
+        SupportedContexts = "any-FhirQuantity",
         ReturnType = "Quantity",
         MinArguments = 1,
         MaxArguments = 1,
         TakesExpressionArguments = true,
         Category = "DateTime",
-        Description = "Returns the calendar difference between the input date/time and the argument as a Quantity")]
+        Description = "Returns the calendar difference between the input date/time and the argument as a FhirQuantity")]
     public static IEnumerable<IElement> Difference(
         IEnumerable<IElement> focus,
         IReadOnlyList<Expression> arguments,
@@ -848,7 +848,7 @@ public static class DateTimeFunctions
     /// </summary>
     private static IElement CreateQuantityElement(decimal value, string unit)
     {
-        return FunctionHelpers.CreateQuantity(new Quantity(value, unit));
+        return FunctionHelpers.CreateQuantity(new FhirQuantity(value, unit));
     }
 
     #endregion

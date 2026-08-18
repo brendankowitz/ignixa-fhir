@@ -226,11 +226,11 @@ internal static class BoundaryFunctions
         };
 
         // Handle Quantity type (has both value and unit)
-        if (element.Value is Quantity qty)
+        if (element.Value is FhirQuantity qty)
         {
             var inputPrecision = GetDecimalPrecision(qty.Value);
             var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, qty.Unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, qty.Unit));
         }
 
         // Handle FHIR Quantity element with decimal value
@@ -239,7 +239,7 @@ internal static class BoundaryFunctions
             var inputPrecision = GetDecimalPrecision(quantityValue);
             var boundaryValue = CalculateNumericLowBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
             var unit = ExtractUnitFromQuantityElement(element) ?? "1";
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, unit));
         }
 
         return cleanValue switch
@@ -272,11 +272,11 @@ internal static class BoundaryFunctions
         };
 
         // Handle Quantity type (has both value and unit)
-        if (element.Value is Quantity qty)
+        if (element.Value is FhirQuantity qty)
         {
             var inputPrecision = GetDecimalPrecision(qty.Value);
             var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(qty.Value, inputPrecision, outputPrecision);
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, qty.Unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, qty.Unit));
         }
 
         // Handle FHIR Quantity element with decimal value
@@ -285,7 +285,7 @@ internal static class BoundaryFunctions
             var inputPrecision = GetDecimalPrecision(quantityValue);
             var boundaryValue = CalculateNumericHighBoundaryWithPrecisions(quantityValue, inputPrecision, outputPrecision);
             var unit = ExtractUnitFromQuantityElement(element) ?? "1";
-            return FunctionHelpers.CreateQuantity(new Quantity(boundaryValue, unit));
+            return FunctionHelpers.CreateQuantity(new FhirQuantity(boundaryValue, unit));
         }
 
         return cleanValue switch

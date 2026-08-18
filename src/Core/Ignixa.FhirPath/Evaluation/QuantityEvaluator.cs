@@ -34,7 +34,7 @@ internal static class QuantityEvaluator
         ArgumentNullException.ThrowIfNull(quantityExpr);
 
         // Create a Quantity value object
-        var quantity = new Quantity(quantityExpr.Value, quantityExpr.Unit);
+        var quantity = new FhirQuantity(quantityExpr.Value, quantityExpr.Unit);
 
         // Wrap in a QuantityElement (IElement implementation)
         yield return Functions.FunctionHelpers.CreateQuantity(quantity);
@@ -86,7 +86,7 @@ internal static class QuantityEvaluator
         var rightValue = right[0].Value;
 
         // Handle quantity + quantity, quantity - quantity, quantity * quantity, quantity / quantity
-        if (leftValue is Quantity leftQty && rightValue is Quantity rightQty)
+        if (leftValue is FhirQuantity leftQty && rightValue is FhirQuantity rightQty)
         {
             return op switch
             {
@@ -99,7 +99,7 @@ internal static class QuantityEvaluator
         }
 
         // Handle quantity * scalar, scalar * quantity
-        if (leftValue is Quantity leftQuantity && IsScalar(rightValue) && rightValue != null)
+        if (leftValue is FhirQuantity leftQuantity && IsScalar(rightValue) && rightValue != null)
         {
             if (op == "*")
                 return EvaluateQuantityScalarMultiply(leftQuantity, ToDecimal(rightValue));
@@ -107,7 +107,7 @@ internal static class QuantityEvaluator
                 return EvaluateQuantityScalarDivide(leftQuantity, ToDecimal(rightValue));
         }
 
-        if (IsScalar(leftValue) && leftValue != null && rightValue is Quantity rightQuantity && op == "*")
+        if (IsScalar(leftValue) && leftValue != null && rightValue is FhirQuantity rightQuantity && op == "*")
         {
             return EvaluateQuantityScalarMultiply(rightQuantity, ToDecimal(leftValue));
         }
@@ -181,15 +181,15 @@ internal static class QuantityEvaluator
         if (convertedRight == null)
             return null;
 
-        // Perform the comparison
+        // Both operands are now in leftQty's unit, so ordering is a plain numeric comparison.
         return op switch
         {
             "=" => leftQty.Equals(convertedRight),
             "!=" => !leftQty.Equals(convertedRight),
-            "<" => leftQty.CompareTo(convertedRight) < 0,
-            "<=" => leftQty.CompareTo(convertedRight) <= 0,
-            ">" => leftQty.CompareTo(convertedRight) > 0,
-            ">=" => leftQty.CompareTo(convertedRight) >= 0,
+            "<" => leftQty.Value < convertedRight.Value,
+            "<=" => leftQty.Value <= convertedRight.Value,
+            ">" => leftQty.Value > convertedRight.Value,
+            ">=" => leftQty.Value >= convertedRight.Value,
             _ => throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op)
         };
     }
@@ -198,15 +198,15 @@ internal static class QuantityEvaluator
     /// Extracts a Quantity from an IElement, handling FhirPath Quantity literals, FHIR Quantity elements
     /// (which have value/unit/code children), and the implicit conversion from a bare number.
     /// </summary>
-    private static Quantity? ExtractQuantity(IElement element)
+    private static FhirQuantity? ExtractQuantity(IElement element)
     {
         // If the value is already a Quantity (FhirPath literal), return it directly
-        if (element.Value is Quantity qty)
+        if (element.Value is FhirQuantity qty)
             return qty;
 
         // Integer and Decimal are implicitly convertible to Quantity, in the unity unit.
         if (element.Value is not null && IsScalar(element.Value))
-            return new Quantity(ToDecimal(element.Value), "1");
+            return new FhirQuantity(ToDecimal(element.Value), "1");
 
         // If it's a FHIR Quantity element, extract value and unit from children
 #pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are case-insensitive
@@ -225,7 +225,7 @@ internal static class QuantityEvaluator
     /// <summary>
     /// Extracts value and unit from a FHIR Quantity element's children.
     /// </summary>
-    private static Quantity? ExtractQuantityFromFhirElement(IElement element)
+    private static FhirQuantity? ExtractQuantityFromFhirElement(IElement element)
     {
         decimal? value = null;
         string? unit = null;
@@ -260,7 +260,7 @@ internal static class QuantityEvaluator
 
         if (value.HasValue && !string.IsNullOrEmpty(unit))
         {
-            return new Quantity(value.Value, unit);
+            return new FhirQuantity(value.Value, unit);
         }
 
         return null;
@@ -268,7 +268,7 @@ internal static class QuantityEvaluator
 
     #region Private Helpers
 
-    private static IEnumerable<IElement> EvaluateQuantityAddition(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantityAddition(FhirQuantity left, FhirQuantity right)
     {
         var result = left.Add(right, UnitConverter);
         return result != null
@@ -276,7 +276,7 @@ internal static class QuantityEvaluator
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantitySubtraction(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantitySubtraction(FhirQuantity left, FhirQuantity right)
     {
         var result = left.Subtract(right, UnitConverter);
         return result != null
@@ -284,7 +284,7 @@ internal static class QuantityEvaluator
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantityMultiplication(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantityMultiplication(FhirQuantity left, FhirQuantity right)
     {
         var result = UnitConverter.Multiply(left, right);
         return result != null
@@ -292,13 +292,13 @@ internal static class QuantityEvaluator
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantityScalarMultiply(Quantity quantity, decimal scalar)
+    private static IEnumerable<IElement> EvaluateQuantityScalarMultiply(FhirQuantity quantity, decimal scalar)
     {
         var result = quantity.Multiply(scalar);
         return [Functions.FunctionHelpers.CreateQuantity(result)];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantityScalarDivide(Quantity quantity, decimal scalar)
+    private static IEnumerable<IElement> EvaluateQuantityScalarDivide(FhirQuantity quantity, decimal scalar)
     {
         var result = quantity.DivideByScalar(scalar);
         return result != null
@@ -306,7 +306,7 @@ internal static class QuantityEvaluator
             : [];
     }
 
-    private static IEnumerable<IElement> EvaluateQuantityDivision(Quantity left, Quantity right)
+    private static IEnumerable<IElement> EvaluateQuantityDivision(FhirQuantity left, FhirQuantity right)
     {
         var result = UnitConverter.Divide(left, right);
         return result != null

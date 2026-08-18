@@ -15,7 +15,7 @@ using Ignixa.Extensions.FirelySdk;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Xunit;
-using IgnixaQuantity = Ignixa.FhirPath.Types.Quantity;
+using IgnixaQuantity = Ignixa.Abstractions.FhirQuantity;
 using P = Hl7.Fhir.ElementModel.Types;
 
 namespace Ignixa.Extensions.Tests.FirelySdk;
@@ -416,8 +416,8 @@ public class FirelyPrimitiveValueContractTests
     public void GivenFirelyQuantityValue_WhenReadThroughIgnixaElementAdapter_ThenReturnsIgnixaQuantity()
     {
         // Firely surfaces Quantity as Hl7.Fhir.ElementModel.Types.Quantity; Ignixa's canonical
-        // quantity is Ignixa.FhirPath.Types.Quantity. Roughly forty sites across the evaluator and
-        // its function libraries reach that type by testing `element.Value is Types.Quantity`
+        // quantity is Ignixa.Abstractions.FhirQuantity. Roughly forty sites across the evaluator and
+        // its function libraries reach that type by testing `element.Value is FhirQuantity`
         // straight off IElement.Value, so an untranslated P.Quantity misses every one of them at
         // once - equality, equivalence, ordering, arithmetic and aggregation all silently degrade
         // to an empty collection. Translating here is what closes all of them together.
@@ -572,7 +572,7 @@ public class FirelyPrimitiveValueContractTests
         // The quantity counterpart of the date defect above, and the reason the translation has to
         // produce Ignixa's own Quantity rather than be matched for structurally in one helper:
         // equality, ordering and equivalence are three separate call sites that each test
-        // `is Types.Quantity` independently, and an untranslated P.Quantity misses all three.
+        // `is FhirQuantity` independently, and an untranslated P.Quantity misses all three.
 
         // Arrange
         var value = new StubTypedElement { Name = "value", InstanceType = "Quantity", Value = new P.Quantity(5m, "mg") };
