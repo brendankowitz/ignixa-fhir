@@ -10,6 +10,12 @@ In Progress
 
 This feature provides FHIRPath expression evaluation capabilities used throughout the FHIR server for search parameters, invariants, validation, and data extraction.
 
+## Reference
+
+| Document | Description |
+|----------|-------------|
+| [Firely 5.11.4 Parity Inventory](firely-parity.md) | Every behaviour that differs between Ignixa and the Firely 5.11.4 engine the [fhir-server seam](https://github.com/microsoft/fhir-server/blob/personal/bkowitz/ignixa-fhirpath-seam/docs/arch/adr-2608-ignixa-fhirpath-seam.md) replaces, ranked by reachability from shipped SearchParameter expressions. Kept current by a differential harness that fails on a new divergence. |
+
 ## Investigations
 
 | Investigation | Status | Created | Description |
