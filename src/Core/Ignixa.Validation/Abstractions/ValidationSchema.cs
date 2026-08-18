@@ -164,9 +164,10 @@ public sealed class ValidationSchema
     /// not infer a resource.
     /// </para>
     /// <para>
-    /// Callers that knowingly need no scope - Minimal depth runs no FHIRPath invariants, and seeding costs a
-    /// reference-index build over the whole resource - pass a bare state explicitly, so that choice stays
-    /// visible at the call site rather than riding on an omitted argument.
+    /// Callers that knowingly need no scope - Minimal depth runs no FHIRPath invariants - pass a bare state
+    /// explicitly, so that choice stays visible at the call site rather than riding on an omitted argument.
+    /// Seeding itself is cheap: <see cref="ValidationState.EnterRootResource"/> defers the reference-index
+    /// build to the first <c>resolve()</c>, so a resource nothing resolves against never walks the tree.
     /// </para>
     /// </remarks>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState? state = null)

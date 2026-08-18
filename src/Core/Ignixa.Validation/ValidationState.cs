@@ -140,18 +140,27 @@ public record ValidationState
     /// </summary>
     /// <param name="resource">The resource element becoming the validation root.</param>
     /// <returns>A new validation state scoped to this resource.</returns>
+    /// <remarks>
+    /// The reference index is built on the resolver's first call, not here. Seeding a scope is now the
+    /// default for every <c>ValidationSchema.Validate</c>, including the resource-write path, but the
+    /// index has exactly one consumer - <c>resolve()</c> - so the common resource (no <c>contained</c>,
+    /// not a Bundle or Parameters, no invariant that resolves) paid a whole-tree walk for an index
+    /// nobody read. Deferring is a pure timing change: the index is still built at most once per scope,
+    /// and <see cref="ResourceScope.Resolver"/> is still non-null exactly when a scope is seeded, which
+    /// is the signal <c>ReferenceResolutionCheck</c> and <c>FhirPathInvariantCheck</c> switch on.
+    /// </remarks>
     public ValidationState EnterRootResource(IElement resource)
     {
         ArgumentNullException.ThrowIfNull(resource);
 
-        var index = ReferenceIndex.Build(resource);
+        ReferenceIndex? index = null;
         return this with
         {
             Scope = new ResourceScope
             {
                 Resource = resource,
                 RootResource = resource,
-                Resolver = index.Resolve
+                Resolver = reference => (index ??= ReferenceIndex.Build(resource)).Resolve(reference)
             }
         };
     }
@@ -164,13 +173,22 @@ public record ValidationState
     /// </summary>
     /// <param name="contained">The contained resource element being entered.</param>
     /// <returns>A new validation state scoped to the contained resource.</returns>
+    /// <remarks>
+    /// Deferred like <see cref="EnterRootResource"/>, and the chain composes: the parent resolver is
+    /// only invoked on a local miss, so entering a contained resource does not force the parent's index.
+    /// The captured cell is written at most once with an already-constructed immutable
+    /// <see cref="ReferenceIndex"/>, so a concurrent first call can at worst duplicate the build - it
+    /// cannot observe a half-built index. That is deliberate: no <c>ValidationState</c> in the codebase
+    /// crosses a thread (the whole validation walk is synchronous and every state is created inside the
+    /// call that consumes it), so paying for synchronisation here would buy nothing.
+    /// </remarks>
     public ValidationState EnterContainedResource(IElement contained)
     {
         ArgumentNullException.ThrowIfNull(contained);
 
         var parentScope = Scope;
-        var index = ReferenceIndex.Build(contained);
         var parentResolver = parentScope.Resolver;
+        ReferenceIndex? index = null;
 
         return this with
         {
@@ -178,7 +196,9 @@ public record ValidationState
             {
                 Resource = contained,
                 RootResource = parentScope.Resource,
-                Resolver = reference => index.Resolve(reference) ?? parentResolver?.Invoke(reference)
+                Resolver = reference =>
+                    (index ??= ReferenceIndex.Build(contained)).Resolve(reference)
+                    ?? parentResolver?.Invoke(reference)
             }
         };
     }
