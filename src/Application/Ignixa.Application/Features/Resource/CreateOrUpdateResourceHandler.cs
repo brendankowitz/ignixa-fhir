@@ -410,10 +410,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         {
             Depth = ValidationDepth.Spec // Use Spec-level validation for X-Provenance
         };
-        // Seed the resource scope so %resource / %rootResource / resolve() resolve against the Provenance
-        // being validated; see the same call in ValidationBehavior for why an unseeded state is a defect.
-        var state = new ValidationState().EnterRootResource(element);
-        var validationResult = schema.Validate(element, settings, state);
+        var validationResult = schema.Validate(element, settings);
 
         if (!validationResult.IsValid)
         {

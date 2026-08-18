@@ -234,7 +234,7 @@ public class RootDeclaredInvariantTests
         return schema.Validate(
             element,
             new ValidationSettings { Depth = ValidationDepth.Full },
-            new ValidationState().EnterRootResource(element));
+            ValidationState.ForRoot(element));
     }
 
     private static string Describe(ValidationResult result)

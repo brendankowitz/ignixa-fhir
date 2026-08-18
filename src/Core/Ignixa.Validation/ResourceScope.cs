@@ -14,8 +14,11 @@ namespace Ignixa.Validation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Immutable. Forked at resource boundaries via <see cref="ValidationState.EnterRootResource"/>
-/// and <see cref="ValidationState.EnterContainedResource"/>. Never re-pointed per element:
+/// Immutable, and never absent: both members are <c>required</c>, and the only way to reach one is
+/// <see cref="ValidationState.ForRoot"/> at construction or
+/// <see cref="ValidationState.EnterContainedResource"/> at a contained boundary. An unrooted scope is
+/// therefore unrepresentable — see <see cref="ValidationState.ForRoot"/> for the bug that made that
+/// worth enforcing in the type rather than in a caller's memory. Never re-pointed per element:
 /// <c>%resource</c> must remain the enclosing resource, not the constrained sub-element.
 /// </para>
 /// <para>
@@ -51,12 +54,12 @@ public record ResourceScope
     /// <summary>
     /// Gets the nearest containing resource (the FHIRPath <c>%resource</c> variable).
     /// </summary>
-    public IElement? Resource { get; init; }
+    public required IElement Resource { get; init; }
 
     /// <summary>
     /// Gets the container/parent resource (the FHIRPath <c>%rootResource</c> variable).
     /// Equals <see cref="Resource"/> for a standalone resource or an independent Bundle entry;
     /// points at the containing resource for a contained resource.
     /// </summary>
-    public IElement? RootResource { get; init; }
+    public required IElement RootResource { get; init; }
 }

@@ -14,21 +14,48 @@ namespace Ignixa.Validation;
 /// </summary>
 public record ValidationState
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ValidationState"/> class.
-    /// </summary>
-    public ValidationState()
+    private ValidationState(ResourceScope scope)
     {
         Global = new GlobalState();
         Instance = new InstanceState();
         Location = new LocationState();
+        Scope = scope;
     }
 
-    private ValidationState(GlobalState global, InstanceState instance, LocationState location)
+    /// <summary>
+    /// Creates a state rooted at <paramref name="resource"/>: the only way to obtain a
+    /// <see cref="ValidationState"/>. Both <c>%resource</c> and <c>%rootResource</c> point at the
+    /// resource itself, which is correct for a standalone resource and for an independent Bundle entry
+    /// (a Bundle entry's resource is not "contained" in the Bundle in the FHIRPath sense).
+    /// </summary>
+    /// <param name="resource">The resource element this validation is rooted at.</param>
+    /// <returns>A validation state scoped to <paramref name="resource"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// There is deliberately no parameterless constructor. A state with no root is not a weaker state,
+    /// it is a broken one: <c>%resource</c> would be empty, a constraint like <c>%resource.id = 'x'</c>
+    /// would evaluate to empty, and <c>FhirPathInvariantCheck</c> reads empty as a failed constraint —
+    /// so a conformant resource is rejected for a defect in the caller, and only at <c>Full</c> depth,
+    /// where invariants actually run. That bug shipped once because seeding was a separate step a caller
+    /// had to remember; making the root a construction parameter is what stops it recurring.
+    /// </para>
+    /// <para>
+    /// Seeding costs nothing: it records two element references and walks nothing. Reference resolution
+    /// is not set up here — see <see cref="ResourceScope"/> for where the <see cref="ReferenceIndex"/>
+    /// that backs <c>resolve()</c> and <c>ReferenceResolutionCheck</c> is actually built, and why this
+    /// type no longer builds one of its own. There is therefore no depth at which skipping the root
+    /// buys anything.
+    /// </para>
+    /// </remarks>
+    public static ValidationState ForRoot(IElement resource)
     {
-        Global = global;
-        Instance = instance;
-        Location = location;
+        ArgumentNullException.ThrowIfNull(resource);
+
+        return new ValidationState(new ResourceScope
+        {
+            Resource = resource,
+            RootResource = resource
+        });
     }
 
     /// <summary>
@@ -48,10 +75,10 @@ public record ValidationState
 
     /// <summary>
     /// Gets the FHIRPath tree-context scope (%resource, %rootResource, resolve()) for the
-    /// resource currently being validated. Seeded at resource boundaries via
-    /// <see cref="EnterRootResource"/> / <see cref="EnterContainedResource"/>.
+    /// resource currently being validated. Established by <see cref="ForRoot"/> at construction and
+    /// re-pointed at resource boundaries by <see cref="EnterContainedResource"/>; never absent.
     /// </summary>
-    public ResourceScope Scope { get; init; } = new();
+    public ResourceScope Scope { get; init; }
 
     /// <summary>
     /// The maximum number of nested element/contained-resource descents the validator will make
@@ -129,33 +156,6 @@ public record ValidationState
             {
                 InstancePath = instancePath,
                 DefinitionPath = definitionPath
-            }
-        };
-    }
-
-    /// <summary>
-    /// Enters a resource that becomes a validation root: a standalone resource or an independent
-    /// Bundle entry. Both %resource and %rootResource point at the resource itself (a Bundle entry's
-    /// resource is not "contained" in the Bundle in the FHIRPath sense).
-    /// </summary>
-    /// <param name="resource">The resource element becoming the validation root.</param>
-    /// <returns>A new validation state scoped to this resource.</returns>
-    /// <remarks>
-    /// Seeding a scope costs nothing: it records two element references and walks nothing. Reference
-    /// resolution is not set up here - see <see cref="ResourceScope"/> for where the
-    /// <see cref="ReferenceIndex"/> that backs <c>resolve()</c> and <c>ReferenceResolutionCheck</c>
-    /// is actually built, and why this type no longer builds one of its own.
-    /// </remarks>
-    public ValidationState EnterRootResource(IElement resource)
-    {
-        ArgumentNullException.ThrowIfNull(resource);
-
-        return this with
-        {
-            Scope = new ResourceScope
-            {
-                Resource = resource,
-                RootResource = resource
             }
         };
     }

@@ -19,10 +19,7 @@ public sealed class ExtensionDefinitionCheckTests
     private static ValidationResult Validate(string json)
     {
         var element = JsonNodeSourceNode.Create(JsonNode.Parse(json)!).ToElement(TestSchemaProvider.GetR4Schema());
-        return new ExtensionDefinitionCheck().Validate(
-            element,
-            new ValidationSettings { Depth = ValidationDepth.Full },
-            new ValidationState());
+        return new ExtensionDefinitionCheck().Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(element));
     }
 
     [Fact]
@@ -140,10 +137,7 @@ public sealed class ExtensionDefinitionCheckTests
         }
         """)!).ToElement(TestSchemaProvider.GetR4Schema());
 
-        var result = new ExtensionDefinitionCheck().Validate(
-            element,
-            new ValidationSettings { Depth = ValidationDepth.Spec },
-            new ValidationState());
+        var result = new ExtensionDefinitionCheck().Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(element));
 
         // Act / Assert
         result.IsValid.ShouldBeTrue();

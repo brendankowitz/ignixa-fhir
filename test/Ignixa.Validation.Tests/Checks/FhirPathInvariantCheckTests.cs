@@ -58,10 +58,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -92,15 +93,59 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+
+        // ele-1 is exempted on the resource root itself - a resource's presence is guaranteed, and the
+        // reference validator does not fire it there either. This test is about a nested element, so the
+        // scope is rooted at the enclosing resource rather than at the element under test.
+        var enclosingResource = JsonNodeSourceNode
+            .Create(JsonNode.Parse("""{"resourceType":"Patient","id":"p"}""")!)
+            .ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(enclosingResource);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
         Assert.Single(result.Issues);
         Assert.Contains(result.Issues, i => i.Code == "ele-1");
+    }
+
+    /// <summary>
+    /// The same near-empty element that fails ele-1 as a nested element is exempt when it is the resource
+    /// root: a resource's presence is guaranteed, and the reference validator does not fire ele-1 there
+    /// either. Without the exemption an otherwise-legal resource carrying only an id would be rejected.
+    /// </summary>
+    [Fact]
+    public void GivenNearEmptyResourceRoot_WhenValidatingEle1_ThenTheRootIsExempt()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "ele-1",
+            Severity = ConstraintSeverity.Error,
+            Human = "All FHIR elements must have a @value or children",
+            Expression = "hasValue() or (children().count() > id.count())",
+            Xpath = null,
+            AppliesTo = new[] { "Element" }
+        };
+
+        var element = JsonNodeSourceNode
+            .Create(JsonNode.Parse("""{"resourceType":"Patient","id":"only-an-id"}""")!)
+            .ToElement(TestSchemaProvider.GetR4Schema());
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+
+        // The element under validation IS the scope root, which is what triggers the exemption.
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(result.Issues);
     }
 
     /// <summary>
@@ -140,10 +185,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -182,10 +228,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json)!.Children("contact").First();
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -217,10 +264,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -261,10 +309,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -296,10 +345,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid); // Warnings don't fail validation
@@ -333,10 +383,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Minimal };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -370,10 +421,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert — parse failure must NOT fail validation
         result.IsValid.ShouldBeTrue();
@@ -406,10 +458,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -442,8 +495,8 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
         var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act & Assert — each call must remain non-failing
         for (var i = 0; i < 3; i++)
@@ -478,10 +531,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert — engine limitation must NOT fail validation
         result.IsValid.ShouldBeTrue();
@@ -531,10 +585,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert - an ill-formed constraint must not reject a conformant resource
         result.IsValid.ShouldBeTrue();
@@ -565,10 +620,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -597,10 +653,11 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -637,7 +694,8 @@ public class FhirPathInvariantCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         var compiledExpressionField = typeof(FhirPathInvariantCheck).GetField(
             "_compiledExpression",
@@ -650,7 +708,7 @@ public class FhirPathInvariantCheckTests
         FhirPath.Expressions.Expression? firstCompiledExpression = null;
         for (int i = 0; i < 10; i++)
         {
-            var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+            var result = check.Validate(element, settings, state);
             Assert.True(result.IsValid);
 
             var lazyAfterCall = (Lazy<FhirPath.Expressions.Expression?>)compiledExpressionField.GetValue(check)!;

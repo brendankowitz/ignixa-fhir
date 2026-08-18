@@ -50,15 +50,12 @@ public sealed class ReferenceResolutionCheck : IValidationCheck
         }
 
         // Index the OUTERMOST resource of the current scope, matching the root that resolve() indexes
-        // (FhirSpecificFunctions.Resolve uses RootResource ?? Resource). At contained scope
-        // RootResource is the containing parent, which is what makes a contained resource's reference
-        // to a contained PEER (#id) resolve: the peers live in the parent's contained pool, not the
-        // contained resource's own (FHIR forbids nested contained, so that pool is always empty).
-        var root = state.Scope.RootResource ?? state.Scope.Resource;
-        if (root is null)
-        {
-            return ValidationResult.Success();
-        }
+        // (FhirSpecificFunctions.Resolve uses RootResource ?? Resource; here RootResource is always set,
+        // so the fallback never fires). At contained scope RootResource is the containing parent, which
+        // is what makes a contained resource's reference to a contained PEER (#id) resolve: the peers
+        // live in the parent's contained pool, not the contained resource's own (FHIR forbids nested
+        // contained, so that pool is always empty).
+        var root = state.Scope.RootResource;
 
         // Bundle and Parameters are both containers whose entries carry independent resources that
         // reference each other by relative Type/id. Inside either, an unresolved relative reference is

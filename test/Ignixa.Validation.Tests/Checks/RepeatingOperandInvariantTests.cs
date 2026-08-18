@@ -153,7 +153,7 @@ public class RepeatingOperandInvariantTests
         };
 
         return new FhirPathInvariantCheck(constraint, _schema, _parser)
-            .Validate(repeat, new ValidationSettings { Depth = ValidationDepth.Spec }, new ValidationState());
+            .Validate(repeat, new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(repeat));
     }
 
     private IConstraint ShippedTimingRepeatConstraint(string key)

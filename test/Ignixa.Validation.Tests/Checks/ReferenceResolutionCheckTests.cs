@@ -23,7 +23,7 @@ public class ReferenceResolutionCheckTests
     {
         var element = JsonNodeSourceNode.Create(JsonNode.Parse(resourceJson)!)
             .ToElement(TestSchemaProvider.GetR4Schema());
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
         return new ReferenceResolutionCheck().Validate(
             element,
             new ValidationSettings { Depth = ValidationDepth.Full },

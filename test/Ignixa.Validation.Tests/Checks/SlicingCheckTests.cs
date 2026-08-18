@@ -48,7 +48,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.Closed, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
@@ -61,7 +61,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.Open, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeFalse();
         var issue = result.Issues.ShouldHaveSingleItem();
@@ -77,7 +77,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.Closed, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeFalse();
         var issue = result.Issues.ShouldHaveSingleItem();
@@ -91,7 +91,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.Open, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
@@ -107,7 +107,7 @@ public sealed class SlicingCheckTests
             ValueUrlSlice("birthsex", 1, 1, "http://x/birthsex"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeFalse();
         var issue = result.Issues.ShouldHaveSingleItem();
@@ -127,7 +127,7 @@ public sealed class SlicingCheckTests
             new[] { new SliceDefinition("hasValueString", 1, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Exists, "valueString", null) }) });
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
@@ -140,7 +140,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.Closed, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec }, new ValidationState());
+        var result = check.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
@@ -158,7 +158,7 @@ public sealed class SlicingCheckTests
         var check = new SlicingCheck("extension", metadata);
 
         check.IsDeferred.ShouldBeTrue();
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldAllBe(i => i.Severity == IssueSeverity.Information);
@@ -184,7 +184,7 @@ public sealed class SlicingCheckTests
             });
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
@@ -202,7 +202,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.OpenAtEnd, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();
@@ -220,7 +220,7 @@ public sealed class SlicingCheckTests
         var metadata = ValueUrlSlicing(SlicingRules.OpenAtEnd, ValueUrlSlice("race", 0, 1, "http://x/race"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeFalse();
         var issue = result.Issues.ShouldHaveSingleItem();
@@ -243,7 +243,7 @@ public sealed class SlicingCheckTests
             new[] { ValueUrlSlice("race", 0, 1, "http://x/race") });
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeFalse();
         var issue = result.Issues.ShouldHaveSingleItem();
@@ -270,7 +270,7 @@ public sealed class SlicingCheckTests
             });
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeFalse();
         result.Issues.ShouldContain(i => i.Code == "slicing-out-of-order" && i.Severity == IssueSeverity.Error);
@@ -292,7 +292,7 @@ public sealed class SlicingCheckTests
         var check = new SlicingCheck("extension", metadata);
 
         check.IsDeferred.ShouldBeFalse();
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldNotBeEmpty();
@@ -314,7 +314,7 @@ public sealed class SlicingCheckTests
             ValueUrlSlice("birthsex", 0, 1, "http://x/birthsex"));
         var check = new SlicingCheck("extension", metadata);
 
-        var result = check.Validate(element, FullDepth, new ValidationState());
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
 
         result.IsValid.ShouldBeTrue();
         result.Issues.ShouldBeEmpty();

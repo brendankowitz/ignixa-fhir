@@ -50,9 +50,7 @@ internal sealed class OutputFormattingHandler(ILogger<OutputFormattingHandler> l
                 SkipTerminologyValidation = true   // Skip terminology checks
             };
 
-            // Bare state on purpose - see the same call in ValidationHandler: Minimal depth runs no FHIRPath
-            // invariants, so no resource scope is read.
-            var validationResult = schema.Validate(context.Element, settings, new ValidationState());
+            var validationResult = schema.Validate(context.Element, settings);
 
             if (!validationResult.IsValid)
             {

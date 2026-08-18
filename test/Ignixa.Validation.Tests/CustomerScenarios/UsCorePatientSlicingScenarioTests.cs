@@ -93,7 +93,7 @@ public sealed class UsCorePatientSlicingScenarioTests(ITestOutputHelper output)
         var schema = resolver.ResolveForElement(element);
         schema.ShouldNotBeNull();
 
-        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(element));
 
         Dump(result, "conformant us-core-patient (regenerated snapshot)");
         SlicingIssues(result)
@@ -119,7 +119,7 @@ public sealed class UsCorePatientSlicingScenarioTests(ITestOutputHelper output)
         var schema = resolver.ResolveForElement(element);
         schema.ShouldNotBeNull();
 
-        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema!.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(element));
 
         Dump(result, "duplicate race us-core-patient");
         SlicingIssues(result).ShouldContain(

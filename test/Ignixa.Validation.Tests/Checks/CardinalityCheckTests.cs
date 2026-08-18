@@ -27,10 +27,11 @@ public class CardinalityCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CardinalityCheck("name", min: 0, max: 5);
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -45,10 +46,11 @@ public class CardinalityCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CardinalityCheck("name", min: 1, max: 5);
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -64,10 +66,11 @@ public class CardinalityCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CardinalityCheck("name", min: 0, max: 2);
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -83,10 +86,11 @@ public class CardinalityCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CardinalityCheck("name", min: 0, max: null);
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -101,10 +105,11 @@ public class CardinalityCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CardinalityCheck("gender", min: 1, max: 1);
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -119,10 +124,11 @@ public class CardinalityCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new CardinalityCheck("name", min: 1, max: 5);
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -149,7 +155,7 @@ public class CardinalityCheckTests
             .Children("participant")[0];
         var check = new CardinalityCheck("status", min: 1, max: 1);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(participantElement);
 
         // Act
         var result = check.Validate(participantElement, settings, state);
@@ -180,7 +186,7 @@ public class CardinalityCheckTests
             .Children("participant")[0];
         var check = new CardinalityCheck("status", min: 1, max: 1);
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(participantElement);
 
         // Act
         var result = check.Validate(participantElement, settings, state);
@@ -211,7 +217,7 @@ public class CardinalityCheckTests
             .Children("participant")[0];
         var check = new CardinalityCheck("status", min: 1, max: 1);
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(participantElement);
 
         // Act
         var result = check.Validate(participantElement, settings, state);
@@ -237,7 +243,7 @@ public class CardinalityCheckTests
         var appointmentElement = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
         var check = new CardinalityCheck("status", min: 1, max: 1);
         var settings = new ValidationSettings { Depth = ValidationDepth.Compatibility };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(appointmentElement);
 
         // Act
         var result = check.Validate(appointmentElement, settings, state);

@@ -72,9 +72,8 @@ public class ComprehensiveValidationTests
         }
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
         var schemaProvider = _schemaProviders[version];
-        return schema.Validate(sourceNode.ToElement(schemaProvider), settings, state);
+        return schema.Validate(sourceNode.ToElement(schemaProvider), settings);
     }
 
     /// <summary>

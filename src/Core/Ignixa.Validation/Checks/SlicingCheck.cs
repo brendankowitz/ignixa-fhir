@@ -303,10 +303,6 @@ public sealed class SlicingCheck : IValidationCheck
     private static EvaluationContext BuildContext(ValidationState state)
     {
         var scope = state.Scope;
-        if (scope.Resource is null)
-        {
-            return new FhirEvaluationContext();
-        }
 
         // No ElementResolver: a discriminator's resolve() resolves in-instance from
         // Resource/RootResource via EvaluationContext.ReferenceIndexCache - see ResourceScope.
