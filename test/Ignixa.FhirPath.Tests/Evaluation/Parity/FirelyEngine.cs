@@ -98,7 +98,9 @@ internal static class FirelyEngine
 
     /// <summary>
     /// <c>Predicate</c>, which is <c>BooleanEval</c>: empty yields true. The seam reimplements this
-    /// because it is <c>internal</c> in the SDK, and Ignixa has no equivalent to compare against.
+    /// because it is <c>internal</c> in the SDK. Ignixa is not absent here - it ships two same-named
+    /// <c>Predicate</c> methods that disagree with Firely and with each other on empty/multi-item -
+    /// see docs/features/fhirpath/firely-parity.md, entry 7.
     /// </summary>
     public static bool Predicate(ITypedElement subject, string expression) =>
         IValueProviderFPExtensions.Predicate(subject, expression);

@@ -205,14 +205,18 @@ internal static class TypeMatcher
     /// <c>target-date</c>. STU3 is not affected by the operator at all - it spells all of its casts with
     /// the <c>as()</c> function, 57 occurrences across 42 SearchParameters. The composite components add
     /// 57 more <c>as()</c> occurrences in R4 and R4B apiece. (Counts are over
-    /// <c>{Version}SearchParameterDefinitions.g.cs</c>, resolving <c>Constants.Expr_*</c> references and
-    /// reading both the top-level <c>expression:</c> and the <c>SearchParameterComponentInfo</c>
-    /// expressions; recount there rather than trusting these if it matters.) In R5 HL7 rewrote almost
-    /// every one to <c>ofType()</c>: the operator survives only in
-    /// <c>Bundle.entry[0].resource as X</c> (indexed, so a singleton),
+    /// <c>{Version}SearchParameterDefinitions.g.cs</c>, reading both the top-level <c>expression:</c> and
+    /// the <c>SearchParameterComponentInfo</c> expressions; recount there rather than trusting these if it
+    /// matters. Every expression in those files is an inline literal - the <c>Constants.Expr_*</c> interning
+    /// the generator emits is constraint-side only, in <c>{Version}CoreSchemaProvider.g.cs</c>, and never
+    /// appears on the SearchParameter side.) In R5 HL7 rewrote almost every one to <c>ofType()</c>: the
+    /// operator survives in eight expressions only -
+    /// <c>Bundle.entry[0].resource as Composition</c> and <c>as MessageHeader</c> (indexed, so singletons),
+    /// the four <c>ConceptMap.sourceScope</c>/<c>targetScope</c> casts to <c>uri</c> and <c>canonical</c>
+    /// (both choice elements are 0..1, so singletons by construction),
     /// <c>NutritionIntake.reported as Reference</c> (0..1), and
-    /// <c>AdverseEvent.suspectEntity.instance as Reference</c>, which is genuinely repeating - see the
-    /// note below. Enforcing the rule below R5 would make <c>ElementSearchIndexer</c> throw on any
+    /// <c>AdverseEvent.suspectEntity.instance as Reference</c>, which is the only genuinely repeating one -
+    /// see the note below. Enforcing the rule below R5 would make <c>ElementSearchIndexer</c> throw on any
     /// resource populating one of those repeating paths - once it supplies a schema, which today it
     /// deliberately does not - and its non-composite path logs and continues, so the values would vanish
     /// from the search index with nothing surfaced to the caller. The version gate is what keeps that
