@@ -5,6 +5,7 @@
 
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
+using System.Globalization;
 using Ignixa.Abstractions;
 
 #pragma warning disable CS0618 // Type or member is obsolete
@@ -72,7 +73,7 @@ internal class SchemaAwareElement : IElement
     // Most FHIR primitive types use lowercase names, but a few require special casing preservation.
     // We split these into two collections for efficiency:
     // 1. SpecialCasedPrimitives: Dictionary for types with non-lowercase casing (5 entries)
-    // 2. LowercasePrimitives: FrozenSet for lowercase types (14 entries) - faster lookups in .NET 9+
+    // 2. LowercasePrimitives: FrozenSet for lowercase types (15 entries) - faster lookups in .NET 9+
 
     // Primitive types with special (non-lowercase) casing that must be preserved
     private static readonly Dictionary<string, string> SpecialCasedPrimitives = new(StringComparer.OrdinalIgnoreCase)
@@ -212,12 +213,19 @@ internal class SchemaAwareElement : IElement
         var text = _source.Text;
         if (text == null) return null;
 
-        // Convert primitive FHIR types to their native C# types for proper FHIRPath evaluation
+        // Convert primitive FHIR types to their native C# types for proper FHIRPath evaluation.
+        // The FHIR wire format is always invariant: '.' is the decimal separator and group separators
+        // are never present. Parsing under CurrentCulture silently corrupts data — on de-DE, '.' is the
+        // group separator, so the default NumberStyles.Number would read "1.5" as 15. NumberStyles.Float
+        // is used rather than Number because it excludes AllowThousands and includes AllowExponent,
+        // which FHIR decimals permit (e.g. "1.2e3").
         return InstanceType switch
         {
             "boolean" => bool.TryParse(text, out var b) ? (object)b : text,
-            "integer" or "unsignedInt" or "positiveInt" => int.TryParse(text, out var i) ? (object)i : text,
-            "decimal" => decimal.TryParse(text, out var d) ? (object)d : text,
+            "integer" or "unsignedInt" or "positiveInt" =>
+                int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? (object)i : text,
+            "decimal" =>
+                decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? (object)d : text,
             "date" => FhirTemporal.TryParse(text, FhirPrimitive.Date, out var td) ? (object)td! : text,
             "dateTime" => FhirTemporal.TryParse(text, FhirPrimitive.DateTime, out var tdt) ? (object)tdt! : text,
             "instant" => FhirTemporal.TryParse(text, FhirPrimitive.Instant, out var ti) ? (object)ti! : text,
