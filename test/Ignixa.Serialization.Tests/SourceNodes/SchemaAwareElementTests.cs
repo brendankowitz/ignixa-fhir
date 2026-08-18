@@ -7,6 +7,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.Tests.TestHelpers;
 using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Xunit;
@@ -974,6 +975,192 @@ public class SchemaAwareElementTests
         """;
 
         return ResourceJsonNode.Parse(observationJson).ToElement(_r4Provider);
+    }
+
+    #endregion
+
+    #region Type Definition Memoisation Tests
+
+    [Fact]
+    public void GivenAnElementWhoseTypeIsUnknownToTheSchema_WhenReadingTypeTwice_ThenBothReadsAreNull()
+    {
+        // Arrange
+        var element = ParseObservation("\"Bogus\": \"x\"")
+            .Children("Bogus")
+            .Single();
+
+        // Act
+        var first = element.Type;
+        var second = element.Type;
+
+        // Assert
+        Assert.Equal("Bogus", element.InstanceType);
+        Assert.Null(first);
+        Assert.Null(second);
+    }
+
+    [Fact]
+    public void GivenAnElementWithNoInstanceType_WhenReadingTypeTwice_ThenBothReadsAreNullWithoutQueryingTheSchema()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"bogus\": \"x\"", schema)
+            .Children("bogus")
+            .Single();
+        schema.ResetCounts();
+
+        // Act
+        var first = element.Type;
+        var second = element.Type;
+
+        // Assert
+        Assert.Equal(string.Empty, element.InstanceType);
+        Assert.Null(first);
+        Assert.Null(second);
+        Assert.Equal(0, schema.TotalLookupCount);
+    }
+
+    [Fact]
+    public void GivenAnElement_WhenReadingTypeRepeatedly_ThenTheSchemaIsQueriedOnce()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"valueString\": \"foo\"", schema);
+
+        // Act
+        var reads = new[] { element.Type, element.Type, element.Type, element.Type };
+
+        // Assert
+        Assert.All(reads, type => Assert.Same(reads[0], type));
+        Assert.NotNull(reads[0]);
+        Assert.Equal(1, schema.LookupCount("Observation"));
+    }
+
+    [Fact]
+    public void GivenAnUnknownType_WhenReadingTypeRepeatedly_ThenTheNullResultIsMemoisedToo()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"Bogus\": \"x\"", schema)
+            .Children("Bogus")
+            .Single();
+        schema.ResetCounts();
+
+        // Act
+        var reads = new[] { element.Type, element.Type, element.Type, element.Type };
+
+        // Assert
+        Assert.All(reads, Assert.Null);
+        Assert.Equal(1, schema.LookupCount("Bogus"));
+    }
+
+    [Fact]
+    public void GivenASharedElement_WhenReadingTypeConcurrently_ThenEveryReaderSeesTheSameDefinition()
+    {
+        // Arrange
+        var element = ParseObservation("\"valueString\": \"foo\"");
+        var expected = element.Type;
+
+        // Act
+        var observed = new IType[256];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Type);
+
+        // Assert
+        Assert.NotNull(expected);
+        Assert.All(observed, type => Assert.Same(expected, type));
+    }
+
+    #endregion
+
+    #region Child Definition Cache Tests
+
+    [Fact]
+    public void GivenAnUndefinedChildName_WhenNavigatingTwice_ThenBothPassesReportNoDefinition()
+    {
+        // Arrange
+        var element = ParseObservation("\"Bogus\": \"x\"");
+
+        // Act
+        var first = element.Children("Bogus").Single();
+        var second = element.Children("Bogus").Single();
+
+        // Assert
+        Assert.Null(first.Type);
+        Assert.Null(second.Type);
+    }
+
+    [Fact]
+    public void GivenTheSameElement_WhenNavigatingTheSameChildTwice_ThenTheSecondPassQueriesTheSchemaLessOften()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"valueString\": \"foo\"", schema);
+        _ = element.Type;
+
+        // Act
+        schema.ResetCounts();
+        var first = element.Children("status").Single();
+        var firstPassLookups = schema.TotalLookupCount;
+
+        schema.ResetCounts();
+        var second = element.Children("status").Single();
+        var secondPassLookups = schema.TotalLookupCount;
+
+        // Assert
+        Assert.Equal(first.InstanceType, second.InstanceType);
+        Assert.Same(first.Type, second.Type);
+        Assert.True(
+            secondPassLookups < firstPassLookups,
+            $"expected the cached pass to query the schema less often, got {secondPassLookups} vs {firstPassLookups}");
+    }
+
+    [Fact]
+    public void GivenALeafElement_WhenNavigatingIntoIt_ThenTheChildDefinitionCacheIsNeverReached()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var leaf = ParseObservation("\"valueString\": \"foo\"", schema)
+            .Children("status")
+            .Single();
+        schema.ResetCounts();
+
+        // Act
+        var children = leaf.Children("anything");
+
+        // Assert
+        Assert.Empty(children);
+        Assert.Equal(0, schema.LookupCount("code.anything"));
+    }
+
+    [Fact]
+    public void GivenASharedElement_WhenNavigatingChildrenConcurrently_ThenEveryCallerSeesTheSameChildDefinition()
+    {
+        // Arrange
+        var element = ParseObservation("\"valueString\": \"foo\"");
+        var expected = element.Children("status").Single().Type;
+
+        // Act
+        var observed = new IType[256];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Children("status").Single().Type);
+
+        // Assert
+        Assert.NotNull(expected);
+        Assert.All(observed, type => Assert.Same(expected, type));
+    }
+
+    private IElement ParseObservation(string discriminatingProperty, ISchema schema)
+    {
+        var observationJson = $$"""
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "text": "test" },
+          {{discriminatingProperty}}
+        }
+        """;
+
+        return ResourceJsonNode.Parse(observationJson).ToElement(schema);
     }
 
     #endregion

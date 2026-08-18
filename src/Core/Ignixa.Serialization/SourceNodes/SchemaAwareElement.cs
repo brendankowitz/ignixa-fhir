@@ -24,9 +24,6 @@ internal class SchemaAwareElement : IElement
     private readonly IType? _definition;
     private readonly string? _instanceType;
 
-    // OPTIMIZATION: Cache type definition (immutable, safe to cache per-instance)
-    private readonly Lazy<IType?> _typeDefinition;
-
     // OPTIMIZATION: Memoise the parsed Value without a Lazy<T>, which cost a Lazy, its LazyHelper lock
     // object and a closure delegate on every element constructed — allocation the navigation and
     // search-indexing paths pay whether or not Value is ever read.
@@ -37,11 +34,26 @@ internal class SchemaAwareElement : IElement
 
     private volatile object? _cachedValue = ValueNotComputed;
 
+    // OPTIMIZATION: Memoise the schema type lookup the same way, for the same reason. The former
+    // Lazy<IType?> captured `this`, so every element paid for a Lazy, its LazyHelper lock object and
+    // a bound delegate whether or not the type definition was ever needed.
+    // GetTypeDefinition() returns null for unknown types, so null cannot mark "not computed" either.
+    // One volatile reference field means one atomic write, with no flag-versus-value ordering to get
+    // wrong. Every ISchema implementation resolves types from an interned table, so a race can only
+    // repeat the lookup and always republishes the identical reference.
+    private static readonly object TypeDefinitionNotComputed = new();
+
+    private volatile object? _cachedTypeDefinition = TypeDefinitionNotComputed;
+
     // OPTIMIZATION: Cache for child element definitions (avoid repeated lookups)
     // Key: element name, Value: IType (can be null)
-    // Using ConcurrentDictionary for thread-safe concurrent access
-    private readonly Lazy<ConcurrentDictionary<string, IType?>> _childDefinitionCache =
-        new(() => new ConcurrentDictionary<string, IType?>());
+    // Using ConcurrentDictionary for thread-safe concurrent access.
+    // Allocated on first child lookup rather than through a Lazy: leaf elements never reach
+    // GetCachedChildDefinition, and a Lazy charged every one of them for a Lazy plus its LazyHelper
+    // to describe a dictionary most of them never build. Interlocked.CompareExchange preserves the
+    // exactly-once publication Lazy gave, so a race discards the loser's empty dictionary instead of
+    // splitting subsequent cached lookups across two instances.
+    private ConcurrentDictionary<string, IType?>? _childDefinitionCache;
 
     // OPTIMIZATION: FHIR primitive type mapping (static to avoid repeated allocations)
     // Reference: http://hl7.org/fhir/datatypes.html
@@ -77,18 +89,6 @@ internal class SchemaAwareElement : IElement
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _definition = definition;
         _instanceType = instanceType ?? DeriveInstanceType(source, definition);
-
-        // Lazy initialization - fetch type definition when needed
-        _typeDefinition = new Lazy<IType?>(() =>
-        {
-            // Use the derived instance type to get type definition
-            if (!string.IsNullOrEmpty(_instanceType))
-            {
-                return _schema.GetTypeDefinition(_instanceType);
-            }
-
-            return null;
-        });
     }
 
     /// <summary>
@@ -217,7 +217,37 @@ internal class SchemaAwareElement : IElement
 
     public string Location => _source.Location;
 
-    public IType? Type => _definition ?? _typeDefinition.Value;
+    public IType? Type => _definition ?? TypeDefinition;
+
+    private IType? TypeDefinition
+    {
+        get
+        {
+            var cached = _cachedTypeDefinition;
+            if (ReferenceEquals(cached, TypeDefinitionNotComputed))
+            {
+                cached = string.IsNullOrEmpty(_instanceType) ? null : _schema.GetTypeDefinition(_instanceType);
+                _cachedTypeDefinition = cached;
+            }
+
+            return (IType?)cached;
+        }
+    }
+
+    private ConcurrentDictionary<string, IType?> ChildDefinitionCache
+    {
+        get
+        {
+            var cache = Volatile.Read(ref _childDefinitionCache);
+            if (cache is not null)
+            {
+                return cache;
+            }
+
+            var created = new ConcurrentDictionary<string, IType?>();
+            return Interlocked.CompareExchange(ref _childDefinitionCache, created, null) ?? created;
+        }
+    }
 
     public IReadOnlyList<IElement> Children(string? name)
     {
@@ -234,7 +264,7 @@ internal class SchemaAwareElement : IElement
             // If no exact match and we have a definition, check for polymorphic (choice) properties
             if (!sourceChildren.Any())
             {
-                var cachedTypeDef = _typeDefinition.Value;
+                var cachedTypeDef = TypeDefinition;
                 if (cachedTypeDef != null)
                 {
                     // Check if this is a choice element (IsChoiceElement == true)
@@ -263,7 +293,7 @@ internal class SchemaAwareElement : IElement
         foreach (var child in sourceChildren)
         {
             // OPTIMIZATION: Use cached type definition lookup (immutable per instance)
-            var cachedTypeDef = _typeDefinition.Value;
+            var cachedTypeDef = TypeDefinition;
             IType? childDef = null;
             string? childInstanceType = null;
 
@@ -327,7 +357,7 @@ internal class SchemaAwareElement : IElement
         if (cachedTypeDef == null)
             return null;
 
-        var cache = _childDefinitionCache.Value;
+        var cache = ChildDefinitionCache;
 
         // Return from cache if found (even if value is null, which is valid)
         if (cache.TryGetValue(childName, out var cachedDef))
