@@ -52,6 +52,9 @@ internal sealed class BoundedExpressionCache<TValue>
     /// <summary>Number of entries in the hot generation. Intended for diagnostics and tests.</summary>
     public int Count => _hot.Count;
 
+    /// <summary>Number of entries in the cold (previous) generation. Intended for diagnostics and tests.</summary>
+    internal int ColdCount => _cold.Count;
+
     public TValue GetOrAdd(string expression, Func<string, TValue> valueFactory)
     {
         if (_hot.TryGetValue(expression, out var hit))

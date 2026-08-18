@@ -38,8 +38,8 @@ internal static class KnownDivergences
             // Firely types every backbone element as "BackboneElement"; Ignixa names it after its path
             // ("Observation.Component"). Same elements, same count, same values - only InstanceType
             // differs, and any converter that switches on it needs to know.
-            ["Observation.component :: firely=3 result(s) ignixa=3 result(s)"] = 1,
-            ["Observation | Observation.component :: firely=4 result(s) ignixa=4 result(s)"] = 1,
+            ["Observation.component :: firely=3 result(s): [BACKBONEELEMENT|<null>, BACKBONEELEMENT|<null>, BACKBONEELEMENT|<null>] ignixa=3 result(s): [OBSERVATION.COMPONENT|<null>, OBSERVATION.COMPONENT|<null>, OBSERVATION.COMPONENT|<null>]"] = 1,
+            ["Observation | Observation.component :: firely=4 result(s): [OBSERVATION|<null>, BACKBONEELEMENT|<null>, BACKBONEELEMENT|<null>, BACKBONEELEMENT|<null>] ignixa=4 result(s): [OBSERVATION|<null>, OBSERVATION.COMPONENT|<null>, OBSERVATION.COMPONENT|<null>, OBSERVATION.COMPONENT|<null>]"] = 1,
         };
 
     /// <summary>
@@ -50,34 +50,36 @@ internal static class KnownDivergences
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
             // Ignixa carries the timezone extremes (+14:00 / -12:00) that make a boundary an actual
-            // instant; Firely returns a local-form dateTime with no offset.
-            ["birthDate.lowBoundary() :: firely=1 result(s) ignixa=1 result(s)"] = 1,
-            ["birthDate.highBoundary() :: firely=1 result(s) ignixa=1 result(s)"] = 1,
-            ["@2012.lowBoundary() :: firely=1 result(s) ignixa=1 result(s)"] = 5,
-
-            // Same offset difference, but this one also carries a genuine Ignixa defect: the high
-            // boundary of the year 2012 is 2012-12-31, and Ignixa answers 2012-01-31. Month-precision
-            // input (@2012-06) is correct, so the bug is specific to year precision.
-            ["@2012.highBoundary() :: firely=1 result(s) ignixa=1 result(s)"] = 5,
+            // instant; Firely returns a local-form dateTime with no offset. Same date and time, only
+            // the offset differs.
+            ["birthDate.lowBoundary() :: firely=1 result(s): [DATETIME|1974-12-25T00:00:00] ignixa=1 result(s): [DATETIME|1974-12-25T00:00:00.000+14:00]"] = 1,
+            ["birthDate.highBoundary() :: firely=1 result(s): [DATETIME|1974-12-25T23:59:59.999] ignixa=1 result(s): [DATETIME|1974-12-25T23:59:59.999-12:00]"] = 1,
+            ["@2012.lowBoundary() :: firely=1 result(s): [DATETIME|2012-01-01T00:00:00] ignixa=1 result(s): [DATETIME|2012-01-01T00:00:00.000+14:00]"] = 5,
+            ["@2012.highBoundary() :: firely=1 result(s): [DATETIME|2012-12-31T23:59:59.999] ignixa=1 result(s): [DATETIME|2012-12-31T23:59:59.999-12:00]"] = 5,
 
             // Numerically equal, different decimal scale. Ignixa pads to its working scale where
             // Firely reports the significant digits the spec's boundary rules produce.
-            ["1.5.lowBoundary() :: firely=1 result(s) ignixa=1 result(s)"] = 5,
-            ["1.587.highBoundary() :: firely=1 result(s) ignixa=1 result(s)"] = 5,
-            ["2.0 'cm' * 2.0 'm' :: firely=1 result(s) ignixa=1 result(s)"] = 5,
+            ["1.5.lowBoundary() :: firely=1 result(s): [DECIMAL|1.45] ignixa=1 result(s): [DECIMAL|1.45000000]"] = 5,
+            ["1.587.highBoundary() :: firely=1 result(s): [DECIMAL|1.5875] ignixa=1 result(s): [DECIMAL|1.58750000]"] = 5,
+            ["2.0 'cm' * 2.0 'm' :: firely=1 result(s): [QUANTITY|0.04000000 'm2'] ignixa=1 result(s): [QUANTITY|0.040000 'm2']"] = 5,
 
-            // Ignixa implements time + quantity; Firely 5.11.4 throws on it.
-            ["@T10:30:00 + 1 hour :: firely=threw:InvalidOperationException ignixa=1 result(s)"] = 5,
+            // Ignixa implements time + quantity; Firely 5.11.4 throws on it. 10:30 + 1 hour = 11:30,
+            // which is what Ignixa returns.
+            ["@T10:30:00 + 1 hour :: firely=threw:InvalidOperationException ignixa=1 result(s): [TIME|11:30:00]"] = 5,
 
-            // "in" with an empty left operand: the spec says empty, Firely says false.
-            ["gender in ('male' | 'female') :: firely=1 result(s) ignixa=empty"] = 4,
+            // "in" with an empty left operand: the spec says empty, Firely says false. Fires on the four
+            // non-Patient subjects, where `gender` does not exist; on Patient itself the left operand is
+            // present and both engines agree, which is why the count is 4 and not 5.
+            ["gender in ('male' | 'female') :: firely=1 result(s): [BOOLEAN|false] ignixa=empty"] = 4,
 
             // Unary minus applied to a path rather than a literal: Ignixa negates, Firely gives up.
-            ["- multipleBirthInteger :: firely=empty ignixa=1 result(s)"] = 1,
+            // multipleBirthInteger is 2 on the Patient fixture, so -2 is the correct negation.
+            ["- multipleBirthInteger :: firely=empty ignixa=1 result(s): [INTEGER|-2]"] = 1,
 
             // Ignixa resolves the type-suffixed choice element name; Firely only exposes the base
-            // name, so the suffixed path is empty for it.
-            ["deceasedBoolean as boolean :: firely=empty ignixa=1 result(s)"] = 1,
+            // name, so the suffixed path is empty for it. deceasedBoolean is false on the Patient
+            // fixture, so `false` is the correct value.
+            ["deceasedBoolean as boolean :: firely=empty ignixa=1 result(s): [BOOLEAN|false]"] = 1,
 
         };
 }

@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Reflection;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath;
@@ -611,7 +612,12 @@ public class FhirPathInvariantCheckTests
     #region Performance
 
     /// <summary>
-    /// Tests that FHIRPath expressions are compiled only once (lazy evaluation).
+    /// Tests that FHIRPath expressions are compiled only once (lazy evaluation) by
+    /// observing the private <c>_compiledExpression</c> <see cref="Lazy{T}"/> field via
+    /// reflection: it must report <c>IsValueCreated</c> after the first evaluation, and the
+    /// same <see cref="FhirPath.Expressions.Expression"/> instance (by reference) must be
+    /// reused across every subsequent call. If the check re-parsed on each call, a fresh
+    /// AST would be produced each time and the reference-equality assertion would fail.
     /// </summary>
     [Fact]
     public void GivenMultipleValidations_WhenValidating_ThenCompilesExpressionOnce()
@@ -633,16 +639,33 @@ public class FhirPathInvariantCheckTests
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var state = new ValidationState();
 
+        var compiledExpressionField = typeof(FhirPathInvariantCheck).GetField(
+            "_compiledExpression",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        compiledExpressionField.ShouldNotBeNull("test relies on the private lazy-compilation field existing");
+        var lazyBeforeAnyCall = (Lazy<FhirPath.Expressions.Expression?>)compiledExpressionField!.GetValue(check)!;
+        lazyBeforeAnyCall.IsValueCreated.ShouldBeFalse("expression must not be parsed until first Validate() call");
+
         // Act - Run validation multiple times
+        FhirPath.Expressions.Expression? firstCompiledExpression = null;
         for (int i = 0; i < 10; i++)
         {
             var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
             Assert.True(result.IsValid);
-        }
 
-        // Assert - No exception means lazy compilation worked correctly
-        // Expression was parsed once and cached
-        Assert.True(true);
+            var lazyAfterCall = (Lazy<FhirPath.Expressions.Expression?>)compiledExpressionField.GetValue(check)!;
+            lazyAfterCall.IsValueCreated.ShouldBeTrue();
+
+            if (firstCompiledExpression is null)
+            {
+                firstCompiledExpression = lazyAfterCall.Value;
+            }
+            else
+            {
+                ReferenceEquals(lazyAfterCall.Value, firstCompiledExpression).ShouldBeTrue(
+                    "the same compiled Expression instance must be reused across calls, not re-parsed");
+            }
+        }
     }
 
     #endregion

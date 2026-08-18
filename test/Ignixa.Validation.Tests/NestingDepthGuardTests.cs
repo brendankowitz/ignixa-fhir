@@ -137,10 +137,14 @@ public class NestingDepthGuardTests
         var schema = _resolver.GetSchema($"http://hl7.org/fhir/StructureDefinition/{resourceType}")
             ?? throw new InvalidOperationException($"No schema for {resourceType}");
 
+        // Omit the ValidationState so ValidationSchema.Validate self-seeds the resource scope from
+        // `element`, exactly as the write path does. Passing an explicit new ValidationState() here
+        // would exercise the unseeded branch instead of production behavior - see ValidationSchema
+        // .Validate's remarks. Self-seeding does not reset NestingDepth (EnterRootResource is a
+        // `with`-expression over the existing state), so this does not change the guard's behavior.
         return schema.Validate(
             sourceNode.ToElement(_schema),
-            new ValidationSettings { Depth = depth },
-            new ValidationState());
+            new ValidationSettings { Depth = depth });
     }
 
     private static string Describe(ValidationResult result)

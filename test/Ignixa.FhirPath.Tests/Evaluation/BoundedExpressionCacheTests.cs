@@ -32,6 +32,114 @@ public class BoundedExpressionCacheTests
     }
 
     [Fact]
+    public void GivenMoreDistinctKeysThanTwiceCapacity_WhenAdding_ThenHotPlusColdNeverExceedsTwiceCapacity()
+    {
+        // The cache's real memory contract is bounded at 2x capacity across both generations, not just
+        // capacity on the hot one - Count alone (hot.Count <= capacity by construction of Store/Rotate)
+        // says nothing about the cold generation, which is where a leak would actually show up.
+
+        // Arrange
+        const int capacity = 8;
+        var cache = new BoundedExpressionCache<string>(capacity: capacity);
+
+        // Act & Assert - checked after every insertion, not just at the end, so a rotation that
+        // momentarily (or permanently) lets both generations fill past capacity is caught.
+        for (var i = 0; i < 500; i++)
+        {
+            cache.GetOrAdd($"expression-{i}", static key => key);
+
+            var total = cache.Count + cache.ColdCount;
+            total.ShouldBeLessThanOrEqualTo(capacity * 2);
+        }
+    }
+
+    [Fact]
+    public void GivenAKeyThatSurvivesOneRotationButIsNeverRefreshed_WhenASecondRotationCompletes_ThenItIsEvicted()
+    {
+        // A key demoted to the cold generation survives exactly one further rotation. If it is never
+        // read (and thus never promoted back into hot) before a second rotation, the generation holding
+        // it is discarded outright and the key is genuinely gone - the two-generation bound is a bound,
+        // not an unbounded history. This is what distinguishes the cache from a plain LRU that never loses
+        // an entry until it is truly stale.
+
+        // Arrange
+        const int capacity = 4;
+        var cache = new BoundedExpressionCache<string>(capacity: capacity);
+        cache.GetOrAdd("target", static key => key);
+
+        // Act - one rotation: "target" moves from hot to cold, alongside the fillers that were hot
+        // at the moment the rotation triggered.
+        for (var i = 0; i < capacity; i++)
+        {
+            cache.GetOrAdd($"filler-a-{i}", static key => key);
+        }
+        cache.ColdCount.ShouldBe(capacity, "a rotation always demotes a full hot generation into cold");
+
+        // A second rotation, still without ever reading "target" back: the cold generation holding it
+        // is replaced wholesale by the generation that was hot going into this rotation.
+        for (var i = 0; i < capacity; i++)
+        {
+            cache.GetOrAdd($"filler-b-{i}", static key => key);
+        }
+
+        var recomputed = false;
+        var value = cache.GetOrAdd(
+            "target",
+            key =>
+            {
+                recomputed = true;
+                return key;
+            });
+
+        // Assert
+        value.ShouldBe("target");
+        recomputed.ShouldBeTrue("a key that survives two full rotations without being re-read must fall out of both generations");
+    }
+
+    [Fact]
+    public void GivenAKeyServedFromTheColdGeneration_WhenReadAgain_ThenItIsPromotedIntoTheHotGeneration()
+    {
+        // Being "served without recomputing" from cold is necessary but not sufficient: the promotion
+        // has to actually write the entry back into hot, or it would be silently lost on the very next
+        // rotation - a cache that just special-cased "return the cold value but never re-store it" would
+        // pass a same-generation re-read test yet still lose the entry across generations. This pins the
+        // promotion by forcing a second rotation and confirming the promoted key survives it.
+
+        // Arrange
+        const int capacity = 3;
+        var cache = new BoundedExpressionCache<string>(capacity: capacity);
+        cache.GetOrAdd("target", static key => key);
+        for (var i = 0; i < capacity; i++)
+        {
+            cache.GetOrAdd($"filler-pre-{i}", static key => key);
+        }
+        cache.ColdCount.ShouldBe(capacity, "the rotation must have demoted \"target\" (and the fillers hot alongside it) into cold");
+
+        // Act - promote "target" back into hot, then drive a full further generation of distinct keys
+        // through the cache. If promotion actually wrote "target" into hot, it rides along into the next
+        // cold generation when this rotates; if promotion only returned the value without re-storing it,
+        // "target" is left behind in the generation this rotation discards.
+        cache.GetOrAdd("target", static key => key);
+        for (var i = 0; i < capacity; i++)
+        {
+            cache.GetOrAdd($"filler-post-{i}", static key => key);
+        }
+
+        var recomputed = false;
+        var value = cache.GetOrAdd(
+            "target",
+            key =>
+            {
+                recomputed = true;
+                return key;
+            });
+
+        // Assert
+        value.ShouldBe("target");
+        recomputed.ShouldBeFalse("a promoted key must survive the rotation that follows its promotion");
+    }
+
+    [Fact]
     public void GivenAKeyEvictedFromTheHotGeneration_WhenReadAgain_ThenItIsServedWithoutRecomputing()
     {
         // The cliff this cache exists to avoid. A plain clear-at-capacity would re-invoke the factory

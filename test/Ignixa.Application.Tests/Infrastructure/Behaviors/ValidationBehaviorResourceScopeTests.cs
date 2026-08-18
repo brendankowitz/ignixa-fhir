@@ -88,10 +88,16 @@ public class ValidationBehaviorResourceScopeTests
             schemaProvider,
             new FhirPathParser());
 
+        // Wraps the real invariant so the test can tell "validation passed" apart from "validation never
+        // ran": with only result.ShouldNotBeNull()/Id assertions, a behavior that silently skipped the
+        // Profile/Full tier entirely (e.g. a broken depth or tier filter) would return the same successful
+        // ResourceKey and this test would pass for the wrong reason.
+        var recordingInvariant = new InvocationRecordingCheck(invariant);
+
         // Profile tier at Full depth: that is where FhirPathInvariantCheck actually runs, so this is the
         // configuration in which the missing scope bites. At the default Spec depth invariants are skipped
         // entirely, which is why the defect stayed invisible.
-        var behavior = BuildBehavior(invariant, out var request, ValidationTier.Profile, ValidationDepth.Full);
+        var behavior = BuildBehavior(recordingInvariant, out var request, ValidationTier.Profile, ValidationDepth.Full);
 
         // Act
         var result = await behavior.HandleAsync(
@@ -100,6 +106,7 @@ public class ValidationBehaviorResourceScopeTests
             CancellationToken.None);
 
         // Assert
+        recordingInvariant.WasInvoked.ShouldBeTrue("the Profile/Full validation path must actually run the invariant, not just skip through to success");
         result.ShouldNotBeNull();
         result.Id.ShouldBe("patient-123");
     }
@@ -184,6 +191,22 @@ public class ValidationBehaviorResourceScopeTests
             ObservedRootResource = state.Scope.RootResource;
             ObservedResolver = state.Scope.Resolver;
             return ValidationResult.Success();
+        }
+    }
+
+    /// <summary>
+    /// Wraps a real <see cref="IValidationCheck"/> and records whether it was ever invoked, so a test can
+    /// distinguish "the write succeeded because validation ran and passed" from "the write succeeded
+    /// because validation was silently skipped".
+    /// </summary>
+    private sealed class InvocationRecordingCheck(IValidationCheck inner) : IValidationCheck
+    {
+        public bool WasInvoked { get; private set; }
+
+        public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
+        {
+            WasInvoked = true;
+            return inner.Validate(element, settings, state);
         }
     }
 }

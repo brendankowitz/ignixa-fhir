@@ -7,6 +7,9 @@
 using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
+using Ignixa.Specification.Extensions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
@@ -33,17 +36,17 @@ internal static class DifferentialFixture
         "birthDate <= @1974-12-25",
         "birthDate < @1980-01-01",
         "birthDate > @1980-01-01",
-        "issued > @2024-01-01T00:00:00Z",
-        "issued < @2024-01-01T00:00:00Z",
-        "issued = @2024-06-15T08:00:00Z",
-        "issued >= @2024-06-15T08:00:00Z",
-        "issued != @2024-06-15T08:00:00Z",
+        "meta.lastUpdated > @2024-01-01T00:00:00Z",
+        "meta.lastUpdated < @2024-01-01T00:00:00Z",
+        "meta.lastUpdated = @2024-06-15T08:00:00Z",
+        "meta.lastUpdated >= @2024-06-15T08:00:00Z",
+        "meta.lastUpdated != @2024-06-15T08:00:00Z",
 
         "birthDate = birthDate",
-        "period.start < period.end",
-        "period.start > period.end",
-        "period.start = period.end",
-        "period.start <= period.end",
+        "contact.period.start < contact.period.end",
+        "contact.period.start > contact.period.end",
+        "contact.period.start = contact.period.end",
+        "contact.period.start <= contact.period.end",
 
         "birthDate = '1974-12-25'",
         "birthDate != '1974-12-25'",
@@ -61,22 +64,19 @@ internal static class DifferentialFixture
         "@2012-01 <= @2012",
         "birthDate = @1974-12-25T10:00:00",
         "birthDate < @1974-12-25T10:00:00",
-        "issued = @2024-06-15T08:00:00",
-        "issued > @2024-06-15T08:00:00",
-        "issued = @2024-06-15T08:00:00.000Z",
+        "meta.lastUpdated = @2024-06-15T08:00:00",
+        "meta.lastUpdated > @2024-06-15T08:00:00",
+        "meta.lastUpdated = @2024-06-15T08:00:00.000Z",
 
-        "birthTime = @T10:30:00",
-        "birthTime != @T10:30:00",
-        "birthTime < @T12:00:00",
-        "birthTime > @T12:00:00",
-        "birthTime = @T10:30",
-        "birthDate = @T10:30:00",
-        "birthDate < @T10:30:00",
-        "birthTime = @1974-12-25",
-        "issued > @T10:30:00",
         "extension.value = @T10:30:00",
         "extension.value != @T10:30:00",
         "extension.value < @T12:00:00",
+        "extension.value > @T12:00:00",
+        "extension.value = @T10:30",
+        "birthDate = @T10:30:00",
+        "birthDate < @T10:30:00",
+        "extension.value = @1974-12-25",
+        "meta.lastUpdated > @T10:30:00",
         "extension.value",
 
         "'abc' = 'abc'",
@@ -95,8 +95,8 @@ internal static class DifferentialFixture
         "true != false",
         "multipleBirthInteger = 2",
         "multipleBirthInteger > 1",
-        "score = 1.5",
-        "score < 2",
+        "contact.extension.value = 1.5",
+        "contact.extension.value < 2",
         "active = true",
 
         "'abc'",
@@ -129,6 +129,43 @@ internal static class DifferentialFixture
         "missingElement.exists()",
         "missingElement = 'x'",
         "missingElement > @1974-12-25",
+
+        "birthDate is date",
+        "birthDate is dateTime",
+        "meta.lastUpdated is instant",
+        "extension.value is time",
+        "active is boolean",
+        "multipleBirthInteger is integer",
+        "contact.extension.value is decimal",
+        "name is HumanName",
+        "name.first() is HumanName",
+        "name.first().family is string",
+        "birthDate as date",
+        "birthDate.ofType(date)",
+        "name.ofType(HumanName).family",
+        "birthDate.type().name",
+
+        "birthDate.toString()",
+        "meta.lastUpdated.toString()",
+        "extension.value.toString()",
+        "contact.extension.value.toString()",
+        "multipleBirthInteger.toString()",
+        "active.toString()",
+        "birthDate.convertsToDate()",
+        "birthDate.toDate()",
+        "meta.lastUpdated.toDateTime()",
+        "extension.value.toTime()",
+        "contact.extension.value.toDecimal()",
+
+        "birthDate.min()",
+        "birthDate.max()",
+        "contact.period.start.min()",
+        "extension.value.min()",
+        "name.given.min()",
+        "name.given.max()",
+        "birthDate.lowBoundary()",
+        "birthDate.highBoundary()",
+        "contact.extension.value.lowBoundary()",
     };
 
     /// <summary>
@@ -201,14 +238,14 @@ internal static class DifferentialFixture
 
         "multipleBirthInteger * 0",
         "0 * multipleBirthInteger",
-        "score * 0",
+        "contact.extension.value * 0",
         "0 / multipleBirthInteger",
-        "0 / score",
+        "0 / contact.extension.value",
         "missingElement * 0",
         "gender & ''",
         "'' & gender",
         "multipleBirthInteger / 1",
-        "score / 1",
+        "contact.extension.value / 1",
         "multipleBirthInteger * 1",
         "multipleBirthInteger + 0",
         "0 + multipleBirthInteger",
@@ -253,24 +290,43 @@ internal static class DifferentialFixture
 
     /// <summary>
     /// Renders a result collection as text so that two paths can be compared on everything a caller
-    /// can observe: element count, instance type, and value.
+    /// can observe: element count, instance type, runtime value type, and value.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The runtime type of <c>Value</c> is part of the signature, not decoration. A
+    /// <see cref="FhirTemporal"/> and the wire string it was parsed from render to identical text,
+    /// so a comparison over rendered text alone cannot see one path silently handing back an
+    /// untyped string where the other hands back a typed temporal - which is the shape of the
+    /// regressions this suite exists to catch.
+    /// </para>
+    /// <para>
     /// A thrown exception is recorded as the observed outcome rather than propagated, because "one
     /// path throws and the other returns a value" is itself a divergence this harness exists to
     /// report, and letting it escape would hide the comparison behind a stack trace.
+    /// </para>
+    /// <para>
+    /// A green differential proves the paths agree. It does not prove they are right: two paths that
+    /// share an implementation share its bugs, and this harness is structurally blind to that. Read
+    /// it as a regression net over refactors, never as a correctness proof - correctness is the
+    /// official suite's and the conformance tests' job.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<string> Describe(Func<IEnumerable<IElement>> evaluate)
     {
         try
         {
-            return evaluate().Select(element => $"{element.InstanceType}|{Render(element.Value)}").ToList();
+            return evaluate()
+                .Select(element => $"{element.InstanceType}|{ValueTypeName(element.Value)}|{Render(element.Value)}")
+                .ToList();
         }
         catch (Exception ex)
         {
             return [$"threw:{ex.GetType().Name}"];
         }
     }
+
+    private static string ValueTypeName(object? value) => value?.GetType().Name ?? "null";
 
     public static string Render(object? value)
     {
@@ -284,91 +340,70 @@ internal static class DifferentialFixture
         };
     }
 
+    /// <summary>
+    /// The subject every differential harness evaluates against: a real FHIR resource parsed and
+    /// projected through the same <c>SchemaAwareElement</c> the server uses at runtime.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This deliberately does not hand-build elements. A hand-built element supplies its own
+    /// <c>InstanceType</c>, returns <c>null</c> from <c>Type</c>, and can inject an already-parsed
+    /// <see cref="FhirTemporal"/> as its value - so a harness over hand-built elements never
+    /// exercises schema lookup, choice-element resolution, or the wire-text-to-typed-value
+    /// conversion in <c>SchemaAwareElement.ComputeValue</c>. Those are exactly the paths where
+    /// resource-backed temporal regressions hide, so the harness has to run over the production
+    /// element type or it is testing a mock of the thing under test.
+    /// </para>
+    /// <para>
+    /// Element paths are constrained by what FHIR actually declares on <c>Patient</c>. Where the
+    /// earlier hand-built subject invented an element, the corpus now uses the nearest real one
+    /// carrying the same type: <c>meta.lastUpdated</c> for <c>instant</c>, <c>contact.period</c>
+    /// for a <c>Period</c>, <c>extension.value</c> (valueTime) for <c>time</c>, and
+    /// <c>contact.extension.value</c> (valueDecimal) for <c>decimal</c>.
+    /// </para>
+    /// </remarks>
     public static IElement CreateSubject()
     {
-        return new TestElement("Patient", "Patient", children:
-        [
-            Temporal("birthDate", "1974-12-25", FhirPrimitive.Date, "date"),
-            Temporal("birthTime", "10:30:00", FhirPrimitive.Time, "time"),
-            Temporal("issued", "2024-06-15T08:00:00Z", FhirPrimitive.Instant, "instant"),
-            new TestElement("gender", "code", "male"),
-            new TestElement("active", "boolean", true),
-            new TestElement("multipleBirthInteger", "integer", 2),
-            new TestElement("score", "decimal", 1.5m),
-            new TestElement("name", "HumanName", children:
-            [
-                new TestElement("family", "string", "Smith"),
-                new TestElement("given", "string", "John"),
-                new TestElement("given", "string", "Q"),
-            ]),
-            new TestElement("name", "HumanName", children:
-            [
-                new TestElement("family", "string", "Jones"),
-                new TestElement("given", "string", "Ann"),
-            ]),
-            new TestElement("telecom", "ContactPoint", children:
-            [
-                new TestElement("system", "code", "phone"),
-                new TestElement("value", "string", "555-1234"),
-            ]),
-            new TestElement("telecom", "ContactPoint", children:
-            [
-                new TestElement("system", "code", "email"),
-                new TestElement("value", "string", "patient@example.org"),
-            ]),
-            new TestElement("period", "Period", children:
-            [
-                Temporal("start", "2020-01-01", FhirPrimitive.Date, "date"),
-                Temporal("end", "2021-06-15", FhirPrimitive.Date, "date"),
-            ]),
-            new TestElement("identifier", "Identifier", children:
-            [
-                new TestElement("value", "string", "abc"),
-            ]),
-            new TestElement("extension", "Extension", children:
-            [
-                Temporal("value", "10:30:00", FhirPrimitive.Time, "time"),
-            ]),
-        ]);
+        return ResourceJsonNode.Parse(SubjectJson).ToElement(Schema);
     }
 
-    private static IElement Temporal(string name, string literal, FhirPrimitive kind, string instanceType)
+    private static readonly IFhirSchemaProvider Schema = FhirVersion.R5.GetSchemaProvider();
+
+    private const string SubjectJson = """
     {
-        if (!FhirTemporal.TryParse(literal, kind, out var temporal) || temporal is null)
+      "resourceType": "Patient",
+      "id": "differential-subject",
+      "meta": { "lastUpdated": "2024-06-15T08:00:00Z" },
+      "extension": [
         {
-            throw new InvalidOperationException($"Failed to parse temporal literal '{literal}'.");
+          "url": "http://example.org/fhir/StructureDefinition/birth-time",
+          "valueTime": "10:30:00"
         }
-
-        return new TestElement(name, instanceType, temporal);
-    }
-
-    private sealed class TestElement : IElement
-    {
-        private readonly IReadOnlyList<IElement> _children;
-
-        public TestElement(string name, string instanceType, object? value = null, IReadOnlyList<IElement>? children = null)
+      ],
+      "identifier": [ { "value": "abc" } ],
+      "active": true,
+      "name": [
+        { "family": "Smith", "given": [ "John", "Q" ] },
+        { "family": "Jones", "given": [ "Ann" ] }
+      ],
+      "telecom": [
+        { "system": "phone", "value": "555-1234" },
+        { "system": "email", "value": "patient@example.org" }
+      ],
+      "gender": "male",
+      "birthDate": "1974-12-25",
+      "multipleBirthInteger": 2,
+      "contact": [
         {
-            Name = name;
-            InstanceType = instanceType;
-            Value = value;
-            _children = children ?? [];
+          "extension": [
+            {
+              "url": "http://example.org/fhir/StructureDefinition/score",
+              "valueDecimal": 1.5
+            }
+          ],
+          "period": { "start": "2020-01-01", "end": "2021-06-15" }
         }
-
-        public string Name { get; }
-
-        public string InstanceType { get; }
-
-        public object? Value { get; }
-
-        public string Location => Name;
-
-        public IType? Type => null;
-
-        public bool HasPrimitiveValue => Value is not null;
-
-        public IReadOnlyList<IElement> Children(string? name = null) =>
-            name is null ? _children : _children.Where(child => child.Name == name).ToList();
-
-        public T? Meta<T>() where T : class => null;
+      ]
     }
+    """;
 }

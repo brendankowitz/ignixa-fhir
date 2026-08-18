@@ -24,8 +24,9 @@ Neither cause changes an indexed *value*; one changes an element's declared type
 *when* an already-broken parameter fails.
 
 The language-construct corpus (83 expressions, deliberately chosen to target what this branch
-changed) produces 39 outcomes from 9 root causes. **None of those 9 is reachable from any shipped R4
-SearchParameter expression.**
+changed) produces 39 outcomes from 8 root causes. **None of those 8 is reachable from any shipped R4
+SearchParameter expression.** It was 9 until entry 6 - the one outright Ignixa defect in the list -
+was fixed; the expression still diverges, but now only by the timezone offset of entry 8.
 
 The practical read: FHIRPath evaluation is not the risky part of the migration. Two items need a
 decision before enabling Ignixa; the rest are documentation.
@@ -169,13 +170,25 @@ The harness is what closed this entry: it failed with *"pinned divergence(s) no 
 the fix landed, rather than silently continuing to assert a divergence that had gone. That is the
 mechanism working — the inventory cannot quietly rot.
 
-### 6. `@2012.highBoundary()` returns January, not December
+### 6. `@2012.highBoundary()` returned January, not December
 
-**An Ignixa defect.** Firely returns `2012-12-31T23:59:59.999`; Ignixa returns
-`2012-01-31T23:59:59.999-12:00`. Month-precision input (`@2012-06`) is handled correctly, so the bug
-is specific to year precision - the month component is not widened before the day component is
-computed. Pinned by `GivenAYearPrecisionDate_WhenTakingItsHighBoundary_...`.
-Unreachable from search parameters, but it is wrong and cheap to fix.
+**An Ignixa defect. Fixed.** Firely returns `2012-12-31T23:59:59.999`; Ignixa returned
+`2012-01-31T23:59:59.999-12:00`. Month-precision input (`@2012-06`) was handled correctly, which
+localised it to year precision.
+
+The cause was a single comparison in `FormatDateTimeHighBoundary`: the month was widened to December
+only when the requested output precision was *exactly* month level (`outputPrecision == 6`). The
+default `highBoundary()` call asks for full millisecond precision, so that test failed, the
+unspecified month stayed at its parsed default of January, and the day component was then computed
+as the last day of January. Every other component in the method already used a "this precision or
+finer" test (`>= 8`, `>= 10`, `>= 12`); month was the only equality check, and
+`FhirTemporal.GetUpperBound` had year precision right all along, so the two disagreed internally.
+
+What remains is only the timezone-offset difference described in entry 8, so this expression's pin
+moves into that benign class rather than disappearing. Guarded by
+`GivenAYearPrecisionDate_WhenTakingItsHighBoundary_ThenBothEnginesReportDecember` plus a
+precision-sweep theory covering coarser and finer input, including February in leap and non-leap
+years.
 
 ### 7. `Scalar` with 2+ results
 
