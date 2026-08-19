@@ -225,6 +225,19 @@ public class FhirTemporalTests
     }
 
     [Theory]
+    [InlineData("0")]
+    [InlineData("12345")]
+    public void GivenYearOutsideDateTimeRange_WhenParsed_ThenItIsRejectedWithoutThrowing(string literal)
+    {
+        // Act
+        var parsed = false;
+        Should.NotThrow(() => parsed = FhirTemporal.TryParse(literal, FhirPrimitive.Date, out _));
+
+        // Assert
+        parsed.ShouldBeFalse();
+    }
+
+    [Theory]
     [InlineData(FhirPrimitive.String)]
     [InlineData(FhirPrimitive.Integer)]
     [InlineData(FhirPrimitive.None)]

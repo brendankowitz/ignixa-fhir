@@ -1721,10 +1721,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Per FHIRPath spec: When comparing dates with different precision,
         // the result is null unless one interval completely precedes/follows the other.
         // For ordering (not equality), we use interval comparison semantics.
-        var leftLower = GetDateTimeLowerBound(leftStr, leftPrecision);
-        var leftUpper = GetDateTimeUpperBound(leftStr, leftPrecision);
-        var rightLower = GetDateTimeLowerBound(rightStr, rightPrecision);
-        var rightUpper = GetDateTimeUpperBound(rightStr, rightPrecision);
+        var leftLower = FhirTemporal.GetLowerBound(leftStr, leftPrecision);
+        var leftUpper = FhirTemporal.GetUpperBound(leftStr, leftPrecision);
+        var rightLower = FhirTemporal.GetLowerBound(rightStr, rightPrecision);
+        var rightUpper = FhirTemporal.GetUpperBound(rightStr, rightPrecision);
 
         if (!leftLower.HasValue || !leftUpper.HasValue || !rightLower.HasValue || !rightUpper.HasValue)
             return null;
@@ -2089,54 +2089,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         return DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out result);
     }
 
-        private DateTime? GetDateTimeLowerBound(string value, FhirTemporalPrecision precision)
-        {
-            try
-            {
-                return precision switch
-                {
-                    FhirTemporalPrecision.Year => new DateTime(int.Parse(value), 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                    FhirTemporalPrecision.Month => DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime(),
-                    _ => TryParseFhirDateTime(value, out var dt) ? dt.UtcDateTime : null
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-    
-        private DateTime? GetDateTimeUpperBound(string value, FhirTemporalPrecision precision)
-        {
-            try
-            {
-                if (precision == FhirTemporalPrecision.Year)
-                    return new DateTime(int.Parse(value), 12, 31, 23, 59, 59, 999, DateTimeKind.Utc);
-    
-                if (precision == FhirTemporalPrecision.Month)
-                    return DateTime.ParseExact(value + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal).ToUniversalTime().AddMonths(1).AddMilliseconds(-1);
-    
-                if (!TryParseFhirDateTime(value, out var dtOffset))
-                    return null;
-    
-                var dt = dtOffset.UtcDateTime;
-    
-                return precision switch
-                {
-                    FhirTemporalPrecision.Day => dt.Date.AddDays(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Hour => dt.AddHours(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Minute => dt.AddMinutes(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Second => dt.AddSeconds(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Millisecond => dt, // Millisecond precision is exact
-                    _ => dt
-                };
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
     private IEnumerable<IElement> EvaluateDateTimeArithmetic(string dateTimeStr, FhirQuantity quantity, bool add, string instanceType)
     {
         ThrowIfCalendarIncompatibleUnit(instanceType, quantity);
@@ -2202,7 +2154,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return TryParseFhirDateTime(value, out result);
         }
 
-        var anchor = GetDateTimeLowerBound(value, precision);
+        var anchor = FhirTemporal.GetLowerBound(value, precision);
         result = anchor is null ? default : new DateTimeOffset(anchor.Value);
 
         return anchor is not null;

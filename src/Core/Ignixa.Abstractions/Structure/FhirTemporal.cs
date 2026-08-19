@@ -612,7 +612,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         return offsetIndex >= 0 ? trimmed[..offsetIndex] : trimmed;
     }
 
-    private static DateTime? GetLowerBound(string value, FhirTemporalPrecision precision)
+    internal static DateTime? GetLowerBound(string value, FhirTemporalPrecision precision)
     {
         switch (precision)
         {
@@ -629,7 +629,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         }
     }
 
-    private static DateTime? GetUpperBound(string value, FhirTemporalPrecision precision)
+    internal static DateTime? GetUpperBound(string value, FhirTemporalPrecision precision)
     {
         switch (precision)
         {
