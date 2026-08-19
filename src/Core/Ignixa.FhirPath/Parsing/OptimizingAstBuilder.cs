@@ -5,6 +5,7 @@
  * Demonstrates the extensibility of the visitor pattern for compilation.
  */
 
+using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parsing.ParseTree;
@@ -284,17 +285,75 @@ internal class OptimizingAstBuilder : AstBuilder
         return false;
     }
 
+    /// <summary>
+    /// Folds <c>=</c> only for operand shapes whose answer is the one the evaluator would reach.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This used to be <see cref="object.Equals(object, object)"/> on the boxed literals, which decides
+    /// by CLR type where FHIRPath decides by value. Integer and Decimal are one number in FHIRPath -
+    /// <c>CompareEquality</c> widens both to <see cref="decimal"/> - so <c>1 = 1.0</c> answered
+    /// <see langword="true"/> unoptimized and <see langword="false"/> under
+    /// <c>CompilationOptions.Optimize</c>, as did <c>2 = 2.00</c>, <c>-1 = -1.0</c> and every
+    /// <c>1L = 1</c>. Same expression, same data, a different answer per compilation option.
+    /// </para>
+    /// <para>
+    /// The rule is the folder's, not the evaluator's, so it is expressed as a refusal: anything that is
+    /// not a pair this method can answer identically is left as written and evaluated at runtime.
+    /// Declining to fold is always sound; folding on a rule the evaluator does not share never is.
+    /// </para>
+    /// </remarks>
     private static bool TryFoldEquality(object left, object right, out object? result)
     {
-        result = Equals(left, right);
+        if (!TryDecideEquality(left, right, out var equal))
+        {
+            result = null;
+            return false;
+        }
+
+        result = equal;
         return true;
     }
 
     private static bool TryFoldInequality(object left, object right, out object? result)
     {
-        result = !Equals(left, right);
+        if (!TryDecideEquality(left, right, out var equal))
+        {
+            result = null;
+            return false;
+        }
+
+        result = !equal;
         return true;
     }
+
+    private static bool TryDecideEquality(object left, object right, out bool equal)
+    {
+        equal = false;
+
+        if (IsNumericLiteral(left) && IsNumericLiteral(right))
+        {
+            equal = Convert.ToDecimal(left, CultureInfo.InvariantCulture)
+                == Convert.ToDecimal(right, CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        if (left is string leftText && right is string rightText)
+        {
+            equal = string.Equals(leftText, rightText, StringComparison.Ordinal);
+            return true;
+        }
+
+        if (left is bool leftFlag && right is bool rightFlag)
+        {
+            equal = leftFlag == rightFlag;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsNumericLiteral(object value) => value is int or long or decimal;
 
     private static bool TryFoldAnd(object left, object right, out object? result)
     {

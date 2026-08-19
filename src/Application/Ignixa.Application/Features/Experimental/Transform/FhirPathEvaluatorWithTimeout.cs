@@ -10,41 +10,63 @@ using Microsoft.Extensions.Logging;
 namespace Ignixa.Application.Features.Experimental.Transform;
 
 /// <summary>
-/// FHIRPath evaluator with timeout protection for mapping transformations.
-/// Prevents infinite loops or extremely slow expressions from blocking transformations.
+/// Evaluates FHIRPath expressions for mapping transformations, backed by a compiled-expression cache.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Despite the name, this class does not enforce an execution-time timeout. It previously ran
+/// evaluation via <c>Task.Run(action, cancellationToken)</c> under a linked
+/// <see cref="CancellationTokenSource"/> whose <c>CancelAfter(timeout)</c> was meant to abort a
+/// runaway expression, translating the resulting <see cref="OperationCanceledException"/> into a
+/// <see cref="TimeoutException"/>. That mechanism cannot work: <c>Task.Run</c> only honours a
+/// cancellation token before its delegate starts running, and <see cref="FhirPathEvaluator.Evaluate"/>
+/// is synchronous - once it starts, nothing inside this class can interrupt it. The timer could only
+/// fire while the delegate was still queued on the thread pool, never because evaluation itself ran
+/// long, which is the one case this class exists to guard against. Keeping a <c>TimeSpan timeout</c>
+/// constructor parameter and a <see cref="TimeoutException"/> in the method signature advertised
+/// protection that did not exist, so both were removed rather than left as decoration.
+/// </para>
+/// <para>
+/// A real timeout requires cooperative cancellation inside the FHIRPath evaluator itself: the
+/// evaluator would need to check a cancellation token (or a step/deadline budget) periodically while
+/// walking the expression tree, the way long-running interpreters do. <c>Ignixa.FhirPath</c> does not
+/// support that today. Until it does, the only guarantee this class can honestly make is that a
+/// <see cref="CancellationToken"/> supplied to <see cref="EvaluateAsync"/> is honoured before
+/// evaluation starts; it is not observed once evaluation is under way.
+/// </para>
+/// <para>
+/// This is not purely academic: the caller is <c>TransformResourceHandler</c>'s <c>$transform</c>
+/// operation, which evaluates FHIRPath expressions embedded in a StructureMap supplied by the request
+/// itself (inline FML text, an inline StructureMap resource, or a canonical URL). An unbounded or
+/// pathological expression in that map is a real DoS surface that this class cannot currently stop.
+/// </para>
+/// </remarks>
 public class FhirPathEvaluatorWithTimeout
 {
     private readonly FhirPathExpressionCache _expressionCache;
     private readonly FhirPathEvaluator _evaluator;
-    private readonly TimeSpan _timeout;
     private readonly ILogger<FhirPathEvaluatorWithTimeout> _logger;
 
     public FhirPathEvaluatorWithTimeout(
         FhirPathExpressionCache expressionCache,
         FhirPathEvaluator evaluator,
-        TimeSpan timeout,
         ILogger<FhirPathEvaluatorWithTimeout> logger)
     {
         _expressionCache = expressionCache ?? throw new ArgumentNullException(nameof(expressionCache));
         _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));
-        _timeout = timeout;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-
-        if (timeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentException("Timeout must be greater than zero", nameof(timeout));
-        }
     }
 
     /// <summary>
-    /// Evaluates a FHIRPath expression with timeout protection.
+    /// Evaluates a FHIRPath expression.
     /// </summary>
     /// <param name="expression">The FHIRPath expression string to evaluate</param>
     /// <param name="element">The root element to evaluate against</param>
-    /// <param name="cancellationToken">Cancellation token for the operation</param>
+    /// <param name="cancellationToken">
+    /// Honoured only before evaluation starts - see the remarks on
+    /// <see cref="FhirPathEvaluatorWithTimeout"/> for why it cannot interrupt evaluation once begun.
+    /// </param>
     /// <returns>Collection of matching elements</returns>
-    /// <exception cref="TimeoutException">Thrown when evaluation exceeds the configured timeout</exception>
     public async Task<IEnumerable<IElement>> EvaluateAsync(
         string expression,
         IElement element,
@@ -53,35 +75,17 @@ public class FhirPathEvaluatorWithTimeout
         // Get compiled expression from cache
         var compiled = _expressionCache.GetOrCompile(expression);
 
-        // Create a linked cancellation token that includes the timeout
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(_timeout);
-
         try
         {
-            // Execute evaluation with timeout
             // FhirPathEvaluator.Evaluate is synchronous, so we run it in a Task.
             // Evaluate returns a lazy enumerable: materializing it inside the Task is what makes the
             // work actually happen here, rather than on the caller's thread past every catch below.
-            var task = Task.Run<IEnumerable<IElement>>(
+            return await Task.Run<IEnumerable<IElement>>(
                 () => _evaluator.Evaluate(element, compiled).ToList(),
-                cts.Token);
-            return await task;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Timeout occurred (timeout CTS was cancelled, but original token wasn't)
-            _logger.LogWarning(
-                "FHIRPath expression timed out after {TimeoutSeconds}s: {Expression}",
-                _timeout.TotalSeconds,
-                expression);
-
-            throw new TimeoutException(
-                $"FHIRPath expression timed out after {_timeout.TotalSeconds}s: {expression}");
+                cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            // Original cancellation token was cancelled (user-initiated)
             _logger.LogDebug("FHIRPath evaluation cancelled: {Expression}", expression);
             throw;
         }
@@ -96,13 +100,12 @@ public class FhirPathEvaluatorWithTimeout
     }
 
     /// <summary>
-    /// Synchronous evaluation with timeout protection.
-    /// Blocks until evaluation completes or timeout occurs.
+    /// Synchronous evaluation.
+    /// Blocks until evaluation completes.
     /// </summary>
     /// <param name="expression">The FHIRPath expression string to evaluate</param>
     /// <param name="element">The root element to evaluate against</param>
     /// <returns>Collection of matching elements</returns>
-    /// <exception cref="TimeoutException">Thrown when evaluation exceeds the configured timeout</exception>
     public IEnumerable<IElement> Evaluate(string expression, IElement element)
     {
         // For synchronous callers, use a default cancellation token

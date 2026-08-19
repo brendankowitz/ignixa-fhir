@@ -99,6 +99,54 @@ public class OptimizedVersusUnoptimizedDifferentialTests
         optimized.ShouldBeOfType<Ignixa.FhirPath.Expressions.BinaryExpression>();
     }
 
+    /// <summary>
+    /// Integer and Decimal are one number in FHIRPath, and the folder decided by CLR type instead.
+    /// </summary>
+    /// <remarks>
+    /// <c>object.Equals</c> on the boxed literals made <c>1 = 1.0</c> fold to <see langword="false"/>
+    /// while the evaluator - which widens both operands to <see cref="decimal"/> - answered
+    /// <see langword="true"/>. The same expression, over the same data, gave a different answer per
+    /// <see cref="CompilationOptions"/>. Asserted on the folded constant rather than only through the
+    /// differential so that a regression names the folder rather than the corpus.
+    /// </remarks>
+    [Theory]
+    [InlineData("1 = 1.0", true)]
+    [InlineData("1 != 1.0", false)]
+    [InlineData("2 = 2.00", true)]
+    [InlineData("1L = 1", true)]
+    [InlineData("1L != 1.0", false)]
+    [InlineData("1 = 2", false)]
+    [InlineData("'a' = 'a'", true)]
+    [InlineData("true != false", true)]
+    public void GivenNumericLiteralsOfDifferentTypes_WhenOptimized_ThenEqualityFoldsByValue(string expression, bool expected)
+    {
+        // Arrange & Act
+        var optimized = _optimizingParser.Parse(expression);
+
+        // Assert
+        optimized.ShouldBeOfType<Ignixa.FhirPath.Expressions.ConstantExpression>()
+            .Value.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// The folder's rule is a refusal, not a second copy of the evaluator's: an operand pair it cannot
+    /// answer identically is left as written and decided at runtime.
+    /// </summary>
+    [Theory]
+    [InlineData("'a' = true")]
+    [InlineData("1 = 'a'")]
+    [InlineData("1 = true")]
+    [InlineData("@2012 = @2012-01")]
+    [InlineData("1 'm' = 100 'cm'")]
+    public void GivenOperandsTheFolderCannotDecide_WhenOptimized_ThenItDeclinesToFold(string expression)
+    {
+        // Arrange & Act
+        var optimized = _optimizingParser.Parse(expression);
+
+        // Assert
+        optimized.ShouldNotBeOfType<Ignixa.FhirPath.Expressions.ConstantExpression>();
+    }
+
     [Fact]
     public void GivenTwoConstants_WhenOptimized_ThenTheyAreStillFolded()
     {

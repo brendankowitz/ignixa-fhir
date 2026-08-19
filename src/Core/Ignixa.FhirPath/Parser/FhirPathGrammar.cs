@@ -9,6 +9,7 @@ using Ignixa.FhirPath.Expressions;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
+using System.Globalization;
 
 namespace Ignixa.FhirPath.Parser;
 
@@ -48,7 +49,7 @@ public static class FhirPathGrammar
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> IntegerLiteral =
         Token.EqualTo(FhirPathTokenKind.IntegerLiteral)
             .Select(t => new ConstantExpression(
-                int.Parse(t.ToStringValue()),
+                int.Parse(t.ToStringValue(), CultureInfo.InvariantCulture),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> LongLiteral =
@@ -66,7 +67,7 @@ public static class FhirPathGrammar
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
             .Select(t => new ConstantExpression(
-                decimal.Parse(t.ToStringValue()),
+                decimal.Parse(t.ToStringValue(), CultureInfo.InvariantCulture),
                 CreatePosition(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantExpression> BooleanLiteral =
@@ -100,7 +101,7 @@ public static class FhirPathGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
         from unitToken in Token.EqualTo(FhirPathTokenKind.StringLiteral)
         select new QuantityExpression(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             UnescapeString(unitToken.ToStringValue()),
             CreatePosition(valueToken, unitToken));
 
@@ -117,7 +118,7 @@ public static class FhirPathGrammar
                 return Types.CalendarDuration.IsCalendarKeyword(keyword);
             })
         select new QuantityExpression(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             keywordToken.ToStringValue(),  // Preserve keyword form (year, week, etc.)
             CreatePosition(valueToken, keywordToken));
 

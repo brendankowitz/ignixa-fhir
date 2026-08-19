@@ -10,6 +10,7 @@ using Ignixa.FhirPath.Parsing.ParseTree;
 using Superpower;
 using Superpower.Model;
 using Superpower.Parsers;
+using System.Globalization;
 
 namespace Ignixa.FhirPath.Parsing;
 
@@ -31,7 +32,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> IntegerLiteral =
         Token.EqualTo(FhirPathTokenKind.IntegerLiteral)
-            .Select(t => new ConstantParseNode(int.Parse(t.ToStringValue()), Loc(t)));
+            .Select(t => new ConstantParseNode(int.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> LongLiteral =
         Token.EqualTo(FhirPathTokenKind.LongLiteral)
@@ -45,7 +46,7 @@ internal static class FhirPathParseTreeGrammar
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DecimalLiteral =
         Token.EqualTo(FhirPathTokenKind.DecimalLiteral)
-            .Select(t => new ConstantParseNode(decimal.Parse(t.ToStringValue()), Loc(t)));
+            .Select(t => new ConstantParseNode(decimal.Parse(t.ToStringValue(), CultureInfo.InvariantCulture), Loc(t)));
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> BooleanLiteral =
         Token.EqualTo(FhirPathTokenKind.BooleanLiteral)
@@ -68,7 +69,7 @@ internal static class FhirPathParseTreeGrammar
             .Or(Token.EqualTo(FhirPathTokenKind.IntegerLiteral))
         from unitToken in Token.EqualTo(FhirPathTokenKind.StringLiteral)
         select new QuantityParseNode(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             UnescapeString(unitToken.ToStringValue()),
             Loc(valueToken, unitToken));
 
@@ -78,7 +79,7 @@ internal static class FhirPathParseTreeGrammar
         from keywordToken in Token.EqualTo(FhirPathTokenKind.Identifier)
             .Where(t => Types.CalendarDuration.IsCalendarKeyword(t.ToStringValue()))
         select new QuantityParseNode(
-            decimal.Parse(valueToken.ToStringValue()),
+            decimal.Parse(valueToken.ToStringValue(), CultureInfo.InvariantCulture),
             keywordToken.ToStringValue(),  // Preserve keyword form (week, year, etc.) for toString()
             Loc(valueToken, keywordToken));
 

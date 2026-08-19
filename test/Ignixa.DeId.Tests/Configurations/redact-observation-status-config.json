@@ -1,0 +1,9 @@
+{
+  "fhirVersion": "",
+  "fhirPathRules": [
+    {
+      "path": "Observation.status",
+      "method": "redact"
+    }
+  ]
+}

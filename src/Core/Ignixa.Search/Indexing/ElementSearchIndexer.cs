@@ -190,9 +190,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
             Log.FailedToExtractValues(_logger, ex, searchParameter.Expression, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
+        }
+        catch (Exception ex)
+        {
+            Log.UnexpectedExtractionFailure(_logger, ex, searchParameter.Expression, resource.InstanceType, searchParameter.Url.ToString(), resourceIdentity);
         }
 
         foreach (IElement rootObject in rootObjects)
@@ -307,9 +311,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
             Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+        }
+        catch (Exception ex)
+        {
+            Log.UnexpectedExtractionFailure(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -411,9 +419,13 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
             Log.FailedToExtractValues(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
+        }
+        catch (Exception ex)
+        {
+            Log.UnexpectedExtractionFailure(_logger, ex, fhirPathExpression, element.InstanceType, searchParameterDefinitionUrl, resourceIdentity);
         }
 
         Debug.Assert(extractedValues != null, "The extracted values should not be null.");
@@ -564,12 +576,34 @@ public partial class ElementSearchIndexer : ISearchIndexer
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (IsExpectedEvaluationFailure(ex))
         {
             Log.ConverterFailed(_logger, ex, converter.GetType().Name, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
             return [];
         }
+        catch (Exception ex)
+        {
+            // Unlike a bad literal or an unimplemented FHIRPath function, a NullReferenceException or
+            // InvalidCastException reaching here means the converter itself is broken - it is a code
+            // defect, not a data-quality problem. Failing the whole write over it would still be worse
+            // than the one missing search parameter (see the containment rationale on Extract), so this
+            // stays contained. But it must not be logged identically to an expected miss: Error, not
+            // Warning, so it surfaces to whatever is watching Error-level logs instead of blending into
+            // routine "this literal didn't parse" noise.
+            Log.UnexpectedConverterFailure(_logger, ex, converter.GetType().Name, fhirPathExpression, searchParameterDefinitionUrl, resourceIdentity);
+            return [];
+        }
     }
+
+    /// <summary>
+    /// True for FHIRPath evaluation failures the write path is expected to see against real-world data
+    /// or custom search parameters: a bad literal, an unsupported/not-yet-implemented function, or any
+    /// other expression-level rejection defined by <see cref="FhirPathEvaluationException"/>. False for
+    /// anything else - a <see cref="NullReferenceException"/> or <see cref="InvalidCastException"/>
+    /// reaching an indexing catch block means the indexer or a converter has a bug, not that the data
+    /// or the expression was bad, and must not be logged the same way.
+    /// </summary>
+    private static bool IsExpectedEvaluationFailure(Exception ex) => ex is FhirPathEvaluationException or NotSupportedException;
 
     /// <summary>
     /// Builds the "ResourceType/id" label the indexing warnings are tagged with.
@@ -625,11 +659,17 @@ public partial class ElementSearchIndexer : ISearchIndexer
         [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract the values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'.")]
         public static partial void FailedToExtractValues(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
 
+        [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error extracting values using '{FhirPathExpression}' against '{ElementType}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected FHIRPath evaluation failure and likely indicates a bug in the indexer or evaluator.")]
+        public static partial void UnexpectedExtractionFailure(ILogger logger, Exception ex, string fhirPathExpression, string elementType, string searchParameterUrl, string resourceIdentity);
+
         [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping element with null or empty InstanceType for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}' during search indexing.")]
         public static partial void SkippingElementNullOrEmptyInstanceType(ILogger logger, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "Converter '{ConverterType}' failed on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. Skipping this value.")]
         public static partial void ConverterFailed(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
+
+        [LoggerMessage(Level = LogLevel.Error, Message = "Converter '{ConverterType}' raised an unexpected error on a value extracted by '{FhirPathExpression}' for search parameter '{SearchParameterUrl}' on resource '{ResourceIdentity}'. This is not an expected evaluation failure and likely indicates a defect in the converter. Skipping this value.")]
+        public static partial void UnexpectedConverterFailure(ILogger logger, Exception ex, string converterType, string fhirPathExpression, string searchParameterUrl, string resourceIdentity);
 
         [LoggerMessage(Level = LogLevel.Warning, Message = "The FHIR element '{ElementType}' is not supported.")]
         public static partial void FhirElementTypeNotSupported(ILogger logger, string elementType);

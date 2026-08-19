@@ -918,71 +918,20 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
     }
 
     /// <summary>
-    /// Extracts a Quantity from an IElement, handling both FhirPath Quantity literals
-    /// and FHIR Quantity elements (which have value/unit/code children).
+    /// Reads an operand as a Quantity for equivalence, where a bare number is not one.
     /// </summary>
-    private FhirQuantity? TryExtractQuantity(IElement element)
+    /// <remarks>
+    /// The reading itself is <see cref="ValueOrdering.AsQuantity"/>, shared with the ordering operators,
+    /// equality and the aggregates. This used to be a second reader that differed from it in exactly one
+    /// respect - the unit it gave a Quantity element that declares none - and that difference was the
+    /// whole of why <c>~</c> and <c>=</c> disagreed about such an element.
+    /// <see cref="ValueOrdering.IsQuantity"/> still gates it, because the implicit Integer-to-Quantity
+    /// conversion <see cref="ValueOrdering.AsQuantity"/> applies would route plain numbers away from the
+    /// decimal-precision rule equivalence defines for them.
+    /// </remarks>
+    private static FhirQuantity? TryExtractQuantity(IElement element)
     {
-        // If the value is already a Quantity (FhirPath literal), return it directly
-        if (element.Value is FhirQuantity qty)
-            return qty;
-
-        // If it's a FHIR Quantity element, extract value and unit from children
-#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are case-insensitive
-        var instanceType = element.InstanceType?.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        if (instanceType == "quantity" || instanceType == "age" || instanceType == "distance" || 
-            instanceType == "duration" || instanceType == "count" || instanceType == "simplequantity" ||
-            instanceType == "moneyquantity")
-        {
-            return ExtractQuantityFromFhirElement(element);
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Extracts value and unit from a FHIR Quantity element's children.
-    /// </summary>
-    private static FhirQuantity? ExtractQuantityFromFhirElement(IElement element)
-    {
-        decimal? value = null;
-        string? unit = null;
-
-        var children = element.Children();
-        foreach (var child in children)
-        {
-            if (child.Name == "value" && child.Value != null)
-            {
-                if (child.Value is decimal d)
-                    value = d;
-                else if (child.Value is int i)
-                    value = i;
-                else if (child.Value is long l)
-                    value = l;
-                else if (child.Value is double dbl)
-                    value = (decimal)dbl;
-                else if (child.Value is string s && decimal.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
-                    value = parsed;
-            }
-            else if (child.Name == "code" && child.Value is string code)
-            {
-                // Prefer 'code' over 'unit' as it's the UCUM code
-                unit = code;
-            }
-            else if (child.Name == "unit" && child.Value is string unitVal && unit == null)
-            {
-                // Fall back to 'unit' if 'code' not present
-                unit = unitVal;
-            }
-        }
-
-        if (value.HasValue)
-        {
-            return new FhirQuantity(value.Value, unit ?? "1");
-        }
-
-        return null;
+        return ValueOrdering.IsQuantity(element) ? ValueOrdering.AsQuantity(element) : null;
     }
 
     private bool AreEquivalent(object? left, object? right)
@@ -993,24 +942,21 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // Handle quantity equivalence with unit conversion
         if (left is FhirQuantity leftQty && right is FhirQuantity rightQty)
         {
-            // Try to compare after converting to same unit
-            var converter = Types.QuantityUnitConverter.Instance;
-            if (!converter.IsCompatible(leftQty.Unit, rightQty.Unit))
-                return false;
-
-            var convertedRight = rightQty.ConvertTo(leftQty.Unit, converter);
-            if (convertedRight == null)
+            // Incompatible units are false here rather than empty: equivalence has no third state, and
+            // the conversion itself is ValueOrdering's so that ~, = and < cannot disagree about which
+            // units relate.
+            if (!ValueOrdering.TryAlignUnits(leftQty, rightQty, out var leftValue, out var rightValue))
                 return false;
 
             // For quantities, equivalence (~) uses precision-based comparison per FHIRPath 3.0 spec:
             // "For Quantity values, equivalence compares values with respect to their stated precision."
             // Compare values when rounded to the lesser precision (fewer decimal places).
-            int precision1 = GetDecimalPrecision(leftQty.Value);
-            int precision2 = GetDecimalPrecision(convertedRight.Value);
+            int precision1 = GetDecimalPrecision(leftValue);
+            int precision2 = GetDecimalPrecision(rightValue);
             int minPrecision = Math.Min(Math.Min(precision1, precision2), 28); // Clamp to max decimal precision
 
-            decimal rounded1 = Math.Round(leftQty.Value, minPrecision, MidpointRounding.AwayFromZero);
-            decimal rounded2 = Math.Round(convertedRight.Value, minPrecision, MidpointRounding.AwayFromZero);
+            decimal rounded1 = Math.Round(leftValue, minPrecision, MidpointRounding.AwayFromZero);
+            decimal rounded2 = Math.Round(rightValue, minPrecision, MidpointRounding.AwayFromZero);
             return rounded1 == rounded2;
         }
 

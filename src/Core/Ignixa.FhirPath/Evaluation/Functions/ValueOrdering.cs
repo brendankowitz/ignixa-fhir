@@ -95,6 +95,101 @@ internal static class ValueOrdering
     }
 
     /// <summary>
+    /// Applies FHIRPath equality to two operands, at least one of which is a Quantity.
+    /// </summary>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <returns>
+    /// <see langword="true"/> or <see langword="false"/> when equality is decidable, and
+    /// <see langword="null"/> when it is not: the units are incompatible, or an operand is not a value
+    /// any reading makes a quantity.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Equality is a third policy over the same ladder as <see cref="CompareValues"/> and
+    /// <see cref="CompareForSort"/>, not a comparison of its own, so a quantity cannot be equal on one
+    /// surface and unequal on another. It exists because the callers collapse the undecided case
+    /// differently: <c>=</c> yields empty, <c>~</c> yields <see langword="false"/>, and the collection
+    /// functions - which have no third state - yield "not the same item".
+    /// </para>
+    /// <para>
+    /// Without it <see cref="FunctionHelpers.AreElementsEqual"/> fell through to
+    /// <see cref="object.Equals(object)"/> on the carrier, which compares the unit as text: <c>1 'm' =
+    /// 100 'cm'</c> was <see langword="true"/> as an operator while <c>(1 'm' | 100 'cm').distinct()</c>
+    /// returned two elements, and <c>1 'wk' in (7 'd')</c> was <see langword="false"/>.
+    /// </para>
+    /// </remarks>
+    public static bool? AreQuantitiesEqual(IElement left, IElement right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        var leftQuantity = AsQuantity(left);
+        var rightQuantity = AsQuantity(right);
+
+        if (leftQuantity is null || rightQuantity is null)
+        {
+            return null;
+        }
+
+        return CompareQuantityValues(leftQuantity, rightQuantity) is { } order ? order == 0 : null;
+    }
+
+    /// <summary>
+    /// Compares two quantities by value, once both are expressed in one unit.
+    /// </summary>
+    /// <param name="left">The left quantity.</param>
+    /// <param name="right">The right quantity.</param>
+    /// <returns>
+    /// A negative value, zero, a positive value, or <see langword="null"/> when the units are
+    /// incompatible, which the spec answers with empty rather than with an ordering.
+    /// </returns>
+    public static int? CompareQuantityValues(FhirQuantity left, FhirQuantity right)
+    {
+        return TryAlignUnits(left, right, out var leftValue, out var rightValue)
+            ? leftValue.CompareTo(rightValue)
+            : null;
+    }
+
+    /// <summary>
+    /// Expresses two quantities in a single unit, so that only their values remain to be compared.
+    /// </summary>
+    /// <param name="left">The left quantity, whose unit both values are expressed in.</param>
+    /// <param name="right">The right quantity.</param>
+    /// <param name="leftValue">The left value.</param>
+    /// <param name="rightValue">The right value in the left's unit.</param>
+    /// <returns><see langword="false"/> when no conversion relates the two units.</returns>
+    /// <remarks>
+    /// The one place the engine converts for a comparison. The ordering operators, equality, equivalence
+    /// and the aggregates all reach it, which is what stops <c>1 'm'</c> and <c>100 'cm'</c> being one
+    /// value to some of them and two to others. Equivalence needs the aligned values rather than the
+    /// comparison result, because it rounds them to their stated precision first.
+    /// </remarks>
+    public static bool TryAlignUnits(FhirQuantity left, FhirQuantity right, out decimal leftValue, out decimal rightValue)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        leftValue = left.Value;
+        rightValue = 0m;
+
+        if (!UnitConverter.IsCompatible(left.Unit, right.Unit))
+        {
+            return false;
+        }
+
+        var converted = right.ConvertTo(left.Unit, UnitConverter);
+
+        if (converted is null)
+        {
+            return false;
+        }
+
+        rightValue = converted.Value;
+        return true;
+    }
+
+    /// <summary>
     /// Determines whether an operand is a Quantity, as opposed to a number a conversion could make one.
     /// </summary>
     /// <param name="element">The operand.</param>
@@ -383,19 +478,9 @@ internal static class ValueOrdering
             throw NotOrderable(left, right, function);
         }
 
-        if (totalOrder)
-        {
-            return CompareQuantityKeys(leftQuantity, rightQuantity);
-        }
-
-        if (!UnitConverter.IsCompatible(leftQuantity.Unit, rightQuantity.Unit))
-        {
-            return null;
-        }
-
-        var converted = rightQuantity.ConvertTo(leftQuantity.Unit, UnitConverter);
-
-        return converted is null ? null : leftQuantity.Value.CompareTo(converted.Value);
+        return totalOrder
+            ? CompareQuantityKeys(leftQuantity, rightQuantity)
+            : CompareQuantityValues(leftQuantity, rightQuantity);
     }
 
     /// <summary>

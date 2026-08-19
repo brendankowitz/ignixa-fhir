@@ -172,24 +172,18 @@ internal static class QuantityEvaluator
                 : throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op);
         }
 
-        // Check if units are compatible (can be converted)
-        if (!UnitConverter.IsCompatible(leftQty.Unit, rightQty.Unit))
-            return null; // Incompatible units => empty result
-
-        // Convert right to left's unit for comparison
-        var convertedRight = rightQty.ConvertTo(leftQty.Unit, UnitConverter);
-        if (convertedRight == null)
+        // Incompatible units are the spec's own empty result rather than an ordering.
+        if (Functions.ValueOrdering.CompareQuantityValues(leftQty, rightQty) is not { } order)
             return null;
 
-        // Both operands are now in leftQty's unit, so ordering is a plain numeric comparison.
         return op switch
         {
-            "=" => leftQty.Equals(convertedRight),
-            "!=" => !leftQty.Equals(convertedRight),
-            "<" => leftQty.Value < convertedRight.Value,
-            "<=" => leftQty.Value <= convertedRight.Value,
-            ">" => leftQty.Value > convertedRight.Value,
-            ">=" => leftQty.Value >= convertedRight.Value,
+            "=" => order == 0,
+            "!=" => order != 0,
+            "<" => order < 0,
+            "<=" => order <= 0,
+            ">" => order > 0,
+            ">=" => order >= 0,
             _ => throw FhirPathEvaluator.UndefinedForOperandTypes(left[0], right[0], op)
         };
     }
@@ -226,6 +220,14 @@ internal static class QuantityEvaluator
     /// <summary>
     /// Extracts value and unit from a FHIR Quantity element's children.
     /// </summary>
+    /// <remarks>
+    /// A Quantity carrying a value but no unit is the unity unit, the same reading
+    /// <see cref="Functions.ValueOrdering.AsQuantity"/> already gives a bare number. Returning
+    /// <see langword="null"/> for it - as this did - made <c>Observation.value = Observation.value</c>
+    /// answer <see langword="false"/> on such an element, because the equality path reports an operand it
+    /// cannot read as a quantity as decidably unequal, while <c>~</c> answered <see langword="true"/> and
+    /// <c>&lt;</c> threw. Three readings of one element, three answers.
+    /// </remarks>
     internal static FhirQuantity? ExtractQuantityFromChildren(IElement element)
     {
         decimal? value = null;
@@ -259,12 +261,9 @@ internal static class QuantityEvaluator
             }
         }
 
-        if (value.HasValue && !string.IsNullOrEmpty(unit))
-        {
-            return new FhirQuantity(value.Value, unit);
-        }
-
-        return null;
+        return value.HasValue
+            ? new FhirQuantity(value.Value, string.IsNullOrEmpty(unit) ? "1" : unit)
+            : null;
     }
 
     #region Private Helpers

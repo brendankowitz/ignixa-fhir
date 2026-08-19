@@ -171,6 +171,21 @@ internal static class DifferentialFixture
         "1 'mg' * 2",
         "1 'mg' / 2",
 
+        "1 'm' = 100 'cm'",
+        "1 'm' ~ 100 'cm'",
+        "1 'm' = 1 's'",
+        "1 'm' ~ 1 's'",
+        "1 'wk' = 7 'd'",
+        "(1 'm' | 100 'cm').distinct().count()",
+        "(1 'm' | 1 's').distinct().count()",
+        "(7 'd' | 1 'wk').distinct().count()",
+        "1 'm' in (100 'cm')",
+        "(1 'm').intersect(100 'cm').count()",
+        "(1 'm').exclude(100 'cm').count()",
+        "(1 'm').combine(100 'cm').isDistinct()",
+        "(1 'mg' | 5).distinct().count()",
+        "(5 '1' | 5).distinct().count()",
+
         "@2012-01-01T10:00:00Z = @2012-01-01T20:00:00+10:00",
         "(@2012-01-01T10:00:00Z | @2012-01-01T20:00:00+10:00).count()",
         "(@2012-01-01T10:00:00Z | @2012-01-01T20:00:00+10:00).distinct().count()",
@@ -344,6 +359,44 @@ internal static class DifferentialFixture
         "@2012 = @2012",
         "@T10:30 < @T11:00",
         "@2012-01-01 + 0",
+
+        // Two numeric literals are the shape the folder answered by CLR type where FHIRPath answers by
+        // value: object.Equals boxed 1 and 1.0 as different types, so "1 = 1.0" was true unoptimized and
+        // false under Optimize. The ordering folder already widened to decimal, which is why only the
+        // equality rows diverged and why the corpus needs both.
+        "1 = 1.0",
+        "1 != 1.0",
+        "1.0 = 1",
+        "2 = 2.00",
+        "-1 = -1.0",
+        "1L = 1",
+        "1L != 1",
+        "1L = 1.0",
+        "1L > 0",
+        "1L <= 1",
+        "1 = 1",
+        "1 = 2",
+        "1.5 = 1.50",
+        "1 < 1.0",
+        "1 >= 1.0",
+        "1 = 'a'",
+        "1 = true",
+        "'a' = true",
+        "'a' = 'a'",
+        "'a' != 'b'",
+        "true = true",
+        "true != false",
+
+        // A quantity literal is not a ConstantExpression, so the folder never sees one. These rows exist
+        // to fail loudly if that ever changes: the folder has no unit conversion and would compare 1 'm'
+        // to 100 'cm' by whatever Equals does to the carrier.
+        "1 'm' = 100 'cm'",
+        "1 'wk' = 7 'd'",
+        "1 'm' < 100 'cm'",
+        "1 'm' = 1 's'",
+        "1 'm' > 1 's'",
+        "1 'm' ~ 1 's'",
+        "(1 'm' | 100 'cm').distinct().count()",
 
         "(1 | 2).single().exists() and false and true",
         "true or ((1 | 2).single().exists() and true)",

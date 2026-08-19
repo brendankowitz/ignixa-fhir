@@ -123,9 +123,21 @@ internal static class FunctionHelpers
     /// Compares two IElements for equality (deep comparison for complex types).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The single equality entry point for every collection operation - <c>distinct()</c>,
     /// <c>isDistinct()</c>, <c>|</c>, <c>in</c>, <c>contains</c>, <c>intersect</c>, <c>exclude</c> and
     /// <c>repeat()</c> - and it deliberately answers the same question the <c>=</c> operator does.
+    /// </para>
+    /// <para>
+    /// Both typed branches collapse the operators' third state to "not the same item", because these
+    /// callers have no third state to return and membership asserts that an equal item is present.
+    /// Quantities reach <see cref="ValueOrdering"/> for the same reason temporals reach
+    /// <see cref="TemporalOperand"/>: without it a quantity fell through to
+    /// <see cref="object.Equals(object)"/> on the carrier, which compares units as text, so
+    /// <c>1 'm' = 100 'cm'</c> was <see langword="true"/> as an operator and <see langword="false"/> as
+    /// membership. An undecided quantity comparison falls through to the untyped paths below rather than
+    /// being reported unequal here, so the branch only ever adds a decision.
+    /// </para>
     /// </remarks>
     public static bool AreElementsEqual(IElement? left, IElement? right)
     {
@@ -138,6 +150,12 @@ internal static class FunctionHelpers
             && TemporalOperand.AsTemporal(right.Value, right.InstanceType) is { } rightTemporal)
         {
             return TemporalOperand.AreSameItem(leftTemporal, rightTemporal);
+        }
+
+        if ((ValueOrdering.IsQuantity(left) || ValueOrdering.IsQuantity(right))
+            && ValueOrdering.AreQuantitiesEqual(left, right) is { } quantitiesEqual)
+        {
+            return quantitiesEqual;
         }
 
         // Both have primitive values - compare values
