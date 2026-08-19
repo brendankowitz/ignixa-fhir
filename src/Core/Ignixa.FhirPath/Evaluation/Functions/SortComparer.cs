@@ -50,13 +50,26 @@ internal sealed class SortComparer : IComparer<IElement?>
     /// - which negates this comparer's result - places missing keys first.
     /// </summary>
     /// <remarks>
-    /// The 3.0.0 text says "An empty value is considered lower than all other values, meaning they will
-    /// appear before others when sorted ascending", which read alone would put missing keys last in a
-    /// descending sort. The normative suite requires otherwise: <c>testSort10</c> is
+    /// <para>
+    /// §sort() says "An empty value is considered lower than all other values, meaning they will appear
+    /// before others when sorted ascending", which read alone would put missing keys last in a descending
+    /// sort. The official HL7 test suite requires otherwise: <c>testSort10</c> in
+    /// <c>r5/fhirpath/tests-fhir-r5.xml</c> is
     /// <c>Patient.name.sort(-family, -given.first()).first().use = 'usual'</c>, and in
     /// <c>patient-example</c> the <c>usual</c> name is the one with no <c>family</c> at all. So a missing
     /// key leads in both directions, and the direction modifier reorders the values rather than the
     /// present-versus-absent partition. This instance exists to make that hold.
+    /// </para>
+    /// <para>
+    /// Neither source is normative, and an earlier revision of this comment said "the normative suite",
+    /// which was wrong twice over. §sort() carries the Standard for Trial Use note and every paragraph in
+    /// it is tagged <c>{:.stu}</c>; the released Normative 2.0.0 has no <c>sort()</c> at all. And all ten
+    /// of <c>testSort1</c>..<c>testSort10</c> are annotated
+    /// <c>description="Prototype definition - not part of spec yet"</c>. The <c>testSort10</c> reasoning
+    /// above still holds - it is the only evidence either way about the descending case - but it is
+    /// evidence from a prototype, not a conformance requirement. Checked 2026-08-19 against the
+    /// continuous build off <c>master</c> and <c>FHIR/fhir-test-cases</c>.
+    /// </para>
     /// </remarks>
     public static SortComparer NullsHigh { get; } = new(nullsHigh: true);
 

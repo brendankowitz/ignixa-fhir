@@ -10,6 +10,7 @@ using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Types;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Ignixa.FhirPath.Evaluation;
@@ -238,16 +239,10 @@ internal static class QuantityEvaluator
         {
             if (child.Name == "value" && child.Value != null)
             {
-                if (child.Value is decimal d)
-                    value = d;
-                else if (child.Value is int i)
-                    value = i;
-                else if (child.Value is long l)
-                    value = l;
-                else if (child.Value is double dbl)
-                    value = (decimal)dbl;
-                else if (child.Value is string s && decimal.TryParse(s, out var parsed))
-                    value = parsed;
+                if (TryReadMagnitude(child.Value, out var magnitude))
+                {
+                    value = magnitude;
+                }
             }
             else if (child.Name == "code" && child.Value is string code)
             {
@@ -264,6 +259,52 @@ internal static class QuantityEvaluator
         return value.HasValue
             ? new FhirQuantity(value.Value, string.IsNullOrEmpty(unit) ? "1" : unit)
             : null;
+    }
+
+    /// <summary>
+    /// Reads a Quantity's <c>value</c> child as a <see cref="decimal"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The provider is fixed at <see cref="CultureInfo.InvariantCulture"/> because the FHIR wire format
+    /// is: <c>.</c> is the decimal separator and group separators never appear. Reading the text under
+    /// the host's culture made <c>"1.5"</c> a well-formed fifteen on a comma-decimal host - silently,
+    /// with nothing thrown and nothing logged. <see cref="NumberStyles.Float"/> matches
+    /// <c>SchemaAwareElement</c>, which is where the same text is read when the schema knows the type:
+    /// it excludes group separators and admits the exponent a FHIR decimal may carry.
+    /// </para>
+    /// <para>
+    /// A <see cref="double"/> is narrowed rather than cast. The cast throws
+    /// <see cref="OverflowException"/> for a non-finite or out-of-range value, and this method sits on
+    /// the path <c>=</c>, <c>~</c>, <c>&lt;</c>, <c>sort()</c> and the aggregates all share, outside the
+    /// one <c>catch</c> that turns overflow into FHIRPath's empty. A refusal here leaves the element
+    /// unreadable as a quantity, which those callers already answer with empty - the spec's result for
+    /// arithmetic overflow - rather than by rejecting a conformant resource.
+    /// </para>
+    /// </remarks>
+    private static bool TryReadMagnitude(object raw, out decimal value)
+    {
+        switch (raw)
+        {
+            case decimal decimalValue:
+                value = decimalValue;
+                return true;
+            case int intValue:
+                value = intValue;
+                return true;
+            case long longValue:
+                value = longValue;
+                return true;
+            case double doubleValue:
+                return Functions.ValueOrdering.TryNarrow(doubleValue, out value);
+            case float floatValue:
+                return Functions.ValueOrdering.TryNarrow(floatValue, out value);
+            case string text:
+                return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+            default:
+                value = 0m;
+                return false;
+        }
     }
 
     #region Private Helpers

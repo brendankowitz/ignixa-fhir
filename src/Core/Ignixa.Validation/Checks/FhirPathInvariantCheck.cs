@@ -28,12 +28,15 @@ namespace Ignixa.Validation.Checks;
 /// <para>
 /// <b>Exception-path severity is a deliberate position, not an oversight.</b> The spec's
 /// conformance-rules.html is silent on what to do when a constraint expression cannot be evaluated
-/// at all, and the two reference implementations disagree with each other: Firely's
-/// <c>InvariantValidator</c> always degrades an evaluation exception to a non-failing Warning,
-/// regardless of the constraint's declared severity, while HAPI reports an Error and counts it
-/// toward the resource's failure tally (per <c>hapifhir/org.hl7.fhir.core</c> issues #1338 and
-/// #1326 - observed from the issue discussion, not confirmed against HAPI's source). This code
-/// follows Firely: a known engine gap (<see cref="NotSupportedException"/>) or an expression the
+/// at all. Firely's side is confirmed against source: <c>FhirPathValidator.runInvariantInternal</c>
+/// catches any exception into <c>Issue.PROFILE_ELEMENTDEF_INVALID_FHIRPATH_EXPRESSION</c>, which
+/// reflection over 5.11.4 gives <c>Severity = Warning, Code = 2009</c>, and <c>InvariantValidator.Validate</c>
+/// returns before the declared-severity branch runs - so Firely always degrades an evaluation
+/// exception to a non-failing Warning, regardless of the constraint's declared severity. Whether HAPI
+/// disagrees is unconfirmed: it reportedly reports an Error and counts it toward the resource's
+/// failure tally (per <c>hapifhir/org.hl7.fhir.core</c> issues #1338 and #1326 - observed from the
+/// issue discussion, not confirmed against HAPI's source). This code follows Firely: a known engine
+/// gap (<see cref="NotSupportedException"/>) or an expression the
 /// engine correctly refuses to evaluate (<see cref="FhirPathEvaluationException"/>) never fails
 /// the resource. The fhir-server ingestion seam sits downstream of this check and must not start
 /// rejecting resources Firely accepts over a constraint neither engine can evaluate - HAPI's

@@ -37,9 +37,11 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// answers deterministically.
 /// </para>
 /// <para>
-/// The 3.0.0 <c>sort()</c> text does bear on this: "Items are considered equal if and only if the equals
+/// The <c>sort()</c> text does bear on this: "Items are considered equal if and only if the equals
 /// (=) operator returns true. (i.e. false and empty both indicate that the items are not equal)."
-/// Reporting an empty comparison as equal contradicts it directly.
+/// Reporting an empty comparison as equal contradicts it directly. That text is from the FHIRPath
+/// continuous build off <c>master</c> (<c>HL7/FHIRPath</c>, <c>input/pages/index.md</c>), checked
+/// 2026-08-19; it is unreleased, and §sort() is marked <c>{:.stu}</c> throughout, so it can move.
 /// </para>
 /// </remarks>
 internal static class ValueOrdering
@@ -61,11 +63,13 @@ internal static class ValueOrdering
     /// The operands are of types no conversion relates, or of a type FHIRPath defines no ordering for.
     /// </exception>
     /// <remarks>
-    /// <c>min()</c> and <c>max()</c> call this. The FHIRPath spec defines them in terms of the <c>&lt;</c>
-    /// and <c>&gt;</c> operators - <c>aggregate(iif($total.empty(), $this, iif($this &lt; $total, $this,
-    /// $total)))</c> - so they must not have an ordering rule of their own, which is exactly the mistake
-    /// they used to make: a per-type ladder chosen from the collection's first element, with units matched
-    /// by raw string equality and temporals re-parsed to <see cref="DateTime"/>.
+    /// <c>min()</c> and <c>max()</c> call this. §min() and §max() each say "Comparison semantics are
+    /// defined by the Comparison Operators for the type of value being aggregated", so they must not have
+    /// an ordering rule of their own - which is exactly the mistake they used to make: a per-type ladder
+    /// chosen from the collection's first element, with units matched by raw string equality and temporals
+    /// re-parsed to <see cref="DateTime"/>. (The <c>aggregate(iif($total.empty(), $this, iif($this &lt;
+    /// $total, $this, $total)))</c> fold is §aggregate()'s illustration of <em>that</em> function, not
+    /// §min()'s definition, so it is not what this delegation rests on.)
     /// <paramref name="function"/> exists only so the resulting error names the caller.
     /// </remarks>
     public static int? CompareValues(IElement left, IElement right, string function)
@@ -484,15 +488,32 @@ internal static class ValueOrdering
     }
 
     /// <summary>
-    /// Orders two quantities totally, by dimension first and canonical magnitude second.
+    /// Orders two quantities totally, by bucket first and canonical magnitude second.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Keying on the unit string would be intransitive: <c>1 'g' == 1000 'mg'</c> while
-    /// <c>'g' &lt; 'm' &lt; 'mg'</c> as text. Dimension first means every unit inside one bucket converts
+    /// <c>'g' &lt; 'm' &lt; 'mg'</c> as text. Bucketing first means every unit inside one bucket converts
     /// to every other, so the canonical magnitude is a total order there and cannot contradict a
-    /// determinate comparison. Units UCUM cannot canonicalise - an invented unit, and the
-    /// calendar-precision <c>a</c> and <c>mo</c>, which convert to nothing but themselves - form their own
-    /// buckets keyed on the unit, which is the only scale they have.
+    /// determinate comparison.
+    /// </para>
+    /// <para>
+    /// The bucket is a function of the unit alone - see <see cref="CanonicalKey"/> - which is what makes
+    /// that hold. It was a function of the value, and two quantities in the <em>same</em> unit could
+    /// therefore key into different buckets: a magnitude whose conversion to the dimension's base unit
+    /// overflowed <see cref="decimal"/> fell out of the canonical branch entirely. Two such values in
+    /// commensurable-but-different units then ordered by their unit spellings, which inverted them.
+    /// </para>
+    /// <para>
+    /// The residue is a tie, never an inversion. The magnitude is monotone in the true magnitude - it is
+    /// the value times a per-unit scale, saturated at <see cref="decimal"/>'s bounds - so two quantities
+    /// whose canonical magnitudes differ only above <c>decimal.MaxValue</c> or below <c>1e-28</c> key
+    /// equal where <c>&gt;</c> orders them. That contradicts §sort()'s "Items are considered equal if and
+    /// only if the equals (=) operator returns true" at those extremes, and is accepted rather than fixed:
+    /// carrying the magnitude as a <see cref="double"/> would buy the range back and lose the middle,
+    /// where <c>1 'm'</c> and <c>100 'cm'</c> stop keying equal because <c>0.01</c> has no exact binary
+    /// form. A tie at 1e-28 is a better failure than an inversion at 1.
+    /// </para>
     /// </remarks>
     private static int CompareQuantityKeys(FhirQuantity left, FhirQuantity right)
     {
@@ -509,15 +530,61 @@ internal static class ValueOrdering
         return byBucket != 0 ? byBucket : leftKey.Magnitude.CompareTo(rightKey.Magnitude);
     }
 
+    /// <summary>
+    /// Reduces a quantity to a sort key: which comparable group it belongs to, and where in that group.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The scale comes from converting <em>one</em> of the unit, not the quantity's own value, so that
+    /// the canonicity flag and the bucket depend on the unit and nothing else. Every pair of units
+    /// <see cref="IQuantityUnitConverter.IsCompatible"/> relates therefore lands in one bucket, which is
+    /// the property the ordering rests on.
+    /// </para>
+    /// <para>
+    /// The non-canonical bucket is not simply the UCUM code. <c>a</c> and <c>mo</c> are not units UCUM
+    /// cannot canonicalise - <c>GetDimensionality("a")</c> answers <c>"s"</c>, the same bucket as
+    /// <c>wk</c> and <c>d</c>. They reach this branch because <see cref="QuantityUnitConverter.Convert"/>
+    /// refuses to convert them at all, calendar years and months having no fixed length. That refusal
+    /// also draws a line the UCUM code alone erases: it relates a calendar keyword only to another
+    /// keyword, so <c>1 'year'</c> and <c>1 'a'</c> are not equal - <c>IsCompatible</c> is
+    /// <see langword="false"/> and <c>1 'year' = 1 'a'</c> is empty - while
+    /// <see cref="CalendarDuration.NormalizeToUcum"/> folds both to <c>"a"</c>. Keying on the folded code
+    /// sorted them equal, contradicting §sort()'s "equal if and only if the equals (=) operator returns
+    /// true". The keyword form is part of the bucket for that reason, and <c>'year'</c> and <c>'years'</c>
+    /// still share one because they share both the code and the form.
+    /// </para>
+    /// </remarks>
     private static (bool IsCanonical, string Bucket, decimal Magnitude) CanonicalKey(FhirQuantity quantity)
     {
         var ucum = CalendarDuration.NormalizeToUcum(quantity.Unit);
         var dimension = UnitConverter.GetDimensionality(ucum);
-        var canonical = dimension is null ? null : UnitConverter.Convert(quantity.Value, ucum, dimension);
+        var scale = dimension is null ? null : UnitConverter.Convert(1m, ucum, dimension);
 
-        return canonical is null
-            ? (false, ucum, quantity.Value)
-            : (true, dimension!, canonical.Value);
+        return scale is null
+            ? (false, CalendarDuration.IsCalendarKeyword(quantity.Unit) ? ucum + " calendar" : ucum, quantity.Value)
+            : (true, dimension!, Rescale(quantity.Value, scale.Value));
+    }
+
+    /// <summary>
+    /// Expresses a value in its dimension's base unit, saturating rather than throwing.
+    /// </summary>
+    /// <remarks>
+    /// Saturation keeps the key monotone in the true magnitude, so an out-of-range product costs a tie
+    /// rather than an inversion. Falling back to a different bucket - which is what the old
+    /// value-conversion did, by way of a <see langword="null"/> - cost an inversion, because the bucket
+    /// then no longer grouped commensurable units. Caught rather than predicted because there is no
+    /// cheaper test for <see cref="decimal"/> multiplication overflow than the multiplication.
+    /// </remarks>
+    private static decimal Rescale(decimal value, decimal scale)
+    {
+        try
+        {
+            return value * scale;
+        }
+        catch (OverflowException)
+        {
+            return value < 0m ? decimal.MinValue : decimal.MaxValue;
+        }
     }
 
     /// <summary>
@@ -580,7 +647,21 @@ internal static class ValueOrdering
         }
     }
 
-    private static bool TryNarrow(double value, out decimal result)
+    /// <summary>
+    /// Narrows a binary floating-point value to <see cref="decimal"/>, refusing the values the cast
+    /// would throw on.
+    /// </summary>
+    /// <param name="value">The value to narrow.</param>
+    /// <param name="result">The narrowed value, or zero when it was refused.</param>
+    /// <returns><see langword="false"/> for a non-finite or out-of-range value.</returns>
+    /// <remarks>
+    /// Shared with <see cref="QuantityEvaluator.ExtractQuantityFromChildren"/> so that a resource-backed
+    /// Quantity and a bare number refuse the same values. A plain <c>(decimal)</c> cast throws
+    /// <see cref="OverflowException"/> for NaN, the infinities and anything outside
+    /// <see cref="decimal"/>'s range, which on a shared read path escapes the aggregates' overflow
+    /// <c>catch</c> entirely.
+    /// </remarks>
+    internal static bool TryNarrow(double value, out decimal result)
     {
         if (!double.IsFinite(value) || value < (double)decimal.MinValue || value > (double)decimal.MaxValue)
         {

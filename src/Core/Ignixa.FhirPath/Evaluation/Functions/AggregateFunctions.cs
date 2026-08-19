@@ -17,12 +17,21 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// FHIRPath does not define these primitively. It defines them in terms of <c>aggregate()</c> and the
-/// ordinary operators - <c>value.aggregate($this + $total, 0)</c> for the sum,
-/// <c>value.aggregate(iif($total.empty(), $this, iif($this &lt; $total, $this, $total)))</c> for the
-/// minimum - so their semantics are whatever <c>+</c>, <c>&lt;</c> and <c>&gt;</c> already say. They are
-/// implemented directly here for the arithmetic, but the ordering is delegated to
-/// <see cref="ValueOrdering.CompareValues"/> rather than restated.
+/// Spec references throughout this file are to the FHIRPath continuous build off <c>master</c>
+/// (<c>HL7/FHIRPath</c>, <c>input/pages/index.md</c>), checked 2026-08-19. It is unreleased and
+/// versioned 3.0.0-ballot in places; the released Normative 2.0.0 has no <c>sum()</c>, <c>min()</c>,
+/// <c>max()</c>, <c>avg()</c> or <c>sort()</c> at all. Everything in §Aggregates is marked
+/// <c>{:.stu}</c> - Standard for Trial Use - so these citations can move under us, which is why they
+/// carry a date.
+/// </para>
+/// <para>
+/// The spec gives each function a dedicated section and states its semantics there. It does not define
+/// them in terms of <c>aggregate()</c>: the equivalent forms - <c>value.aggregate($this + $total, 0)</c>
+/// and the <c>iif</c> fold for the minimum - appear under §aggregate() as illustrations of that
+/// function, not as the definition of these. The ordering is nonetheless delegated to
+/// <see cref="ValueOrdering.CompareValues"/> rather than restated, on §min()'s own instruction:
+/// "Comparison semantics are defined by the Comparison Operators for the type of value being
+/// aggregated."
 /// </para>
 /// <para>
 /// The restatement is what went wrong. Each function used to pick a per-type branch from
@@ -34,11 +43,23 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// fixed instant.
 /// </para>
 /// <para>
+/// <em>Deliberate divergence.</em> All four sections carry the sentence "All items in the input
+/// collection SHALL be the same type, otherwise an exception is thrown", and this implementation does
+/// not throw for every collection that fails a literal reading of it. It cannot: §avg() in the same
+/// section requires that "When used with Integer or Long, the arguments will be implicitly converted to
+/// Decimal before evaluation", and §Math requires <c>3 'm' + 3 'cm'</c> to add, so "the same type"
+/// cannot mean the same declared type without contradicting the spec's own worked examples. The rule
+/// applied here is the SHALL read <em>after</em> FHIRPath's implicit conversions: Integer, Long and
+/// Decimal are one numeric type, a number is a Quantity in the unity unit, and operands that no
+/// conversion relates - a String beside an Integer - do throw. What is knowingly not implemented is a
+/// stricter reading under which <c>(1 | 2.5).sum()</c> would be an error.
+/// </para>
+/// <para>
 /// Arithmetic overflow yields empty rather than an error, matching §Math ("Operations that cause
 /// arithmetic overflow or underflow will result in empty ({ })") and matching
-/// <see cref="FhirPathEvaluator"/>, which catches <see cref="OverflowException"/> around the operators
-/// these functions are defined in terms of. A value of a type no arithmetic relates is still an error;
-/// the two outcomes are kept distinguishable rather than both meaning "something went wrong".
+/// <see cref="FhirPathEvaluator"/>, which catches <see cref="OverflowException"/> around the operators.
+/// A value of a type no arithmetic relates is still an error; the two outcomes are kept
+/// distinguishable rather than both meaning "something went wrong".
 /// </para>
 /// </remarks>
 internal static class AggregateFunctions
@@ -58,39 +79,18 @@ internal static class AggregateFunctions
         MaxArguments = 0,
         Category = "Aggregate",
         Description = "Computes the sum of a collection of numeric values or quantities")]
+    /// <remarks>
+    /// §sum(): "If the input collection is empty ({ }), the result is empty." This previously answered
+    /// <c>0</c>, on the strength of the <c>0</c> seed in §aggregate()'s illustrative
+    /// <c>value.aggregate($this + $total, 0)</c>. The dedicated section is the definition and the
+    /// illustration is not, so the seed does not override it - and answering <c>0</c> made <c>sum()</c>
+    /// the one aggregate that reported a confident number about a collection it had never seen a value
+    /// from. The official HL7 suite has no <c>{}.sum()</c> case, in r4 or r5, so nothing pinned either
+    /// reading; checked 2026-08-19.
+    /// </remarks>
     public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements)
     {
-        const string Function = "sum()";
-
-        // The spec's equivalent form seeds aggregate() with 0, so an empty collection totals to 0 rather
-        // than to empty - which is why sum() is the one aggregate here that answers a non-empty result
-        // for no input. That seed is only correct for a collection that is genuinely empty, though:
-        // Patient.name is two elements that happen to carry no value, and reporting its total as 0 would
-        // be an answer to a question nobody asked.
-        var received = elements.Where(element => element is not null).ToList();
-
-        if (received.Count == 0)
-        {
-            return [FunctionHelpers.CreateInteger(0)];
-        }
-
-        var list = Materialize(received);
-
-        if (list.Count == 0)
-        {
-            return [];
-        }
-
-        if (list.Count == 1)
-        {
-            // The type gate is the collection's, not the pair's: 'apple' is no more summable alone than it
-            // is beside a number, and routing the single-element case around the check made the same
-            // expression answer or throw depending only on how many items reached it.
-            EnsureSummable(list[0], Function);
-            return [list[0]];
-        }
-
-        return Total(list, Function, average: false);
+        return Total(Materialize(elements), "sum()", average: false);
     }
 
     /// <summary>
@@ -138,32 +138,7 @@ internal static class AggregateFunctions
         Description = "Computes the average of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements)
     {
-        const string Function = "avg()";
-
-        var list = Materialize(elements);
-
-        if (list.Count == 0)
-        {
-            return [];
-        }
-
-        // avg() answers Decimal, so a lone Integer is promoted; a lone Quantity or Decimal already is one.
-        if (list.Count == 1)
-        {
-            EnsureSummable(list[0], Function);
-
-            return
-            [
-                list[0].Value switch
-                {
-                    int intValue => CreateDecimal(intValue),
-                    long longValue => CreateDecimal(longValue),
-                    _ => list[0]
-                }
-            ];
-        }
-
-        return Total(list, Function, average: true);
+        return Total(Materialize(elements), "avg()", average: true);
     }
 
     /// <summary>
@@ -216,13 +191,31 @@ internal static class AggregateFunctions
     /// Totals a collection, optionally dividing by its size.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The presence of any Quantity - not the type of the head - selects the quantity path, and plain
     /// numbers reaching it are read as the unity quantity FHIRPath's implicit conversion gives them. That
     /// is what makes <c>(1 | 5 'mg').sum()</c> an incompatible-units empty rather than the <c>1</c> that
     /// dispatching on <c>list[0]</c> used to return.
+    /// </para>
+    /// <para>
+    /// A one-element collection has no shortcut. It used to: both callers checked
+    /// <see cref="ValueOrdering.IsNumericValued"/> and then handed the element straight back, which
+    /// admits a <see cref="string"/> under the declared type <c>decimal</c> - how a FHIR decimal too
+    /// large for <see cref="decimal"/> arrives off the wire. One such element made <c>avg()</c> return
+    /// the raw string, contradicting its own "avg() answers Decimal" contract, while two of them
+    /// returned empty. Same data, different answer by cardinality - the exact asymmetry the type gate
+    /// was added to close. A lone <see cref="double"/> came back un-promoted for the same reason. The
+    /// arithmetic path is the only reading of the type gate that cannot drift from the pair case,
+    /// because it is the pair case.
+    /// </para>
     /// </remarks>
     private static IEnumerable<IElement> Total(List<IElement> list, string function, bool average)
     {
+        if (list.Count == 0)
+        {
+            return [];
+        }
+
         try
         {
             return list.Exists(ValueOrdering.IsQuantity)
@@ -271,12 +264,24 @@ internal static class AggregateFunctions
     /// </summary>
     /// <returns>The unit, or <see langword="null"/> when the collection's units do not all relate.</returns>
     /// <remarks>
-    /// §Math: "The unit of the result will be the most granular unit of either input", with the worked
-    /// example <c>3 'm' + 3 'cm' // 303 'cm'</c>. The first operand's unit was used instead, which agreed
-    /// with the spec only when the head happened to be the finest unit - which is why the one pre-existing
-    /// mixed-unit test, <c>((5 'mg') | (1 'kg')).sum()</c>, could not tell the two rules apart. Granularity
-    /// is read by converting one of the candidate unit into the incumbent: a unit is finer exactly when one
-    /// of it is worth less than one of the other.
+    /// <para>
+    /// §Math: "When the units of quantity arguments are different, the quantity values must be converted
+    /// to the most granular unit, then simple addition on the values can be performed", with the worked
+    /// example <c>3 'm' + 3 'cm' // 303 'cm'</c>.
+    /// </para>
+    /// <para>
+    /// §Unit Conversions supplies the granularity test, and it is the one implemented here: "This can be
+    /// generically evaluated by selecting the conversion factor that is less than 1 when converting from
+    /// one unit to the other. If the conversion factor is greater than 1, then the other unit is more
+    /// granular." The equal case is named there too - "If the conversion factors are 1 (the units are
+    /// equal), then choose the unit of the operator's left argument" - which is why a factor of exactly
+    /// 1 leaves the incumbent standing rather than taking the candidate.
+    /// </para>
+    /// <para>
+    /// The first operand's unit was used instead, which agreed with the spec only when the head happened
+    /// to be the finest unit - which is why the one pre-existing mixed-unit test,
+    /// <c>((5 'mg') | (1 'kg')).sum()</c>, could not tell the two rules apart.
+    /// </para>
     /// </remarks>
     private static string? MostGranularUnit(List<IElement> list, string function)
     {
@@ -360,14 +365,6 @@ internal static class AggregateFunctions
     private static FhirQuantity AsQuantity(IElement element, string function)
     {
         return ValueOrdering.AsQuantity(element) ?? throw NotSummable(element, function);
-    }
-
-    private static void EnsureSummable(IElement element, string function)
-    {
-        if (!ValueOrdering.IsQuantity(element) && !ValueOrdering.IsNumericValued(element))
-        {
-            throw NotSummable(element, function);
-        }
     }
 
     /// <summary>

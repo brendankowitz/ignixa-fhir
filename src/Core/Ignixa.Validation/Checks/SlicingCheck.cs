@@ -291,8 +291,13 @@ public sealed class SlicingCheck : IValidationCheck
     /// engine uses for "this expression cannot produce a determinate answer here", not "we are wrong":
     /// <see cref="FhirPathEvaluationException"/> (the engine correctly refused, e.g. an operator that
     /// requires a singleton fed a collection), <see cref="NotSupportedException"/> (an unimplemented
-    /// function, e.g. <c>conformsTo()</c>), and <see cref="ArgumentException"/>/<see cref="FormatException"/>
-    /// (the discriminator's own path text is malformed — a defect in the profile, not the resource).
+    /// function, e.g. <c>conformsTo()</c>), <see cref="ArgumentException"/>/<see cref="FormatException"/>
+    /// (the discriminator's own path text is malformed — a defect in the profile, not the resource), and
+    /// <see cref="OverflowException"/> (an integer literal in the path text above <see cref="int.MaxValue"/> -
+    /// the parser's AST builder uses <c>int.Parse</c> on integer literal tokens, so this is a parse-time
+    /// defect in the profile's path text, not a resource or runtime-arithmetic problem; compare
+    /// <see cref="Ignixa.FhirPath.Evaluation.FhirPathEvaluator"/>, which catches this same exception around
+    /// runtime arithmetic and folds it into an empty result per spec, a case this filter never reaches).
     /// Each is logged, since the deferral <see cref="Validate"/> reports is per-slicing, not
     /// per-discriminator or per-candidate, and would otherwise be indistinguishable from a genuinely
     /// ambiguous slice. A bare <see cref="InvalidOperationException"/> (an internal engine invariant
@@ -310,7 +315,7 @@ public sealed class SlicingCheck : IValidationCheck
         {
             return candidate.Select(path, context).ToList();
         }
-        catch (Exception ex) when (ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException)
+        catch (Exception ex) when (ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException or OverflowException)
         {
             _logger?.LogWarning(
                 ex,

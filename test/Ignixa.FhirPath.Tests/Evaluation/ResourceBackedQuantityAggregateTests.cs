@@ -64,6 +64,44 @@ public class ResourceBackedQuantityAggregateTests
     """;
 
     /// <summary>
+    /// The same two observations the other way round, so that neither <c>min()</c> nor <c>max()</c> can
+    /// answer by returning the element that happened to arrive first.
+    /// </summary>
+    /// <remarks>
+    /// In <see cref="BundleJson"/> the smaller quantity is also the head, so reducing <c>min()</c> to
+    /// <c>return list[0]</c> left every test in this class green - measured. The class exists because
+    /// these expressions used to answer empty, and it did not discriminate on ordering at all;
+    /// <c>sort()</c> already had this mitigation, in the shape of the descending assertion below, and the
+    /// aggregate cases did not.
+    /// </remarks>
+    private const string ReversedBundleJson = """
+    {
+      "resourceType": "Bundle",
+      "type": "collection",
+      "entry": [
+        {
+          "resource": {
+            "resourceType": "Observation",
+            "id": "o2",
+            "status": "final",
+            "code": { "text": "dose" },
+            "valueQuantity": { "value": 2, "unit": "g", "system": "http://unitsofmeasure.org", "code": "g" }
+          }
+        },
+        {
+          "resource": {
+            "resourceType": "Observation",
+            "id": "o1",
+            "status": "final",
+            "code": { "text": "dose" },
+            "valueQuantity": { "value": 150, "unit": "mg", "system": "http://unitsofmeasure.org", "code": "mg" }
+          }
+        }
+      ]
+    }
+    """;
+
+    /// <summary>
     /// The premise the rest of the class rests on: the operator can read these elements, so nothing about
     /// the data explains the empty results the functions used to give.
     /// </summary>
@@ -80,11 +118,13 @@ public class ResourceBackedQuantityAggregateTests
         result.Value.ShouldBe(true);
     }
 
-    [Fact]
-    public void GivenResourceBackedQuantities_WhenMin_ThenSelectsTheSmaller()
+    [Theory]
+    [InlineData(BundleJson)]
+    [InlineData(ReversedBundleJson)]
+    public void GivenResourceBackedQuantities_WhenMin_ThenSelectsTheSmaller(string json)
     {
         // Arrange
-        var bundle = Parse(BundleJson);
+        var bundle = Parse(json);
 
         // Act
         var result = bundle.Select("Bundle.entry.resource.value.min().value").Single();
@@ -93,11 +133,13 @@ public class ResourceBackedQuantityAggregateTests
         result.Value.ShouldBe(150m);
     }
 
-    [Fact]
-    public void GivenResourceBackedQuantities_WhenMax_ThenSelectsTheLarger()
+    [Theory]
+    [InlineData(BundleJson)]
+    [InlineData(ReversedBundleJson)]
+    public void GivenResourceBackedQuantities_WhenMax_ThenSelectsTheLarger(string json)
     {
         // Arrange
-        var bundle = Parse(BundleJson);
+        var bundle = Parse(json);
 
         // Act
         var result = bundle.Select("Bundle.entry.resource.value.max().value").Single();
@@ -125,11 +167,13 @@ public class ResourceBackedQuantityAggregateTests
         result.Value.ShouldBe(true);
     }
 
-    [Fact]
-    public void GivenResourceBackedQuantities_WhenSum_ThenTotalsInTheMostGranularUnit()
+    [Theory]
+    [InlineData(BundleJson)]
+    [InlineData(ReversedBundleJson)]
+    public void GivenResourceBackedQuantities_WhenSum_ThenTotalsInTheMostGranularUnit(string json)
     {
         // Arrange
-        var bundle = Parse(BundleJson);
+        var bundle = Parse(json);
 
         // Act
         var result = bundle.Select("Bundle.entry.resource.value.sum()").Single();
@@ -140,11 +184,13 @@ public class ResourceBackedQuantityAggregateTests
         quantity.Unit.ShouldBe("mg");
     }
 
-    [Fact]
-    public void GivenResourceBackedQuantities_WhenAvg_ThenAveragesInTheMostGranularUnit()
+    [Theory]
+    [InlineData(BundleJson)]
+    [InlineData(ReversedBundleJson)]
+    public void GivenResourceBackedQuantities_WhenAvg_ThenAveragesInTheMostGranularUnit(string json)
     {
         // Arrange
-        var bundle = Parse(BundleJson);
+        var bundle = Parse(json);
 
         // Act
         var result = bundle.Select("Bundle.entry.resource.value.avg()").Single();
@@ -161,11 +207,13 @@ public class ResourceBackedQuantityAggregateTests
     /// first and is the smaller, so a stable no-op sort gives the right answer for the wrong reason -
     /// hence the descending assertion as well.
     /// </summary>
-    [Fact]
-    public void GivenResourceBackedQuantities_WhenSortingDescending_ThenTheLargerLeads()
+    [Theory]
+    [InlineData(BundleJson)]
+    [InlineData(ReversedBundleJson)]
+    public void GivenResourceBackedQuantities_WhenSortingDescending_ThenTheLargerLeads(string json)
     {
         // Arrange
-        var bundle = Parse(BundleJson);
+        var bundle = Parse(json);
 
         // Act
         var result = bundle
@@ -177,11 +225,13 @@ public class ResourceBackedQuantityAggregateTests
         result.ShouldBe([2m, 150m]);
     }
 
-    [Fact]
-    public void GivenResourceBackedQuantities_WhenSortingAscending_ThenTheSmallerLeads()
+    [Theory]
+    [InlineData(BundleJson)]
+    [InlineData(ReversedBundleJson)]
+    public void GivenResourceBackedQuantities_WhenSortingAscending_ThenTheSmallerLeads(string json)
     {
         // Arrange
-        var bundle = Parse(BundleJson);
+        var bundle = Parse(json);
 
         // Act
         var result = bundle

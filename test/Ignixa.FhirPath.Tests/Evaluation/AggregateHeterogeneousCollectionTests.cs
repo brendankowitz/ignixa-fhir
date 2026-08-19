@@ -24,8 +24,9 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// pre-existing test used a single unit throughout - <c>'mg'</c> in one, <c>'Cel'</c> in another - so the
 /// string comparison always succeeded and the conversion path was never entered. The one exception,
 /// <c>((5 'mg') | (1 'kg')).sum()</c>, asserted the wrong answer and was corrected with the rewrite. The
-/// official HL7 suites are no help either: they contain no <c>min()</c>, <c>max()</c>, <c>sum()</c> or
-/// <c>avg()</c> cases at all in r4, r4b or r5.
+/// official HL7 suites are no help either: <c>tests-fhir-r4.xml</c> and <c>tests-fhir-r5.xml</c> in
+/// <c>FHIR/fhir-test-cases</c> contain no <c>min()</c>, <c>max()</c>, <c>sum()</c> or <c>avg()</c> case
+/// at all - only the general-purpose <c>aggregate()</c>. Checked 2026-08-19.
 /// </para>
 /// <para>
 /// So the gap being closed here is specifically heterogeneity, and cases are written so that the
@@ -113,9 +114,11 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
-    /// §Math: "The unit of the result will be the most granular unit of either input", with the worked
-    /// example <c>3 'm' + 3 'cm' // 303 'cm'</c>. sum() has to construct a value, so unlike min()/max() it
-    /// must name a unit, and the spec names which one.
+    /// §Math: "When the units of quantity arguments are different, the quantity values must be converted
+    /// to the most granular unit, then simple addition on the values can be performed", with the worked
+    /// example <c>3 'm' + 3 'cm' // 303 'cm'</c>. §Unit Conversions defines which unit that is: "selecting
+    /// the conversion factor that is less than 1 when converting from one unit to the other". sum() has to
+    /// construct a value, so unlike min()/max() it must name a unit, and the spec names which one.
     /// </summary>
     [Fact]
     public void GivenQuantitiesInCompatibleUnits_WhenSum_ThenTotalsInTheMostGranularUnit()
@@ -523,14 +526,20 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
-    /// Guard, not a fix: sum() answers 0 for an empty collection, and the seed has to stay tied to
-    /// emptiness rather than to "nothing was left after filtering". <c>Patient.name</c> is two elements
-    /// that carry no primitive value; totalling them to 0 would be a confident answer about a collection
-    /// of HumanNames. The screen those elements fall through no longer tests the value alone - a
-    /// resource-backed Quantity carries none either - so this pins that the widening did not admit them.
+    /// <c>Patient.name</c> is two elements that carry no primitive value, and totalling them would be a
+    /// confident answer about a collection of HumanNames. The screen they fall through no longer tests
+    /// <c>IElement.Value</c> alone - a resource-backed Quantity carries none either - so this pins that
+    /// the widening did not admit them.
     /// </summary>
+    /// <remarks>
+    /// This used to be the case that distinguished the empty collection, which <c>sum()</c> answered with
+    /// <c>0</c>, from a collection filtered down to nothing, which it answered with empty. §sum() says
+    /// the empty collection is empty too, so there is no longer a distinction to protect and the two
+    /// answers coincide. The case is kept because the screen it exercises is still there and still has to
+    /// reject a complex element while accepting a resource-backed Quantity.
+    /// </remarks>
     [Fact]
-    public void GivenElementsThatCarryNoValue_WhenSum_ThenReturnsEmptyRatherThanTheEmptyCollectionSeed()
+    public void GivenElementsThatCarryNoValue_WhenSum_ThenTheyAreNotTotalled()
     {
         // Arrange
         var subject = ResourceJsonNode.Parse(PatientJson).ToElement(Schema);

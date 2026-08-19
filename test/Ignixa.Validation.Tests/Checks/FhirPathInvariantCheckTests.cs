@@ -788,11 +788,12 @@ public class FhirPathInvariantCheckTests
     /// R4, R5 and R6 all require the constraint expression to "evaluate to true" - not merely "not
     /// evaluate to false" - so empty must fail alongside false, and FHIRPath's singleton-coercion
     /// rule (used elsewhere to fold a one-item collection into a boolean) never applies to the
-    /// empty collection. Firely's reference <c>InvariantValidator</c> encodes the same reading: it
-    /// evaluates constraints with the strict <c>IsTrue</c> predicate (<c>result is not null &amp;&amp;
-    /// result.Value</c>), which is deliberately distinct from the lenient <c>Predicate</c> helper
-    /// it uses elsewhere for slicing discriminators, where empty is treated as "does not match"
-    /// rather than "constraint violated". Spec, Firely and this code all agree: don't relax this.
+    /// empty collection. Firely's reference implementation encodes the same reading:
+    /// <c>FhirPathValidator:177</c> evaluates constraints with the strict <c>IsTrue</c> predicate
+    /// (<c>result is not null &amp;&amp; result.Value</c>), which is deliberately distinct from the
+    /// lenient <c>Predicate</c> helper it uses elsewhere for slicing discriminators - <c>Predicate</c>'s
+    /// IL is <c>HasValue ? Value : true</c>, so under it empty means "matches", the opposite of
+    /// <c>IsTrue</c>'s "constraint violated". Spec, Firely and this code all agree: don't relax this.
     /// </remarks>
     [Fact]
     public void GivenExpressionYieldingEmpty_WhenValidating_ThenInvalidWithSameSeverityAsFalse()

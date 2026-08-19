@@ -92,17 +92,82 @@ public class SortOrderingTests
     /// length, ordinally - which is arbitrary but total; what it must not be is the unit string, because
     /// <c>1 'g' == 1000 'mg'</c> while <c>'g' &lt; 'm' &lt; 'mg'</c> as text, and that is intransitive.
     /// </summary>
-    [Fact]
-    public void GivenQuantitiesInIncompatibleUnits_WhenSorting_ThenTheyGroupByDimension()
+    /// <remarks>
+    /// Both arrival orders, because one of them is whatever the fixture happens to be written as and
+    /// proves nothing on its own: the single row this replaced asserted the order its own two elements
+    /// arrived in, and survived a reintroduced "leave an indeterminate pair alone" defect untouched.
+    /// </remarks>
+    [Theory]
+    [InlineData("(1 'mg').combine(1 'm')")]
+    [InlineData("(1 'm').combine(1 'mg')")]
+    public void GivenQuantitiesInIncompatibleUnits_WhenSorting_ThenTheyGroupByDimension(string collection)
     {
-        // Arrange
-        var expression = "(1 'mg').combine(1 'm').sort()";
-
         // Act
-        var result = Render(expression);
+        var result = Render($"{collection}.sort()");
 
         // Assert
         result.ShouldBe(["1 'mg'", "1 'm'"]);
+    }
+
+    /// <summary>
+    /// The three-element shape the summary above describes, which the two-element fixture could not
+    /// exhibit: as text <c>'g' &lt; 'm' &lt; 'mg'</c>, so a text ordering interleaves the length value
+    /// between two masses that are equal to each other. The length value must land outside the mass pair
+    /// in every arrival order.
+    /// </summary>
+    [Theory]
+    [InlineData("(1 'g').combine(1000 'mg').combine(1 'm')")]
+    [InlineData("(1 'm').combine(1 'g').combine(1000 'mg')")]
+    [InlineData("(1000 'mg').combine(1 'm').combine(1 'g')")]
+    public void GivenTwoEqualMassesAndALength_WhenSorting_ThenTheLengthDoesNotSplitTheMasses(string collection)
+    {
+        // Act
+        var result = Render($"{collection}.sort()");
+
+        // Assert
+        result.Count.ShouldBe(3);
+        result[2].ShouldBe("1 'm'");
+    }
+
+    /// <summary>
+    /// §sort(): "Items are considered equal if and only if the equals (=) operator returns true. (i.e.
+    /// false and empty both indicate that the items are not equal)." <c>1 'year' = 1 'a'</c> is empty -
+    /// a calendar year has no fixed length, so the converter relates a keyword only to another keyword -
+    /// so the two are not equal and must get a defined order.
+    /// </summary>
+    /// <remarks>
+    /// They keyed equal, because the sort key normalised <c>'year'</c> to the UCUM code <c>'a'</c> and
+    /// then had nothing left to tell them apart. A stable sort therefore left them in arrival order and
+    /// the two permutations below disagreed - the observable form of "sort() calls equal what
+    /// <c>=</c> does not". Which of the two leads is arbitrary; that it is the same one either way is
+    /// not.
+    /// </remarks>
+    [Theory]
+    [InlineData("(1 'year').combine(1 'a')")]
+    [InlineData("(1 'a').combine(1 'year')")]
+    public void GivenACalendarKeywordAndItsUcumCode_WhenSorting_ThenEveryPermutationGivesOneOrder(string collection)
+    {
+        // Act
+        var result = Render($"{collection}.sort()");
+
+        // Assert
+        result.ShouldBe(["1 'a'", "1 year"]);
+    }
+
+    /// <summary>
+    /// Guard for the row above: two spellings of the calendar keyword <em>are</em> equal, so they must
+    /// stay in one bucket rather than being split by the same change that separated 'year' from 'a'.
+    /// </summary>
+    [Fact]
+    public void GivenTwoSpellingsOfOneCalendarKeyword_WhenComparedAndSorted_ThenTheyAreEqual()
+    {
+        // Act
+        var equality = Render("(1 'year' = 1 'years')");
+        var distinct = Render("(1 'year').combine(1 'years').distinct()");
+
+        // Assert
+        equality.ShouldBe(["True"]);
+        distinct.Count.ShouldBe(1);
     }
 
     /// <summary>

@@ -41,7 +41,7 @@ internal static class FhirPathParseTreeGrammar
                 var value = t.ToStringValue();
                 // Remove the 'L' or 'l' suffix before parsing
                 var numericPart = value.Substring(0, value.Length - 1);
-                return new ConstantParseNode(long.Parse(numericPart), Loc(t));
+                return new ConstantParseNode(long.Parse(numericPart, CultureInfo.InvariantCulture), Loc(t));
             });
 
     private static readonly TokenListParser<FhirPathTokenKind, ConstantParseNode> DecimalLiteral =

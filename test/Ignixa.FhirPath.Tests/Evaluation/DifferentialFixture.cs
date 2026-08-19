@@ -445,6 +445,106 @@ internal static class DifferentialFixture
         }
     }
 
+    /// <summary>
+    /// Asserts that a described result is an evaluation rather than a thrown exception.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this a differential harness reports agreement during a total failure of the engine.
+    /// <see cref="Describe"/> renders a throw as <c>threw:{TypeName}</c>, so two paths that throw the
+    /// same type agree and the row passes. Measured: making <c>FhirPathEvaluator.Evaluate</c> throw
+    /// <see cref="NullReferenceException"/> unconditionally left 335 of 337 rows green, the two failures
+    /// being the ones that assert a specific exception surfaces. That is the same shape as the round in
+    /// which 117 invalid-expression cases passed unconditionally.
+    /// </para>
+    /// <para>
+    /// The <c>{:.stu}</c>-free part of the fixture's own disclosure at <see cref="Describe"/> covers a
+    /// different caveat - two paths sharing an implementation share its bugs - and does not cover this
+    /// one, which is why it needed an assertion rather than a paragraph.
+    /// </para>
+    /// <para>
+    /// Some rows are supposed to throw: <c>(1 | 2).single()</c> is the corpus's error probe, and exists
+    /// so that a rewrite dropping the operand containing it turns a thrown error into a quiet answer.
+    /// Those are allowed through by name rather than by pattern-matching the outcome, because "it threw,
+    /// so it was meant to" is the assumption being removed.
+    /// </para>
+    /// </remarks>
+    public static void AssertEvaluated(IReadOnlyList<string> described, string expression)
+    {
+        if (IsErrorProbe(expression))
+        {
+            return;
+        }
+
+        described.ShouldNotContain(
+            entry => entry.StartsWith("threw:", StringComparison.Ordinal),
+            $"'{expression}' threw rather than evaluating: {string.Join(", ", described)}. "
+            + "If this expression is meant to signal an error, add it to DifferentialFixture.IsErrorProbe.");
+    }
+
+    /// <summary>
+    /// Names the corpus rows whose expected outcome is a thrown error.
+    /// </summary>
+    /// <remarks>
+    /// <c>single()</c> over a collection of more than one is the corpus's deliberate probe and is matched
+    /// structurally; every other row is listed. Listing them is the point - a row that starts throwing
+    /// for a new reason has to be added here deliberately, which is the step that was missing.
+    /// </remarks>
+    private static bool IsErrorProbe(string expression)
+    {
+        return expression.Contains(".single()", StringComparison.Ordinal)
+            || ErrorProbes.Contains(expression);
+    }
+
+    private static readonly HashSet<string> ErrorProbes = new(StringComparer.Ordinal)
+    {
+        // Arithmetic and comparison across types FHIRPath relates by no conversion. §Math calls these
+        // "incompatible items" and requires an error rather than an empty.
+        "1 + '1'",
+        "1 + true",
+        "true + 1",
+        "'5' + 1",
+        "'5' - '1'",
+        "'10' * 2",
+        "'10' / 2",
+        "'5' div 2",
+        "'5' mod 2",
+        "1 'mg' + 5",
+        "1 'mg' - 5",
+        "5 + 1 'mg'",
+        "2 / 1 'mg'",
+        "1 'mg' + true",
+        "1 'mg' + 'x'",
+        "1 'mg' * 'x'",
+        "1 'mg' > 'x'",
+        "1 'mg' > true",
+        "1 'mg' > @2012-01-01",
+
+        // A primitive that is not a number, reached through an operator that is defined only over
+        // numbers. The optimizer's identity folds are what put these in the corpus.
+        "active + 1",
+        "gender + 0",
+        "gender + 1",
+        "gender * 1",
+        "gender * 2",
+        "birthDate + 0",
+        "@2012-01-01 + 0",
+
+        // Math functions over a non-numeric focus.
+        "'4'.abs()",
+        "'4'.sqrt()",
+        "true.exp()",
+
+        // The boolean operators over a focus that is neither a singleton boolean nor empty.
+        "@2012 and false",
+        "name and false",
+        "name.given and true",
+        "name.not().not()",
+
+        // is over a collection of more than one.
+        "name is HumanName",
+    };
+
     private static string ValueTypeName(object? value) => value?.GetType().Name ?? "null";
 
     public static string Render(object? value)

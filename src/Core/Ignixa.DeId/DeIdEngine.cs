@@ -51,10 +51,10 @@ public class DeIdEngine : IDeIdEngine
         RequestOptions? settings = null,
         CancellationToken cancellationToken = default)
     {
+        ResourceJsonNode resource;
         try
         {
-            var resource = ResourceJsonNode.Parse(resourceJson);
-            return await DeidentifyAsync(resource, settings, cancellationToken);
+            resource = ResourceJsonNode.Parse(resourceJson);
         }
         catch (Exception ex)
         {
@@ -64,6 +64,8 @@ public class DeIdEngine : IDeIdEngine
                 $"Failed to parse resource JSON: {ex.Message}",
                 Exception: ex));
         }
+
+        return await DeidentifyAsync(resource, settings, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -78,7 +80,6 @@ public class DeIdEngine : IDeIdEngine
 
         var context = new DeIdContext(
             resource,
-            element,
             _schema,
             settings ?? new RequestOptions(),
             _options);

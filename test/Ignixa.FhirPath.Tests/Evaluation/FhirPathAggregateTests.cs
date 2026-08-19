@@ -84,10 +84,17 @@ public class FhirPathAggregateTests
     }
 
     [Fact]
-    public void GivenEmptyCollection_WhenSum_ThenReturnsZero()
+    public void GivenEmptyCollection_WhenSum_ThenReturnsEmpty()
     {
         // Arrange
-        // Per FHIRPath spec: sum() on empty collection returns 0
+        // §sum(): "If the input collection is empty ({ }), the result is empty."
+        //
+        // This asserted 0 and called it conformance. The 0 came from the seed in §aggregate()'s
+        // illustrative "value.aggregate($this + $total, 0)", which is an illustration of aggregate()
+        // rather than the definition of sum(); the dedicated §sum() section says empty, and min(), max()
+        // and avg() all say the same. The official HL7 suite has no {}.sum() case in r4 or r5 - it has
+        // no sum() case at all - so nothing pinned either reading. Continuous build off master, §sum()
+        // is marked {:.stu}; checked 2026-08-19.
         var expr = _parser.Parse("{}.sum()");
         var root = CreateIntegerElement(0);
 
@@ -95,8 +102,7 @@ public class FhirPathAggregateTests
         var result = _evaluator.Evaluate(root, expr).ToList();
 
         // Assert
-        Assert.Single(result);
-        Assert.Equal(0, result[0].Value);
+        Assert.Empty(result);
     }
 
     [Fact]
@@ -523,9 +529,9 @@ public class FhirPathAggregateTests
         // kilograms are both mass, so the conversion exists; the old empty came from comparing the two
         // unit strings with == rather than from any property of the units themselves.
         //
-        // This case cannot tell "the first operand's unit" from §Math's "the most granular unit of
-        // either input", because 'mg' is both. The pair that can is
-        // AggregateHeterogeneousCollectionTests.GivenTheCoarserUnitFirst_WhenSum_*.
+        // This case cannot tell "the first operand's unit" from §Math's "converted to the most granular
+        // unit", because 'mg' is both. The one test that can is
+        // AggregateHeterogeneousCollectionTests.GivenTheCoarserUnitFirst_WhenSum_ThenStillTotalsInTheMostGranularUnit.
         var expr = _parser.Parse("((5 'mg') | (1 'kg')).sum()");
         var root = CreateIntegerElement(0);
 

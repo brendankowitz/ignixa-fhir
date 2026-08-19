@@ -586,7 +586,8 @@ public partial class ElementSearchIndexer : ISearchIndexer
             // Unlike a bad literal or an unimplemented FHIRPath function, a NullReferenceException or
             // InvalidCastException reaching here means the converter itself is broken - it is a code
             // defect, not a data-quality problem. Failing the whole write over it would still be worse
-            // than the one missing search parameter (see the containment rationale on Extract), so this
+            // than the one missing search parameter (see the "Materialized inside the try" containment
+            // rationale on ExtractCompositeComponentSearchValues and ExtractSearchValues above), so this
             // stays contained. But it must not be logged identically to an expected miss: Error, not
             // Warning, so it surfaces to whatever is watching Error-level logs instead of blending into
             // routine "this literal didn't parse" noise.
@@ -598,12 +599,17 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// <summary>
     /// True for FHIRPath evaluation failures the write path is expected to see against real-world data
     /// or custom search parameters: a bad literal, an unsupported/not-yet-implemented function, or any
-    /// other expression-level rejection defined by <see cref="FhirPathEvaluationException"/>. False for
-    /// anything else - a <see cref="NullReferenceException"/> or <see cref="InvalidCastException"/>
-    /// reaching an indexing catch block means the indexer or a converter has a bug, not that the data
-    /// or the expression was bad, and must not be logged the same way.
+    /// other expression-level rejection defined by <see cref="FhirPathEvaluationException"/>. Also true
+    /// for the exception types a bad literal or a malformed custom expression actually surfaces as
+    /// today: <see cref="FormatException"/> (e.g. <c>PartialDateTime.Parse</c> on a <c>Timing.event</c>
+    /// that fails, or <c>FhirPathParser</c> failing to tokenize/parse an expression), <see cref="ArgumentException"/>
+    /// (e.g. an empty custom search parameter expression), and <see cref="OverflowException"/> (a numeric
+    /// literal outside the target type's range). False for anything else - a <see cref="NullReferenceException"/>
+    /// or <see cref="InvalidCastException"/> reaching an indexing catch block means the indexer or a converter
+    /// has a bug, not that the data or the expression was bad, and must not be logged the same way.
     /// </summary>
-    private static bool IsExpectedEvaluationFailure(Exception ex) => ex is FhirPathEvaluationException or NotSupportedException;
+    private static bool IsExpectedEvaluationFailure(Exception ex) =>
+        ex is FhirPathEvaluationException or NotSupportedException or FormatException or ArgumentException or OverflowException;
 
     /// <summary>
     /// Builds the "ResourceType/id" label the indexing warnings are tagged with.

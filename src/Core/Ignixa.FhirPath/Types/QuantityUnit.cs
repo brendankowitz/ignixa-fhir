@@ -6,6 +6,7 @@
  */
 
 using System;
+using System.Globalization;
 using Fhir.Metrics;
 using Ignixa.Abstractions;
 
@@ -24,9 +25,34 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <summary>
     /// Initializes a new instance of the QuantityUnitConverter.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="UCUM.Load"/> reads the UCUM essence table, whose unit expressions carry exponents
+    /// written as plain ASCII (<c>-1</c>, <c>2</c>), and parses them under
+    /// <see cref="CultureInfo.CurrentCulture"/>. On a host whose negative sign is not ASCII
+    /// <c>'-'</c> - ar-SA writes U+061C U+002D - that throws <see cref="FormatException"/> on
+    /// <c>"-1"</c>. The table is invariant data, so it is read under the invariant culture.
+    /// </para>
+    /// <para>
+    /// This matters more than a one-off failure because <see cref="Instance"/> is a static field: a
+    /// throw here becomes a <see cref="TypeInitializationException"/> that the runtime caches, so
+    /// every quantity comparison, sort, aggregate and equality in the process fails permanently
+    /// afterwards, on any culture, from one unlucky first touch.
+    /// </para>
+    /// </remarks>
     public QuantityUnitConverter()
     {
-        _ucum = UCUM.Load();
+        var ambient = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            _ucum = UCUM.Load();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = ambient;
+        }
     }
 
     /// <summary>

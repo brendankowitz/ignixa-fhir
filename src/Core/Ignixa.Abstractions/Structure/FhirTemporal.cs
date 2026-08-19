@@ -640,7 +640,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
 
             case FhirTemporalPrecision.Month:
                 return TryParseMonthStart(value, out var monthStart)
-                    ? monthStart.AddMonths(1).AddMilliseconds(-1)
+                    ? EndOfInterval(monthStart, TimeSpan.FromDays(DateTime.DaysInMonth(monthStart.Year, monthStart.Month)))
                     : null;
 
             default:
@@ -653,13 +653,38 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
 
                 return precision switch
                 {
-                    FhirTemporalPrecision.Day => instant.Date.AddDays(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Hour => instant.AddHours(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Minute => instant.AddMinutes(1).AddMilliseconds(-1),
-                    FhirTemporalPrecision.Second => instant.AddSeconds(1).AddMilliseconds(-1),
+                    FhirTemporalPrecision.Day => EndOfInterval(instant.Date, TimeSpan.FromDays(1)),
+                    FhirTemporalPrecision.Hour => EndOfInterval(instant, TimeSpan.FromHours(1)),
+                    FhirTemporalPrecision.Minute => EndOfInterval(instant, TimeSpan.FromMinutes(1)),
+                    FhirTemporalPrecision.Second => EndOfInterval(instant, TimeSpan.FromSeconds(1)),
                     _ => instant
                 };
         }
+    }
+
+    /// <summary>
+    /// Returns the last representable instant of the interval starting at <paramref name="start"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written as one addition rather than as <c>AddDays(1).AddMilliseconds(-1)</c> because the
+    /// intermediate is the value that overflows. <c>9999-12-31</c> is a common open-ended-period
+    /// sentinel and a valid FHIR date, yet stepping a day past it to come back a millisecond throws
+    /// <see cref="ArgumentOutOfRangeException"/> from inside <see cref="TryParse"/> - which documents
+    /// that it never throws, and whose callers are reading untrusted wire data. The same applied to
+    /// <c>9999-12</c> and to <c>9999-12-31T23:59:59Z</c>.
+    /// </para>
+    /// <para>
+    /// Saturating is the answer rather than refusing the literal: the interval's true end
+    /// (<c>9999-12-31T23:59:59.999</c>) is representable and correct; only the route to it was not.
+    /// Refusing would have made a conformant date fall back to a raw string.
+    /// </para>
+    /// </remarks>
+    private static DateTime EndOfInterval(DateTime start, TimeSpan length)
+    {
+        return length > DateTime.MaxValue - start
+            ? new DateTime(9999, 12, 31, 23, 59, 59, 999, start.Kind)
+            : start + length - TimeSpan.FromMilliseconds(1);
     }
 
     private static bool TryParseYear(string value, out int year)

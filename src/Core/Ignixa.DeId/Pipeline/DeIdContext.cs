@@ -31,8 +31,10 @@ public sealed class DeIdContext
     /// An <see cref="IElement"/> tree is a snapshot of the JsonNode graph it was built from, not a
     /// live view of it (see the memoisation comment on <c>SchemaAwareElement._cachedValue</c>) --
     /// and de-identification processors mutate <see cref="Resource"/>'s underlying JsonNode tree
-    /// directly via <c>ElementMutationTool</c> without ever calling
-    /// <see cref="ResourceJsonNode.InvalidateCaches"/>. A field captured once at construction would
+    /// directly via <c>ElementMutationTool</c> without reliably calling
+    /// <see cref="ResourceJsonNode.InvalidateCaches"/> (<c>SubstituteProcessor</c>'s keep-path is the
+    /// one exception that does call it; nothing enforces that every other processor follows suit). A
+    /// field captured once at construction would
     /// therefore go stale the moment the first processor ran: <c>ValidationHandler</c> validating
     /// input is fine (it runs before any mutation), but <c>OutputFormattingHandler</c> validating
     /// output would be inspecting the pre-de-identification tree while claiming to validate the
@@ -96,23 +98,15 @@ public sealed class DeIdContext
     /// Creates a new de-identifier context.
     /// </summary>
     /// <param name="resource">The resource to de-identify.</param>
-    /// <param name="element">
-    /// Unused. Retained only for source compatibility with existing callers -- <see cref="Element"/>
-    /// always re-derives itself from <paramref name="resource"/> and <paramref name="schema"/> instead
-    /// of storing whatever snapshot a caller happens to have on hand (see its remarks for why a
-    /// caller-supplied snapshot can never be safe to cache here).
-    /// </param>
     /// <param name="schema">The FHIR schema provider.</param>
     /// <param name="settings">Per-request settings.</param>
     /// <param name="options">Configuration options.</param>
     public DeIdContext(
         ResourceJsonNode resource,
-        IElement element,
         IFhirSchemaProvider schema,
         RequestOptions settings,
         DeIdOptions options)
     {
-        _ = element;
         Resource = resource;
         Schema = schema;
         Settings = settings;

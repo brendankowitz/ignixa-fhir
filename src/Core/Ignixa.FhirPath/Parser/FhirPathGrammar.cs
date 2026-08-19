@@ -60,7 +60,7 @@ public static class FhirPathGrammar
                 // Remove the 'L' or 'l' suffix before parsing
                 var numericPart = value.Substring(0, value.Length - 1);
                 return new ConstantExpression(
-                    long.Parse(numericPart),
+                    long.Parse(numericPart, CultureInfo.InvariantCulture),
                     CreatePosition(t));
             });
 

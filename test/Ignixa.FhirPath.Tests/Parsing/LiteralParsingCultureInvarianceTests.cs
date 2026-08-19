@@ -30,40 +30,115 @@ namespace Ignixa.FhirPath.Tests.Parsing;
 /// (U+066B) and a U+061C-prefixed negative sign. A test that only ran on en-US would pass against the
 /// unfixed parser.
 /// </para>
+/// <para>
+/// <em>Every row uses a different expression, and that is load-bearing.</em>
+/// <c>TypedElementExtensions</c> caches parsed ASTs in a process-wide store keyed on the expression text
+/// alone. An earlier revision of this file passed the same expression on all four rows, so the parse
+/// happened exactly once — under whichever culture xUnit scheduled first — and the other three rows read
+/// a cached AST without reaching a <c>Parse</c> call at all. The commit that added it claimed nine of
+/// twelve rows failed without the fix; at most three could, and had any other test in the assembly
+/// parsed <c>"1.5 + 1"</c> first the file would have been entirely vacuous — its 9-of-12 was an
+/// aggregate that happened to look right over three quarters inert.
+/// </para>
+/// <para>
+/// Re-measured against parsers with the invariant provider removed again, on this file: each of de-DE,
+/// fr-FR and ar-SA fails all four of its literal expressions and en-US passes all four, whether the
+/// rows are run one culture at a time or all together — 12 of the 16 literal rows either way, which is
+/// what "no row rides another row's parse" looks like. Distinct expressions are preferred over clearing
+/// the cache in the arrange because they need no global mutation and so cannot race another test.
+/// </para>
 /// </remarks>
 public class LiteralParsingCultureInvarianceTests
 {
     [Theory]
-    [InlineData("de-DE")]
-    [InlineData("fr-FR")]
-    [InlineData("ar-SA")]
-    [InlineData("en-US")]
-    public void GivenADecimalLiteral_WhenTheHostCultureVaries_ThenItKeepsItsValue(string cultureName)
+    [InlineData("de-DE", "1.5 + 1", 2.5)]
+    [InlineData("fr-FR", "2.5 + 1", 3.5)]
+    [InlineData("ar-SA", "3.5 + 1", 4.5)]
+    [InlineData("en-US", "4.5 + 1", 5.5)]
+    public void GivenADecimalLiteral_WhenTheHostCultureVaries_ThenItKeepsItsValue(
+        string cultureName,
+        string expression,
+        double expected)
     {
         // 1.5 read under a comma-decimal culture becomes 15, so the sum moves from 2.5 to 16.
-        UnderCulture(cultureName, () => EvaluateValue("1.5 + 1")).ShouldBe(2.5m);
+        UnderCulture(cultureName, () => EvaluateValue(expression)).ShouldBe((decimal)expected);
     }
 
     [Theory]
-    [InlineData("de-DE")]
-    [InlineData("fr-FR")]
-    [InlineData("ar-SA")]
-    [InlineData("en-US")]
-    public void GivenADecimalComparison_WhenTheHostCultureVaries_ThenTheOrderingIsUnchanged(string cultureName)
+    [InlineData("de-DE", "1.5 > 9")]
+    [InlineData("fr-FR", "2.5 > 9")]
+    [InlineData("ar-SA", "3.5 > 9")]
+    [InlineData("en-US", "4.5 > 9")]
+    public void GivenADecimalComparison_WhenTheHostCultureVaries_ThenTheOrderingIsUnchanged(
+        string cultureName,
+        string expression)
     {
-        // Misparsing either side inverts this: 15 > 2 is true where 1.5 > 2 is false.
-        UnderCulture(cultureName, () => EvaluateValue("1.5 > 2")).ShouldBe(false);
+        // Misparsing the left operand inverts this: 15 > 9 is true where 1.5 > 9 is false. The right
+        // operand is an integer literal so that only one side of the comparison can move.
+        UnderCulture(cultureName, () => EvaluateValue(expression)).ShouldBe(false);
     }
 
     [Theory]
-    [InlineData("de-DE")]
-    [InlineData("fr-FR")]
-    [InlineData("ar-SA")]
-    [InlineData("en-US")]
-    public void GivenAQuantityLiteral_WhenTheHostCultureVaries_ThenItsMagnitudeIsUnchanged(string cultureName)
+    [InlineData("de-DE", "(1.5 'mg' = 1500 'ug')")]
+    [InlineData("fr-FR", "(2.5 'mg' = 2500 'ug')")]
+    [InlineData("ar-SA", "(3.5 'mg' = 3500 'ug')")]
+    [InlineData("en-US", "(4.5 'mg' = 4500 'ug')")]
+    public void GivenAQuantityLiteral_WhenTheHostCultureVaries_ThenItsMagnitudeIsUnchanged(
+        string cultureName,
+        string expression)
     {
         // The quantity grammar has its own Parse call, distinct from the plain decimal literal's.
-        UnderCulture(cultureName, () => EvaluateValue("(1.5 'mg' = 1500 'ug')")).ShouldBe(true);
+        UnderCulture(cultureName, () => EvaluateValue(expression)).ShouldBe(true);
+    }
+
+    /// <summary>
+    /// The calendar-duration grammar is the fourth <c>Parse</c> call each grammar makes and the one this
+    /// file did not reach. It is a separate parser from the quantity one because a keyword unit is not a
+    /// quoted UCUM code, so fixing one says nothing about the other.
+    /// </summary>
+    /// <remarks>
+    /// The right operand is written in hours, and as an integer, so that a misparsed left operand cannot
+    /// be cancelled out by the same misparse on the right: <c>1.5 weeks</c> is 252 hours, and the fifteen
+    /// weeks a comma-decimal host would read is 2520.
+    /// </remarks>
+    [Theory]
+    [InlineData("de-DE", "(1.5 weeks = 252 hours)")]
+    [InlineData("fr-FR", "(2.5 weeks = 420 hours)")]
+    [InlineData("ar-SA", "(3.5 weeks = 588 hours)")]
+    [InlineData("en-US", "(4.5 weeks = 756 hours)")]
+    public void GivenACalendarDurationLiteral_WhenTheHostCultureVaries_ThenItsMagnitudeIsUnchanged(
+        string cultureName,
+        string expression)
+    {
+        UnderCulture(cultureName, () => EvaluateValue(expression)).ShouldBe(true);
+    }
+
+    /// <summary>
+    /// The UCUM table behind every quantity comparison is loaded from a static field, and it parses its
+    /// own exponents - plain ASCII <c>-1</c> and the like - under the ambient culture. Under ar-SA, whose
+    /// negative sign is U+061C U+002D, that threw, and because it threw inside a type initializer the
+    /// runtime cached the failure: <c>ValueOrdering</c> was then dead for the rest of the process, on
+    /// every culture, taking every quantity comparison, sort, aggregate and equality with it.
+    /// </summary>
+    /// <remarks>
+    /// This is separate from the quantity rows above because it is about the first touch rather than
+    /// about the arithmetic. It was invisible while all rows shared one expression: the AST cache meant
+    /// ar-SA usually never reached a parser, let alone the converter.
+    /// </remarks>
+    [Theory]
+    [InlineData("ar-SA")]
+    [InlineData("de-DE")]
+    [InlineData("fr-FR")]
+    [InlineData("en-US")]
+    public void GivenAHostWithANonAsciiNegativeSign_WhenTheUnitTableIsFirstTouched_ThenItStillLoads(
+        string cultureName)
+    {
+        // Act
+        var converter = UnderCulture(cultureName, () => Ignixa.FhirPath.Types.QuantityUnitConverter.Instance);
+
+        // Assert
+        converter.ShouldNotBeNull();
+        UnderCulture(cultureName, () => converter.Convert(1m, "mg", "g")).ShouldBe(0.001m);
     }
 
     private static object? EvaluateValue(string expression)

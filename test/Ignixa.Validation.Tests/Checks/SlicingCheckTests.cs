@@ -300,6 +300,31 @@ public sealed class SlicingCheckTests
     }
 
     [Fact]
+    public void GivenDiscriminatorPathWithAnOverflowingIntegerLiteral_WhenValidating_ThenDefersWithInformationNotError()
+    {
+        var element = PatientWith("""[{"url":"http://x/race","valueString":"A"},{"url":"http://x/race","valueString":"B"}]""");
+
+        // An integer literal above int.MaxValue makes the FHIRPath parser itself throw OverflowException
+        // while building the AST (FhirPathParseTreeGrammar's IntegerLiteral node uses int.Parse) - a
+        // defect in the profile's discriminator path text, not the resource. Like the other malformed-path
+        // cases (ArgumentException, FormatException), this must defer the slicing with an Information
+        // issue, never raise a slicing Error that would falsely reject a valid resource.
+        var metadata = new SlicingMetadata(
+            new[] { new DiscriminatorDefinition(DiscriminatorType.Value, "99999999999999999999") },
+            SlicingRules.Closed,
+            ordered: false,
+            new[] { new SliceDefinition("race", 0, 1, new[] { new SliceDiscriminatorValue(DiscriminatorType.Value, "99999999999999999999", "http://x/race") }) });
+        var check = new SlicingCheck("extension", metadata);
+
+        check.IsDeferred.ShouldBeFalse();
+        var result = check.Validate(element, FullDepth, ValidationState.ForRoot(element));
+
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldNotBeEmpty();
+        result.Issues.ShouldAllBe(i => i.Severity == IssueSeverity.Information && i.Code == "slicing-deferred");
+    }
+
+    [Fact]
     public void GivenTwoDistinctSlices_WhenEachWithinMax_ThenSucceeds()
     {
         var element = PatientWith("""

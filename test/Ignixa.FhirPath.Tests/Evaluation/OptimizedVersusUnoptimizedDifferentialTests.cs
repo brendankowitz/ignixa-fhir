@@ -175,5 +175,9 @@ public class OptimizedVersusUnoptimizedDifferentialTests
         optimizedResult.ShouldBe(
             plainResult,
             $"Optimized and unoptimized parses of '{expression}' disagree.");
+
+        // Agreement alone is satisfied by both paths failing the same way, so the row also has to have
+        // produced something. See DifferentialFixture.AssertEvaluated.
+        DifferentialFixture.AssertEvaluated(plainResult, expression);
     }
 }
