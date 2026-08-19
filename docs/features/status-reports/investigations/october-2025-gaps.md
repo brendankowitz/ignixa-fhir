@@ -1160,7 +1160,7 @@ TenantMode.Distributed => throw new NotSupportedException(
 - `docs/investigations/multi-tenancy-data-partitioning-modes.md` - Isolation vs Distributed
 
 ### Project Documentation
-- `CLAUDE.md` - Current implementation status
+- `AGENTS.md` - Current implementation status
 - `ADR-2501-IMPLEMENTATION-SUMMARY.md` - Prototype achievements
 - `VALIDATION_INTEGRATION_SUMMARY.md` - Validation architecture
 

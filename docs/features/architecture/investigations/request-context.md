@@ -977,7 +977,7 @@ _contextAccessor.RequestContext = context;
 **Tasks**:
 1. Deprecate `HttpContextExtensions.GetTenantId()` methods (add `[Obsolete]` attribute)
 2. Remove `AsyncLocal<int> _bundleEntryIndex` from `HttpContextExtensions` (replaced by context)
-3. Update CLAUDE.md with new pattern guidance
+3. Update AGENTS.md with new pattern guidance
 4. Add background task examples to documentation
 5. Create migration guide for future handlers
 
@@ -1204,7 +1204,7 @@ app.Use(async (context, next) =>
 - ✅ `dotnet test All.sln` - All tests passing (529+)
 - ✅ No performance regression (context extraction ≤ 1ms overhead)
 - ✅ Code coverage maintained or improved
-- ✅ Documentation updated (CLAUDE.md, migration guide)
+- ✅ Documentation updated (AGENTS.md, migration guide)
 
 ### Adoption Requirements
 
@@ -1411,7 +1411,7 @@ public class FhirRequestContextMiddlewareTests
 
 - [ ] Deprecate `HttpContextExtensions.GetTenantId()` with `[Obsolete]`
 - [ ] Remove `AsyncLocal<int> _bundleEntryIndex` from `HttpContextExtensions`
-- [ ] Update CLAUDE.md with new pattern guidance
+- [ ] Update AGENTS.md with new pattern guidance
 - [ ] Add background task examples to documentation
 - [ ] Create migration guide for future handlers
 - [ ] Verify no usages of deprecated methods (Roslyn search)

@@ -1,8 +1,8 @@
-# Well-Architected Framework Agent for Claude Code
+# Well-Architected Framework Review Plugin
 
 ## 🎯 Overview
 
-This agent brings the **Microsoft Azure Well-Architected Framework** to your Claude Code development workflow, enabling comprehensive code and architecture reviews based on industry-standard cloud architecture principles.
+The `review@agent-marketplace` plugin brings the **Microsoft Azure Well-Architected Framework** to GitHub Copilot CLI and Claude Code, enabling comprehensive code and architecture reviews based on industry-standard cloud architecture principles.
 
 ### What is the Azure Well-Architected Framework?
 
@@ -21,9 +21,9 @@ The Azure Well-Architected Framework is a set of quality-driven tenets and archi
 This implementation provides:
 
 ### 1. Well-Architected Agent
-**File:** `.claude/agents/well-architected-agent.md`
+**Plugin:** `review@agent-marketplace`
 
-A specialized Claude Code agent that:
+A specialized review agent that:
 - Evaluates code against all five WAF pillars
 - Identifies critical security vulnerabilities
 - Detects performance bottlenecks and N+1 queries
@@ -34,12 +34,12 @@ A specialized Claude Code agent that:
 ### 2. Slash Commands
 Quick-access commands for common review scenarios:
 
-| Command | File | Purpose |
-|---------|------|---------|
-| `/wa-review` | `.claude/commands/wa-review.md` | Full 5-pillar assessment |
-| `/wa-security` | `.claude/commands/wa-security.md` | Security-focused audit |
-| `/wa-performance` | `.claude/commands/wa-performance.md` | Performance analysis |
-| `/wa-reliability` | `.claude/commands/wa-reliability.md` | Reliability assessment |
+| Command | Plugin | Purpose |
+|---------|--------|---------|
+| `/wa-full-review` | `review@agent-marketplace` | Full 5-pillar assessment |
+| `/wa-security-review` | `review@agent-marketplace` | Security-focused audit |
+| `/wa-performance-review` | `review@agent-marketplace` | Performance analysis |
+| `/wa-reliability-review` | `review@agent-marketplace` | Reliability assessment |
 
 ### 3. Documentation
 
@@ -57,19 +57,19 @@ Quick-access commands for common review scenarios:
 
 1. **Full Architecture Review**
    ```
-   /wa-review
+   /wa-full-review
    ```
    Evaluates your entire codebase against all five pillars.
 
 2. **Focused Security Audit**
    ```
-   /wa-security
+   /wa-security-review
    ```
    Deep dive into security vulnerabilities and best practices.
 
 3. **Performance Analysis**
    ```
-   /wa-performance
+   /wa-performance-review
    ```
    Identifies performance bottlenecks and optimization opportunities.
 
@@ -77,7 +77,7 @@ Quick-access commands for common review scenarios:
 
 #### Pre-Production Readiness Check
 ```
-Use well-architected-agent to assess production readiness of the Patient Search feature.
+Use review:well-architected-agent to assess production readiness of the Patient Search feature.
 
 Focus on:
 - Reliability: Error handling, timeouts, retry logic
@@ -87,7 +87,7 @@ Focus on:
 
 #### Security Compliance Audit
 ```
-/wa-security
+/wa-security-review
 
 Audit the Authentication and Authorization implementation for HIPAA compliance.
 Check for hardcoded secrets, proper encryption, and audit logging.
@@ -95,7 +95,7 @@ Check for hardcoded secrets, proper encryption, and audit logging.
 
 #### Performance Optimization
 ```
-/wa-performance
+/wa-performance-review
 
 Analyze src/Ignixa.Application/Features/Patient/SearchPatientHandler.cs
 for performance issues. Check for N+1 queries, missing caching, and
@@ -165,19 +165,19 @@ Phased approach with timelines and dependencies.
 **Before Committing:**
 ```bash
 # If touching security code
-/wa-security
+/wa-security-review
 
 # If optimizing queries
-/wa-performance
+/wa-performance-review
 
 # If adding error handling
-/wa-reliability
+/wa-reliability-review
 ```
 
 **Pull Request Review:**
 ```bash
 # Full feature review
-/wa-review
+/wa-full-review
 
 # Include findings in PR description
 ```
@@ -186,7 +186,7 @@ Phased approach with timelines and dependencies.
 
 **Pre-Production Checklist:**
 ```
-Use well-architected-agent to verify production readiness:
+Use review:well-architected-agent to verify production readiness:
 - Health endpoints implemented (/health, /ready)
 - Error handling comprehensive with proper logging
 - Secrets externalized to Key Vault
@@ -199,7 +199,7 @@ Use well-architected-agent to verify production readiness:
 
 **After Outage:**
 ```
-/wa-reliability
+/wa-reliability-review
 
 Investigate the database connection pool exhaustion incident.
 Review all connection management code for:
@@ -213,7 +213,7 @@ Review all connection management code for:
 
 **HIPAA/HITRUST Preparation:**
 ```
-/wa-security
+/wa-security-review
 
 Conduct security audit for HITRUST compliance:
 - PHI encryption at rest and in transit
@@ -336,7 +336,7 @@ Conduct security audit for HITRUST compliance:
 ## 🔗 Integration with Development Workflow
 
 ### Sprint Planning
-1. Run `/wa-review` at sprint start
+1. Run `/wa-full-review` at sprint start
 2. Export P0/P1 findings
 3. Add to sprint backlog with effort estimates
 4. Track resolution in ADRs
@@ -346,9 +346,9 @@ Conduct security audit for HITRUST compliance:
 ## PR Checklist
 - [ ] Code reviewed by peer
 - [ ] Unit tests added/updated (100% coverage)
-- [ ] `/wa-review` run - no P0 issues
-- [ ] Security scan passed (`/wa-security`)
-- [ ] Performance validated (`/wa-performance`)
+- [ ] `/wa-full-review` run - no P0 issues
+- [ ] Security scan passed (`/wa-security-review`)
+- [ ] Performance validated (`/wa-performance-review`)
 - [ ] Documentation updated
 ```
 
@@ -365,7 +365,7 @@ Criteria:
 
 ### Continuous Improvement
 - **Weekly:** Run focused reviews during active development
-- **Sprint End:** Full `/wa-review` before release
+- **Sprint End:** Full `/wa-full-review` before release
 - **Monthly:** Track score trends, measure improvements
 - **Quarterly:** Comprehensive assessment with stakeholders
 
@@ -379,39 +379,39 @@ The Well-Architected Agent works seamlessly with other project agents:
 
 ```
 1. Feature Planning
-   └─ adr-analyzer: Review requirements in ADR
+   └─ decide:adr-analyzer: Review requirements in ADR
 
 2. Implementation
-   └─ coding-agent or fast-coding-agent: Write code
+   └─ build:coding-agent or build:fast-coding-agent: Write code
 
 3. Quality Assurance
-   └─ well-architected-agent: Review against WAF pillars
+   └─ review:well-architected-agent: Review against WAF pillars
 
 4. Remediation
-   └─ coding-agent: Fix identified issues
+   └─ build:coding-agent: Fix identified issues
 
 5. Verification
-   ├─ adr-analyzer: Verify ADR compliance
-   └─ well-architected-agent: Re-score to confirm improvements
+   ├─ decide:adr-analyzer: Verify ADR compliance
+   └─ review:well-architected-agent: Re-score to confirm improvements
 ```
 
 ### Example Multi-Agent Session
 
 ```bash
 # Step 1: Check ADR requirements
-Use adr-analyzer to review ADR-2530 for Subscriptions feature
+Use decide:adr-analyzer to review the Subscriptions ADR
 
 # Step 2: Implement feature
-Use coding-agent to implement FHIR Subscriptions per ADR-2530
+Use build:coding-agent to implement FHIR Subscriptions per the accepted ADR
 
 # Step 3: Well-Architected review
-/wa-review on the Subscriptions implementation
+/wa-full-review on the Subscriptions implementation
 
 # Step 4: Fix critical issues
-Use coding-agent to remediate P0 security findings from WAF review
+Use build:coding-agent to remediate P0 security findings from WAF review
 
 # Step 5: Verify compliance
-Use adr-analyzer to verify final implementation matches ADR-2530
+Use decide:adr-analyzer to verify the final implementation matches the accepted ADR
 ```
 
 ---
@@ -424,12 +424,12 @@ Use adr-analyzer to verify final implementation matches ADR-2530
 - [Well-Architected Assessment Tool](https://learn.microsoft.com/en-us/assessments/azure-architecture-review/)
 
 ### Project Documentation
-- **CLAUDE.md** - Project coding standards and architecture rules
+- **AGENTS.md** - Project coding standards and architecture rules
 - **docs/adr/** - Architecture Decision Records
 - **docs/investigations/** - Technical investigation documents
 
-### Agent Files
-- `.claude/agents/well-architected-agent.md` - Agent configuration
+### Agent Resources
+- `review@agent-marketplace` - Marketplace plugin
 - `docs/guides/well-architected-agent-guide.md` - Comprehensive guide
 - `docs/guides/wa-quick-reference.md` - Quick reference card
 
@@ -441,13 +441,13 @@ Use adr-analyzer to verify final implementation matches ADR-2530
 Don't wait until code review - run focused pillar reviews during development:
 ```bash
 # While implementing authentication
-/wa-security
+/wa-security-review
 
 # While optimizing database queries
-/wa-performance
+/wa-performance-review
 
 # While adding error handling
-/wa-reliability
+/wa-reliability-review
 ```
 
 ### 2. Provide Context
@@ -467,11 +467,11 @@ Better: "Review Patient export in src/Features/Patient/ExportPatientHandler.cs.
 ### 4. Track Improvements
 ```bash
 # Initial review
-/wa-review
+/wa-full-review
 # Score: Reliability 4/10, Security 5/10
 
 # After remediation
-/wa-review
+/wa-full-review
 # Score: Reliability 8/10, Security 9/10
 
 # Document in ADR or commit message
@@ -498,9 +498,9 @@ The agent is designed to work with this FHIR server project's specific architect
 
 ### Extending the Agent
 To add custom checks:
-1. Edit `.claude/agents/well-architected-agent.md`
-2. Add project-specific patterns to checklists
-3. Update examples in documentation
+1. Add repository-specific requirements to `AGENTS.md`.
+2. Contribute reusable checks to `brendankowitz/agent-marketplace`.
+3. Update examples in this documentation.
 
 ---
 
@@ -510,7 +510,7 @@ To add custom checks:
 ```bash
 # Don't start with full codebase review
 # Start with a single feature
-Use well-architected-agent to review
+Use review:well-architected-agent to review
 src/Ignixa.Application/Features/Patient/SearchPatientHandler.cs
 ```
 
@@ -575,7 +575,7 @@ using EF Core Include()"
 - Ask for specific pillar deep dive
 
 ### Too Many Findings
-- Start with focused pillar reviews (`/wa-security`, `/wa-performance`)
+- Start with focused pillar reviews (`/wa-security-review`, `/wa-performance-review`)
 - Review specific features/modules instead of entire codebase
 - Filter by priority (ask for P0/P1 only)
 
@@ -617,11 +617,11 @@ Help improve the agent by sharing:
 
 - [ ] Read this README
 - [ ] Review `WA_QUICK_REFERENCE.md` for command reference
-- [ ] Run `/wa-review` on a small feature to see output format
-- [ ] Try focused pillar review (`/wa-security` or `/wa-performance`)
+- [ ] Run `/wa-full-review` on a small feature to see output format
+- [ ] Try focused pillar review (`/wa-security-review` or `/wa-performance-review`)
 - [ ] Integrate into your pull request workflow
 - [ ] Schedule regular reviews (weekly/monthly)
 
 ---
 
-**Ready to elevate your code quality?** Start with `/wa-review` and begin your journey to architectural excellence!
+**Ready to elevate your code quality?** Start with `/wa-full-review` and begin your journey to architectural excellence!

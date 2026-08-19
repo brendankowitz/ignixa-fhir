@@ -914,7 +914,7 @@ public class FhirPathInvariantAssertion : IValidationAssertion
 6. **ADR-2500**: Master roadmap (116-week plan)
 7. **Ignixa.FhirPath**: `src/Ignixa.FhirPath/`
 8. **Ignixa.Specification**: `src/Ignixa.Specification/` (generated structure providers)
-9. **ResourceJsonNode Architecture**: `CLAUDE.md` section "Working with ResourceJsonNode"
+9. **ResourceJsonNode Architecture**: `docs/features/architecture/investigations/jsonobject-based.md`
 
 ---
 
@@ -976,7 +976,6 @@ public class FhirPathInvariantAssertion : IValidationAssertion
 **Documentation**:
 - `docs/investigations/validation-parity-analysis.md` - Comparison of old vs new validators
 - `src/Ignixa.Validation/README.md` - Usage guide
-- `CLAUDE.md` - Updated with validation patterns and file organization principle
 
 **Next Steps** (Phase 4-6):
 - Phase 4: Advanced validators (FHIRPath invariants, choice types, extensions)

@@ -278,8 +278,7 @@ internal class JsonNodeSourceNode : ISourceNode
 - ✅ Build succeeded across entire solution
 
 ### Phase 6: Documentation
-- ✅ Updated CLAUDE.md with JsonObject-based architecture patterns
-- ✅ Created this ADR document
+- ✅ Created this architecture investigation
 
 ---
 
@@ -412,8 +411,7 @@ Assert.Equal("Organization/org-new", updatedElement["reference"].GetValue<string
 - `test/Ignixa.Validation.Tests/JsonNodeValidation/FastPathValidatorTests.cs` - 26 tests
 
 ### Documentation (Phase 6)
-- `CLAUDE.md` - Added "Working with ResourceJsonNode" pattern section
-- `docs/investigations/jsonobject-based-architecture.md` - This ADR
+- `docs/features/architecture/investigations/jsonobject-based.md` - This investigation
 
 ---
 
@@ -509,5 +507,5 @@ var value = resource.MutableNode["active"].GetValue<bool>();
 
 - Build: ✅ 0 errors, 0 warnings
 - Tests: ✅ All passing
-- Documentation: ✅ CLAUDE.md updated, ADR created
+- Documentation: ✅ Investigation recorded
 - Migration: ✅ All test files updated

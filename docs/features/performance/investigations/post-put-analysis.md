@@ -366,7 +366,7 @@ dotnet trace report trace.nettrace --format speedscope
 ## Related Documents
 
 - **ADR-2500**: Master implementation roadmap
-- **CLAUDE.md**: Development guide (performance section)
+- **AGENTS.md**: Development guide (performance section)
 - **docs/investigations/bundle-streaming.md**: Memory optimization (95% reduction)
 - **Commit 63b959c**: CPU optimization Phase 2 (property caching)
 - **Commit b704390**: CPU optimization Phase 3 (FHIRPath delegate compilation)
