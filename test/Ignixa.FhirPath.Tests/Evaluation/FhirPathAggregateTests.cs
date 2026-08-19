@@ -499,33 +499,39 @@ public class FhirPathAggregateTests
     }
 
     [Fact]
-    public void GivenMixedTypesInvalid_WhenSum_ThenReturnsEmpty()
+    public void GivenMixedTypesInvalid_WhenSum_ThenThrows()
     {
         // Arrange
-        // Cannot sum integers and strings
+        // Previously asserted empty. FHIRPath defines sum() as aggregate($this + $total, 0), and
+        // integer + string is an error rather than an empty, so the empty was hiding a type error
+        // behind the same answer that an out-of-range unit conversion legitimately produces.
         var expr = _parser.Parse("(1 | 'text').sum()");
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var evaluate = () => _evaluator.Evaluate(root, expr).ToList();
 
         // Assert
-        Assert.Empty(result);
+        Assert.Throws<FhirPathEvaluationException>(evaluate);
     }
 
     [Fact]
-    public void GivenQuantitiesDifferentUnits_WhenSum_ThenReturnsEmpty()
+    public void GivenQuantitiesInCompatibleUnits_WhenSum_ThenConvertsAndTotals()
     {
         // Arrange
-        // Cannot sum mg + kg without conversion
+        // Previously asserted empty, on the reasoning that "mg + kg needs conversion". Milligrams and
+        // kilograms are both mass, so the conversion exists; the old empty came from comparing the two
+        // unit strings with == rather than from any property of the units themselves.
         var expr = _parser.Parse("((5 'mg') | (1 'kg')).sum()");
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var result = _evaluator.Evaluate(root, expr).Single();
 
         // Assert
-        Assert.Empty(result);
+        var quantity = Assert.IsType<FhirQuantity>(result.Value);
+        Assert.Equal(1000005m, quantity.Value);
+        Assert.Equal("mg", quantity.Unit);
     }
 
     #endregion

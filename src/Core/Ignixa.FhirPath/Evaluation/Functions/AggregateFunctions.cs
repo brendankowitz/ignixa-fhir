@@ -1,11 +1,9 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * FhirPath aggregate function implementations (Phase 23, Week 4).
- * Implements sum(), min(), max(), and avg() according to FHIRPath 3.0.0 spec.
+ * sum(), min(), max() and avg(), all built on the one comparison rule in SortComparer.
  */
 
-using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Types;
@@ -15,18 +13,36 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 #nullable enable
 
 /// <summary>
-/// Aggregate function implementations for FhirPath.
-/// Supports sum, min, max, avg operations on collections of integers, decimals, quantities, strings, and dates.
+/// The FHIRPath aggregate functions over numbers, quantities, strings and temporals.
 /// </summary>
+/// <remarks>
+/// <para>
+/// FHIRPath does not define these primitively. It defines them in terms of <c>aggregate()</c> and the
+/// ordinary operators - <c>value.aggregate($this + $total, 0)</c> for the sum,
+/// <c>value.aggregate(iif($total.empty(), $this, iif($this &lt; $total, $this, $total)))</c> for the
+/// minimum - so their semantics are whatever <c>+</c>, <c>&lt;</c> and <c>&gt;</c> already say. They are
+/// implemented directly here for the arithmetic, but the ordering is delegated to
+/// <see cref="SortComparer.CompareValues"/> rather than restated.
+/// </para>
+/// <para>
+/// The restatement is what went wrong. Each function used to pick a per-type branch from
+/// <c>list[0].Value</c>, so a collection whose head was an integer was totalled as integers and every
+/// quantity in it was silently dropped; quantity units were matched with <c>==</c>, so
+/// <c>(1 'm' | 50 'cm').min()</c> was empty; and temporals were re-parsed with
+/// <c>DateTime.TryParseExact</c> against a fixed format list, which discarded partial precision
+/// (<c>@2012</c> matched no format at all and was skipped) and equated a floating local time with a
+/// fixed instant.
+/// </para>
+/// </remarks>
 internal static class AggregateFunctions
 {
+    private static readonly IQuantityUnitConverter UnitConverter = QuantityUnitConverter.Instance;
 
     /// <summary>
     /// Computes the sum of a collection of numeric values or quantities.
-    /// Returns empty for empty collection or incompatible types.
     /// </summary>
     /// <param name="elements">Collection to sum</param>
-    /// <returns>Sum as IElement, or empty if operation not possible</returns>
+    /// <returns>The total, or empty when the units do not relate.</returns>
     [FhirPathFunction("sum",
         SupportedContexts = "any-any",
         ReturnType = "context",
@@ -37,35 +53,38 @@ internal static class AggregateFunctions
         Description = "Computes the sum of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements)
     {
-        var list = elements.Where(e => e != null).ToList();
+        // The spec's equivalent form seeds aggregate() with 0, so an empty collection totals to 0 rather
+        // than to empty - which is why sum() is the one aggregate here that answers a non-empty result
+        // for no input. That seed is only correct for a collection that is genuinely empty, though:
+        // Patient.name is two elements that happen to carry no value, and reporting its total as 0 would
+        // be an answer to a question nobody asked.
+        var received = elements.Where(element => element is not null).ToList();
 
-        // Per FHIRPath spec: Empty collection returns 0
-        if (list.Count == 0)
-            return [FunctionHelpers.CreateInteger(0)];
-
-        // Single item returns that item
-        if (list.Count == 1)
-            return [list[0]];
-
-        // Determine the type to work with
-        var firstValue = list[0].Value;
-
-        // Handle Quantity collection
-        if (firstValue is FhirQuantity)
+        if (received.Count == 0)
         {
-            return SumQuantities(list);
+            return [FunctionHelpers.CreateInteger(0)];
         }
 
-        // Handle numeric collection (integers and decimals)
-        return SumNumeric(list);
+        var list = Materialize(received);
+
+        if (list.Count == 0)
+        {
+            return [];
+        }
+
+        if (list.Count == 1)
+        {
+            return [list[0]];
+        }
+
+        return Total(list, "sum()", average: false);
     }
 
     /// <summary>
     /// Finds the minimum value in a collection.
-    /// Supports integers, decimals, strings (lexicographic), dates, and quantities.
     /// </summary>
     /// <param name="elements">Collection to evaluate</param>
-    /// <returns>Minimum element, or empty if collection is empty</returns>
+    /// <returns>The least element, or empty.</returns>
     [FhirPathFunction("min",
         SupportedContexts = "any-any",
         ReturnType = "context",
@@ -74,73 +93,13 @@ internal static class AggregateFunctions
         MaxArguments = 0,
         Category = "Aggregate",
         Description = "Finds the minimum value in a collection")]
-    public static IEnumerable<IElement> Min(IEnumerable<IElement> elements)
-    {
-        var list = elements.Where(e => e != null).ToList();
-
-        // Empty collection returns empty
-        if (list.Count == 0)
-            return [];
-
-        // Single item returns that item
-        if (list.Count == 1)
-            return [list[0]];
-
-        var firstValue = list[0].Value;
-
-        // Handle Quantity collection
-        if (firstValue is FhirQuantity)
-        {
-            return MinMaxQuantities(list, isMax: false);
-        }
-
-        // Handle numeric types
-        if (IsNumeric(firstValue))
-        {
-            return MinMaxNumeric(list, isMax: false);
-        }
-
-        // FhirTemporal carries the typed value from resource elements. time is routed to
-        // MinMaxTime (ordinal HH:mm:ss comparison — no date component). date/dateTime/instant
-        // are routed to MinMaxDate (parse-to-DateTime comparison).
-        if (firstValue is FhirTemporal ft && ft.Kind == FhirPrimitive.Time)
-        {
-            return MinMaxTime(list, isMax: false);
-        }
-
-        if (firstValue is FhirTemporal)
-        {
-            return MinMaxDate(list, isMax: false);
-        }
-
-        // FHIRPath date/dateTime literals begin with '@'; the evaluator strips '@T' from time
-        // literals so bare HH:mm:ss strings reach MinMaxString rather than this branch.
-        if (firstValue is string s && s.StartsWith('@'))
-        {
-            // Date or DateTime literal (@2024-01-10 or @2024-01-10T10:00:00Z)
-            return MinMaxDate(list, isMax: false);
-        }
-
-        if (firstValue is string)
-        {
-            return MinMaxString(list, isMax: false);
-        }
-
-        // Handle date/dateTime comparison
-        if (IsDateOrDateTime(list[0]))
-        {
-            return MinMaxDate(list, isMax: false);
-        }
-
-        return [];
-    }
+    public static IEnumerable<IElement> Min(IEnumerable<IElement> elements) => Extreme(elements, "min()", isMax: false);
 
     /// <summary>
     /// Finds the maximum value in a collection.
-    /// Supports integers, decimals, strings (lexicographic), dates, and quantities.
     /// </summary>
     /// <param name="elements">Collection to evaluate</param>
-    /// <returns>Maximum element, or empty if collection is empty</returns>
+    /// <returns>The greatest element, or empty.</returns>
     [FhirPathFunction("max",
         SupportedContexts = "any-any",
         ReturnType = "context",
@@ -149,74 +108,13 @@ internal static class AggregateFunctions
         MaxArguments = 0,
         Category = "Aggregate",
         Description = "Finds the maximum value in a collection")]
-    public static IEnumerable<IElement> Max(IEnumerable<IElement> elements)
-    {
-        var list = elements.Where(e => e != null).ToList();
-
-        // Empty collection returns empty
-        if (list.Count == 0)
-            return [];
-
-        // Single item returns that item
-        if (list.Count == 1)
-            return [list[0]];
-
-        var firstValue = list[0].Value;
-
-        // Handle Quantity collection
-        if (firstValue is FhirQuantity)
-        {
-            return MinMaxQuantities(list, isMax: true);
-        }
-
-        // Handle numeric types
-        if (IsNumeric(firstValue))
-        {
-            return MinMaxNumeric(list, isMax: true);
-        }
-
-        // FhirTemporal carries the typed value from resource elements. time is routed to
-        // MinMaxTime (ordinal HH:mm:ss comparison — no date component). date/dateTime/instant
-        // are routed to MinMaxDate (parse-to-DateTime comparison).
-        if (firstValue is FhirTemporal ft && ft.Kind == FhirPrimitive.Time)
-        {
-            return MinMaxTime(list, isMax: true);
-        }
-
-        if (firstValue is FhirTemporal)
-        {
-            return MinMaxDate(list, isMax: true);
-        }
-
-        // FHIRPath date/dateTime literals begin with '@'; the evaluator strips '@T' from time
-        // literals so bare HH:mm:ss strings reach MinMaxString rather than this branch.
-        if (firstValue is string s && s.StartsWith('@'))
-        {
-            // Date or DateTime literal (@2024-01-10 or @2024-01-10T10:00:00Z)
-            return MinMaxDate(list, isMax: true);
-        }
-
-        if (firstValue is string)
-        {
-            return MinMaxString(list, isMax: true);
-        }
-
-        // Handle date/dateTime comparison
-        if (IsDateOrDateTime(list[0]))
-        {
-            return MinMaxDate(list, isMax: true);
-        }
-
-        return [];
-    }
+    public static IEnumerable<IElement> Max(IEnumerable<IElement> elements) => Extreme(elements, "max()", isMax: true);
 
     /// <summary>
     /// Computes the average of a collection of numeric values or quantities.
-    /// Integer collections are promoted to decimal for the result.
-    /// Returns empty for empty collection or incompatible types.
     /// </summary>
     /// <param name="elements">Collection to average</param>
-    /// <returns>Average as IElement, or empty if operation not possible</returns>
+    /// <returns>The mean, or empty when the units do not relate.</returns>
     [FhirPathFunction("avg",
         SupportedContexts = "any-any",
         ReturnType = "decimal",
@@ -227,373 +125,212 @@ internal static class AggregateFunctions
         Description = "Computes the average of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements)
     {
-        var list = elements.Where(e => e != null).ToList();
+        var list = Materialize(elements);
 
-        // Empty collection returns empty
         if (list.Count == 0)
+        {
             return [];
+        }
 
-        // Single item: return as decimal for integers, otherwise return as-is
+        // avg() answers Decimal, so a lone Integer is promoted; a lone Quantity or Decimal already is one.
         if (list.Count == 1)
         {
-            var singleValue = list[0].Value;
-            if (singleValue is int i)
-                return [CreateDecimal(i)];
-            if (singleValue is FhirQuantity)
-                return [list[0]];
-            return [list[0]];
+            return [list[0].Value is int single ? CreateDecimal(single) : list[0]];
         }
 
-        var firstValue = list[0].Value;
-
-        // Handle Quantity collection
-        if (firstValue is FhirQuantity)
-        {
-            return AvgQuantities(list);
-        }
-
-        // Handle numeric collection
-        return AvgNumeric(list);
-    }
-
-    #region Sum Implementations
-
-    private static IEnumerable<IElement> SumQuantities(List<IElement> list)
-    {
-        // All quantities must have the same unit
-        var quantities = list.Select(e => e.Value as FhirQuantity).ToList();
-        if (quantities.Any(q => q == null))
-            return []; // Mixed types
-
-        var firstUnit = quantities[0]!.Unit;
-        if (!quantities.All(q => q!.Unit == firstUnit))
-            return []; // Different units
-
-        // Sum all values
-        decimal sum = quantities.Sum(q => q!.Value);
-        var resultQuantity = new FhirQuantity(sum, firstUnit);
-        return [FunctionHelpers.CreateQuantity(resultQuantity)];
-    }
-
-    private static IEnumerable<IElement> SumNumeric(List<IElement> list)
-    {
-        // Check if we have any decimals (determines return type)
-        bool hasDecimal = list.Any(e => e.Value is decimal);
-        decimal sum = 0;
-
-        foreach (var element in list)
-        {
-            var value = element.Value;
-            if (value is int i)
-            {
-                sum += i;
-            }
-            else if (value is decimal d)
-            {
-                sum += d;
-            }
-            else if (value is long l)
-            {
-                sum += l;
-            }
-            else
-            {
-                // Incompatible type in collection
-                return [];
-            }
-        }
-
-        // If any decimal, return decimal; otherwise return integer if possible
-        if (hasDecimal)
-        {
-            return [CreateDecimal(sum)];
-        }
-
-        // For integer-only collections, return as integer if within range
-        if (sum == Math.Floor(sum) && sum >= int.MinValue && sum <= int.MaxValue)
-        {
-            return [CreateInteger((int)sum)];
-        }
-
-        // Overflow or fractional result - return as decimal
-        return [CreateDecimal(sum)];
-    }
-
-    #endregion
-
-    #region Min/Max Implementations
-
-    private static IEnumerable<IElement> MinMaxQuantities(List<IElement> list, bool isMax)
-    {
-        // All quantities must have the same unit
-        var quantities = list.Select(e => e.Value as FhirQuantity).ToList();
-        if (quantities.Any(q => q == null))
-            return []; // Mixed types
-
-        var firstUnit = quantities[0]!.Unit;
-        if (!quantities.All(q => q!.Unit == firstUnit))
-            return []; // Different units
-
-        // Find min/max
-        var result = isMax
-            ? quantities.MaxBy(q => q!.Value)
-            : quantities.MinBy(q => q!.Value);
-
-        return result != null ? [FunctionHelpers.CreateQuantity(result)] : [];
-    }
-
-    private static IEnumerable<IElement> MinMaxNumeric(List<IElement> list, bool isMax)
-    {
-        IElement? result = null;
-        decimal? extremeValue = null;
-
-        foreach (var element in list)
-        {
-            var value = element.Value;
-            decimal numericValue;
-
-            if (value is int i)
-            {
-                numericValue = i;
-            }
-            else if (value is decimal d)
-            {
-                numericValue = d;
-            }
-            else if (value is long l)
-            {
-                numericValue = l;
-            }
-            else
-            {
-                // Skip incompatible types
-                continue;
-            }
-
-            if (extremeValue == null ||
-                (isMax && numericValue > extremeValue.Value) ||
-                (!isMax && numericValue < extremeValue.Value))
-            {
-                extremeValue = numericValue;
-                result = element;
-            }
-        }
-
-        return result != null ? [result] : [];
-    }
-
-    private static IEnumerable<IElement> MinMaxString(List<IElement> list, bool isMax)
-    {
-        IElement? result = null;
-        string? extremeValue = null;
-
-        foreach (var element in list)
-        {
-            if (element.Value is not string s)
-                continue;
-
-            if (extremeValue == null ||
-                (isMax && string.Compare(s, extremeValue, StringComparison.Ordinal) > 0) ||
-                (!isMax && string.Compare(s, extremeValue, StringComparison.Ordinal) < 0))
-            {
-                extremeValue = s;
-                result = element;
-            }
-        }
-
-        return result != null ? [result] : [];
+        return Total(list, "avg()", average: true);
     }
 
     /// <summary>
-    /// Selects the earliest or latest element of a date/dateTime/instant collection.
+    /// Selects the least or greatest element of a collection.
     /// </summary>
     /// <remarks>
-    /// The winning <see cref="IElement"/> is returned as-is rather than reconstructed as a
-    /// <see cref="FunctionHelpers.PrimitiveElement"/> over its literal. Rebuilding it re-typed a
-    /// resource-backed <see cref="FhirTemporal"/> back down to a wire string, so everything
-    /// downstream that dispatches on the typed value - arithmetic, ordering, boundary functions -
-    /// silently fell through to its string branch. min()/max() select an item; they do not
-    /// construct one, and every sibling here (MinMaxTime, MinMaxNumeric, MinMaxString,
-    /// MinMaxQuantities) already returns the element it picked.
+    /// <para>
+    /// The winning <see cref="IElement"/> is returned as-is rather than reconstructed. Rebuilding it
+    /// re-typed a resource-backed <see cref="FhirTemporal"/> back down to a wire string, so everything
+    /// downstream that dispatches on the typed value - arithmetic, ordering, boundary functions - silently
+    /// fell through to its string branch. It also settles which unit the extreme of a mixed-unit
+    /// collection comes back in: its own. <c>(1 'm' | 50 'cm').min()</c> is <c>50 'cm'</c>, because
+    /// selecting is all these two functions do. <c>sum()</c> and <c>avg()</c> have to construct a value
+    /// and so must name a unit; they use the first operand's.
+    /// </para>
+    /// <para>
+    /// An indeterminate comparison abandons the whole result. There is no incumbent to fall back on the
+    /// way <c>sort()</c> falls back on stable order: if the candidate and the running extreme cannot be
+    /// ordered against each other then neither of them is demonstrably the extreme, and answering with
+    /// one of them would be a guess dressed as an answer. Empty is also what the collection functions
+    /// reach for elsewhere when FHIRPath declines to decide - incompatible quantity units are the spec's
+    /// own empty, and overlapping partial-precision temporals are indeterminate by construction.
+    /// </para>
     /// </remarks>
-    private static IEnumerable<IElement> MinMaxDate(List<IElement> list, bool isMax)
+    private static IEnumerable<IElement> Extreme(IEnumerable<IElement> elements, string function, bool isMax)
     {
-        IElement? result = null;
-        DateTime extreme = default;
+        var list = Materialize(elements);
 
-        foreach (var element in list)
+        if (list.Count == 0)
         {
-            if (!TryGetComparableDate(element, out var parsed))
-                continue;
-
-            if (result is null || (isMax ? parsed > extreme : parsed < extreme))
-            {
-                extreme = parsed;
-                result = element;
-            }
+            return [];
         }
 
-        return result is not null ? [result] : [];
-    }
+        var extreme = list[0];
 
-    private static bool TryGetComparableDate(IElement element, out DateTime parsed)
-    {
-        parsed = default;
-
-        var dateString = element.Value switch
+        for (var index = 1; index < list.Count; index++)
         {
-            DateTime dt => dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            DateTimeOffset dto => dto.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
-            FhirTemporal fhirTemporal => fhirTemporal.Literal,
-            string s when s.StartsWith('@') => s.Substring(1),
-            string s => s,
-            _ => null
-        };
+            var comparison = SortComparer.CompareValues(list[index], extreme, function);
 
-        return dateString is not null && TryParseDate(dateString, out parsed);
-    }
-
-    private static IEnumerable<IElement> MinMaxTime(List<IElement> list, bool isMax)
-    {
-        // FHIR time values (HH:mm:ss[.fff]) sort correctly under ordinal string comparison
-        // because the format is zero-padded and fixed-width per component. A time value has
-        // no date component, so parsing to DateTime is semantically wrong; MinMaxDate cannot
-        // be reused here.
-        string? extremeValue = null;
-        IElement? result = null;
-
-        foreach (var element in list)
-        {
-            string? timeString = null;
-
-            if (element.Value is FhirTemporal fhirTemporal && fhirTemporal.Kind == FhirPrimitive.Time)
+            if (comparison is null)
             {
-                timeString = fhirTemporal.Literal;
-            }
-            else if (element.Value is string s)
-            {
-                // Plain HH:mm:ss[.fff] string — occurs in mixed collections where a resource
-                // time element appears alongside FhirTemporal instances.
-                timeString = s;
-            }
-
-            if (timeString == null)
-                continue;
-
-            var comparison = extremeValue is null ? -1
-                : string.Compare(timeString, extremeValue, StringComparison.Ordinal);
-
-            if (extremeValue == null || (isMax && comparison > 0) || (!isMax && comparison < 0))
-            {
-                extremeValue = timeString;
-                result = element;
-            }
-        }
-
-        return result is not null ? [result] : [];
-    }
-
-    #endregion
-
-    #region Avg Implementations
-
-    private static IEnumerable<IElement> AvgQuantities(List<IElement> list)
-    {
-        // All quantities must have the same unit
-        var quantities = list.Select(e => e.Value as FhirQuantity).ToList();
-        if (quantities.Any(q => q == null))
-            return []; // Mixed types
-
-        var firstUnit = quantities[0]!.Unit;
-        if (!quantities.All(q => q!.Unit == firstUnit))
-            return []; // Different units
-
-        // Average all values
-        decimal avg = quantities.Average(q => q!.Value);
-        var resultQuantity = new FhirQuantity(avg, firstUnit);
-        return [FunctionHelpers.CreateQuantity(resultQuantity)];
-    }
-
-    private static IEnumerable<IElement> AvgNumeric(List<IElement> list)
-    {
-        decimal sum = 0;
-        int count = 0;
-
-        foreach (var element in list)
-        {
-            var value = element.Value;
-            if (value is int i)
-            {
-                sum += i;
-                count++;
-            }
-            else if (value is decimal d)
-            {
-                sum += d;
-                count++;
-            }
-            else if (value is long l)
-            {
-                sum += l;
-                count++;
-            }
-            else
-            {
-                // Incompatible type in collection
                 return [];
             }
+
+            if (isMax ? comparison > 0 : comparison < 0)
+            {
+                extreme = list[index];
+            }
         }
 
-        if (count == 0)
-            return [];
-
-        // avg() always returns decimal, even for integer collections
-        decimal avg = sum / count;
-        return [CreateDecimal(avg)];
+        return [extreme];
     }
 
-    #endregion
-
-    #region Helper Methods
-
-    private static bool IsNumeric(object? value)
+    /// <summary>
+    /// Totals a collection, optionally dividing by its size.
+    /// </summary>
+    /// <remarks>
+    /// The presence of any Quantity - not the type of the head - selects the quantity path, and plain
+    /// numbers reaching it are read as the unity quantity FHIRPath's implicit conversion gives them. That
+    /// is what makes <c>(1 | 5 'mg').sum()</c> an incompatible-units empty rather than the <c>1</c> that
+    /// dispatching on <c>list[0]</c> used to return.
+    /// </remarks>
+    private static IEnumerable<IElement> Total(List<IElement> list, string function, bool average)
     {
-        return value is int or long or decimal or double or float;
+        return list.Exists(element => element.Value is FhirQuantity)
+            ? TotalQuantities(list, function, average)
+            : TotalNumbers(list, function, average);
     }
 
-    private static bool IsDateOrDateTime(IElement element)
+    /// <summary>
+    /// Totals a collection of quantities, converting each into the first operand's unit.
+    /// </summary>
+    private static IEnumerable<IElement> TotalQuantities(List<IElement> list, string function, bool average)
     {
-        // CA1308 suppressed: FhirPath type names are lowercase by specification
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        var type = element.InstanceType?.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        return type == "date" || type == "datetime";
-    }
+        var unit = AsQuantity(list[0], function).Unit;
+        decimal total = 0;
 
-    private static bool TryParseDate(string value, out DateTime result)
-    {
-        // Try parsing ISO 8601 date formats
-        var formats = new[]
+        foreach (var element in list)
         {
-            "yyyy-MM-dd",
-            "yyyy-MM-ddTHH:mm:ss",
-            "yyyy-MM-ddTHH:mm:ssZ",
-            "yyyy-MM-ddTHH:mm:ss.fff",
-            "yyyy-MM-ddTHH:mm:ss.fffZ",
-            "yyyy-MM-ddTHH:mm:sszzz",
-            "yyyy-MM-ddTHH:mm:ss.fffzzz"
+            // ConvertTo returns the value untouched for an exact unit match, so a unit UCUM has never
+            // heard of still totals against itself rather than collapsing to empty.
+            var converted = AsQuantity(element, function).ConvertTo(unit, UnitConverter);
+
+            if (converted is null)
+            {
+                return [];
+            }
+
+            total += converted.Value;
+        }
+
+        return [FunctionHelpers.CreateQuantity(new FhirQuantity(average ? total / list.Count : total, unit))];
+    }
+
+    /// <summary>
+    /// Totals a collection of numbers, answering Integer only when every operand and the result are.
+    /// </summary>
+    private static IEnumerable<IElement> TotalNumbers(List<IElement> list, string function, bool average)
+    {
+        decimal total = 0;
+        var hasFraction = false;
+
+        foreach (var element in list)
+        {
+            if (!TryReadNumber(element.Value, out var number))
+            {
+                throw NotSummable(element, function);
+            }
+
+            hasFraction |= element.Value is decimal or double or float;
+            total += number;
+        }
+
+        if (average)
+        {
+            return [CreateDecimal(total / list.Count)];
+        }
+
+        if (hasFraction || total < int.MinValue || total > int.MaxValue)
+        {
+            return [CreateDecimal(total)];
+        }
+
+        return [CreateInteger((int)total)];
+    }
+
+    /// <summary>
+    /// Drops the elements that carry no value, so that a comparison never has to answer for a null.
+    /// </summary>
+    private static List<IElement> Materialize(IEnumerable<IElement> elements)
+    {
+        return elements.Where(element => element?.Value is not null).ToList();
+    }
+
+    private static FhirQuantity AsQuantity(IElement element, string function)
+    {
+        return SortComparer.AsQuantity(element.Value!) ?? throw NotSummable(element, function);
+    }
+
+    /// <summary>
+    /// Reads a value as a <see cref="decimal"/> contribution to a total.
+    /// </summary>
+    /// <remarks>
+    /// The Integer and Decimal cases are <see cref="SortComparer.TryToDecimal"/>'s, so the engine has one
+    /// answer to "which CLR types are a FHIRPath number". The bridge from <see cref="double"/> is added
+    /// here and only here: FHIRPath's own numeric type is Decimal and a double reaches
+    /// <see cref="IElement.Value"/> only by way of a JSON reader, but a decimal-typed element read off the
+    /// wire really can arrive as one, and refusing to total it would fail on real data. Values outside
+    /// decimal's range are refused rather than saturated, because a truncated total is a wrong answer
+    /// where an error is a visible one.
+    /// </remarks>
+    private static bool TryReadNumber(object? value, out decimal result)
+    {
+        if (value is not null && SortComparer.TryToDecimal(value, out result))
+        {
+            return true;
+        }
+
+        result = 0m;
+
+        var widened = value switch
+        {
+            double number => number,
+            float number => number,
+            _ => (double?)null
         };
 
-        return DateTime.TryParseExact(
-            value,
-            formats,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-            out result);
+        if (widened is null || widened.Value < (double)decimal.MinValue || widened.Value > (double)decimal.MaxValue)
+        {
+            return false;
+        }
+
+        result = (decimal)widened.Value;
+        return true;
+    }
+
+    /// <summary>
+    /// Reports an operand that has no arithmetic relating it to the rest of the collection.
+    /// </summary>
+    /// <remarks>
+    /// This is an error rather than an empty because FHIRPath's <c>+</c> is an error across unrelated
+    /// types, and these functions are defined in terms of it. The empty result is reserved for the case
+    /// the spec actually assigns it to - operands that are the right type but whose units do not relate -
+    /// so the two outcomes stay distinguishable instead of both meaning "something went wrong".
+    /// </remarks>
+    private static FhirPathEvaluationException NotSummable(IElement element, string function)
+    {
+        return new FhirPathEvaluationException(
+            $"{function} cannot total an operand of type '{FhirPathEvaluator.DescribeOperandType(element)}'.");
     }
 
     private static IElement CreateInteger(int value) => new FunctionHelpers.PrimitiveElement(value, "integer");
-    private static IElement CreateDecimal(decimal value) => new FunctionHelpers.PrimitiveElement(value, "decimal");
 
-    #endregion
+    private static IElement CreateDecimal(decimal value) => new FunctionHelpers.PrimitiveElement(value, "decimal");
 }

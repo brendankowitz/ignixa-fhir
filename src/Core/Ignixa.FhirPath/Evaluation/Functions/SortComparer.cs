@@ -1,7 +1,8 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * The ordering rule behind sort(), kept tri-state so indeterminacy stays distinguishable from equality.
+ * The ordering rule behind sort(), min() and max(), kept tri-state so indeterminacy stays distinguishable
+ * from equality.
  */
 
 using Ignixa.Abstractions;
@@ -10,7 +11,7 @@ using Ignixa.FhirPath.Types;
 namespace Ignixa.FhirPath.Evaluation.Functions;
 
 /// <summary>
-/// Orders two FHIRPath values for <c>sort()</c>.
+/// Orders two FHIRPath values for <c>sort()</c>, <c>min()</c> and <c>max()</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -59,6 +60,8 @@ internal sealed class SortComparer : IComparer<IElement?>
     /// <exception cref="FhirPathEvaluationException">The two keys have no ordering defined between them.</exception>
     public int Compare(IElement? x, IElement? y)
     {
+        const string Function = "sort()";
+
         var left = x?.Value;
         var right = y?.Value;
 
@@ -81,11 +84,18 @@ internal sealed class SortComparer : IComparer<IElement?>
         // normative FHIRPath 2.0.0 at all; the 3.0.0 build says only that "attempting to sort items with
         // incompatible types will result in an error" and is silent on what a pairwise comparison that is
         // *empty* rather than erroneous should do. Zero is chosen because OrderBy/ThenBy are stable, so it
-        // means "leave these two in the order they arrived" rather than "these are equal" - and because it
-        // is what Firely 5.11.4 does (ValueProviderComparer coalesces its own int? with ?? 0). The
-        // coalesce lives here rather than inside CompareValues so the comparison stays honest about which
-        // pairs it could not order.
-        return CompareValues(x!, y!) ?? 0;
+        // means "leave these two in the order they arrived" rather than "these are equal".
+        //
+        // There is no Firely behaviour to match here, and an earlier revision of this comment wrongly said
+        // there was. Firely 5.11.4 - the version the fhir-server seam must reproduce - does not implement
+        // sort() at all: a scan of Hl7.Fhir.Base.dll 5.11.4 finds no registration for sort, avg, sum or max,
+        // and no ValueProviderComparer, runSort or OrderedNode type. Those exist only on Firely's later
+        // development line. So this rule is answerable to the spec text above and to nothing else, and no
+        // expression reaching the seam can currently exercise it through the Firely provider.
+        //
+        // The coalesce lives here rather than inside CompareValues so the comparison stays honest about
+        // which pairs it could not order.
+        return CompareValues(x!, y!, Function) ?? 0;
     }
 
     /// <summary>
@@ -93,6 +103,7 @@ internal sealed class SortComparer : IComparer<IElement?>
     /// </summary>
     /// <param name="left">The left operand.</param>
     /// <param name="right">The right operand.</param>
+    /// <param name="function">The FHIRPath function requesting the comparison, for diagnostics.</param>
     /// <returns>
     /// A negative value, zero, a positive value, or <see langword="null"/> when the ordering is
     /// indeterminate - incompatible quantity units, or temporals whose precision or timezone presence
@@ -102,10 +113,20 @@ internal sealed class SortComparer : IComparer<IElement?>
     /// The operands are of types no conversion relates, or of a type FHIRPath defines no ordering for.
     /// </exception>
     /// <remarks>
+    /// <para>
     /// Neither operand's <see cref="IElement.Value"/> may be <see langword="null"/>; callers screen that
     /// case, because a missing key is a question about where nulls sort rather than about ordering.
+    /// </para>
+    /// <para>
+    /// <c>min()</c> and <c>max()</c> call this too. The FHIRPath spec defines them in terms of the
+    /// <c>&lt;</c> and <c>&gt;</c> operators - <c>aggregate(iif($total.empty(), $this, iif($this &lt; $total,
+    /// $this, $total)))</c> - so they must not have an ordering rule of their own, which is exactly the
+    /// mistake they used to make: a per-type ladder chosen from the collection's first element, with units
+    /// matched by raw string equality and temporals re-parsed to <see cref="DateTime"/>.
+    /// <paramref name="function"/> exists only so the resulting error names the caller.
+    /// </para>
     /// </remarks>
-    public static int? CompareValues(IElement left, IElement right)
+    public static int? CompareValues(IElement left, IElement right, string function)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -116,7 +137,7 @@ internal sealed class SortComparer : IComparer<IElement?>
         if (TemporalOperand.IsTemporal(leftValue, left.InstanceType)
             || TemporalOperand.IsTemporal(rightValue, right.InstanceType))
         {
-            return CompareTemporals(left, right);
+            return CompareTemporals(left, right, function);
         }
 
         // FHIRPath's Comparison section defines the ordering operators for String, Integer, Decimal,
@@ -124,12 +145,12 @@ internal sealed class SortComparer : IComparer<IElement?>
         // IComparable that would happily order false before true, so it has to be excluded by name.
         if (leftValue is bool || rightValue is bool)
         {
-            throw NotOrderable(left, right);
+            throw NotOrderable(left, right, function);
         }
 
         if (leftValue is FhirQuantity || rightValue is FhirQuantity)
         {
-            return CompareQuantities(left, right);
+            return CompareQuantities(left, right, function);
         }
 
         if (TryCompareNumbers(leftValue, rightValue, out var numeric))
@@ -151,14 +172,14 @@ internal sealed class SortComparer : IComparer<IElement?>
             return comparable.CompareTo(rightValue);
         }
 
-        throw NotOrderable(left, right);
+        throw NotOrderable(left, right, function);
     }
 
     /// <summary>
     /// Orders two temporals, reconciling a typed <see cref="FhirTemporal"/> against the raw string a
     /// FHIRPath <c>@</c>-literal still evaluates to.
     /// </summary>
-    private static int? CompareTemporals(IElement left, IElement right)
+    private static int? CompareTemporals(IElement left, IElement right, string function)
     {
         var leftTemporal = TemporalOperand.AsTemporal(left.Value, left.InstanceType);
         var rightTemporal = TemporalOperand.AsTemporal(right.Value, right.InstanceType);
@@ -171,7 +192,7 @@ internal sealed class SortComparer : IComparer<IElement?>
             return TemporalOperand.IsTemporal(left.Value, left.InstanceType)
                 && TemporalOperand.IsTemporal(right.Value, right.InstanceType)
                     ? null
-                    : throw NotOrderable(left, right);
+                    : throw NotOrderable(left, right, function);
         }
 
         return FhirTemporal.Compare(leftTemporal, rightTemporal);
@@ -180,14 +201,14 @@ internal sealed class SortComparer : IComparer<IElement?>
     /// <summary>
     /// Orders two quantities by converting the right operand into the left's unit.
     /// </summary>
-    private static int? CompareQuantities(IElement left, IElement right)
+    private static int? CompareQuantities(IElement left, IElement right, string function)
     {
         var leftQuantity = AsQuantity(left.Value!);
         var rightQuantity = AsQuantity(right.Value!);
 
         if (leftQuantity is null || rightQuantity is null)
         {
-            throw NotOrderable(left, right);
+            throw NotOrderable(left, right, function);
         }
 
         if (!UnitConverter.IsCompatible(leftQuantity.Unit, rightQuantity.Unit))
@@ -206,9 +227,10 @@ internal sealed class SortComparer : IComparer<IElement?>
     /// <remarks>
     /// The unity unit is what makes <c>1 'mg'</c> against <c>5</c> an incompatible-units case rather than
     /// a type error, which is the same reading <see cref="QuantityEvaluator.EvaluateComparison"/> gives
-    /// the <c>&lt;</c> and <c>&gt;</c> operators. Sorting and comparing must not disagree about it.
+    /// the <c>&lt;</c> and <c>&gt;</c> operators. Sorting, comparing and totalling must not disagree
+    /// about it, which is why <see cref="AggregateFunctions"/> reads its operands through here too.
     /// </remarks>
-    private static FhirQuantity? AsQuantity(object value)
+    internal static FhirQuantity? AsQuantity(object value)
     {
         return value switch
         {
@@ -252,7 +274,16 @@ internal sealed class SortComparer : IComparer<IElement?>
         return false;
     }
 
-    private static bool TryToDecimal(object value, out decimal result)
+    /// <summary>
+    /// Reads a value as a <see cref="decimal"/> across FHIRPath's Integer and Decimal types.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="AggregateFunctions"/> totals through this so that "which CLR types are a FHIRPath
+    /// number" has one answer. Note what is absent: <see cref="double"/> and <see cref="float"/> are
+    /// deliberately not here, because ordering demotes to binary floating point rather than widening -
+    /// see <see cref="TryCompareNumbers"/> - and a total, which has no such escape, bridges them itself.
+    /// </remarks>
+    internal static bool TryToDecimal(object value, out decimal result)
     {
         switch (value)
         {
@@ -296,10 +327,10 @@ internal sealed class SortComparer : IComparer<IElement?>
         }
     }
 
-    private static FhirPathEvaluationException NotOrderable(IElement left, IElement right)
+    private static FhirPathEvaluationException NotOrderable(IElement left, IElement right, string function)
     {
         return new FhirPathEvaluationException(
-            $"sort() cannot order operands of type '{FhirPathEvaluator.DescribeOperandType(left)}' " +
+            $"{function} cannot order operands of type '{FhirPathEvaluator.DescribeOperandType(left)}' " +
             $"and '{FhirPathEvaluator.DescribeOperandType(right)}'.");
     }
 }
