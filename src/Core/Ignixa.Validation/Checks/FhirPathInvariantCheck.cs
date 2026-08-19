@@ -20,9 +20,27 @@ namespace Ignixa.Validation.Checks;
 /// Used in Spec and Full validation depths.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This check evaluates FHIRPath constraint expressions defined in FHIR StructureDefinitions.
 /// Examples: ele-1 (all elements must have @value or children), dom-1 (contained resources must have id).
 /// Uses lazy compilation for performance - expressions are parsed once and cached.
+/// </para>
+/// <para>
+/// <b>Exception-path severity is a deliberate position, not an oversight.</b> The spec's
+/// conformance-rules.html is silent on what to do when a constraint expression cannot be evaluated
+/// at all, and the two reference implementations disagree with each other: Firely's
+/// <c>InvariantValidator</c> always degrades an evaluation exception to a non-failing Warning,
+/// regardless of the constraint's declared severity, while HAPI reports an Error and counts it
+/// toward the resource's failure tally (per <c>hapifhir/org.hl7.fhir.core</c> issues #1338 and
+/// #1326 - observed from the issue discussion, not confirmed against HAPI's source). This code
+/// follows Firely: a known engine gap (<see cref="NotSupportedException"/>) or an expression the
+/// engine correctly refuses to evaluate (<see cref="FhirPathEvaluationException"/>) never fails
+/// the resource. The fhir-server ingestion seam sits downstream of this check and must not start
+/// rejecting resources Firely accepts over a constraint neither engine can evaluate - HAPI's
+/// stricter reading would do exactly that. An exception of any other type is treated as a genuine
+/// engine defect and fails loudly, so it cannot silently pass a resource or inflate conformance
+/// metrics.
+/// </para>
 /// </remarks>
 public class FhirPathInvariantCheck : IValidationCheck
 {

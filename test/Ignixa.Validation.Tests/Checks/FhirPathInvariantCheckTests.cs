@@ -666,6 +666,285 @@ public class FhirPathInvariantCheckTests
 
     #endregion
 
+    /// <summary>
+    /// Pins the "expression yields true" branch: the constraint passes and no issue is
+    /// raised at all. Companion to the false/empty/exception branches pinned below, so a
+    /// refactor that touches <see cref="FhirPathInvariantCheck.IsResultTrue"/> or the
+    /// success path has a positive control to fail against too.
+    /// </summary>
+    [Fact]
+    public void GivenExpressionYieldingTrue_WhenValidating_ThenValidWithNoIssues()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-true",
+            Severity = ConstraintSeverity.Error,
+            Human = "Gender must exist",
+            Expression = "gender = 'male'",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Pins the "expression yields false" branch on an Error-severity constraint: invalid,
+    /// with an Error-severity issue. Paired with
+    /// <see cref="GivenExpressionYieldingFalseOnWarningConstraint_WhenValidating_ThenValidWithWarning"/>,
+    /// which proves the issue's severity is read from <c>_constraint.Severity</c> rather than
+    /// hardcoded to Error - a refactor that hardcodes either value passes exactly one of the pair.
+    /// </summary>
+    [Fact]
+    public void GivenExpressionYieldingFalse_WhenValidating_ThenInvalidWithErrorSeverity()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-false-error",
+            Severity = ConstraintSeverity.Error,
+            Human = "Gender must be female",
+            Expression = "gender = 'female'",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeFalse();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Error);
+        result.Issues[0].Code.ShouldBe("pin-false-error");
+    }
+
+    /// <summary>
+    /// Same false-evaluating expression as
+    /// <see cref="GivenExpressionYieldingFalse_WhenValidating_ThenInvalidWithErrorSeverity"/>, but the
+    /// constraint itself declares Warning severity. The result must stay non-failing
+    /// (<c>IsValid: true</c>) with a Warning-severity issue - proving severity is sourced from the
+    /// constraint's own declared severity, not hardcoded to Error in the false-branch.
+    /// </summary>
+    [Fact]
+    public void GivenExpressionYieldingFalseOnWarningConstraint_WhenValidating_ThenValidWithWarning()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-false-warning",
+            Severity = ConstraintSeverity.Warning,
+            Human = "Gender should be female",
+            Expression = "gender = 'female'",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""gender"":""male""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("pin-false-warning");
+    }
+
+    /// <summary>
+    /// Pins the "expression yields empty" branch to the same outcome as an explicit
+    /// <c>false</c> - invalid, with the issue carrying the constraint's own declared severity
+    /// (Error here, exercised at Warning by the false-branch pair above).
+    /// </summary>
+    /// <remarks>
+    /// This is the branch most likely to be "fixed" by someone who reasons that an empty result
+    /// is indeterminate rather than failing. It is not: FHIR's <c>conformance-rules.html</c> for
+    /// R4, R5 and R6 all require the constraint expression to "evaluate to true" - not merely "not
+    /// evaluate to false" - so empty must fail alongside false, and FHIRPath's singleton-coercion
+    /// rule (used elsewhere to fold a one-item collection into a boolean) never applies to the
+    /// empty collection. Firely's reference <c>InvariantValidator</c> encodes the same reading: it
+    /// evaluates constraints with the strict <c>IsTrue</c> predicate (<c>result is not null &amp;&amp;
+    /// result.Value</c>), which is deliberately distinct from the lenient <c>Predicate</c> helper
+    /// it uses elsewhere for slicing discriminators, where empty is treated as "does not match"
+    /// rather than "constraint violated". Spec, Firely and this code all agree: don't relax this.
+    /// </remarks>
+    [Fact]
+    public void GivenExpressionYieldingEmpty_WhenValidating_ThenInvalidWithSameSeverityAsFalse()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-empty",
+            Severity = ConstraintSeverity.Error,
+            Human = "Must have a name with family 'Nonexistent'",
+            Expression = "name.where(family = 'Nonexistent')",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert - same shape as the false-branch: invalid, Error severity (the constraint's own)
+        result.IsValid.ShouldBeFalse();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Error);
+        result.Issues[0].Code.ShouldBe("pin-empty");
+    }
+
+    /// <summary>
+    /// Pins the <see cref="NotSupportedException"/> branch: an unimplemented FHIRPath function
+    /// (<c>conformsTo()</c>) is an engine gap, not a resource defect, so evaluation degrades to a
+    /// non-failing Warning rather than rejecting the resource.
+    /// </summary>
+    [Fact]
+    public void GivenConstraintThrowingNotSupportedException_WhenValidating_ThenValidWithWarning()
+    {
+        // Arrange - conformsTo() parses fine but throws NotSupportedException at evaluation
+        // (FhirSpecificFunctions.ConformsTo: "requires profile validation infrastructure").
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-notsupported",
+            Severity = ConstraintSeverity.Error,
+            Human = "Uses an unimplemented function",
+            Expression = "conformsTo('http://hl7.org/fhir/StructureDefinition/Patient')",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient""}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert
+        result.IsValid.ShouldBeTrue();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("pin-notsupported");
+    }
+
+    /// <summary>
+    /// Pins the <see cref="FhirPathEvaluationException"/> branch using R4's actual <c>tim-9</c>
+    /// expression: <c>offset.empty() or (when.exists() and ((when in ('C' | 'CM' | 'CD' |
+    /// 'CV')).not()))</c>. <c>Timing.repeat.when</c> is <c>0..*</c>, and FHIRPath's <c>in</c>
+    /// operator requires a singleton left operand (<see cref="FhirPathEvaluator.EvaluateMembership"/>),
+    /// so a <c>repeat</c> with two <c>when</c> codes makes the engine correctly refuse to evaluate -
+    /// this is a defect in the constraint's text (R5 rewrote it as
+    /// <c>when.select($this in (...)).allFalse()</c> for exactly this reason), not evidence the
+    /// instance is invalid. <c>offset</c> must be present so <c>offset.empty()</c> is false and the
+    /// short-circuiting <c>or</c> does not skip the ill-formed right-hand side.
+    /// </summary>
+    [Fact]
+    public void GivenConstraintThrowingFhirPathEvaluationException_WhenValidating_ThenValidWithWarning()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "tim-9",
+            Severity = ConstraintSeverity.Error,
+            Human = "If there's an offset, there must be a when (and not C, CM, CD, CV)",
+            Expression = "offset.empty() or (when.exists() and ((when in ('C' | 'CM' | 'CD' | 'CV')).not()))",
+            Xpath = null,
+            AppliesTo = new[] { "Timing.repeat" }
+        };
+
+        var json = JsonNode.Parse(@"{""offset"":15,""when"":[""MORN"",""EVE""]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert - an ill-formed constraint must not reject a conformant instance
+        result.IsValid.ShouldBeTrue();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("tim-9");
+    }
+
+    /// <summary>
+    /// Pins the catch-all branch: an evaluation failure that is neither a known engine gap
+    /// (<see cref="NotSupportedException"/>) nor a correctly-signalled evaluation error
+    /// (<see cref="FhirPathEvaluationException"/>) is an unexpected engine defect and must fail
+    /// loudly - invalid, Error severity - rather than being masked as a benign warning.
+    /// <c>substring()</c> called with no arguments throws a plain <see cref="ArgumentException"/>
+    /// (<c>StringFunctions.Substring</c>: "substring() requires a start argument"), which is
+    /// exactly such an unclassified failure.
+    /// </summary>
+    [Fact]
+    public void GivenConstraintThrowingUnclassifiedException_WhenValidating_ThenInvalidWithError()
+    {
+        // Arrange
+        var constraint = new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "pin-unexpected",
+            Severity = ConstraintSeverity.Error,
+            Human = "Malformed use of substring()",
+            Expression = "name.first().family.substring()",
+            Xpath = null,
+            AppliesTo = new[] { "Patient" }
+        };
+
+        var json = JsonNode.Parse(@"{""resourceType"":""Patient"",""name"":[{""family"":""Doe""}]}");
+        var sourceNode = JsonNodeSourceNode.Create(json);
+        var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
+
+        // Act
+        var result = check.Validate(element, settings, state);
+
+        // Assert - an unexpected engine defect must be loud, not swallowed
+        result.IsValid.ShouldBeFalse();
+        result.Issues.Count.ShouldBe(1);
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Error);
+        result.Issues[0].Code.ShouldBe("pin-unexpected");
+    }
+
+
     #region Performance
 
     /// <summary>
