@@ -121,13 +121,40 @@ public class SearchIndexerFailureContainmentTests
     }
 
     [Fact]
-    public void GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheWriteSurvivesAndOtherParametersStillIndex()
+    public void GivenANonCompositeWhoseExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex()
     {
-        // Arrange - a custom composite whose root expression cannot be evaluated. ProcessCompositeSearchParameter
-        // is a yield iterator, so the root Select's error surfaced at Extract's entries.AddRange and propagated
-        // straight out of ISearchIndexer.Extract, failing the whole write over one bad custom parameter.
-        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenRootComposite()]);
+        // Arrange
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenNonComposite()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
+        var observation = ObservationJson();
+        var element = observation.ToElement(_schemaProvider);
 
+        // The hazard is real: evaluating the non-composite expression against this resource throws.
+        Should.Throw<Exception>(() => element.Select(BrokenNonCompositeExpression).ToList());
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert
+        var failureLog = captured.Single(c => c.Message.Contains(BrokenNonCompositeExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(BrokenNonCompositeUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+
+        indices.Count(i => i.SearchParameter.Code == BrokenNonCompositeCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+    }
+
+    [Fact]
+    public void GivenACompositeWhoseRootExpressionFails_WhenIndexed_ThenTheFailureIsLoggedAndSiblingParametersStillIndex()
+    {
+        // Arrange
+        var captured = new List<(LogLevel Level, string Message)>();
+        _searchParameterDefinitionManager.AddNewSearchParameters([BrokenRootComposite()]);
+        var indexer = CreateIndexer(new CapturingLoggerFactory(captured));
         var observation = ObservationJson();
         var element = observation.ToElement(_schemaProvider);
 
@@ -135,17 +162,46 @@ public class SearchIndexerFailureContainmentTests
         Should.Throw<Exception>(() => element.Select(BrokenRootExpression).ToList());
 
         // Act
-        var indices = Should.NotThrow(() => _indexer.Extract(element));
+        var indices = Should.NotThrow(() => indexer.Extract(element));
 
         // Assert
-        indices.ShouldNotBeEmpty();
-        indices.Select(i => i.SearchParameter.Code).ShouldContain("status");
-        indices.Select(i => i.SearchParameter.Code).ShouldNotContain(BrokenCompositeCode);
+        var failureLog = captured.Single(c => c.Message.Contains(BrokenRootExpression, StringComparison.Ordinal));
+        failureLog.Level.ShouldBe(LogLevel.Warning);
+        failureLog.Message.ShouldContain(BrokenCompositeUrl);
+        failureLog.Message.ShouldContain("Observation/o1");
+
+        indices.Count(i => i.SearchParameter.Code == BrokenCompositeCode).ShouldBe(0);
+        indices.Count(i => i.SearchParameter.Code == "status").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "value-quantity").ShouldBe(1);
+        indices.Count(i => i.SearchParameter.Code == "code-value-quantity").ShouldBe(1);
     }
 
+    private const string BrokenNonCompositeCode = "broken-non-composite";
+    private const string BrokenNonCompositeExpression = "Observation.value.ofType(Quantity) + 'not-a-number'";
+    private const string BrokenNonCompositeUrl = "http://example.org/fhir/SearchParameter/broken-non-composite";
     private const string BrokenCompositeCode = "broken-root-composite";
-
     private const string BrokenRootExpression = "Observation.value.ofType(Quantity) + 'not-a-number'";
+    private const string BrokenCompositeUrl = "http://example.org/fhir/SearchParameter/broken-root-composite";
+
+    private IElement BrokenNonComposite()
+    {
+        string json = $$"""
+            {
+              "resourceType": "SearchParameter",
+              "id": "{{BrokenNonCompositeCode}}",
+              "url": "{{BrokenNonCompositeUrl}}",
+              "name": "{{BrokenNonCompositeCode}}",
+              "status": "active",
+              "code": "{{BrokenNonCompositeCode}}",
+              "base": [ "Observation" ],
+              "type": "string",
+              "expression": "{{BrokenNonCompositeExpression}}"
+            }
+            """;
+
+        return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
+    }
 
     private IElement BrokenRootComposite()
     {
@@ -153,7 +209,7 @@ public class SearchIndexerFailureContainmentTests
             {
               "resourceType": "SearchParameter",
               "id": "{{BrokenCompositeCode}}",
-              "url": "http://example.org/fhir/SearchParameter/{{BrokenCompositeCode}}",
+              "url": "{{BrokenCompositeUrl}}",
               "name": "{{BrokenCompositeCode}}",
               "status": "active",
               "code": "{{BrokenCompositeCode}}",
@@ -175,6 +231,13 @@ public class SearchIndexerFailureContainmentTests
 
         return ResourceJsonNode.Parse(json).ToElement(_schemaProvider);
     }
+
+    private ISearchIndexer CreateIndexer(ILoggerFactory loggerFactory)
+        => SearchIndexerFactory.CreateInstance(
+            _schemaProvider,
+            loggerFactory,
+            _searchParameterDefinitionManager,
+            NullFhirBaseUriProvider.Instance);
 
     private static ResourceJsonNode ServiceRequestWithTiming(string timingJson)
         => ResourceJsonNode.Parse($$"""
