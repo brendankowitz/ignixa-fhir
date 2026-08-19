@@ -983,7 +983,7 @@ internal static class CollectionFunctions
 
         if (arguments.Count == 0)
         {
-            return list.OrderBy(e => e.Value, new ObjectComparer());
+            return RunSort(list.OrderBy(e => (IElement?)e, SortComparer.NullsLow));
         }
 
         // Extract sort key info (expression and direction) for all arguments
@@ -994,17 +994,18 @@ internal static class CollectionFunctions
             return (Expression: effectiveExpression, IsDescending: isDescending);
         }).ToList();
 
-        // Build key selectors
-        Func<IElement, object?> createKeySelector(Expression expr) => element =>
+        // The key is the element rather than its value: SortComparer needs the declared instance type to
+        // tell a FHIRPath @-literal - still a plain string - from a string that is only a string.
+        Func<IElement, IElement?> createKeySelector(Expression expr) => element =>
         {
             var innerContext = context.PushThis(element);
             var result = evaluateExpression([element], expr, innerContext);
-            return result.FirstOrDefault()?.Value;
+            return result.FirstOrDefault();
         };
 
         // Apply first sort key
         var firstKey = sortKeys[0];
-        IComparer<object?> firstComparer = firstKey.IsDescending ? new ObjectComparerNullsFirst() : new ObjectComparer();
+        var firstComparer = firstKey.IsDescending ? SortComparer.NullsHigh : SortComparer.NullsLow;
         IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
             ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
             : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
@@ -1014,67 +1015,37 @@ internal static class CollectionFunctions
         {
             var key = sortKeys[i];
             var keySelector = createKeySelector(key.Expression);
-            IComparer<object?> keyComparer = key.IsDescending ? new ObjectComparerNullsFirst() : new ObjectComparer();
+            var keyComparer = key.IsDescending ? SortComparer.NullsHigh : SortComparer.NullsLow;
             orderedList = key.IsDescending
                 ? orderedList.ThenByDescending(keySelector, keyComparer)
                 : orderedList.ThenBy(keySelector, keyComparer);
         }
 
-        return orderedList;
+        return RunSort(orderedList);
     }
 
     /// <summary>
-    /// Standard comparer where null is less than any value (nulls last in descending).
+    /// Runs the sort eagerly so that the comparer's error surfaces as itself.
     /// </summary>
-    private class ObjectComparer : IComparer<object?>
+    /// <remarks>
+    /// <see cref="Array.Sort{T}(T[], IComparer{T})"/> catches anything an <see cref="IComparer{T}"/>
+    /// throws and re-raises it as a bare <see cref="InvalidOperationException"/> whose message is
+    /// "Failed to compare two elements in the array." That erases the one distinction
+    /// <see cref="FhirPathEvaluationException"/> exists to draw - an ill-formed expression versus a defect
+    /// in the engine - so <c>FhirPathInvariantCheck</c> and every other caller filtering on the type would
+    /// classify a mixed-type <c>sort()</c> as an internal fault. Ordering is eager regardless of when it
+    /// is enumerated, so materialising here costs nothing but brings the failure back inside a frame that
+    /// can unwrap it.
+    /// </remarks>
+    private static IEnumerable<IElement> RunSort(IOrderedEnumerable<IElement> ordered)
     {
-        public int Compare(object? x, object? y)
+        try
         {
-            if (x is null && y is null) return 0;
-            if (x is null) return -1;
-            if (y is null) return 1;
-
-            if (x is IComparable comparableX && y is IComparable)
-            {
-                try
-                {
-                    return comparableX.CompareTo(y);
-                }
-                catch
-                {
-                    return 0;
-                }
-            }
-
-            return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+            return ordered.ToList();
         }
-    }
-
-    /// <summary>
-    /// Comparer where null is greater than any value (nulls first in descending).
-    /// Used for prototype descending sort with - prefix.
-    /// </summary>
-    private class ObjectComparerNullsFirst : IComparer<object?>
-    {
-        public int Compare(object? x, object? y)
+        catch (InvalidOperationException ex) when (ex.InnerException is FhirPathEvaluationException inner)
         {
-            if (x is null && y is null) return 0;
-            if (x is null) return 1;  // null > any value
-            if (y is null) return -1; // any value < null
-
-            if (x is IComparable comparableX && y is IComparable)
-            {
-                try
-                {
-                    return comparableX.CompareTo(y);
-                }
-                catch
-                {
-                    return 0;
-                }
-            }
-
-            return string.Compare(x.ToString(), y.ToString(), StringComparison.Ordinal);
+            throw new FhirPathEvaluationException(inner.Message, ex);
         }
     }
 
