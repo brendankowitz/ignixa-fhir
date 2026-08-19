@@ -107,6 +107,43 @@ public class ValidationStateRootingTests
     }
 
     [Fact]
+    public void GivenAnEle1ConstraintAndAMisRootedState_WhenValidatingAtFullViaTheInternalOverload_ThenEle1FiresSpuriously()
+    {
+        // Arrange - two separate ToElement() calls over identical JSON produce two distinct
+        // SchemaAwareElement instances. Rooting a state at the first and validating the second
+        // reproduces the mechanism the internal overload's remarks describe: FhirPathInvariantCheck's
+        // ele-1 root exemption keys off ReferenceEquals(element, state.Scope.Resource), which is false
+        // here even though both instances represent the same resource - so ele-1 fires on a resource the
+        // reference validator (and the correctly-rooted call below) never flags.
+        const string json = """{ "resourceType": "Patient", "id": "abc" }""";
+        var rootedAt = ToElement(json);
+        var validated = ToElement(json);
+        rootedAt.ShouldNotBeSameAs(validated, "the test needs two distinct instances to reproduce mis-rooting");
+
+        var schema = new ValidationSchema(
+            "http://hl7.org/fhir/StructureDefinition/Patient",
+            "Patient",
+            universalChecks: [],
+            specChecks: [],
+            profileChecks: [Ele1Invariant()]);
+        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
+
+        // Act - the internal, state-taking overload, reachable here via InternalsVisibleTo, with the
+        // state rooted at a different instance than the one being validated.
+        var mismatchedResult = schema.Validate(validated, settings, ValidationState.ForRoot(rootedAt));
+
+        // Assert - %resource fails to bind to `validated` by reference, so the exemption misses and
+        // ele-1 fires on an otherwise-conformant resource.
+        mismatchedResult.IsValid.ShouldBeFalse(Describe(mismatchedResult));
+        mismatchedResult.Issues.ShouldContain(i => i.Code == "ele-1", Describe(mismatchedResult));
+
+        // Sibling assertion - the public two-argument overload roots at `validated` itself, so the
+        // exemption applies and ele-1 does not fire.
+        var correctlyRootedResult = schema.Validate(validated, settings);
+        correctlyRootedResult.IsValid.ShouldBeTrue(Describe(correctlyRootedResult));
+    }
+
+    [Fact]
     public void GivenTheValidationStateType_WhenInspectingItsPublicConstructors_ThenThereAreNone()
     {
         // ForRoot is the only public entry point, and it requires the root. A public constructor of any
@@ -147,6 +184,19 @@ public class ValidationStateRootingTests
             Expression = $"%resource.id = '{expectedId}'",
             Xpath = null,
             AppliesTo = ["Patient"]
+        },
+        _schema,
+        new FhirPathParser());
+
+    private FhirPathInvariantCheck Ele1Invariant() => new(
+        new Ignixa.Specification.ConstraintDefinition
+        {
+            Key = "ele-1",
+            Severity = ConstraintSeverity.Error,
+            Human = "All FHIR elements must have a @value or children",
+            Expression = "hasValue() or (children().count() > id.count())",
+            Xpath = null,
+            AppliesTo = []
         },
         _schema,
         new FhirPathParser());

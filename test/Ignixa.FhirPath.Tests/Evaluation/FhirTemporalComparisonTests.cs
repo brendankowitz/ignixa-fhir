@@ -150,15 +150,14 @@ public class FhirTemporalComparisonTests
     [Fact]
     public void GivenFhirTemporalDateCollection_WhenMin_ThenReturnsEarliestDate()
     {
-        // Regression: MinMaxDate had no FhirTemporal arm, so min() on a FhirTemporal date
+        // Regression: min() had no arm for a typed temporal at all, so a FhirTemporal date
         // collection returned empty instead of the earliest element.
         //
-        // The assertion pins the typed value, not just its text. MinMaxDate used to rebuild the
-        // winner as a PrimitiveElement over its literal, handing back a string where every sibling
-        // (MinMaxTime, MinMaxNumeric, MinMaxString) returns the element it selected. That de-typing
-        // is invisible to a ShouldBe("2019-01-01") assertion, because a FhirTemporal and the wire
-        // string it was parsed from compare equal to nothing and render the same - which is how the
-        // wrong shape got blessed here in the first place.
+        // The assertion pins the typed value, not just its text. The winner used to be rebuilt as a
+        // PrimitiveElement over its literal, handing back a string where the other types returned
+        // the element they selected. That de-typing is invisible to a ShouldBe("2019-01-01")
+        // assertion, because a FhirTemporal and the wire string it was parsed from render the same -
+        // which is how the wrong shape got blessed here in the first place.
 
         // Arrange
         var d1 = CreateTemporalElement("birthDate", "2020-06-15", FhirPrimitive.Date, "date");
@@ -196,9 +195,9 @@ public class FhirTemporalComparisonTests
     [Fact]
     public void GivenFhirTemporalInstantCollection_WhenMin_ThenReturnsEarliestInstant()
     {
-        // Regression: IsDateOrDateTime() only matched "date"/"datetime", not "instant"/"time".
-        // Min/Max now dispatch FhirTemporal directly to MinMaxDate before the IsDateOrDateTime
-        // fallback, so all four temporal kinds are covered.
+        // Regression: the temporal gate only matched "date"/"datetime", not "instant"/"time".
+        // min()/max() now recognise a temporal by its value as well as its declared type, so all
+        // four temporal kinds are covered.
 
         // Arrange
         var i1 = CreateTemporalElement("recorded", "2024-03-15T10:00:00Z", FhirPrimitive.Instant, "instant");
@@ -236,10 +235,9 @@ public class FhirTemporalComparisonTests
     [Fact]
     public void GivenFhirTemporalTimeCollection_WhenMin_ThenReturnsEarliestTime()
     {
-        // Regression: before this fix, all FhirTemporal values (including time) were routed to
-        // MinMaxDate, but TryParseDate has only date-anchored formats so "10:30:00" matched none,
-        // every element was continued, and min() returned []. MinMaxTime now handles
-        // FhirTemporal.Time via ordinal comparison over Literal.
+        // Regression: a time of day was routed through a date-anchored re-parse that "10:30:00"
+        // matched no format of, so every element was skipped and min() returned []. Comparison now
+        // goes through FhirTemporal, which anchors a bare time itself.
 
         // Arrange
         var t1 = CreateTemporalElement("birthTime", "10:30:00", FhirPrimitive.Time, "time");

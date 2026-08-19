@@ -30,6 +30,12 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// Every case below is written so that the old text ordering gives a different answer from the new value
 /// ordering - otherwise the test asserts nothing about the fix.
 /// </para>
+/// <para>
+/// The comparer is a total order and no longer reports an indeterminate pair as equal, so the cases whose
+/// names once ended "ThenTheOrderIsUnchanged" now say what order they get. That collapse made the comparer
+/// intransitive - <c>@2012</c> is indeterminate against both <c>@2012-01</c> and <c>@2012-06</c> while
+/// those two order determinately - and three permutations of one multiset sorted three different ways.
+/// </para>
 /// </remarks>
 public class SortOrderingTests
 {
@@ -81,11 +87,13 @@ public class SortOrderingTests
     }
 
     /// <summary>
-    /// Incompatible units are FHIRPath's own empty result. sort() has nowhere to put an empty comparison,
-    /// so it leaves the pair alone - it must not invent an order and must not raise an error either.
+    /// Incompatible units are FHIRPath's own empty result for the <c>&lt;</c> operator, but sort() has to
+    /// place them somewhere and must not raise an error. They are grouped by dimension - mass before
+    /// length, ordinally - which is arbitrary but total; what it must not be is the unit string, because
+    /// <c>1 'g' == 1000 'mg'</c> while <c>'g' &lt; 'm' &lt; 'mg'</c> as text, and that is intransitive.
     /// </summary>
     [Fact]
-    public void GivenQuantitiesInIncompatibleUnits_WhenSorting_ThenTheOrderIsUnchanged()
+    public void GivenQuantitiesInIncompatibleUnits_WhenSorting_ThenTheyGroupByDimension()
     {
         // Arrange
         var expression = "(1 'mg').combine(1 'm').sort()";
@@ -95,6 +103,25 @@ public class SortOrderingTests
 
         // Assert
         result.ShouldBe(["1 'mg'", "1 'm'"]);
+    }
+
+    /// <summary>
+    /// The intransitivity the key-based ordering exists to remove, in the shape that exposed it: one
+    /// multiset, three arrival orders, one answer. <c>@2012-01</c> and <c>@2012-06</c> order determinately
+    /// and must stay in that relative order in all three, which "leave an indeterminate pair alone" could
+    /// not manage - it put <c>@2012-06</c> ahead of <c>@2012-01</c> in the first row.
+    /// </summary>
+    [Theory]
+    [InlineData("(@2012-06).combine(@2012).combine(@2012-01)")]
+    [InlineData("(@2012).combine(@2012-06).combine(@2012-01)")]
+    [InlineData("(@2012-01).combine(@2012).combine(@2012-06)")]
+    public void GivenAnIndeterminateTemporalTriple_WhenSorting_ThenEveryPermutationGivesOneOrder(string collection)
+    {
+        // Act
+        var result = Render($"{collection}.sort()");
+
+        // Assert
+        result.ShouldBe(["2012", "2012-01", "2012-06"]);
     }
 
     /// <summary>
@@ -121,7 +148,7 @@ public class SortOrderingTests
     public void GivenInstantsWrittenInDifferentOffsets_WhenSorting_ThenTheyOrderByUtc()
     {
         // Arrange
-        // @2012-01-01T09:00:00+10:00 is 2011-12-31T23:00:00Z, an hour before @2012-01-01T01:00:00Z, but
+        // @2012-01-01T09:00:00+10:00 is 2011-12-31T23:00:00Z, two hours before @2012-01-01T01:00:00Z, but
         // its literal sorts after under any ordinal compare.
         var expression = "(@2012-01-01T01:00:00Z).combine(@2012-01-01T09:00:00+10:00).sort()";
 
@@ -134,10 +161,12 @@ public class SortOrderingTests
 
     /// <summary>
     /// A floating local time could sit at any offset, so it overlaps a fixed instant rather than ordering
-    /// against it. FHIRPath calls that empty; sort() leaves the pair alone.
+    /// against it: FHIRPath's <c>&lt;</c> calls that empty. sort() still has to place them, and does it on
+    /// the same key it uses for everything else - the clock face read as an instant - so the floating
+    /// 09:00 leads. The old text ordering left them as they arrived.
     /// </summary>
     [Fact]
-    public void GivenAFloatingAndATimezoneBearingDateTime_WhenSorting_ThenTheOrderIsUnchanged()
+    public void GivenAFloatingAndATimezoneBearingDateTime_WhenSorting_ThenTheEarlierClockFaceLeads()
     {
         // Arrange
         var expression = "(@2012-01-01T10:00:00Z).combine(@2012-01-01T09:00:00).sort()";
@@ -146,15 +175,18 @@ public class SortOrderingTests
         var result = Render(expression);
 
         // Assert
-        result.ShouldBe(["2012-01-01T10:00:00Z", "2012-01-01T09:00:00"]);
+        result.ShouldBe(["2012-01-01T09:00:00", "2012-01-01T10:00:00Z"]);
     }
 
     /// <summary>
-    /// <c>@2012</c> spans the whole of 2012 and <c>@2012-01</c> sits inside it, so neither precedes the
-    /// other. Ordinally <c>"2012-01" &gt; "2012"</c>, which is the reorder this case pins shut.
+    /// <c>@2012</c> spans the whole of 2012 and <c>@2012-01</c> sits inside it, so <c>&lt;</c> is empty
+    /// between them. The total order breaks the tie on precision, coarsest first, which is what makes the
+    /// three-permutation case above answer the same way every time. Ordinally <c>"2012-01" &gt; "2012"</c>,
+    /// so the old text ordering left them as they arrived and the collapse-to-equal that replaced it did
+    /// the same.
     /// </summary>
     [Fact]
-    public void GivenTemporalsOfDifferentPrecision_WhenSorting_ThenTheOrderIsUnchanged()
+    public void GivenTemporalsOfDifferentPrecision_WhenSorting_ThenTheCoarserLeads()
     {
         // Arrange
         var expression = "(@2012-01).combine(@2012).sort()";
@@ -163,7 +195,7 @@ public class SortOrderingTests
         var result = Render(expression);
 
         // Assert
-        result.ShouldBe(["2012-01", "2012"]);
+        result.ShouldBe(["2012", "2012-01"]);
     }
 
     /// <summary>

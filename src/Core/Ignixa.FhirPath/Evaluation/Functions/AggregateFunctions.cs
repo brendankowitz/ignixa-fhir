@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * sum(), min(), max() and avg(), all built on the one comparison rule in SortComparer.
+ * sum(), min(), max() and avg(), all built on the one comparison rule in ValueOrdering.
  */
 
 using Ignixa.Abstractions;
@@ -22,7 +22,7 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// <c>value.aggregate(iif($total.empty(), $this, iif($this &lt; $total, $this, $total)))</c> for the
 /// minimum - so their semantics are whatever <c>+</c>, <c>&lt;</c> and <c>&gt;</c> already say. They are
 /// implemented directly here for the arithmetic, but the ordering is delegated to
-/// <see cref="SortComparer.CompareValues"/> rather than restated.
+/// <see cref="ValueOrdering.CompareValues"/> rather than restated.
 /// </para>
 /// <para>
 /// The restatement is what went wrong. Each function used to pick a per-type branch from
@@ -32,6 +32,13 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// <c>DateTime.TryParseExact</c> against a fixed format list, which discarded partial precision
 /// (<c>@2012</c> matched no format at all and was skipped) and equated a floating local time with a
 /// fixed instant.
+/// </para>
+/// <para>
+/// Arithmetic overflow yields empty rather than an error, matching §Math ("Operations that cause
+/// arithmetic overflow or underflow will result in empty ({ })") and matching
+/// <see cref="FhirPathEvaluator"/>, which catches <see cref="OverflowException"/> around the operators
+/// these functions are defined in terms of. A value of a type no arithmetic relates is still an error;
+/// the two outcomes are kept distinguishable rather than both meaning "something went wrong".
 /// </para>
 /// </remarks>
 internal static class AggregateFunctions
@@ -53,6 +60,8 @@ internal static class AggregateFunctions
         Description = "Computes the sum of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Sum(IEnumerable<IElement> elements)
     {
+        const string Function = "sum()";
+
         // The spec's equivalent form seeds aggregate() with 0, so an empty collection totals to 0 rather
         // than to empty - which is why sum() is the one aggregate here that answers a non-empty result
         // for no input. That seed is only correct for a collection that is genuinely empty, though:
@@ -74,10 +83,14 @@ internal static class AggregateFunctions
 
         if (list.Count == 1)
         {
+            // The type gate is the collection's, not the pair's: 'apple' is no more summable alone than it
+            // is beside a number, and routing the single-element case around the check made the same
+            // expression answer or throw depending only on how many items reached it.
+            EnsureSummable(list[0], Function);
             return [list[0]];
         }
 
-        return Total(list, "sum()", average: false);
+        return Total(list, Function, average: false);
     }
 
     /// <summary>
@@ -125,6 +138,8 @@ internal static class AggregateFunctions
         Description = "Computes the average of a collection of numeric values or quantities")]
     public static IEnumerable<IElement> Avg(IEnumerable<IElement> elements)
     {
+        const string Function = "avg()";
+
         var list = Materialize(elements);
 
         if (list.Count == 0)
@@ -135,10 +150,20 @@ internal static class AggregateFunctions
         // avg() answers Decimal, so a lone Integer is promoted; a lone Quantity or Decimal already is one.
         if (list.Count == 1)
         {
-            return [list[0].Value is int single ? CreateDecimal(single) : list[0]];
+            EnsureSummable(list[0], Function);
+
+            return
+            [
+                list[0].Value switch
+                {
+                    int intValue => CreateDecimal(intValue),
+                    long longValue => CreateDecimal(longValue),
+                    _ => list[0]
+                }
+            ];
         }
 
-        return Total(list, "avg()", average: true);
+        return Total(list, Function, average: true);
     }
 
     /// <summary>
@@ -152,15 +177,15 @@ internal static class AggregateFunctions
     /// fell through to its string branch. It also settles which unit the extreme of a mixed-unit
     /// collection comes back in: its own. <c>(1 'm' | 50 'cm').min()</c> is <c>50 'cm'</c>, because
     /// selecting is all these two functions do. <c>sum()</c> and <c>avg()</c> have to construct a value
-    /// and so must name a unit; they use the first operand's.
+    /// and so must name a unit.
     /// </para>
     /// <para>
-    /// An indeterminate comparison abandons the whole result. There is no incumbent to fall back on the
-    /// way <c>sort()</c> falls back on stable order: if the candidate and the running extreme cannot be
-    /// ordered against each other then neither of them is demonstrably the extreme, and answering with
-    /// one of them would be a guess dressed as an answer. Empty is also what the collection functions
-    /// reach for elsewhere when FHIRPath declines to decide - incompatible quantity units are the spec's
-    /// own empty, and overlapping partial-precision temporals are indeterminate by construction.
+    /// An indeterminate comparison leaves the incumbent standing rather than abandoning the result. This
+    /// is the spec's own equivalence, not a choice: <c>iif($this &lt; $total, $this, $total)</c> takes the
+    /// otherwise-branch when the criterion is empty, so the fold yields <c>$total</c> and never yields
+    /// empty. Abandoning was also wrong on its own terms - <c>(@2011 | @2012 | @2012-06-15).min()</c> was
+    /// <c>@2011</c> but <c>(@2012 | @2012-06-15 | @2011).min()</c> was empty, from a collection whose
+    /// minimum is the same element either way and is determinately less than both of the others.
     /// </para>
     /// </remarks>
     private static IEnumerable<IElement> Extreme(IEnumerable<IElement> elements, string function, bool isMax)
@@ -176,14 +201,9 @@ internal static class AggregateFunctions
 
         for (var index = 1; index < list.Count; index++)
         {
-            var comparison = SortComparer.CompareValues(list[index], extreme, function);
+            var comparison = ValueOrdering.CompareValues(list[index], extreme, function);
 
-            if (comparison is null)
-            {
-                return [];
-            }
-
-            if (isMax ? comparison > 0 : comparison < 0)
+            if (comparison is not null && (isMax ? comparison > 0 : comparison < 0))
             {
                 extreme = list[index];
             }
@@ -203,17 +223,30 @@ internal static class AggregateFunctions
     /// </remarks>
     private static IEnumerable<IElement> Total(List<IElement> list, string function, bool average)
     {
-        return list.Exists(element => element.Value is FhirQuantity)
-            ? TotalQuantities(list, function, average)
-            : TotalNumbers(list, function, average);
+        try
+        {
+            return list.Exists(ValueOrdering.IsQuantity)
+                ? TotalQuantities(list, function, average)
+                : TotalNumbers(list, function, average);
+        }
+        catch (OverflowException)
+        {
+            return [];
+        }
     }
 
     /// <summary>
-    /// Totals a collection of quantities, converting each into the first operand's unit.
+    /// Totals a collection of quantities, converting each into the most granular unit present.
     /// </summary>
     private static IEnumerable<IElement> TotalQuantities(List<IElement> list, string function, bool average)
     {
-        var unit = AsQuantity(list[0], function).Unit;
+        var unit = MostGranularUnit(list, function);
+
+        if (unit is null)
+        {
+            return [];
+        }
+
         decimal total = 0;
 
         foreach (var element in list)
@@ -234,6 +267,41 @@ internal static class AggregateFunctions
     }
 
     /// <summary>
+    /// Chooses the unit a constructed total is expressed in.
+    /// </summary>
+    /// <returns>The unit, or <see langword="null"/> when the collection's units do not all relate.</returns>
+    /// <remarks>
+    /// §Math: "The unit of the result will be the most granular unit of either input", with the worked
+    /// example <c>3 'm' + 3 'cm' // 303 'cm'</c>. The first operand's unit was used instead, which agreed
+    /// with the spec only when the head happened to be the finest unit - which is why the one pre-existing
+    /// mixed-unit test, <c>((5 'mg') | (1 'kg')).sum()</c>, could not tell the two rules apart. Granularity
+    /// is read by converting one of the candidate unit into the incumbent: a unit is finer exactly when one
+    /// of it is worth less than one of the other.
+    /// </remarks>
+    private static string? MostGranularUnit(List<IElement> list, string function)
+    {
+        var unit = AsQuantity(list[0], function).Unit;
+
+        for (var index = 1; index < list.Count; index++)
+        {
+            var candidate = AsQuantity(list[index], function).Unit;
+            var candidateInUnit = UnitConverter.Convert(1m, candidate, unit);
+
+            if (candidateInUnit is null)
+            {
+                return null;
+            }
+
+            if (candidateInUnit.Value < 1m)
+            {
+                unit = candidate;
+            }
+        }
+
+        return unit;
+    }
+
+    /// <summary>
     /// Totals a collection of numbers, answering Integer only when every operand and the result are.
     /// </summary>
     private static IEnumerable<IElement> TotalNumbers(List<IElement> list, string function, bool average)
@@ -243,12 +311,20 @@ internal static class AggregateFunctions
 
         foreach (var element in list)
         {
-            if (!TryReadNumber(element.Value, out var number))
+            if (!ValueOrdering.TryToDecimal(element, out var number))
             {
+                // A number decimal cannot hold - including a non-finite double - is an arithmetic
+                // overflow, which FHIRPath answers with empty. Anything that is not a number at all is
+                // §Math's "incompatible items", which is an error.
+                if (ValueOrdering.IsNumericValued(element))
+                {
+                    return [];
+                }
+
                 throw NotSummable(element, function);
             }
 
-            hasFraction |= element.Value is decimal or double or float;
+            hasFraction |= !ValueOrdering.IsIntegerValued(element);
             total += number;
         }
 
@@ -266,53 +342,32 @@ internal static class AggregateFunctions
     }
 
     /// <summary>
-    /// Drops the elements that carry no value, so that a comparison never has to answer for a null.
+    /// Drops the elements that carry nothing to aggregate.
     /// </summary>
+    /// <remarks>
+    /// A resource-backed Quantity carries no <see cref="IElement.Value"/> of its own - its value and unit
+    /// are children - so screening on the value alone discarded every quantity that came off the wire
+    /// before the quantity path could read it, and <c>Observation.value.sum()</c> was empty on data whose
+    /// individual elements compared fine.
+    /// </remarks>
     private static List<IElement> Materialize(IEnumerable<IElement> elements)
     {
-        return elements.Where(element => element?.Value is not null).ToList();
+        return elements
+            .Where(element => element is not null && (element.Value is not null || ValueOrdering.AsQuantity(element) is not null))
+            .ToList();
     }
 
     private static FhirQuantity AsQuantity(IElement element, string function)
     {
-        return SortComparer.AsQuantity(element.Value!) ?? throw NotSummable(element, function);
+        return ValueOrdering.AsQuantity(element) ?? throw NotSummable(element, function);
     }
 
-    /// <summary>
-    /// Reads a value as a <see cref="decimal"/> contribution to a total.
-    /// </summary>
-    /// <remarks>
-    /// The Integer and Decimal cases are <see cref="SortComparer.TryToDecimal"/>'s, so the engine has one
-    /// answer to "which CLR types are a FHIRPath number". The bridge from <see cref="double"/> is added
-    /// here and only here: FHIRPath's own numeric type is Decimal and a double reaches
-    /// <see cref="IElement.Value"/> only by way of a JSON reader, but a decimal-typed element read off the
-    /// wire really can arrive as one, and refusing to total it would fail on real data. Values outside
-    /// decimal's range are refused rather than saturated, because a truncated total is a wrong answer
-    /// where an error is a visible one.
-    /// </remarks>
-    private static bool TryReadNumber(object? value, out decimal result)
+    private static void EnsureSummable(IElement element, string function)
     {
-        if (value is not null && SortComparer.TryToDecimal(value, out result))
+        if (!ValueOrdering.IsQuantity(element) && !ValueOrdering.IsNumericValued(element))
         {
-            return true;
+            throw NotSummable(element, function);
         }
-
-        result = 0m;
-
-        var widened = value switch
-        {
-            double number => number,
-            float number => number,
-            _ => (double?)null
-        };
-
-        if (widened is null || widened.Value < (double)decimal.MinValue || widened.Value > (double)decimal.MaxValue)
-        {
-            return false;
-        }
-
-        result = (decimal)widened.Value;
-        return true;
     }
 
     /// <summary>
@@ -320,14 +375,15 @@ internal static class AggregateFunctions
     /// </summary>
     /// <remarks>
     /// This is an error rather than an empty because FHIRPath's <c>+</c> is an error across unrelated
-    /// types, and these functions are defined in terms of it. The empty result is reserved for the case
-    /// the spec actually assigns it to - operands that are the right type but whose units do not relate -
-    /// so the two outcomes stay distinguishable instead of both meaning "something went wrong".
+    /// types, and these functions are defined in terms of it. The empty result is reserved for the cases
+    /// the spec actually assigns it to - operands that are the right type but whose units do not relate,
+    /// and arithmetic overflow - so the outcomes stay distinguishable instead of all meaning "something
+    /// went wrong".
     /// </remarks>
     private static FhirPathEvaluationException NotSummable(IElement element, string function)
     {
         return new FhirPathEvaluationException(
-            $"{function} cannot total an operand of type '{FhirPathEvaluator.DescribeOperandType(element)}'.");
+            $"{function} cannot total an operand of type '{ValueOrdering.Describe(element)}'.");
     }
 
     private static IElement CreateInteger(int value) => new FunctionHelpers.PrimitiveElement(value, "integer");

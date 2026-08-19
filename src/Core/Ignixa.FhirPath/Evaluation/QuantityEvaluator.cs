@@ -198,34 +198,35 @@ internal static class QuantityEvaluator
     /// Extracts a Quantity from an IElement, handling FhirPath Quantity literals, FHIR Quantity elements
     /// (which have value/unit/code children), and the implicit conversion from a bare number.
     /// </summary>
+    /// <remarks>
+    /// The rule itself lives in <see cref="Functions.ValueOrdering.AsQuantity"/> so that the comparison
+    /// operators, <c>sort()</c> and the aggregate functions cannot disagree about which operands are
+    /// quantities. They previously did: this method's <see cref="IsScalar"/> admitted
+    /// <see cref="double"/> and <see cref="float"/> while the ordering path did not.
+    /// </remarks>
     private static FhirQuantity? ExtractQuantity(IElement element)
+        => Functions.ValueOrdering.AsQuantity(element);
+
+    /// <summary>
+    /// Determines whether a declared type is one of the FHIR Quantity flavours, whose value and unit are
+    /// children rather than the element's own value.
+    /// </summary>
+    internal static bool IsQuantityInstanceType(string? instanceType)
     {
-        // If the value is already a Quantity (FhirPath literal), return it directly
-        if (element.Value is FhirQuantity qty)
-            return qty;
-
-        // Integer and Decimal are implicitly convertible to Quantity, in the unity unit.
-        if (element.Value is not null && IsScalar(element.Value))
-            return new FhirQuantity(ToDecimal(element.Value), "1");
-
-        // If it's a FHIR Quantity element, extract value and unit from children
-#pragma warning disable CA1308 // Normalize strings to uppercase - FHIR type names are case-insensitive
-        var instanceType = element.InstanceType?.ToLowerInvariant();
-#pragma warning restore CA1308 // Normalize strings to uppercase
-        if (instanceType == "quantity" || instanceType == "age" || instanceType == "distance" || 
-            instanceType == "duration" || instanceType == "count" || instanceType == "simplequantity" ||
-            instanceType == "moneyquantity")
-        {
-            return ExtractQuantityFromFhirElement(element);
-        }
-
-        return null;
+        return instanceType is not null
+            && (instanceType.Equals("quantity", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("age", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("distance", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("duration", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("count", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("simplequantity", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("moneyquantity", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
     /// Extracts value and unit from a FHIR Quantity element's children.
     /// </summary>
-    private static FhirQuantity? ExtractQuantityFromFhirElement(IElement element)
+    internal static FhirQuantity? ExtractQuantityFromChildren(IElement element)
     {
         decimal? value = null;
         string? unit = null;

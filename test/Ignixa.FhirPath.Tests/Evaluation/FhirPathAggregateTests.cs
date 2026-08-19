@@ -522,6 +522,10 @@ public class FhirPathAggregateTests
         // Previously asserted empty, on the reasoning that "mg + kg needs conversion". Milligrams and
         // kilograms are both mass, so the conversion exists; the old empty came from comparing the two
         // unit strings with == rather than from any property of the units themselves.
+        //
+        // This case cannot tell "the first operand's unit" from §Math's "the most granular unit of
+        // either input", because 'mg' is both. The pair that can is
+        // AggregateHeterogeneousCollectionTests.GivenTheCoarserUnitFirst_WhenSum_*.
         var expr = _parser.Parse("((5 'mg') | (1 'kg')).sum()");
         var root = CreateIntegerElement(0);
 

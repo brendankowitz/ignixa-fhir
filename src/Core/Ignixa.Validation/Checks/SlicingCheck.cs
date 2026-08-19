@@ -6,6 +6,7 @@
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Validation.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Ignixa.Validation.Checks;
 
@@ -31,16 +32,24 @@ public sealed class SlicingCheck : IValidationCheck
     private readonly bool _isClosed;
     private readonly bool _isOpenAtEnd;
     private readonly bool _deferred;
+    private readonly ILogger? _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SlicingCheck"/> class.
     /// </summary>
     /// <param name="slicedName">The element name owning the sliced array (e.g. <c>extension</c>).</param>
     /// <param name="metadata">The slicing metadata (discriminators, rules, ordered, slices).</param>
-    public SlicingCheck(string slicedName, SlicingMetadata metadata)
+    /// <param name="logger">
+    /// Optional logger for discriminator expressions that could not be evaluated against a candidate
+    /// (see <see cref="SelectPath"/>). Deferral is otherwise silent — <see cref="Validate"/> reports it
+    /// as an Information issue on the slicing as a whole, but which discriminator/candidate pair caused
+    /// it is only visible here.
+    /// </param>
+    public SlicingCheck(string slicedName, SlicingMetadata metadata, ILogger? logger = null)
     {
         _slicedName = slicedName ?? throw new ArgumentNullException(nameof(slicedName));
         _metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+        _logger = logger;
 
         _isClosed = metadata.Rules == SlicingRules.Closed;
         _isOpenAtEnd = metadata.Rules == SlicingRules.OpenAtEnd;
@@ -232,7 +241,7 @@ public sealed class SlicingCheck : IValidationCheck
     /// Returns whether the candidate matches every discriminator of the slice, or <c>null</c> when a
     /// discriminator expression could not be evaluated (indeterminate — the caller defers slicing).
     /// </summary>
-    private static bool? SliceMatches(IElement candidate, SliceDefinition slice, EvaluationContext context)
+    private bool? SliceMatches(IElement candidate, SliceDefinition slice, EvaluationContext context)
     {
         if (slice.Match.Count == 0)
         {
@@ -256,7 +265,7 @@ public sealed class SlicingCheck : IValidationCheck
         return true;
     }
 
-    private static bool? DiscriminatorMatches(IElement candidate, SliceDiscriminatorValue match, EvaluationContext context)
+    private bool? DiscriminatorMatches(IElement candidate, SliceDiscriminatorValue match, EvaluationContext context)
     {
         var targets = SelectPath(candidate, match.Path, context);
         if (targets is null)
@@ -276,12 +285,21 @@ public sealed class SlicingCheck : IValidationCheck
 
     /// <summary>
     /// Evaluates the discriminator path against the candidate. Returns the matched elements, or
-    /// <c>null</c> when FHIRPath evaluation of the path threw. A throw is INDETERMINATE, not an empty
-    /// result: returning empty here would silently turn a valid resource into a non-match (and thus a
-    /// false closed/cardinality rejection). Cancellation and genuinely unexpected exceptions
-    /// propagate.
+    /// <c>null</c> when the path could not be evaluated against this candidate (INDETERMINATE, not an
+    /// empty result — returning empty here would silently turn a valid resource into a non-match, and
+    /// thus a false closed/cardinality rejection). The caught exceptions are the ones the FHIRPath
+    /// engine uses for "this expression cannot produce a determinate answer here", not "we are wrong":
+    /// <see cref="FhirPathEvaluationException"/> (the engine correctly refused, e.g. an operator that
+    /// requires a singleton fed a collection), <see cref="NotSupportedException"/> (an unimplemented
+    /// function, e.g. <c>conformsTo()</c>), and <see cref="ArgumentException"/>/<see cref="FormatException"/>
+    /// (the discriminator's own path text is malformed — a defect in the profile, not the resource).
+    /// Each is logged, since the deferral <see cref="Validate"/> reports is per-slicing, not
+    /// per-discriminator or per-candidate, and would otherwise be indistinguishable from a genuinely
+    /// ambiguous slice. A bare <see cref="InvalidOperationException"/> (an internal engine invariant
+    /// violation — <see cref="FhirPathEvaluationException"/> derives from it but is caught above and
+    /// never reaches this filter) and cancellation are not caught here and propagate as defects.
     /// </summary>
-    private static IReadOnlyList<IElement>? SelectPath(IElement candidate, string path, EvaluationContext context)
+    private IReadOnlyList<IElement>? SelectPath(IElement candidate, string path, EvaluationContext context)
     {
         if (string.IsNullOrEmpty(path) || path == "$this")
         {
@@ -292,8 +310,14 @@ public sealed class SlicingCheck : IValidationCheck
         {
             return candidate.Select(path, context).ToList();
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or NotSupportedException or FormatException or OverflowException)
+        catch (Exception ex) when (ex is FhirPathEvaluationException or ArgumentException or NotSupportedException or FormatException)
         {
+            _logger?.LogWarning(
+                ex,
+                "Discriminator path '{Path}' on '{SlicedName}' could not be evaluated against '{Location}'; slice assignment for this candidate is indeterminate and the whole slicing will be deferred.",
+                path,
+                _slicedName,
+                candidate.Location ?? $"{_slicedName}[?]");
             return null;
         }
     }

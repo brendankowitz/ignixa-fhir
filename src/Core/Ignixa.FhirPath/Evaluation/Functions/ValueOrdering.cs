@@ -1,0 +1,537 @@
+/*
+ * Copyright (c) 2025, Ignixa Contributors
+ *
+ * How two FHIRPath values order, in the two forms callers need: tri-state for the operators min() and
+ * max() are defined in terms of, and a total order for sort().
+ */
+
+using System.Globalization;
+using Ignixa.Abstractions;
+using Ignixa.FhirPath.Types;
+
+namespace Ignixa.FhirPath.Evaluation.Functions;
+
+/// <summary>
+/// Orders two FHIRPath values, and supplies the type coercions the aggregate functions share with the
+/// comparison operators.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Two surfaces are needed and they answer different questions.
+/// <see cref="CompareValues"/> is FHIRPath comparison: tri-state, where <see langword="null"/> means the
+/// spec declines to decide - incompatible quantity units, overlapping partial-precision temporals - which
+/// is a different answer from zero. <see cref="CompareForSort"/> is a total order for <c>sort()</c>,
+/// where there is no third state to return.
+/// </para>
+/// <para>
+/// <see cref="CompareForSort"/> is not <see cref="CompareValues"/> with the indeterminate case coalesced
+/// to zero. That was the previous design and it produced an intransitive comparer: <c>@2012</c> is
+/// indeterminate against both <c>@2012-01</c> and <c>@2012-06</c> while those two order determinately, so
+/// "indeterminate means equal" made equality non-transitive and <c>IComparer&lt;T&gt;</c>'s contract was
+/// violated. Three permutations of one multiset then sorted three different ways, one of them inverting
+/// a determinately-ordered pair. The fix is to derive each value's position from the value alone - a
+/// temporal's <see cref="FhirTemporal.CompareTo"/> key, a quantity's canonical magnitude within its
+/// dimension - so transitivity holds by construction. Where FHIRPath is determinate the two surfaces
+/// agree, because a determinate <c>A &lt; B</c> means A's interval ends before B's begins, which orders
+/// their keys the same way; where FHIRPath is indeterminate the total order still has to answer, and
+/// answers deterministically.
+/// </para>
+/// <para>
+/// The 3.0.0 <c>sort()</c> text does bear on this: "Items are considered equal if and only if the equals
+/// (=) operator returns true. (i.e. false and empty both indicate that the items are not equal)."
+/// Reporting an empty comparison as equal contradicts it directly.
+/// </para>
+/// </remarks>
+internal static class ValueOrdering
+{
+    private static readonly IQuantityUnitConverter UnitConverter = QuantityUnitConverter.Instance;
+
+    /// <summary>
+    /// Compares two values using FHIRPath ordering semantics.
+    /// </summary>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <param name="function">The FHIRPath function requesting the comparison, for diagnostics.</param>
+    /// <returns>
+    /// A negative value, zero, a positive value, or <see langword="null"/> when the ordering is
+    /// indeterminate - incompatible quantity units, or temporals whose precision or timezone presence
+    /// makes them overlap rather than order. Both of those are the spec's own empty results.
+    /// </returns>
+    /// <exception cref="FhirPathEvaluationException">
+    /// The operands are of types no conversion relates, or of a type FHIRPath defines no ordering for.
+    /// </exception>
+    /// <remarks>
+    /// <c>min()</c> and <c>max()</c> call this. The FHIRPath spec defines them in terms of the <c>&lt;</c>
+    /// and <c>&gt;</c> operators - <c>aggregate(iif($total.empty(), $this, iif($this &lt; $total, $this,
+    /// $total)))</c> - so they must not have an ordering rule of their own, which is exactly the mistake
+    /// they used to make: a per-type ladder chosen from the collection's first element, with units matched
+    /// by raw string equality and temporals re-parsed to <see cref="DateTime"/>.
+    /// <paramref name="function"/> exists only so the resulting error names the caller.
+    /// </remarks>
+    public static int? CompareValues(IElement left, IElement right, string function)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        return Compare(left, right, function, totalOrder: false);
+    }
+
+    /// <summary>
+    /// Compares two values for <c>sort()</c>, always reaching a definite answer.
+    /// </summary>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <param name="function">The FHIRPath function requesting the comparison, for diagnostics.</param>
+    /// <returns>A negative value, zero, or a positive value.</returns>
+    /// <exception cref="FhirPathEvaluationException">
+    /// The operands are of types no conversion relates, or of a type FHIRPath defines no ordering for.
+    /// </exception>
+    public static int CompareForSort(IElement left, IElement right, string function)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        return Compare(left, right, function, totalOrder: true)!.Value;
+    }
+
+    /// <summary>
+    /// Determines whether an operand is a Quantity, as opposed to a number a conversion could make one.
+    /// </summary>
+    /// <param name="element">The operand.</param>
+    /// <returns><see langword="true"/> when the operand is a Quantity.</returns>
+    /// <remarks>
+    /// A resource-backed Quantity is a complex element whose own <see cref="IElement.Value"/> is
+    /// <see langword="null"/> and whose value and unit live in its children, so testing the value alone
+    /// misses every Quantity that came off the wire - which is why <c>Observation.value.min()</c> was
+    /// empty while <c>Observation.value.first() &lt; 10 'g'</c> answered.
+    /// </remarks>
+    public static bool IsQuantity(IElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        return element.Value is FhirQuantity || QuantityEvaluator.IsQuantityInstanceType(element.InstanceType);
+    }
+
+    /// <summary>
+    /// Reads an operand as a quantity, applying FHIRPath's implicit Integer/Decimal to Quantity conversion.
+    /// </summary>
+    /// <param name="element">The operand.</param>
+    /// <returns>The quantity, or <see langword="null"/> when no reading of the operand is one.</returns>
+    /// <remarks>
+    /// The unity unit is what makes <c>1 'mg'</c> against <c>5</c> an incompatible-units case rather than
+    /// a type error. <see cref="QuantityEvaluator.ExtractQuantity"/> forwards here so that the <c>&lt;</c>
+    /// and <c>&gt;</c> operators, <c>sort()</c> and the aggregates cannot disagree about which operands
+    /// are quantities - they previously did, over <see cref="double"/> and <see cref="float"/>.
+    /// </remarks>
+    public static FhirQuantity? AsQuantity(IElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        if (element.Value is FhirQuantity quantity)
+        {
+            return quantity;
+        }
+
+        if (QuantityEvaluator.IsQuantityInstanceType(element.InstanceType))
+        {
+            return QuantityEvaluator.ExtractQuantityFromChildren(element);
+        }
+
+        return TryToDecimal(element, out var number) ? new FhirQuantity(number, "1") : null;
+    }
+
+    /// <summary>
+    /// Reads an operand as a <see cref="decimal"/> across FHIRPath's Integer, Long and Decimal types.
+    /// </summary>
+    /// <param name="element">The operand.</param>
+    /// <param name="result">The value, or zero when the operand is not a number this type can hold.</param>
+    /// <returns><see langword="true"/> when the operand was read.</returns>
+    /// <remarks>
+    /// <para>
+    /// <see cref="double"/> and <see cref="float"/> are read here, not merely widened for comparison. They
+    /// reach <see cref="IElement.Value"/> by way of a JSON reader rather than from FHIRPath itself, whose
+    /// only numeric types are Integer, Long and Decimal, but a decimal-typed element off the wire really
+    /// can arrive as one and refusing it made <c>(1 'mg' | 2.5).min()</c> throw where <c>1 'mg' &lt;
+    /// 2.5</c> answered. Values <see cref="decimal"/> cannot hold - including the non-finite ones - are
+    /// refused rather than saturated; callers distinguish that from "not a number" through
+    /// <see cref="IsNumericValued"/>.
+    /// </para>
+    /// <para>
+    /// A <see cref="string"/> is read only when the element declares a numeric type. A FHIR decimal
+    /// outside <see cref="decimal"/>'s range arrives that way - the JSON reader keeps the source text
+    /// rather than losing the value - and refusing every string would have made those elements unorderable
+    /// against ordinary decimals. The declared type is the gate: without it <c>('1' | 2).sort()</c> would
+    /// quietly compare a String against an Integer, which FHIRPath makes an error.
+    /// </para>
+    /// </remarks>
+    public static bool TryToDecimal(IElement element, out decimal result)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        switch (element.Value)
+        {
+            case decimal decimalValue:
+                result = decimalValue;
+                return true;
+            case int intValue:
+                result = intValue;
+                return true;
+            case long longValue:
+                result = longValue;
+                return true;
+            case double doubleValue:
+                return TryNarrow(doubleValue, out result);
+            case float floatValue:
+                return TryNarrow(floatValue, out result);
+            case string text when IsNumericInstanceType(element.InstanceType):
+                return decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+            default:
+                result = 0m;
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Determines whether an operand is a number, whether or not <see cref="decimal"/> can hold it.
+    /// </summary>
+    /// <param name="element">The operand.</param>
+    /// <returns><see langword="true"/> when the operand is numeric.</returns>
+    /// <remarks>
+    /// This separates arithmetic overflow, which FHIRPath answers with empty, from the Math section's
+    /// "incompatible items", which is an error. <see cref="TryToDecimal"/> returns
+    /// <see langword="false"/> for both.
+    /// </remarks>
+    public static bool IsNumericValued(IElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        return element.Value is int or long or decimal or double or float
+            || (element.Value is string && IsNumericInstanceType(element.InstanceType));
+    }
+
+    /// <summary>
+    /// Determines whether an operand is an Integer, so that a total stays one.
+    /// </summary>
+    /// <param name="element">The operand.</param>
+    /// <returns><see langword="true"/> when the operand is an integer.</returns>
+    public static bool IsIntegerValued(IElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        return element.Value is int or long
+            || (element.Value is string && IsIntegerInstanceType(element.InstanceType));
+    }
+
+    /// <summary>
+    /// Names an operand's type for an error message, adding the runtime type when it is not the one the
+    /// declared type normally carries.
+    /// </summary>
+    /// <param name="element">The operand.</param>
+    /// <returns>The type description.</returns>
+    /// <remarks>
+    /// A FHIR decimal too large for <see cref="decimal"/> arrives as a <see cref="string"/> under the
+    /// declared type <c>decimal</c>, so naming the declared type alone produced "cannot order operands of
+    /// type 'decimal' and 'decimal'" - true, and useless. This is deliberately not
+    /// <see cref="FhirPathEvaluator.DescribeOperandType"/>, which the arithmetic errors use and which
+    /// answers a different question: there both operands are readable and the declared type is the whole
+    /// story.
+    /// </remarks>
+    public static string Describe(IElement element)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        var declared = element.InstanceType;
+        var value = element.Value;
+
+        if (declared is null)
+        {
+            return value?.GetType().Name ?? "unknown";
+        }
+
+        return value is null || IsExpectedRepresentation(declared, value)
+            ? declared
+            : $"{declared} ({value.GetType().Name})";
+    }
+
+    /// <summary>
+    /// Builds the error for operands that have no ordering between them.
+    /// </summary>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <param name="function">The FHIRPath function requesting the comparison.</param>
+    /// <returns>The exception to throw.</returns>
+    public static FhirPathEvaluationException NotOrderable(IElement left, IElement right, string function)
+    {
+        return new FhirPathEvaluationException(
+            $"{function} cannot order operands of type '{Describe(left)}' and '{Describe(right)}'.");
+    }
+
+    private static int? Compare(IElement left, IElement right, string function, bool totalOrder)
+    {
+        if (TemporalOperand.IsTemporal(left.Value, left.InstanceType)
+            || TemporalOperand.IsTemporal(right.Value, right.InstanceType))
+        {
+            return CompareTemporals(left, right, function, totalOrder);
+        }
+
+        // FHIRPath's Comparison section defines the ordering operators for String, Integer, Long, Decimal,
+        // Quantity, Date, DateTime and Time only. Boolean is not among them, and it reaches here as an
+        // IComparable that would happily order false before true, so it has to be excluded by name.
+        if (left.Value is bool || right.Value is bool)
+        {
+            throw NotOrderable(left, right, function);
+        }
+
+        if (IsQuantity(left) || IsQuantity(right))
+        {
+            return CompareQuantities(left, right, function, totalOrder);
+        }
+
+        if (TryCompareNumbers(left, right, out var numeric))
+        {
+            return numeric;
+        }
+
+        // A number that could not be read is still a number, whatever CLR type carried it. Without this the
+        // two branches below would order a FHIR decimal that arrived as text - one outside decimal's range,
+        // say - as though it were a String, silently and by its spelling.
+        if (IsNumericValued(left) || IsNumericValued(right))
+        {
+            throw NotOrderable(left, right, function);
+        }
+
+        if (left.Value is string leftText && right.Value is string rightText)
+        {
+            return string.Compare(leftText, rightText, StringComparison.Ordinal);
+        }
+
+        // The non-generic IComparable is safe once the runtime types are known to match, which is the guard
+        // the old comparers lacked: it is precisely the cross-type CompareTo that threw and got swallowed.
+        // Every value this engine puts in IElement.Value that implements IComparable<T> also implements the
+        // non-generic form, apart from FhirTemporal and FhirQuantity - and both are handled above. Same
+        // runtime type on both sides makes this a total order within that type, so sort() may use it too.
+        if (left.Value is not null
+            && right.Value is not null
+            && left.Value.GetType() == right.Value.GetType()
+            && left.Value is IComparable comparable)
+        {
+            return comparable.CompareTo(right.Value);
+        }
+
+        throw NotOrderable(left, right, function);
+    }
+
+    /// <summary>
+    /// Orders two temporals, reconciling a typed <see cref="FhirTemporal"/> against the raw string a
+    /// FHIRPath <c>@</c>-literal still evaluates to.
+    /// </summary>
+    /// <remarks>
+    /// The total order is <see cref="FhirTemporal.CompareTo"/> rather than a key assembled here.
+    /// <see cref="FhirTemporal"/> already documents it as a total order whose zero coincides with
+    /// <see cref="FhirTemporal.Equals(FhirTemporal)"/>, and it agrees with
+    /// <see cref="FhirTemporal.Compare"/> wherever that is determinate: a definite <c>-1</c> there means
+    /// the left interval ends before the right one begins, so the left instant is the earlier one and the
+    /// primary key orders them the same way. Values the parser rejects have no instant at all, so they
+    /// sort as a block after everything that has one, ordered among themselves by text.
+    /// </remarks>
+    private static int? CompareTemporals(IElement left, IElement right, string function, bool totalOrder)
+    {
+        var leftTemporal = TemporalOperand.AsTemporal(left.Value, left.InstanceType);
+        var rightTemporal = TemporalOperand.AsTemporal(right.Value, right.InstanceType);
+
+        if (leftTemporal is not null && rightTemporal is not null)
+        {
+            return totalOrder
+                ? leftTemporal.CompareTo(rightTemporal)
+                : FhirTemporal.Compare(leftTemporal, rightTemporal);
+        }
+
+        // One side is a temporal and the other is not a value any temporal reading reaches.
+        if (!TemporalOperand.IsTemporal(left.Value, left.InstanceType)
+            || !TemporalOperand.IsTemporal(right.Value, right.InstanceType))
+        {
+            throw NotOrderable(left, right, function);
+        }
+
+        // Both are declared temporal and at least one is malformed wire data, which is an expected input
+        // rather than an ill-formed expression.
+        if (!totalOrder)
+        {
+            return null;
+        }
+
+        if (leftTemporal is not null)
+        {
+            return -1;
+        }
+
+        if (rightTemporal is not null)
+        {
+            return 1;
+        }
+
+        return string.Compare(left.Value?.ToString(), right.Value?.ToString(), StringComparison.Ordinal);
+    }
+
+    private static int? CompareQuantities(IElement left, IElement right, string function, bool totalOrder)
+    {
+        var leftQuantity = AsQuantity(left);
+        var rightQuantity = AsQuantity(right);
+
+        if (leftQuantity is null || rightQuantity is null)
+        {
+            throw NotOrderable(left, right, function);
+        }
+
+        if (totalOrder)
+        {
+            return CompareQuantityKeys(leftQuantity, rightQuantity);
+        }
+
+        if (!UnitConverter.IsCompatible(leftQuantity.Unit, rightQuantity.Unit))
+        {
+            return null;
+        }
+
+        var converted = rightQuantity.ConvertTo(leftQuantity.Unit, UnitConverter);
+
+        return converted is null ? null : leftQuantity.Value.CompareTo(converted.Value);
+    }
+
+    /// <summary>
+    /// Orders two quantities totally, by dimension first and canonical magnitude second.
+    /// </summary>
+    /// <remarks>
+    /// Keying on the unit string would be intransitive: <c>1 'g' == 1000 'mg'</c> while
+    /// <c>'g' &lt; 'm' &lt; 'mg'</c> as text. Dimension first means every unit inside one bucket converts
+    /// to every other, so the canonical magnitude is a total order there and cannot contradict a
+    /// determinate comparison. Units UCUM cannot canonicalise - an invented unit, and the
+    /// calendar-precision <c>a</c> and <c>mo</c>, which convert to nothing but themselves - form their own
+    /// buckets keyed on the unit, which is the only scale they have.
+    /// </remarks>
+    private static int CompareQuantityKeys(FhirQuantity left, FhirQuantity right)
+    {
+        var leftKey = CanonicalKey(left);
+        var rightKey = CanonicalKey(right);
+
+        if (leftKey.IsCanonical != rightKey.IsCanonical)
+        {
+            return leftKey.IsCanonical ? -1 : 1;
+        }
+
+        var byBucket = string.Compare(leftKey.Bucket, rightKey.Bucket, StringComparison.Ordinal);
+
+        return byBucket != 0 ? byBucket : leftKey.Magnitude.CompareTo(rightKey.Magnitude);
+    }
+
+    private static (bool IsCanonical, string Bucket, decimal Magnitude) CanonicalKey(FhirQuantity quantity)
+    {
+        var ucum = CalendarDuration.NormalizeToUcum(quantity.Unit);
+        var dimension = UnitConverter.GetDimensionality(ucum);
+        var canonical = dimension is null ? null : UnitConverter.Convert(quantity.Value, ucum, dimension);
+
+        return canonical is null
+            ? (false, ucum, quantity.Value)
+            : (true, dimension!, canonical.Value);
+    }
+
+    /// <summary>
+    /// Compares two numbers across the integer and decimal types, so that <c>1</c> and <c>1.0</c> order
+    /// by value rather than by CLR type.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="double"/> operand demotes the whole comparison to binary floating point rather than
+    /// widening to <see cref="decimal"/>, because the decimal range does not cover the double range and
+    /// the conversion would refuse the operand outright.
+    /// </remarks>
+    private static bool TryCompareNumbers(IElement left, IElement right, out int result)
+    {
+        if (left.Value is double or float || right.Value is double or float)
+        {
+            if (TryToDouble(left, out var leftDouble) && TryToDouble(right, out var rightDouble))
+            {
+                result = leftDouble.CompareTo(rightDouble);
+                return true;
+            }
+
+            result = 0;
+            return false;
+        }
+
+        if (TryToDecimal(left, out var leftDecimal) && TryToDecimal(right, out var rightDecimal))
+        {
+            result = leftDecimal.CompareTo(rightDecimal);
+            return true;
+        }
+
+        result = 0;
+        return false;
+    }
+
+    private static bool TryToDouble(IElement element, out double result)
+    {
+        switch (element.Value)
+        {
+            case double doubleValue:
+                result = doubleValue;
+                return true;
+            case float floatValue:
+                result = floatValue;
+                return true;
+            case decimal decimalValue:
+                result = (double)decimalValue;
+                return true;
+            case int intValue:
+                result = intValue;
+                return true;
+            case long longValue:
+                result = longValue;
+                return true;
+            case string text when IsNumericInstanceType(element.InstanceType):
+                return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+            default:
+                result = 0d;
+                return false;
+        }
+    }
+
+    private static bool TryNarrow(double value, out decimal result)
+    {
+        if (!double.IsFinite(value) || value < (double)decimal.MinValue || value > (double)decimal.MaxValue)
+        {
+            result = 0m;
+            return false;
+        }
+
+        result = (decimal)value;
+        return true;
+    }
+
+    private static bool IsExpectedRepresentation(string declared, object value) => value switch
+    {
+        bool => declared.Equals("boolean", StringComparison.OrdinalIgnoreCase),
+        int or long or decimal or double or float => IsNumericInstanceType(declared),
+        FhirQuantity => QuantityEvaluator.IsQuantityInstanceType(declared),
+        FhirTemporal => TemporalOperand.IsTemporal(null, declared),
+
+        // Every other FHIR primitive reaches IElement.Value as a string, and so - per ADR-2610 - does a
+        // FHIRPath @-literal, which carries a temporal declared type over a raw literal.
+        string => !IsNumericInstanceType(declared) && !declared.Equals("boolean", StringComparison.OrdinalIgnoreCase),
+        _ => false
+    };
+
+    private static bool IsNumericInstanceType(string? instanceType)
+    {
+        return instanceType is not null
+            && (instanceType.Equals("decimal", StringComparison.OrdinalIgnoreCase) || IsIntegerInstanceType(instanceType));
+    }
+
+    private static bool IsIntegerInstanceType(string? instanceType)
+    {
+        return instanceType is not null
+            && (instanceType.Equals("integer", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("integer64", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("positiveInt", StringComparison.OrdinalIgnoreCase)
+                || instanceType.Equals("unsignedInt", StringComparison.OrdinalIgnoreCase));
+    }
+}

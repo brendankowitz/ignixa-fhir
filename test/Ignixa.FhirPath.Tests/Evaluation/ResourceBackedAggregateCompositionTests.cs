@@ -19,8 +19,8 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// min() and max() select an item; they do not construct one. MinMaxDate used to rebuild the winner
-/// as a PrimitiveElement over its wire literal, which turned a resource-backed
+/// min() and max() select an item; they do not construct one. The temporal branch used to rebuild the
+/// winner as a PrimitiveElement over its wire literal, which turned a resource-backed
 /// <see cref="FhirTemporal"/> back into a string. Nothing caught it: the aggregate's own tests
 /// asserted the rendered text, and text is exactly what a FhirTemporal and its wire literal have in
 /// common.

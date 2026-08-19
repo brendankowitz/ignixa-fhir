@@ -430,7 +430,7 @@ public class StructureDefinitionSchemaBuilder
         // enforces nothing, so no check is created and valid base resources are never rejected.
         var slicingChecks = elements
             .Where(e => e is ITypeExtended ext && ext.Slicing is { Slices.Count: > 0 })
-            .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!));
+            .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!, _logger));
         profileChecks.AddRange(slicingChecks);
 
         // Build the canonical URL from the type name

@@ -20,16 +20,21 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// <remarks>
 /// <para>
 /// Each function used to choose a per-type branch from <c>list[0].Value</c> and then process the whole
-/// collection as whatever the head happened to be, comparing quantity units with <c>==</c> and re-parsing
-/// temporals to <see cref="DateTime"/> against a fixed list of formats. Every pre-existing test used a
-/// single unit throughout - <c>'mg'</c> in one, <c>'Cel'</c> in another - so the string comparison always
-/// succeeded and the conversion path was never entered. The official HL7 suites are no help either: they
-/// contain no <c>min()</c>, <c>max()</c>, <c>sum()</c> or <c>avg()</c> cases at all in r4, r4b or r5.
+/// collection as whatever the head happened to be, comparing quantity units with <c>==</c>. Almost every
+/// pre-existing test used a single unit throughout - <c>'mg'</c> in one, <c>'Cel'</c> in another - so the
+/// string comparison always succeeded and the conversion path was never entered. The one exception,
+/// <c>((5 'mg') | (1 'kg')).sum()</c>, asserted the wrong answer and was corrected with the rewrite. The
+/// official HL7 suites are no help either: they contain no <c>min()</c>, <c>max()</c>, <c>sum()</c> or
+/// <c>avg()</c> cases at all in r4, r4b or r5.
 /// </para>
 /// <para>
-/// So the gap being closed here is specifically heterogeneity, and every case is written so the old
-/// behaviour gives a different answer - except the two labelled as guards, which pin behaviour the
-/// rewrite had to preserve rather than behaviour it changed.
+/// So the gap being closed here is specifically heterogeneity, and cases are written so that the
+/// behaviour they were added to change gives a different answer. Which cases those are depends on which
+/// baseline is meant, and the file now spans two: the pre-rewrite ladder, and the rewrite's own first
+/// pass, which fixed the unit comparison but resolved an indeterminate comparison by abandoning the
+/// result. Several cases here were non-vacuous against the first and are not against the second. Rather
+/// than assert a count that goes stale, each summary says what its case demonstrates and whether it pins
+/// behaviour or changes it.
 /// </para>
 /// <para>
 /// <c>combine()</c> rather than <c>|</c> throughout, because union deduplicates and would silently
@@ -108,11 +113,12 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
-    /// sum() has to construct a value, so unlike min()/max() it must name a unit. It uses the first
-    /// operand's, which is the only unit in the collection that is not an arbitrary choice.
+    /// §Math: "The unit of the result will be the most granular unit of either input", with the worked
+    /// example <c>3 'm' + 3 'cm' // 303 'cm'</c>. sum() has to construct a value, so unlike min()/max() it
+    /// must name a unit, and the spec names which one.
     /// </summary>
     [Fact]
-    public void GivenQuantitiesInCompatibleUnits_WhenSum_ThenTotalsInTheFirstOperandsUnit()
+    public void GivenQuantitiesInCompatibleUnits_WhenSum_ThenTotalsInTheMostGranularUnit()
     {
         // Arrange
         var expression = "(1 'm').combine(50 'cm').sum()";
@@ -121,12 +127,12 @@ public class AggregateHeterogeneousCollectionTests
         var result = SingleQuantity(expression);
 
         // Assert
-        result.Value.ShouldBe(1.5m);
-        result.Unit.ShouldBe("m");
+        result.Value.ShouldBe(150m);
+        result.Unit.ShouldBe("cm");
     }
 
     [Fact]
-    public void GivenQuantitiesInCompatibleUnits_WhenAvg_ThenAveragesInTheFirstOperandsUnit()
+    public void GivenQuantitiesInCompatibleUnits_WhenAvg_ThenAveragesInTheMostGranularUnit()
     {
         // Arrange
         var expression = "(1 'm').combine(50 'cm').avg()";
@@ -135,23 +141,42 @@ public class AggregateHeterogeneousCollectionTests
         var result = SingleQuantity(expression);
 
         // Assert
-        result.Value.ShouldBe(0.75m);
-        result.Unit.ShouldBe("m");
+        result.Value.ShouldBe(75m);
+        result.Unit.ShouldBe("cm");
     }
 
     /// <summary>
-    /// Units that do not relate are FHIRPath's own empty result - "attempting to operate on quantities
-    /// with invalid units will result in empty" - not an error and not a guess. All four rows passed
-    /// before the fix as well, because comparing unit strings with <c>==</c> gives the right answer when
-    /// the units genuinely are unrelated; it is only the compatible-unit cases above that it got wrong.
-    /// These rows are here to pin that the conversion did not turn empty into a guess.
+    /// The granular unit is chosen by comparing the units, not by position, so the same collection totals
+    /// to the same answer whichever operand leads. Its twin - the mg-first spelling, which the
+    /// first-operand rule also happened to get right - is
+    /// <c>FhirPathAggregateTests.GivenQuantitiesInCompatibleUnits_WhenSum_ThenConvertsAndTotals</c>; only
+    /// the pair distinguishes the two rules.
+    /// </summary>
+    [Fact]
+    public void GivenTheCoarserUnitFirst_WhenSum_ThenStillTotalsInTheMostGranularUnit()
+    {
+        // Arrange
+        var expression = "((1 'kg') | (5 'mg')).sum()";
+
+        // Act
+        var result = SingleQuantity(expression);
+
+        // Assert
+        result.Value.ShouldBe(1000005m);
+        result.Unit.ShouldBe("mg");
+    }
+
+    /// <summary>
+    /// Units that do not relate are FHIRPath's own empty result for a constructed total - "attempting to
+    /// operate on quantities with invalid units will result in empty". Both rows passed before the fix as
+    /// well, because comparing unit strings with <c>==</c> gives the right answer when the units genuinely
+    /// are unrelated; it is only the compatible-unit cases above that it got wrong. They are here to pin
+    /// that the conversion did not turn empty into a guess.
     /// </summary>
     [Theory]
-    [InlineData("min")]
-    [InlineData("max")]
     [InlineData("sum")]
     [InlineData("avg")]
-    public void GivenQuantitiesInIncompatibleUnits_WhenAggregating_ThenReturnsEmpty(string function)
+    public void GivenQuantitiesInIncompatibleUnits_WhenTotalling_ThenReturnsEmpty(string function)
     {
         // Arrange
         var expression = $"(1 'm').combine(5 'kg').{function}()";
@@ -164,53 +189,105 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
+    /// min()/max() select rather than construct, so unrelated units do not stop them: the spec's
+    /// equivalence is <c>aggregate(iif($total.empty(), $this, iif($this &lt; $total, $this, $total)))</c>,
+    /// whose <c>iif</c> takes the otherwise-branch on an empty criterion and hands back the incumbent. The
+    /// fold never yields empty, so neither do these.
+    /// </summary>
+    [Theory]
+    [InlineData("min")]
+    [InlineData("max")]
+    public void GivenQuantitiesInIncompatibleUnits_WhenSelectingAnExtreme_ThenTheIncumbentStands(string function)
+    {
+        // Arrange
+        var expression = $"(1 'm').combine(5 'kg').{function}()";
+
+        // Act
+        var result = Render(expression);
+
+        // Assert
+        result.ShouldBe(["1 'm'"]);
+    }
+
+    /// <summary>
     /// The headline case for the head-decides-the-branch defect. A leading integer routed the whole
     /// collection down the numeric path, which skipped every element it could not read as a number, so
     /// min() answered <c>1</c> while quietly discarding the quantity it was supposed to be compared
     /// against. FHIRPath's implicit Integer-to-Quantity conversion gives <c>1</c> the unity unit, which
-    /// does not relate to <c>'mg'</c>, so the honest answer is empty.
+    /// does not relate to <c>'mg'</c>, so the comparison is empty and the incumbent stands - the same
+    /// element the old code returned, now for a reason that survives reordering, which the next case is.
     /// </summary>
     [Fact]
-    public void GivenANumberBeforeAQuantity_WhenMin_ThenTheNumberDoesNotDecideTheBranch()
+    public void GivenANumberBeforeAQuantity_WhenMin_ThenTheIncumbentStands()
     {
         // Arrange
         var expression = "(1).combine(5 'mg').min()";
 
         // Act
-        var result = Evaluate(expression);
+        var result = Render(expression);
 
         // Assert
-        result.ShouldBeEmpty();
+        result.ShouldBe(["1"]);
     }
 
     /// <summary>
     /// The same collection with the operands the other way round, so that neither arrangement is the one
-    /// the implementation happens to handle. This one passed before the fix as well, but for a reason
-    /// that does not generalise: a leading quantity sent the collection down the quantity branch, which
-    /// bailed to empty on meeting anything that was not a quantity. The right answer, reached by
-    /// discarding the operand rather than by relating it.
+    /// the implementation happens to handle. A leading quantity used to send the collection down the
+    /// quantity branch, which bailed to empty on meeting anything that was not a quantity.
     /// </summary>
     [Fact]
-    public void GivenAQuantityBeforeANumber_WhenMax_ThenTheQuantityDoesNotDecideTheBranch()
+    public void GivenAQuantityBeforeANumber_WhenMax_ThenTheIncumbentStands()
     {
         // Arrange
         var expression = "(5 'mg').combine(1).max()";
 
         // Act
-        var result = Evaluate(expression);
+        var result = Render(expression);
 
         // Assert
-        result.ShouldBeEmpty();
+        result.ShouldBe(["5 'mg'"]);
+    }
+
+    /// <summary>
+    /// The unity unit relates to itself, so the Integer-to-Quantity conversion has a positive direction as
+    /// well as the empty one above: <c>5</c> really is greater than <c>1 '1'</c>.
+    /// </summary>
+    [Fact]
+    public void GivenAUnityQuantityAndANumber_WhenMax_ThenTheyCompareAsQuantities()
+    {
+        // Arrange
+        var expression = "(1 '1').combine(5).max()";
+
+        // Act
+        var result = Render(expression);
+
+        // Assert
+        result.ShouldBe(["5"]);
+    }
+
+    [Fact]
+    public void GivenANumberAndAUnityQuantity_WhenMin_ThenTheyCompareAsQuantities()
+    {
+        // Arrange
+        var expression = "(5).combine(1 '1').min()";
+
+        // Act
+        var result = Render(expression);
+
+        // Assert
+        result.ShouldBe(["1 '1'"]);
     }
 
     /// <summary>
     /// A leading string routed the collection down the lexicographic path, which skipped the number and
     /// answered with the only element it could read. A string and a number have no ordering between them,
     /// so this is an error - the same answer <c>sort()</c> gives, and the same answer FHIRPath's own
-    /// comparison operators give.
+    /// comparison operators give. The message names the caller, which is the only reason
+    /// <c>CompareValues</c> takes a function name at all. It names the candidate before the incumbent,
+    /// which is the order the fold compares them in rather than the order they were written.
     /// </summary>
     [Fact]
-    public void GivenAStringBeforeANumber_WhenMin_ThenTheStringDoesNotDecideTheBranch()
+    public void GivenAStringBeforeANumber_WhenMin_ThenAnErrorNamingTheCallerIsSignalled()
     {
         // Arrange
         var expression = "('apple').combine(3).min()";
@@ -219,7 +296,8 @@ public class AggregateHeterogeneousCollectionTests
         var evaluate = () => Evaluate(expression);
 
         // Assert
-        Should.Throw<FhirPathEvaluationException>(evaluate);
+        var error = Should.Throw<FhirPathEvaluationException>(evaluate);
+        error.Message.ShouldBe("min() cannot order operands of type 'integer' and 'string'.");
     }
 
     [Fact]
@@ -236,7 +314,7 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     [Fact]
-    public void GivenMixedTypes_WhenSum_ThenThrows()
+    public void GivenMixedTypes_WhenSum_ThenAnErrorNamingTheCallerIsSignalled()
     {
         // Arrange
         var expression = "(3).combine('apple').sum()";
@@ -245,7 +323,8 @@ public class AggregateHeterogeneousCollectionTests
         var evaluate = () => Evaluate(expression);
 
         // Assert
-        Should.Throw<FhirPathEvaluationException>(evaluate);
+        var error = Should.Throw<FhirPathEvaluationException>(evaluate);
+        error.Message.ShouldBe("sum() cannot total an operand of type 'string'.");
     }
 
     [Fact]
@@ -262,9 +341,46 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
+    /// The type gate belongs to the collection, not to the pair. A single unsummable element used to skip
+    /// the check entirely and come back unchanged, so <c>('apple').sum()</c> answered <c>'apple'</c> while
+    /// <c>('apple' | 'pear').sum()</c> raised - the same question answered two ways depending only on how
+    /// many items reached it.
+    /// </summary>
+    [Theory]
+    [InlineData("('apple').sum()")]
+    [InlineData("('apple').avg()")]
+    [InlineData("(true).sum()")]
+    public void GivenASingleUnsummableElement_WhenTotalling_ThenThrows(string expression)
+    {
+        // Act
+        var evaluate = () => Evaluate(expression);
+
+        // Assert
+        Should.Throw<FhirPathEvaluationException>(evaluate);
+    }
+
+    /// <summary>
+    /// Boolean is not among the types FHIRPath's Comparison section defines an ordering for, and it is an
+    /// <see cref="IComparable"/> that would otherwise order itself without anyone noticing. The
+    /// single-element case below is the one that still comes back, because no comparison runs.
+    /// </summary>
+    [Fact]
+    public void GivenTwoBooleans_WhenMin_ThenAnErrorIsSignalled()
+    {
+        // Arrange
+        var expression = "(true).combine(false).min()";
+
+        // Act
+        var evaluate = () => Evaluate(expression);
+
+        // Assert
+        Should.Throw<FhirPathEvaluationException>(evaluate);
+    }
+
+    /// <summary>
     /// One instant written at two offsets is one value. The old comparison never normalised - date
     /// literals fell through to an ordinal compare of the wire text - so <c>10:00:00Z</c> sorted before
-    /// <c>20:00:00+10:00</c> on the strength of the eleventh character.
+    /// <c>20:00:00+10:00</c> on the strength of the twelfth character.
     /// </summary>
     [Fact]
     public void GivenTheSameInstantInTwoOffsets_WhenMin_ThenNeitherIsLessAndTheFirstStands()
@@ -280,53 +396,89 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
-    /// The companion assertion: if the two really are equal then max() must select the same element that
-    /// min() did. This half passed before the fix too - ordinal text happens to rank <c>"20:00:00+10:00"</c>
-    /// above <c>"10:00:00Z"</c>, which is the same element - so the min() case above carries the proof and
-    /// this one holds the pair together.
+    /// The companion assertion: if the two really are equal then max() must select the incumbent too. The
+    /// operands are the other way round from the min() case above for the same reason the number-and-
+    /// quantity pair is written both ways - with the offset spelling leading, ordinal text happens to rank
+    /// it highest and the old code reached the same element by the wrong route.
     /// </summary>
     [Fact]
-    public void GivenTheSameInstantInTwoOffsets_WhenMax_ThenSelectsTheSameElementAsMin()
+    public void GivenTheSameInstantInTwoOffsets_WhenMax_ThenNeitherIsGreaterAndTheFirstStands()
     {
         // Arrange
-        var expression = "@2012-01-15T20:00:00+10:00.combine(@2012-01-15T10:00:00Z).max()";
+        var expression = "@2012-01-15T10:00:00Z.combine(@2012-01-15T20:00:00+10:00).max()";
 
         // Act
         var result = Render(expression);
 
         // Assert
-        result.ShouldBe(["2012-01-15T20:00:00+10:00"]);
+        result.ShouldBe(["2012-01-15T10:00:00Z"]);
     }
 
     /// <summary>
-    /// A year and a day inside it overlap as intervals, so neither precedes the other and there is no
-    /// extreme to report. The old code parsed against a fixed format list that has no <c>yyyy</c> entry,
-    /// so <c>@2012</c> failed to parse and was dropped from the collection entirely - and then, because
-    /// the head was a string, the ordinal path answered <c>"2012"</c> anyway.
+    /// A year and a day inside it overlap as intervals, so neither precedes the other and the comparison
+    /// is empty. The incumbent stands, per the spec's <c>iif</c>.
     /// </summary>
     [Fact]
-    public void GivenTemporalsAtDifferentPrecisions_WhenMin_ThenTheExtremeIsIndeterminate()
+    public void GivenTemporalsAtDifferentPrecisions_WhenMin_ThenTheIncumbentStands()
     {
         // Arrange
         var expression = "@2012.combine(@2012-06-15).min()";
 
         // Act
-        var result = Evaluate(expression);
+        var result = Render(expression);
 
         // Assert
-        result.ShouldBeEmpty();
+        result.ShouldBe(["2012"]);
+    }
+
+    /// <summary>
+    /// An indeterminate pair must not stop the fold looking. <c>@2011</c> orders determinately against
+    /// both of the others and is the minimum of the collection whichever way it is written, but the fold
+    /// used to abandon the whole result on meeting the first empty comparison - so the answer depended on
+    /// where the incomparable pair happened to fall.
+    /// </summary>
+    [Theory]
+    [InlineData("@2011.combine(@2012).combine(@2012-06-15)")]
+    [InlineData("@2012.combine(@2012-06-15).combine(@2011)")]
+    [InlineData("@2012-06-15.combine(@2011).combine(@2012)")]
+    public void GivenAnIndeterminatePairAndADominatingExtreme_WhenMin_ThenTheExtremeWinsInAnyOrder(string collection)
+    {
+        // Act
+        var result = Render($"{collection}.min()");
+
+        // Assert
+        result.ShouldBe(["2011"]);
     }
 
     /// <summary>
     /// A local time carries no offset, so it could sit at any of them and overlaps a fixed instant rather
-    /// than ordering against it. The old parse applied <c>AssumeUniversal</c>, inventing the offset the
-    /// value does not have.
+    /// than ordering against it. The comparison is empty and the incumbent stands.
     /// </summary>
     [Fact]
-    public void GivenAFloatingLocalTimeAndAFixedInstant_WhenMin_ThenTheExtremeIsIndeterminate()
+    public void GivenAFloatingLocalTimeAndAFixedInstant_WhenMin_ThenTheIncumbentStands()
     {
         // Arrange
         var expression = "@2024-01-10T10:00:00Z.combine(@2024-01-10T05:00:00).min()";
+
+        // Act
+        var result = Render(expression);
+
+        // Assert
+        result.ShouldBe(["2024-01-10T10:00:00Z"]);
+    }
+
+    /// <summary>
+    /// §Math: "Operations that cause arithmetic overflow or underflow will result in empty ({ })", and
+    /// sum() is defined as repeated <c>+</c>. It has to be empty rather than an error, because
+    /// <c>FhirPathEvaluator</c> already answers empty for the same overflow reached through the operator
+    /// and the two must not disagree - and rather than a saturated total, which would be a wrong answer
+    /// presented as a right one.
+    /// </summary>
+    [Fact]
+    public void GivenATotalTooLargeForADecimal_WhenSum_ThenReturnsEmpty()
+    {
+        // Arrange
+        var expression = "(70000000000000000000000000000.0).combine(70000000000000000000000000000.0).sum()";
 
         // Act
         var result = Evaluate(expression);
@@ -353,8 +505,8 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
-    /// Guard, not a fix: totalling now routes through a unit conversion, and a unit UCUM has never heard
-    /// of has no conversion. It must still total against itself rather than collapsing to empty.
+    /// Guard, not a fix: totalling routes through a unit conversion, and a unit UCUM has never heard of
+    /// has no conversion. It must still total against itself rather than collapsing to empty.
     /// </summary>
     [Fact]
     public void GivenQuantitiesInAUnitUcumDoesNotKnow_WhenSum_ThenTheyStillTotal()
@@ -371,9 +523,11 @@ public class AggregateHeterogeneousCollectionTests
     }
 
     /// <summary>
-    /// sum() answers 0 for an empty collection, and the seed has to stay tied to emptiness rather than to
-    /// "nothing was left after filtering". <c>Patient.name</c> is two elements that carry no primitive
-    /// value; totalling them to 0 would be a confident answer about a collection of HumanNames.
+    /// Guard, not a fix: sum() answers 0 for an empty collection, and the seed has to stay tied to
+    /// emptiness rather than to "nothing was left after filtering". <c>Patient.name</c> is two elements
+    /// that carry no primitive value; totalling them to 0 would be a confident answer about a collection
+    /// of HumanNames. The screen those elements fall through no longer tests the value alone - a
+    /// resource-backed Quantity carries none either - so this pins that the widening did not admit them.
     /// </summary>
     [Fact]
     public void GivenElementsThatCarryNoValue_WhenSum_ThenReturnsEmptyRatherThanTheEmptyCollectionSeed()

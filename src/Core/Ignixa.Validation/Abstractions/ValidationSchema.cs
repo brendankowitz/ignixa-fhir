@@ -176,9 +176,16 @@ public sealed class ValidationSchema
     /// The failure mode this closes is mis-rooting, which <see cref="ValidationState.ForRoot"/> alone does not
     /// prevent: a caller who passes a state rooted at a different element than the one being validated gets
     /// <c>%resource</c> silently bound to the wrong resource, and only at <see cref="ValidationDepth.Full"/>
-    /// where invariants run. Rooting a state from <c>ToElement()</c> and then validating a second
-    /// <c>ToElement()</c> of the same source is enough to trigger it, since the two are different instances.
-    /// External callers use the two-argument overload, which cannot be mis-rooted.
+    /// where invariants run. What actually breaks is not every invariant — two equal-but-not-identical
+    /// wrappers over the same underlying resource evaluate every <em>value-based</em> constraint identically.
+    /// It is specifically the reference-identity root exemption in <c>FhirPathInvariantCheck</c>
+    /// (<c>ReferenceEquals(element, state.Scope.Resource)</c>, which excuses <c>ele-1</c> at the resource
+    /// root): a state rooted at a different instance than the one being validated makes that comparison
+    /// false, and <c>ele-1</c> fires spuriously on the root. Two calls to the <c>ISourceNavigator.ToElement()</c>
+    /// extension are enough to trigger it, since each returns a fresh <c>SchemaAwareElement</c> instance; the
+    /// caching <c>ResourceJsonNode.ToElement(ISchema)</c> does not reproduce it, since it returns the same
+    /// cached instance for the same schema. External callers use the two-argument overload, which cannot be
+    /// mis-rooted.
     /// </para>
     /// </remarks>
     internal ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
