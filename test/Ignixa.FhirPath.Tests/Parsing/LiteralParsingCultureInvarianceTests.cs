@@ -133,8 +133,13 @@ public class LiteralParsingCultureInvarianceTests
     public void GivenAHostWithANonAsciiNegativeSign_WhenTheUnitTableIsFirstTouched_ThenItStillLoads(
         string cultureName)
     {
-        // Act
-        var converter = UnderCulture(cultureName, () => Ignixa.FhirPath.Types.QuantityUnitConverter.Instance);
+        // Act - the constructor, deliberately, not the Instance singleton. Instance runs its type
+        // initializer once per process, so by the time this row executes some other test has already
+        // initialized it under whatever culture that test ran in, and the row passes whether or not the
+        // load is culture-safe. Measured: against the unfixed loader this whole class passes 20 of 20,
+        // while these four rows in isolation fail 4 of 4. Constructing directly re-runs the load every
+        // time, which is what makes the guard order-independent and therefore able to fail in CI.
+        var converter = UnderCulture(cultureName, () => new Ignixa.FhirPath.Types.QuantityUnitConverter());
 
         // Assert
         converter.ShouldNotBeNull();

@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Microsoft Corporation.All rights reserved.
 // Licensed under the MIT License (MIT).See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -608,8 +608,20 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// or <see cref="InvalidCastException"/> reaching an indexing catch block means the indexer or a converter
     /// has a bug, not that the data or the expression was bad, and must not be logged the same way.
     /// </summary>
+    /// <remarks>
+    /// <see cref="ArgumentNullException"/> and <see cref="ArgumentOutOfRangeException"/> are excluded even
+    /// though both derive from <see cref="ArgumentException"/>, because in this codebase they carry the
+    /// opposite meaning. <c>FhirElementToSearchValueConverter&lt;T&gt;.ConvertTo</c> throws
+    /// <see cref="ArgumentOutOfRangeException"/> when the converter manager hands it an element whose
+    /// <c>InstanceType</c> it does not declare, and <c>NumberSearchValue</c>/<c>QuantitySearchValue</c>
+    /// throw <see cref="ArgumentNullException"/> when constructed with no bounds at all. Both are dispatch
+    /// or construction defects, which is exactly what the Error tier exists to surface. Matching the base
+    /// type swept them into the Warning tier alongside a malformed patient date, inverting the distinction
+    /// this predicate was added to draw.
+    /// </remarks>
     private static bool IsExpectedEvaluationFailure(Exception ex) =>
-        ex is FhirPathEvaluationException or NotSupportedException or FormatException or ArgumentException or OverflowException;
+        ex is FhirPathEvaluationException or NotSupportedException or FormatException or OverflowException
+        || (ex is ArgumentException and not (ArgumentNullException or ArgumentOutOfRangeException));
 
     /// <summary>
     /// Builds the "ResourceType/id" label the indexing warnings are tagged with.

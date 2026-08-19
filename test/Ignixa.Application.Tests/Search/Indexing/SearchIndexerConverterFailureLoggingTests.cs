@@ -112,6 +112,52 @@ public class SearchIndexerConverterFailureLoggingTests
         recordingLogger.Entries.ShouldAllBe(e => e.Exception is NotSupportedException);
     }
 
+    [Fact]
+    public void GivenAConverterThatThrowsAnArgumentOutOfRangeException_WhenIndexed_ThenTheFailureIsLoggedAtErrorNotWarning()
+    {
+        // Arrange - ArgumentOutOfRangeException derives from ArgumentException, which IS an expected
+        // containment cause, so a predicate matching the base type sweeps this into Warning. It must not:
+        // FhirElementToSearchValueConverter<T>.ConvertTo throws exactly this when the converter manager
+        // hands it an element whose InstanceType it does not declare - a dispatch defect, which is the
+        // case the Error tier exists for. This test is what stops the predicate being "simplified" back
+        // to `ex is ArgumentException`.
+        var recordingLogger = new RecordingLogger();
+        var indexer = CreateIndexer(new ArgumentOutOfRangeException("value"), recordingLogger);
+        var patient = PatientJson();
+        var element = patient.ToElement(_schemaProvider);
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert
+        indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
+        recordingLogger.Entries.ShouldNotBeEmpty();
+        recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Error);
+        recordingLogger.Entries.ShouldAllBe(e => e.Exception is ArgumentOutOfRangeException);
+    }
+
+    [Fact]
+    public void GivenAConverterThatThrowsAFormatException_WhenIndexed_ThenTheFailureIsLoggedAtWarning()
+    {
+        // Arrange - the counterpart control. ConvertOrLog's own summary names the canonical expected
+        // failure as a Timing.event that PartialDateTime.Parse rejects, and that throws FormatException.
+        // Before the predicate admitted it, malformed patient dates were logged at Error - once per
+        // extracted element, with the raw value in the message.
+        var recordingLogger = new RecordingLogger();
+        var indexer = CreateIndexer(new FormatException("simulated unparseable literal"), recordingLogger);
+        var patient = PatientJson();
+        var element = patient.ToElement(_schemaProvider);
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert
+        indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
+        recordingLogger.Entries.ShouldNotBeEmpty();
+        recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
+        recordingLogger.Entries.ShouldAllBe(e => e.Exception is FormatException);
+    }
+
     /// <summary>
     /// Builds an indexer whose converter manager always hands back a converter that throws
     /// <paramref name="toThrow"/>, regardless of which FHIR type or search parameter asked for it.
