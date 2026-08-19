@@ -88,6 +88,25 @@ public class ValidationStateRootingTests
     }
 
     [Fact]
+    public void GivenValidationSchema_WhenInspectingItsPublicValidateOverloads_ThenOnlyTheSelfRootingOneIsExposed()
+    {
+        // ForRoot stops a state being unrooted; it does not stop one being mis-rooted. An external caller
+        // passing a state rooted at a different element than the one validated binds %resource to the wrong
+        // resource, silently, and only at Full depth. The state-taking overload is therefore internal - and
+        // it has to be internal rather than assert a correspondence, because its two in-repo disciplines
+        // disagree: ContainedResourceCheck re-roots, while NestedComplexTypeCheck and
+        // ChoiceVariantNestedCheck deliberately keep %resource on the enclosing resource.
+        var publicValidateOverloads = typeof(ValidationSchema)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.Name == nameof(ValidationSchema.Validate))
+            .ToList();
+
+        publicValidateOverloads.ShouldHaveSingleItem();
+        publicValidateOverloads[0].GetParameters().Select(p => p.ParameterType)
+            .ShouldBe([typeof(IElement), typeof(ValidationSettings)]);
+    }
+
+    [Fact]
     public void GivenTheValidationStateType_WhenInspectingItsPublicConstructors_ThenThereAreNone()
     {
         // ForRoot is the only public entry point, and it requires the root. A public constructor of any

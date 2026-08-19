@@ -160,17 +160,28 @@ public sealed class ValidationSchema
     /// </summary>
     /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings (including depth).</param>
-    /// <param name="state">
-    /// State from the enclosing validation. This overload exists for <c>ContainedResourceCheck</c>, which
-    /// descends into a contained resource and must hand its own state down so <c>%rootResource</c> keeps
-    /// pointing at the container. Callers starting a fresh validation use the two-argument overload.
-    /// </param>
+    /// <param name="state">State from the enclosing validation.</param>
     /// <returns>Combined validation result from all checks.</returns>
     /// <remarks>
-    /// There is no unrooted state to guard against here: <see cref="ValidationState.ForRoot"/> is the type's
-    /// only entry point, so a caller who has a state necessarily has a rooted one.
+    /// <para>
+    /// Internal because the correct scope discipline depends on what is being descended into, and only the
+    /// checks know which applies. <c>ContainedResourceCheck</c> re-roots — <c>%resource</c> moves to the
+    /// contained resource while <c>%rootResource</c> stays on the container. <c>NestedComplexTypeCheck</c> and
+    /// <c>ChoiceVariantNestedCheck</c> deliberately do not re-root, because a nested datatype is not a
+    /// resource and <c>%resource</c> must keep pointing at the one that encloses it. So there is no single
+    /// correspondence between <paramref name="element"/> and <paramref name="state"/> that could be asserted
+    /// here, and an external caller has no way to know which discipline their case wants.
+    /// </para>
+    /// <para>
+    /// The failure mode this closes is mis-rooting, which <see cref="ValidationState.ForRoot"/> alone does not
+    /// prevent: a caller who passes a state rooted at a different element than the one being validated gets
+    /// <c>%resource</c> silently bound to the wrong resource, and only at <see cref="ValidationDepth.Full"/>
+    /// where invariants run. Rooting a state from <c>ToElement()</c> and then validating a second
+    /// <c>ToElement()</c> of the same source is enough to trigger it, since the two are different instances.
+    /// External callers use the two-argument overload, which cannot be mis-rooted.
+    /// </para>
     /// </remarks>
-    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
+    internal ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
         ArgumentNullException.ThrowIfNull(state);
 
