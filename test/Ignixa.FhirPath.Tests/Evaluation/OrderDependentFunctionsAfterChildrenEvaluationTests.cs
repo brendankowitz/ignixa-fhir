@@ -78,14 +78,36 @@ public class OrderDependentFunctionsAfterChildrenEvaluationTests
         Assert.Empty(result);
     }
 
+    /// <summary>
+    /// sort() re-establishes an order that children() removed, so a positional function after it is
+    /// meaningful again.
+    /// </summary>
+    /// <remarks>
+    /// These sort Patient.name.children() - two family strings - rather than Patient.children(), which
+    /// mixes a boolean with an id and a code. Sorting that bag now signals an error, as FHIRPath 3.0
+    /// requires for incompatible types; it only appeared to work because the old comparer wrapped
+    /// CompareTo in a bare catch that answered "equal". The subject here is the ordered-chain analysis,
+    /// not what sort() does with mixed types, so the collection is made homogeneous rather than the
+    /// assertion weakened. GivenSortOverMixedTypes_WhenEvaluating_ThenSignalsError below pins the
+    /// behaviour these cases used to rely on.
+    /// </remarks>
     [Theory]
-    [InlineData("Patient.children().sort().skip(1)")]
-    [InlineData("Patient.children().sort().take(1)")]
-    [InlineData("Patient.children().sort()[0]")]
+    [InlineData("Patient.name.children().sort().skip(1)")]
+    [InlineData("Patient.name.children().sort().take(1)")]
+    [InlineData("Patient.name.children().sort()[0]")]
     public void GivenSortBreaksChain_WhenEvaluating_ThenReturnsResult(string expr)
     {
         var result = Evaluate(Patient(), expr).ToList();
         Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public void GivenSortOverMixedTypes_WhenEvaluating_ThenSignalsError()
+    {
+        var patient = Patient();
+
+        Assert.Throws<FhirPathEvaluationException>(
+            () => Evaluate(patient, "Patient.children().sort()").ToList());
     }
 
     [Theory]

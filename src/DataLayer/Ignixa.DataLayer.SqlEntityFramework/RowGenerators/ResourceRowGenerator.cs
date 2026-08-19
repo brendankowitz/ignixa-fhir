@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Data;
+using System.Globalization;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.Domain.Exceptions;
 using Ignixa.Domain.Models;
@@ -94,7 +95,7 @@ public class ResourceRowGenerator
             // Read version from the resource's meta (source of truth), not the wrapper's VersionId property
             // The wrapper's VersionId may be stale if the repository updated Resource.Meta.VersionId
             var versionString = resource.Resource.Meta.VersionId ?? resource.VersionId;
-            var version = int.Parse(versionString);
+            var version = int.Parse(versionString, NumberStyles.Integer, CultureInfo.InvariantCulture);
             record.SetInt32(3, version);
 
             // HasVersionToCompare logic:

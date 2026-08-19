@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Types;
 
@@ -71,7 +72,7 @@ public static class CalendarDuration
     /// <param name="value">The numeric value</param>
     /// <param name="keyword">The calendar keyword (e.g., "year", "days")</param>
     /// <returns>A Quantity with the appropriate UCUM unit, or null if keyword is not recognized</returns>
-    public static Quantity? Parse(decimal value, string keyword)
+    public static FhirQuantity? Parse(decimal value, string keyword)
     {
         if (string.IsNullOrEmpty(keyword))
             return null;
@@ -79,7 +80,7 @@ public static class CalendarDuration
         if (!CalendarKeywordToUcum.TryGetValue(keyword, out var ucumUnit))
             return null;
 
-        return new Quantity(value, ucumUnit);
+        return new FhirQuantity(value, ucumUnit);
     }
 
     /// <summary>

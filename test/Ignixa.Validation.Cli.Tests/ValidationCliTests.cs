@@ -141,9 +141,8 @@ public class ValidationCliTests
         }
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
         var element = sourceNode.ToElement(schemaProvider);
 
-        return schema.Validate(element, settings, state);
+        return schema.Validate(element, settings);
     }
 }

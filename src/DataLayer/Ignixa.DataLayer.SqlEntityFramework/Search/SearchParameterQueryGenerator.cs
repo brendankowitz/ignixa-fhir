@@ -1046,12 +1046,34 @@ public class SearchParameterQueryGenerator
             return GenerateDateTimeOrQuery(resourceTypeId, searchParamId, multiaryExpr);
         }
 
+        // Special handling for DateTime AND expressions - every bound must apply to the SAME row.
+        // A date comparator that lowers to a conjunction (eq's containment, ap's overlap) is a statement
+        // about one stored range, so intersecting per-bound resource-id sets is not equivalent: a resource
+        // whose parameter reaches a repeating element carries several rows, and one row can clear the lower
+        // bound while a different row clears the upper, matching a resource nothing is indexed near.
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
+            IsDateTimeAndExpression(multiaryExpr))
+        {
+            return GenerateDateTimeAndQuery(resourceTypeId, searchParamId, multiaryExpr);
+        }
+
         // Special handling for Quantity AND expressions - all filters must apply to the SAME row
         // Without this, each condition (system, code, value) would match independently and incorrectly combine
         if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
             IsQuantityAndExpression(multiaryExpr))
         {
             return await GenerateQuantityAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
+        }
+
+        // Special handling for Reference AND expressions - every part of the reference must identify the SAME
+        // row. A reference is a single stored triple (base, type, id), so intersecting per-field resource-id
+        // sets is not equivalent: a resource whose parameter reaches a repeating element carries several rows,
+        // and one row can supply the type while a different row supplies the id, matching a resource that
+        // references neither.
+        if (multiaryExpr.MultiaryOperation == MultiaryOperator.And &&
+            IsReferenceAndExpression(multiaryExpr))
+        {
+            return await GenerateReferenceAndQueryAsync(resourceTypeId, searchParamId, multiaryExpr, ct);
         }
 
         // Special handling for Token AND expressions - all filters (system, code, missing system) must apply to the SAME row
@@ -1108,12 +1130,7 @@ public class SearchParameterQueryGenerator
         {
             if (expr is BinaryExpression binaryExpr)
             {
-                DateTime value = binaryExpr.Value switch
-                {
-                    DateTime dt => dt,
-                    DateTimeOffset dto => dto.UtcDateTime,
-                    _ => Convert.ToDateTime(binaryExpr.Value)
-                };
+                DateTime value = ToDateTime(binaryExpr.Value);
 
                 conditions.Add((binaryExpr.FieldName, binaryExpr.BinaryOperator, value));
 
@@ -1220,19 +1237,63 @@ public class SearchParameterQueryGenerator
                 .Select(sp => sp.ResourceSurrogateId);
         }
 
-        // Case: StartDateTime GreaterThanOrEqual AND EndDateTime LessThanOrEqual (eq search - though this is AND, not OR)
-        // This shouldn't happen for OR, but handle it just in case
+        // The containment operand pair (StartDateTime >= x, EndDateTime <= y) is what eq lowers to, and eq is
+        // a conjunction. Disjoining those two bounds does not weaken eq, it inverts it into "starts after the
+        // window OR ends before it" - close to ne, and true of almost every row. Reaching here means an AND
+        // was routed into the OR builder, which no operand-shape guess can repair, so say so instead.
         if (c1.Field == FieldName.DateTimeStart && c1.Op == BinaryOperator.GreaterThanOrEqual &&
             c2.Field == FieldName.DateTimeEnd && c2.Op == BinaryOperator.LessThanOrEqual)
         {
-            return baseQuery.Where(sp => sp.StartDateTime >= c1.Value || sp.EndDateTime <= c2.Value)
-                .Select(sp => sp.ResourceSurrogateId);
+            throw new InvalidOperationException(
+                "A containment-shaped date operand pair (DateTimeStart >= x, DateTimeEnd <= y) reached the " +
+                "DateTime OR builder. Containment is the shape 'eq' lowers to and it is a conjunction; " +
+                "combining these bounds with OR would match nearly every indexed row.");
         }
 
         // Generic fallback: use UNION for any other combination
         var q1 = BuildSingleConditionDateTimeQuery(baseQuery, c1);
         var q2 = BuildSingleConditionDateTimeQuery(baseQuery, c2);
         return q1.Union(q2);
+    }
+
+    /// <summary>
+    /// Checks whether every conjunct is a bound on the same indexed date range, which is what the date
+    /// comparators that lower to a conjunction produce: <c>eq</c> as containment
+    /// (<c>DateTimeStart &gt;= x AND DateTimeEnd &lt;= y</c>), <c>ap</c> as overlap. Requiring every
+    /// ComponentIndex to be null keeps composite components off this path: they are keyed per component and
+    /// belong to the composite tables, which this base-table generator does not read.
+    /// </summary>
+    private static bool IsDateTimeAndExpression(MultiaryExpression multiaryExpr)
+    {
+        // Checked per conjunct rather than by counting distinct indices. N bounds that share one non-null
+        // index are also "a single ComponentIndex", so a count-based guard admits exactly the composite
+        // components it is supposed to exclude.
+        return multiaryExpr.Expressions.All(e =>
+            e is BinaryExpression { FieldName: FieldName.DateTimeStart or FieldName.DateTimeEnd, ComponentIndex: null });
+    }
+
+    /// <summary>
+    /// Generates a single DateTime query with every bound applied to the SAME row.
+    /// This is essential for correctness - a resource may carry many rows on one date parameter, and the
+    /// conjunction is a claim about one of them, not about their union.
+    /// </summary>
+    private IQueryable<long> GenerateDateTimeAndQuery(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr)
+    {
+        _logger.LogDebug("Using single-row DateTime AND query generation for {Count} bounds", multiaryExpr.Expressions.Count);
+
+        var query = _context.DateTimeSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            query = ApplyDateTimeBound(query, (BinaryExpression)expr);
+        }
+
+        return query.Select(sp => sp.ResourceSurrogateId);
     }
 
     /// <summary>
@@ -1433,30 +1494,37 @@ public class SearchParameterQueryGenerator
         string? identifierTypeSystem = null;
         string? identifierTypeCode = null;
 
+        // IsTokenAndExpression routes on Any, so a mixed And reaches here with conjuncts this method cannot
+        // apply. Dropping them widened the result instead of failing: a composite whose parameter is absent
+        // from dbo.SearchParam, or whose component pairing DetermineCompositeType returns Unknown for, bypasses
+        // the composite interception in GenerateQueryAsync and arrives as an And of several components. The
+        // token conjunct alone then answered the search. Throwing matches GenerateQuantityAndQueryAsync and
+        // turns a silently wrong answer into a diagnosable failure. Every shape
+        // SearchValueExpressionBuilderHelper emits for a token value is handled below, so this is unreachable
+        // from a single token search parameter.
         foreach (var expr in multiaryExpr.Expressions)
         {
-            if (expr is StringExpression stringExpr)
+            switch (expr)
             {
-                switch (stringExpr.FieldName)
-                {
-                    case FieldName.TokenSystem:
-                        system = stringExpr.Value;
-                        break;
-                    case FieldName.TokenCode:
-                        code = stringExpr.Value;
-                        break;
-                    case FieldName.IdentifierTypeSystem:
-                        identifierTypeSystem = stringExpr.Value;
-                        break;
-                    case FieldName.IdentifierTypeCode:
-                        identifierTypeCode = stringExpr.Value;
-                        break;
-                }
-            }
-            else if (expr is MissingFieldExpression missingExpr && missingExpr.FieldName == FieldName.TokenSystem)
-            {
-                // |code pattern: system must be null/missing
-                requireMissingSystem = true;
+                case StringExpression { FieldName: FieldName.TokenSystem } systemExpr:
+                    system = systemExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.TokenCode } codeExpr:
+                    code = codeExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.IdentifierTypeSystem } identifierTypeSystemExpr:
+                    identifierTypeSystem = identifierTypeSystemExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.IdentifierTypeCode } identifierTypeCodeExpr:
+                    identifierTypeCode = identifierTypeCodeExpr.Value;
+                    break;
+                case MissingFieldExpression { FieldName: FieldName.TokenSystem }:
+                    // |code pattern: system must be null/missing
+                    requireMissingSystem = true;
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"Unexpected expression {expr.GetType().Name} in a Token AND search; a dropped conjunct would silently widen the result.");
             }
         }
 
@@ -1535,6 +1603,113 @@ public class SearchParameterQueryGenerator
             .Select(sp => sp.ResourceSurrogateId);
     }
 
+    /// <summary>
+    /// Checks whether every conjunct addresses one ReferenceSearchParam row, which is the shape
+    /// <c>SearchValueExpressionBuilderHelper.Visit(ReferenceSearchValue)</c> emits for all three
+    /// <see cref="ReferenceKind"/> variants that lower to a conjunction.
+    /// </summary>
+    private static bool IsReferenceAndExpression(MultiaryExpression multiaryExpr)
+    {
+        // All, not Any: a conjunct this method does not recognise is one GenerateReferenceAndQueryAsync
+        // would not apply, and dropping a conjunct widens the result.
+        if (!multiaryExpr.Expressions.All(e =>
+            e is StringExpression { FieldName: FieldName.ReferenceBaseUri or FieldName.ReferenceResourceType or FieldName.ReferenceResourceId }
+                or MissingFieldExpression { FieldName: FieldName.ReferenceBaseUri }))
+        {
+            return false;
+        }
+
+        // A composite spreads its components over several ComponentIndex values against the paired columns
+        // of a composite table, so folding them onto one ReferenceSearchParam row would be wrong. Requiring
+        // a single index leaves composites to CompositeSearchParameterQueryGenerator.
+        return multiaryExpr.Expressions
+            .Select(e => ((IFieldExpression)e).ComponentIndex)
+            .Distinct()
+            .Count() == 1;
+    }
+
+    /// <summary>
+    /// Generates a single Reference query with base, type and id applied to the SAME row. A reference is one
+    /// stored triple, so the conjunction is a claim about one row rather than about the union of rows.
+    /// Mirrors <c>ReferenceColumnEquality</c> in Ignixa.Search.Sql, which already builds this as one
+    /// row-level predicate over one alias.
+    /// </summary>
+    private async Task<IQueryable<long>> GenerateReferenceAndQueryAsync(
+        short? resourceTypeId,
+        short? searchParamId,
+        MultiaryExpression multiaryExpr,
+        CancellationToken ct)
+    {
+        _logger.LogDebug("Using single-row Reference AND query generation for {Count} conjuncts", multiaryExpr.Expressions.Count);
+
+        string? baseUri = null;
+        string? referenceResourceType = null;
+        string? referenceResourceId = null;
+        var requireMissingBaseUri = false;
+
+        foreach (var expr in multiaryExpr.Expressions)
+        {
+            switch (expr)
+            {
+                case StringExpression { FieldName: FieldName.ReferenceBaseUri } baseUriExpr:
+                    baseUri = baseUriExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.ReferenceResourceType } typeExpr:
+                    referenceResourceType = typeExpr.Value;
+                    break;
+                case StringExpression { FieldName: FieldName.ReferenceResourceId } idExpr:
+                    referenceResourceId = idExpr.Value;
+                    break;
+                case MissingFieldExpression { FieldName: FieldName.ReferenceBaseUri }:
+                    requireMissingBaseUri = true;
+                    break;
+                default:
+                    throw new NotSupportedException(
+                        $"Unexpected expression {expr.GetType().Name} in a Reference AND search; a dropped conjunct would silently widen the result.");
+            }
+        }
+
+        // The type name resolves to an id once, ahead of the predicate, because it is a lookup against the
+        // ResourceType table. Naming the type inside the row predicate would make it a per-row await.
+        short? referenceResourceTypeId = null;
+        if (!string.IsNullOrEmpty(referenceResourceType))
+        {
+            referenceResourceTypeId = await _cache.GetResourceTypeIdAsync(referenceResourceType, ct);
+            if (!referenceResourceTypeId.HasValue)
+            {
+                _logger.LogDebug("Reference resource type not found: {ReferenceResourceType}", referenceResourceType);
+                return _context.EmptyResourceIds();
+            }
+        }
+
+        var query = _context.ReferenceSearchParams
+            .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
+                && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
+
+        if (referenceResourceTypeId is { } typeId)
+        {
+            query = query.Where(sp => sp.ReferenceResourceTypeId == typeId);
+        }
+
+        // A named base pins the row to that server; ReferenceKind.Internal instead lowers to Missing(BaseUri),
+        // meaning "this server", which is the null column. ReferenceKind.InternalOrExternal names neither and
+        // leaves the base unconstrained, so a relative search matches a row with or without a base.
+        if (!string.IsNullOrEmpty(baseUri))
+        {
+            query = query.Where(sp => sp.BaseUri == baseUri);
+        }
+        else if (requireMissingBaseUri)
+        {
+            query = query.Where(sp => sp.BaseUri == null);
+        }
+
+        if (!string.IsNullOrEmpty(referenceResourceId))
+        {
+            query = query.Where(sp => sp.ReferenceResourceId == referenceResourceId);
+        }
+
+        return query.Select(sp => sp.ResourceSurrogateId);
+    }
 
     private async Task<IQueryable<long>> ProcessStringExpressionAsync(
         short? resourceTypeId,
@@ -1848,19 +2023,11 @@ public class SearchParameterQueryGenerator
 
     private IQueryable<long> GenerateDateTimeQuery(short? resourceTypeId, short? searchParamId, BinaryExpression binaryExpr)
     {
-        // Handle both DateTime and DateTimeOffset
-        DateTime value = binaryExpr.Value switch
-        {
-            DateTime dt => dt,
-            DateTimeOffset dto => dto.UtcDateTime,
-            _ => Convert.ToDateTime(binaryExpr.Value)
-        };
-
         _logger.LogDebug(
             "GenerateDateTimeQuery: FieldName={FieldName}, Operator={Operator}, Value={Value}, ResourceTypeId={ResourceTypeId}, SearchParamId={SearchParamId}",
             binaryExpr.FieldName,
             binaryExpr.BinaryOperator,
-            value.ToString("o"),
+            ToDateTime(binaryExpr.Value).ToString("o"),
             resourceTypeId,
             searchParamId);
 
@@ -1870,11 +2037,24 @@ public class SearchParameterQueryGenerator
             .Where(sp => (!resourceTypeId.HasValue || sp.ResourceTypeId == resourceTypeId.Value)
                 && (!searchParamId.HasValue || sp.SearchParamId == searchParamId.Value));
 
+        return ApplyDateTimeBound(query, binaryExpr).Select(sp => sp.ResourceSurrogateId);
+    }
+
+    /// <summary>
+    /// Narrows a DateTimeSearchParam query by one bound, so that the single-bound and conjoined paths cannot
+    /// disagree about which column a comparator names.
+    /// </summary>
+    private static IQueryable<Entities.DateTimeSearchParamEntity> ApplyDateTimeBound(
+        IQueryable<Entities.DateTimeSearchParamEntity> query,
+        BinaryExpression binaryExpr)
+    {
+        DateTime value = ToDateTime(binaryExpr.Value);
+
         // Apply comparison based on FieldName (Start vs End) and operator
         // The expression parser creates expressions targeting specific fields:
         // - DateTimeStart comparisons filter on sp.StartDateTime
         // - DateTimeEnd comparisons filter on sp.EndDateTime
-        query = (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
+        return (binaryExpr.FieldName, binaryExpr.BinaryOperator) switch
         {
             (FieldName.DateTimeStart, BinaryOperator.GreaterThanOrEqual) => query.Where(sp => sp.StartDateTime >= value),
             (FieldName.DateTimeStart, BinaryOperator.GreaterThan) => query.Where(sp => sp.StartDateTime > value),
@@ -1892,9 +2072,15 @@ public class SearchParameterQueryGenerator
 
             _ => throw new NotSupportedException($"DateTime search with FieldName {binaryExpr.FieldName} and BinaryOperator {binaryExpr.BinaryOperator} is not supported")
         };
-
-        return query.Select(sp => sp.ResourceSurrogateId);
     }
+
+    /// <summary>Normalizes a date bound's value to the UTC <see cref="DateTime"/> the index columns store.</summary>
+    private static DateTime ToDateTime(object value) => value switch
+    {
+        DateTime dt => dt,
+        DateTimeOffset dto => dto.UtcDateTime,
+        _ => Convert.ToDateTime(value)
+    };
 
     private Task<IQueryable<long>> GenerateQuantityQueryAsync(
         short? resourceTypeId,

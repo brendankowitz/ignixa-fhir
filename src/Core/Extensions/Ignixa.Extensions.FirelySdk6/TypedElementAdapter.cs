@@ -60,8 +60,8 @@ public class TypedElementAdapter : ITypedElement
     /// <remarks>
     /// <inheritdoc path="/remarks/node()"/>
     /// <para>
-    /// Translated into Firely's representation - Ignixa carries the temporal primitives as FHIR
-    /// wire-format strings, where Firely expects <c>Hl7.Fhir.ElementModel.Types</c> instances.
+    /// Translated into Firely's representation - Ignixa carries the temporal primitives as
+    /// <see cref="FhirTemporal"/> instances, where Firely expects <c>Hl7.Fhir.ElementModel.Types</c> instances.
     /// </para>
     /// <para>
     /// Memoized because the translation parses, and Firely's engines read <c>Value</c> repeatedly

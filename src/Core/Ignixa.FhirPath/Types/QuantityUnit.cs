@@ -6,7 +6,9 @@
  */
 
 using System;
+using System.Globalization;
 using Fhir.Metrics;
+using Ignixa.Abstractions;
 
 namespace Ignixa.FhirPath.Types;
 
@@ -23,9 +25,34 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <summary>
     /// Initializes a new instance of the QuantityUnitConverter.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="UCUM.Load"/> reads the UCUM essence table, whose unit expressions carry exponents
+    /// written as plain ASCII (<c>-1</c>, <c>2</c>), and parses them under
+    /// <see cref="CultureInfo.CurrentCulture"/>. On a host whose negative sign is not ASCII
+    /// <c>'-'</c> - ar-SA writes U+061C U+002D - that throws <see cref="FormatException"/> on
+    /// <c>"-1"</c>. The table is invariant data, so it is read under the invariant culture.
+    /// </para>
+    /// <para>
+    /// This matters more than a one-off failure because <see cref="Instance"/> is a static field: a
+    /// throw here becomes a <see cref="TypeInitializationException"/> that the runtime caches, so
+    /// every quantity comparison, sort, aggregate and equality in the process fails permanently
+    /// afterwards, on any culture, from one unlucky first touch.
+    /// </para>
+    /// </remarks>
     public QuantityUnitConverter()
     {
-        _ucum = UCUM.Load();
+        var ambient = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            _ucum = UCUM.Load();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = ambient;
+        }
     }
 
     /// <summary>
@@ -232,7 +259,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <param name="left">The left quantity</param>
     /// <param name="right">The right quantity</param>
     /// <returns>The resulting quantity with combined units, or null if operation fails</returns>
-    public Quantity? Multiply(Quantity left, Quantity right)
+    public FhirQuantity? Multiply(FhirQuantity left, FhirQuantity right)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -271,7 +298,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
             if (string.IsNullOrEmpty(unit))
                 unit = "1";
 
-            return new Quantity(value, unit);
+            return new FhirQuantity(value, unit);
         }
         catch
         {
@@ -285,7 +312,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
     /// <param name="left">The left quantity (numerator)</param>
     /// <param name="right">The right quantity (denominator)</param>
     /// <returns>The resulting quantity with divided units, or null if division fails</returns>
-    public Quantity? Divide(Quantity left, Quantity right)
+    public FhirQuantity? Divide(FhirQuantity left, FhirQuantity right)
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
@@ -328,7 +355,7 @@ public class QuantityUnitConverter : IQuantityUnitConverter
                 unit = "1"; // UCUM dimensionless unit
             }
 
-            return new Quantity(value, unit);
+            return new FhirQuantity(value, unit);
         }
         catch
         {

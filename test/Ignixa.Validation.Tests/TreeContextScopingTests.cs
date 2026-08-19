@@ -36,18 +36,17 @@ public class TreeContextScopingTests
         => JsonNodeSourceNode.Create(node).ToElement(TestSchemaProvider.GetR4Schema());
 
     [Fact]
-    public void GivenResource_WhenEnterRootResource_ThenResourceEqualsRootResource()
+    public void GivenResource_WhenForRoot_ThenResourceEqualsRootResource()
     {
         // Arrange
         var element = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""1"" }");
 
         // Act
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Assert
         state.Scope.Resource.ShouldBeSameAs(element);
         state.Scope.RootResource.ShouldBeSameAs(element);
-        state.Scope.Resolver.ShouldNotBeNull();
     }
 
     [Fact]
@@ -62,8 +61,7 @@ public class TreeContextScopingTests
         var contained = parent.Children("contained")[0];
 
         // Act
-        var state = new ValidationState()
-            .EnterRootResource(parent)
+        var state = ValidationState.ForRoot(parent)
             .EnterContainedResource(contained);
 
         // Assert
@@ -88,7 +86,7 @@ public class TreeContextScopingTests
         var element = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""abc"" }");
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -121,8 +119,7 @@ public class TreeContextScopingTests
         var contained = parent.Children("contained")[0];
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState()
-            .EnterRootResource(parent)
+        var state = ValidationState.ForRoot(parent)
             .EnterContainedResource(contained);
 
         // Act
@@ -151,7 +148,7 @@ public class TreeContextScopingTests
         var element = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""1"" }");
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -183,7 +180,7 @@ public class TreeContextScopingTests
         }");
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -229,7 +226,7 @@ public class TreeContextScopingTests
         }");
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -261,7 +258,7 @@ public class TreeContextScopingTests
         var element = ToElement(@"{ ""resourceType"": ""Patient"", ""id"": ""example"" }");
         var check = new FhirPathInvariantCheck(constraint, _schema, _parser);
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -293,7 +290,7 @@ public class TreeContextScopingTests
         }");
         var check = new ReferenceResolutionCheck();
         var settings = new ValidationSettings { Depth = ValidationDepth.Full };
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -324,7 +321,7 @@ public class TreeContextScopingTests
         }");
         var check = new ReferenceResolutionCheck();
         var settings = new ValidationSettings { Depth = ValidationDepth.Full };
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
 
         // Act
         var result = check.Validate(element, settings, state);
@@ -334,24 +331,4 @@ public class TreeContextScopingTests
         result.Issues.ShouldBeEmpty();
     }
 
-    [Fact]
-    public void GivenNoResolverSeeded_WhenReferenceResolutionCheck_ThenDoesNotReportIssue()
-    {
-        // Arrange — without a seeded resolver the check is inert.
-        var element = ToElement(@"{
-            ""resourceType"": ""Patient"",
-            ""id"": ""1"",
-            ""generalPractitioner"": [ { ""reference"": ""#missing"" } ]
-        }");
-        var check = new ReferenceResolutionCheck();
-        var settings = new ValidationSettings { Depth = ValidationDepth.Full };
-        var state = new ValidationState();
-
-        // Act
-        var result = check.Validate(element, settings, state);
-
-        // Assert
-        result.IsValid.ShouldBeTrue();
-        result.Issues.ShouldBeEmpty();
-    }
 }

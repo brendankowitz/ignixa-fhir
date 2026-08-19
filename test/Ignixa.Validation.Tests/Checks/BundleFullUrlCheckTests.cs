@@ -26,7 +26,7 @@ public class BundleFullUrlCheckTests
         var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
         var check = new BundleFullUrlCheck();
 
-        return check.Validate(element, new ValidationSettings { Depth = depth }, new ValidationState());
+        return check.Validate(element, new ValidationSettings { Depth = depth }, ValidationState.ForRoot(element));
     }
 
     [Fact]

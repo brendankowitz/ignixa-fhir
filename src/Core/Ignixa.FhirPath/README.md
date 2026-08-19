@@ -6,7 +6,7 @@ FHIRPath expression evaluation engine for FHIR resources. Provides a high-perfor
 
 - **Standards-compliant**: Implements the FHIRPath specification
 - **High-performance**: Visitor pattern architecture with compile-time optimization
-- **Compile-time optimizations**: Constant folding, short-circuiting, algebraic simplification
+- **Compile-time optimizations**: Constant folding and short-circuiting, applied only where they provably preserve semantics
 - **Expression caching**: Compiled expressions are cached for repeated use
 - **Modern architecture**: Works with `IElement` from Ignixa.Abstractions
 - **Extensible**: Add custom functions via attributes and source generators
@@ -55,14 +55,15 @@ var options = new CompilationOptions { Optimize = true };
 parser.Parse("1 + 1", options);              // Optimized to: 2
 parser.Parse("'hello' + 'world'", options);  // Optimized to: 'helloworld'
 
-// Short-circuit evaluation
+// Short-circuit evaluation, matching the three rows the evaluator itself short-circuits
 parser.Parse("false and X", options);        // Optimized to: false (X not evaluated)
 parser.Parse("true or X", options);          // Optimized to: true (X not evaluated)
+parser.Parse("false implies X", options);    // Optimized to: true (X not evaluated)
 
-// Algebraic simplification
-parser.Parse("X + 0", options);              // Optimized to: X
-parser.Parse("X * 1", options);              // Optimized to: X
-parser.Parse("X and true", options);         // Optimized to: X
+// Left alone: X is always evaluated, so folding it away would discard an error it may signal
+parser.Parse("X and false", options);        // Unchanged
+parser.Parse("X + 0", options);              // Unchanged
+parser.Parse("X and true", options);         // Unchanged
 ```
 
 ### Using the Compiled Delegate Mode (Faster)

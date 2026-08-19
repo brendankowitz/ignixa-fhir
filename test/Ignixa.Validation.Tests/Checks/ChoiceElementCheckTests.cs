@@ -37,10 +37,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "Quantity", "string", "boolean" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -58,10 +59,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "Quantity", "string" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -79,10 +81,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("onset", new[] { "dateTime", "Age", "Period", "Range", "string" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -105,10 +108,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "Quantity", "string" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -131,10 +135,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "string", "Code", "boolean" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -162,10 +167,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "Quantity", "string" }); // CodeableConcept NOT allowed
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -187,10 +193,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "string", "integer", "boolean" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeFalse();
@@ -213,10 +220,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "string" }); // lowercase
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -233,10 +241,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "String" }); // uppercase
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -251,10 +260,7 @@ public class ChoiceElementCheckTests
     {
         var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(json));
         var check = new ChoiceElementCheck("value", allowedTypes);
-        return check.Validate(
-            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
-            new ValidationSettings(),
-            new ValidationState());
+        return check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), new ValidationSettings(), ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     [Theory]
@@ -362,10 +368,7 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(
             @"{ ""resourceType"": ""Observation"", ""valueBoolean"": 0 }"));
         var check = new ChoiceElementCheck("value", new[] { "boolean", "string" });
-        var result = check.Validate(
-            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
-            new ValidationSettings(),
-            new ValidationState());
+        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), new ValidationSettings(), ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
 
         result.IsValid.ShouldBeFalse();
         result.Issues.ShouldContain(i => i.Path.EndsWith("value.ofType(boolean)", StringComparison.Ordinal));
@@ -409,10 +412,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("value", new[] { "Quantity", "CodeableConcept", "string", "boolean", "integer", "Range", "Ratio", "SampledData", "time", "dateTime", "Period" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -441,10 +445,11 @@ public class ChoiceElementCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ChoiceElementCheck("onset", new[] { "dateTime", "Age", "Period", "Range", "string" });
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();

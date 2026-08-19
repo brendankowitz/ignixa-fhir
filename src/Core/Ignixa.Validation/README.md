@@ -51,7 +51,7 @@ var schema = profileAware.ResolveForElement(element);
 
 // 6. Validate.
 var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-var result = schema!.Validate(element, settings, new ValidationState());
+var result = schema!.Validate(element, settings);
 ```
 
 `ProfileAwareValidationSchemaResolver` also implements `IValidationSchemaResolver`,
@@ -100,8 +100,7 @@ var element = sourceNode.ToElement(fhirSchema);
 
 // 5. Choose validation depth
 var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-var state = new ValidationState();
-var result = validationSchema.Validate(element, settings, state);
+var result = validationSchema.Validate(element, settings);
 
 if (!result.IsValid)
 {

@@ -389,7 +389,10 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         if (funcDef?.TakesExpressionArguments == true)
         {
             var singleItemContext = focusTypes.AsSingle();
-            innerContext = innerContext.WithFocus(singleItemContext).PushExpressionContext(singleItemContext);
+            innerContext = innerContext
+                .WithFocus(singleItemContext)
+                .PushExpressionContext(singleItemContext)
+                .ForkVariableScope();
         }
 
         if (functionName.Equals("ofType", StringComparison.OrdinalIgnoreCase) ||
@@ -478,8 +481,8 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var visitor = _childVisitor ?? this;
 
         // For union operator, fork context so defineVariable in one branch doesn't leak to sibling
-        var leftContext = expression.Operator == "|" ? context.ForkForBranch() : context;
-        var rightContext = expression.Operator == "|" ? context.ForkForBranch() : context;
+        var leftContext = expression.Operator == "|" ? context.ForkVariableScope() : context;
+        var rightContext = expression.Operator == "|" ? context.ForkVariableScope() : context;
 
         var leftResult = expression.Left?.AcceptVisitor(visitor, leftContext) ?? new FhirPathTypeSet();
         var rightResult = expression.Right?.AcceptVisitor(visitor, rightContext) ?? new FhirPathTypeSet();
@@ -789,21 +792,50 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         return result;
     }
 
+    /// <summary>
+    /// Records the variable a <c>defineVariable</c> call introduces, and reports the two ways the call can
+    /// be rejected at runtime.
+    /// </summary>
+    /// <remarks>
+    /// Both diagnostics mirror <c>FhirPathEvaluator.EvaluateDefineVariable</c> exactly, via the shared
+    /// <see cref="DefineVariableRules"/>, because an analyzer that stays silent about an expression the
+    /// evaluator throws on is worse than no analyzer: it certifies the expression. The redefinition check
+    /// is the same lexical walk up the invocation chain the evaluator performs, which is why it can be
+    /// applied here at all - it reads the AST, not the runtime variable store.
+    /// </remarks>
     private static void HandleDefineVariable(
         FunctionCallExpression expression,
         FhirPathTypeSet focusTypes,
         List<FhirPathTypeSet> argTypes,
         AnalysisContext context)
     {
-        if (expression.Arguments.Count >= 1 && expression.Arguments[0] is ConstantExpression nameExpr)
+        // Argument count is already validated from the [FhirPathFunction] metadata; only the two rules the
+        // evaluator adds on top of it are handled here.
+        if (expression.Arguments.Count < 1 || expression.Arguments[0] is not ConstantExpression nameExpr)
         {
-            var varName = nameExpr.Value?.ToString();
-            if (!string.IsNullOrEmpty(varName))
-            {
-                var varType = argTypes.Count >= 2 ? argTypes[1] : focusTypes;
-                context.WithDefinedVariable(varName, varType);
-            }
+            return;
         }
+
+        var varName = nameExpr.Value?.ToString();
+        if (string.IsNullOrEmpty(varName))
+        {
+            return;
+        }
+
+        if (DefineVariableRules.ReservedVariableNames.Contains(varName))
+        {
+            context.AddError($"defineVariable cannot redefine the system variable '%{varName}'", expression);
+            return;
+        }
+
+        if (DefineVariableRules.IsAlreadyDefinedEarlierInSameChain(expression, varName))
+        {
+            context.AddError($"Variable '%{varName}' is already defined", expression);
+            return;
+        }
+
+        var varType = argTypes.Count >= 2 ? argTypes[1] : focusTypes;
+        context.WithDefinedVariable(varName, varType);
     }
 
     /// <summary>
@@ -902,7 +934,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (leftResult.IsCollection())
         {
-            context.AddWarning("Operator 'as' applied to collection - only first item will be cast", expression);
+            context.AddWarning("Operator 'as' applied to collection - the evaluator throws unless the input is a single item", expression);
         }
     }
 

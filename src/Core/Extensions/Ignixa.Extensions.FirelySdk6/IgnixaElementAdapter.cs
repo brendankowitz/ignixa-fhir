@@ -44,7 +44,8 @@ public class IgnixaElementAdapter : IElement
     /// <inheritdoc path="/remarks/node()"/>
     /// <para>
     /// Translated into Ignixa's representation - Firely surfaces the temporal primitives as
-    /// <c>Hl7.Fhir.ElementModel.Types</c> instances, which Ignixa's evaluators do not recognise.
+    /// <c>Hl7.Fhir.ElementModel.Types</c> instances; <see cref="FirelyPrimitiveValues.ToIgnixa"/>
+    /// translates them to <see cref="FhirTemporal"/> so Ignixa's evaluators can handle them.
     /// Memoized so that repeated reads return the same instance rather than re-rendering the
     /// wire-format string each time. The value is captured on first read: this adapter is a
     /// snapshot of the wrapped element, not a live view of it, so re-create it after mutating the

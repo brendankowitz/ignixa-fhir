@@ -20,6 +20,7 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Search;
 using Ignixa.Application.Infrastructure;
 using System.Text.Json.Nodes;
+using FhirPathEvaluatorWithTimeout = Ignixa.Application.Features.Experimental.Transform.FhirPathEvaluatorWithTimeout;
 
 namespace Ignixa.Application.Operations.Features.Transform;
 

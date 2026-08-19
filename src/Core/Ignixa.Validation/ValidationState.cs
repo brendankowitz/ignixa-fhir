@@ -14,21 +14,47 @@ namespace Ignixa.Validation;
 /// </summary>
 public record ValidationState
 {
-    /// <summary>
-    /// Initializes a new instance of the <see cref="ValidationState"/> class.
-    /// </summary>
-    public ValidationState()
+    private ValidationState(ResourceScope scope)
     {
         Global = new GlobalState();
         Instance = new InstanceState();
         Location = new LocationState();
+        Scope = scope;
     }
 
-    private ValidationState(GlobalState global, InstanceState instance, LocationState location)
+    /// <summary>
+    /// Creates a state rooted at <paramref name="resource"/>: the only way to obtain a
+    /// <see cref="ValidationState"/>. Both <c>%resource</c> and <c>%rootResource</c> point at the
+    /// resource itself, which is correct for a standalone resource and for an independent Bundle entry
+    /// (a Bundle entry's resource is not "contained" in the Bundle in the FHIRPath sense).
+    /// </summary>
+    /// <param name="resource">The resource element this validation is rooted at.</param>
+    /// <returns>A validation state scoped to <paramref name="resource"/>.</returns>
+    /// <remarks>
+    /// <para>
+    /// There is deliberately no parameterless constructor. A state with no root is not a weaker state,
+    /// it is a broken one: <c>%resource</c> would be empty, a constraint like <c>%resource.id = 'x'</c>
+    /// would evaluate to empty, and <c>FhirPathInvariantCheck</c> reads empty as a failed constraint —
+    /// so a conformant resource is rejected for a defect in the caller, and only at <c>Full</c> depth,
+    /// where invariants actually run. That bug shipped once because seeding was a separate step a caller
+    /// had to remember; making the root a construction parameter is what stops it recurring.
+    /// </para>
+    /// <para>
+    /// Seeding costs nothing: it records two element references and walks nothing. Reference resolution
+    /// is not set up here — see <see cref="ResourceScope"/> for where the <see cref="ReferenceIndex"/>
+    /// that backs <c>resolve()</c> and <c>ReferenceResolutionCheck</c> is actually built, and why this
+    /// type no longer builds one of its own.
+    /// </para>
+    /// </remarks>
+    public static ValidationState ForRoot(IElement resource)
     {
-        Global = global;
-        Instance = instance;
-        Location = location;
+        ArgumentNullException.ThrowIfNull(resource);
+
+        return new ValidationState(new ResourceScope
+        {
+            Resource = resource,
+            RootResource = resource
+        });
     }
 
     /// <summary>
@@ -48,10 +74,54 @@ public record ValidationState
 
     /// <summary>
     /// Gets the FHIRPath tree-context scope (%resource, %rootResource, resolve()) for the
-    /// resource currently being validated. Seeded at resource boundaries via
-    /// <see cref="EnterRootResource"/> / <see cref="EnterContainedResource"/>.
+    /// resource currently being validated. Established by <see cref="ForRoot"/> at construction and
+    /// re-pointed at resource boundaries by <see cref="EnterContainedResource"/>; never absent.
     /// </summary>
-    public ResourceScope Scope { get; init; } = new();
+    public ResourceScope Scope { get; init; }
+
+    /// <summary>
+    /// The maximum number of nested element/contained-resource descents the validator will make
+    /// before it stops and reports rather than recursing further.
+    /// <para>
+    /// The compiled schema graph is already finite — <c>StructureDefinitionSchemaBuilder</c> cycle-guards
+    /// type recursion at build time, and the deepest nesting the R4 core schema produces is a handful
+    /// of element levels. Runtime depth is therefore bounded by the document, not the schema, and the
+    /// only ways to exceed this are contained-within-contained nesting (which dom-2 forbids) or a
+    /// hostile instance.
+    /// </para>
+    /// <para>
+    /// Note this is the inner of two guards: System.Text.Json's own <c>MaxDepth</c> also defaults to
+    /// 64 and, since every nesting level costs at least one JSON level, usually rejects such a document
+    /// before the validator sees it. This limit is what holds when a caller raises that ceiling or
+    /// builds the element tree from a non-JSON source.
+    /// </para>
+    /// </summary>
+    public const int MaxNestingDepth = 64;
+
+    /// <summary>
+    /// Gets how many nested element or contained-resource levels below the validation root this state
+    /// sits. Incremented by <see cref="TryDescend"/> at each descent.
+    /// </summary>
+    public int NestingDepth { get; init; }
+
+    /// <summary>
+    /// Attempts to descend one nesting level. Returns false once <see cref="MaxNestingDepth"/> is
+    /// reached, so the caller can report the truncation instead of recursing further; a validator that
+    /// silently stopped walking would report a clean result for a subtree it never looked at.
+    /// </summary>
+    /// <param name="descended">The state one level deeper, when the limit has not been reached.</param>
+    /// <returns>True if the descent is permitted; otherwise, false.</returns>
+    public bool TryDescend(out ValidationState descended)
+    {
+        if (NestingDepth >= MaxNestingDepth)
+        {
+            descended = this;
+            return false;
+        }
+
+        descended = this with { NestingDepth = NestingDepth + 1 };
+        return true;
+    }
 
     /// <summary>
     /// Creates a new state with updated instance information.
@@ -90,52 +160,30 @@ public record ValidationState
     }
 
     /// <summary>
-    /// Enters a resource that becomes a validation root: a standalone resource or an independent
-    /// Bundle entry. Both %resource and %rootResource point at the resource itself (a Bundle entry's
-    /// resource is not "contained" in the Bundle in the FHIRPath sense). Builds a fresh resolver
-    /// rooted at this resource.
-    /// </summary>
-    /// <param name="resource">The resource element becoming the validation root.</param>
-    /// <returns>A new validation state scoped to this resource.</returns>
-    public ValidationState EnterRootResource(IElement resource)
-    {
-        ArgumentNullException.ThrowIfNull(resource);
-
-        var index = ReferenceIndex.Build(resource);
-        return this with
-        {
-            Scope = new ResourceScope
-            {
-                Resource = resource,
-                RootResource = resource,
-                Resolver = index.Resolve
-            }
-        };
-    }
-
-    /// <summary>
     /// Enters a contained resource C inside the current parent resource P: %resource becomes C and
-    /// %rootResource becomes P (the containing resource). The resolver chains C's own contained set
-    /// to the parent scope's resolver, matching FHIR resolution order (contained-of-current then
-    /// bundle/contained-of-root).
+    /// %rootResource becomes P (the containing resource).
     /// </summary>
     /// <param name="contained">The contained resource element being entered.</param>
     /// <returns>A new validation state scoped to the contained resource.</returns>
+    /// <remarks>
+    /// Re-pointing %rootResource at P is what keeps contained-peer references (<c>#id</c> from one
+    /// contained resource to another) resolvable: both consumers index
+    /// <c>RootResource ?? Resource</c>, so from inside C they index P and therefore see P's whole
+    /// contained pool. C's own pool is always empty - FHIR forbids nested contained - so indexing C
+    /// would resolve nothing.
+    /// </remarks>
     public ValidationState EnterContainedResource(IElement contained)
     {
         ArgumentNullException.ThrowIfNull(contained);
 
         var parentScope = Scope;
-        var index = ReferenceIndex.Build(contained);
-        var parentResolver = parentScope.Resolver;
 
         return this with
         {
             Scope = parentScope with
             {
                 Resource = contained,
-                RootResource = parentScope.Resource,
-                Resolver = reference => index.Resolve(reference) ?? parentResolver?.Invoke(reference)
+                RootResource = parentScope.Resource
             }
         };
     }

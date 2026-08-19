@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Text;
 using EnsureThat;
 using Medino;
@@ -418,7 +419,8 @@ public class BundleEntryExecutor
         DateTimeOffset? lastModified = null;
         if (response.Headers.TryGetValue("Last-Modified", out var lastModifiedValues))
         {
-            if (DateTimeOffset.TryParse(lastModifiedValues.ToString(), out var parsedDate))
+            // RFC 7231 HTTP-date is always English/invariant regardless of host locale.
+            if (DateTimeOffset.TryParse(lastModifiedValues.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
             {
                 lastModified = parsedDate;
             }

@@ -43,7 +43,7 @@ public class SerializationBenchmarks
     [BenchmarkCategory("Parse", "Small")]
     public ResourceJsonNode IgnixaParseSmall()
     {
-        return JsonSerializer.Deserialize<ResourceJsonNode>(_patientSmallJson)!;
+        return ResourceJsonNode.Parse(_patientSmallJson);
     }
 
     [Benchmark(Description = "Firely: Parse small Patient (FhirJsonNode)")]
@@ -67,7 +67,7 @@ public class SerializationBenchmarks
     [BenchmarkCategory("Parse", "Medium")]
     public ResourceJsonNode IgnixaParseMedium()
     {
-        return JsonSerializer.Deserialize<ResourceJsonNode>(_observationMediumJson)!;
+        return ResourceJsonNode.Parse(_observationMediumJson);
     }
 
     [Benchmark(Description = "Firely: Parse medium Observation (FhirJsonNode)")]
@@ -91,7 +91,7 @@ public class SerializationBenchmarks
     [BenchmarkCategory("Parse", "Large")]
     public ResourceJsonNode IgnixaParseLarge()
     {
-        return JsonSerializer.Deserialize<ResourceJsonNode>(_bundleLargeJson)!;
+        return ResourceJsonNode.Parse(_bundleLargeJson);
     }
 
     [Benchmark(Description = "Firely: Parse large Bundle (FhirJsonNode)")]
@@ -115,7 +115,7 @@ public class SerializationBenchmarks
     [BenchmarkCategory("Serialize", "Small")]
     public string IgnixaSerializeSmall()
     {
-        var resource = JsonSerializer.Deserialize<ResourceJsonNode>(_patientSmallJson)!;
+        var resource = ResourceJsonNode.Parse(_patientSmallJson);
         return resource.SerializeToString();
     }
 
@@ -133,7 +133,7 @@ public class SerializationBenchmarks
     [BenchmarkCategory("Serialize", "Large")]
     public string IgnixaSerializeLarge()
     {
-        var resource = JsonSerializer.Deserialize<ResourceJsonNode>(_bundleLargeJson)!;
+        var resource = ResourceJsonNode.Parse(_bundleLargeJson);
         return resource.SerializeToString();
     }
 
