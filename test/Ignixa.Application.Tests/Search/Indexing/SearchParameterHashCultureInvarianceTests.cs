@@ -18,26 +18,28 @@ namespace Ignixa.Application.Tests.Search.Indexing;
 /// parameters, never on the host locale.
 /// </summary>
 /// <remarks>
-/// The hash is persisted and compared to decide whether a resource type needs reindexing. Ordering it with
-/// the default (linguistic, culture-sensitive) string comparer therefore made a server's reindex decision a
-/// function of where it runs. Measured over the real R4 parameter set across all 890 installed cultures:
-/// 51 cultures order the parameter URLs differently from the invariant culture, giving 128 of 135 resource
-/// types a locale-dependent hash. Two servers in one cluster with different <c>LANG</c> settings would each
-/// see the other's hash as stale and reindex in a loop.
+/// The hash is intended to be persisted and compared to decide whether a resource type needs reindexing,
+/// once that reindex path lands. Ordering it with the default (linguistic, culture-sensitive) string
+/// comparer would make that decision a function of where the server runs: measured over the real R4
+/// parameter set across all 890 installed cultures, 51 cultures order the parameter URLs differently from
+/// the invariant culture, giving 128 of 135 resource types a locale-dependent hash. Two servers in one
+/// cluster with different <c>LANG</c> settings would each see the other's hash as stale and reindex in a
+/// loop.
 ///
 /// <see cref="GivenAHashInput_WhenTheHostCultureVaries_ThenTheHashIsOrdinallyOrdered"/> carries a golden
-/// constant rather than recomputing the expected payload, because the value is persisted: any change to the
-/// ordering OR to the payload layout must fail loudly rather than silently re-baseline.
+/// constant rather than recomputing the expected payload, because the value is meant to be persisted: any
+/// change to the ordering OR to the payload layout must fail loudly rather than silently re-baseline.
 /// </remarks>
 public class SearchParameterHashCultureInvarianceTests
 {
     /// <summary>
     /// The hash of <see cref="CollationSensitiveParameters"/> under ordinal ordering. Measured identical
-    /// across all 891 cultures. Under the previous linguistic ordering 890 of those cultures produced
-    /// 9773999221B9E61220430B4338C0D54725EB2DCCF7A69454191301C108173A04 instead - only en-US-POSIX, whose
-    /// collation is already ordinal, agreed with this value.
+    /// across all 891 cultures (the 890 installed cultures plus the invariant culture the sweep appends).
+    /// Recomputed after the third (<c>Case</c>/<c>case</c> target/base type) entry was added to
+    /// <see cref="CollationSensitiveParameters"/> to also pin the <c>TargetResourceTypes</c>/
+    /// <c>BaseResourceTypes</c> ordinal-ordering lines, not only the URL-ordering line.
     /// </summary>
-    private const string ExpectedOrdinalHash = "EDDAEDA8C5D77C30680A7A2AFB40F7BF2B230B9348BDA4D80CC5ADD223BE1129";
+    private const string ExpectedOrdinalHash = "8E330E03CC5E7D2E10F18779523CC0F7FB8A5E48F13B75E5D766E603A605893D";
 
     /// <summary>
     /// Cultures measured to order the real R4 search parameter URLs differently from the invariant culture,
@@ -96,7 +98,11 @@ public class SearchParameterHashCultureInvarianceTests
             cultures.Add(label);
         }
 
-        // Assert
+        // Assert - under DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 (Alpine/distroless images),
+        // CultureInfo.GetCultures(AllCultures) returns only the invariant culture, so
+        // ShouldHaveSingleItem() alone would pass having swept nothing. Pin that the sweep actually
+        // covered a meaningful number of installed cultures, not a degenerate one-culture run.
+        hashesByCulture.Values.Sum(cultures => cultures.Count).ShouldBeGreaterThan(100);
         hashesByCulture.Keys.ShouldHaveSingleItem();
         hashesByCulture.Keys.Single().ShouldBe(ExpectedOrdinalHash);
     }
@@ -104,8 +110,17 @@ public class SearchParameterHashCultureInvarianceTests
     /// <summary>
     /// Two real R4 parameter URLs whose ordinal order is the reverse of their linguistic order: ordinal puts
     /// 'C' (U+0043) before 'c' (U+0063), while linguistic collation compares case only as a tie-breaker and
-    /// so reaches "clinical-code" first. Measured to differ in 890 of 891 cultures, which makes this pair a
-    /// reliable regression guard rather than a single locale's quirk.
+    /// so reaches "clinical-code" first. Measured to differ in 890 of 891 cultures (890 installed plus the
+    /// invariant culture the sweep appends), which makes this pair a reliable regression guard rather than a
+    /// single locale's quirk.
+    ///
+    /// The third entry pins the same trick against <c>SearchParameterInfoExtensions.cs</c>'s other two
+    /// <see cref="StringComparer.Ordinal"/> additions, <c>TargetResourceTypes</c> (:48) and
+    /// <c>BaseResourceTypes</c> (:52): the URL pair above sorts those two lists identically under ordinal and
+    /// every linguistic collation, so it never exercises either line. This entry's <c>Case</c>/<c>case</c>
+    /// pairs are collation-sensitive by the same construction as the URLs above - the extension does no FHIR
+    /// resource-type validation, so the values need only diverge in collation, not be real types. Dropping
+    /// <see cref="StringComparer.Ordinal"/> from either extension line changes this hash.
     /// </summary>
     private static List<SearchParameterInfo> CollationSensitiveParameters() =>
     [
@@ -124,7 +139,15 @@ public class SearchParameterHashCultureInvarianceTests
             new Uri("http://hl7.org/fhir/SearchParameter/ClinicalImpression-assessor"),
             expression: "ClinicalImpression.assessor",
             targetResourceTypes: ["Practitioner", "PractitionerRole"],
-            baseResourceTypes: ["ClinicalImpression"])
+            baseResourceTypes: ["ClinicalImpression"]),
+        new(
+            "sensitive-lists",
+            "sensitive",
+            SearchParamType.Reference,
+            new Uri("http://hl7.org/fhir/SearchParameter/sensitive-lists"),
+            expression: "Sensitive.lists",
+            targetResourceTypes: ["Group", "group"],
+            baseResourceTypes: ["Condition", "condition"])
     ];
 
     private static string UnderCulture(string cultureName, Func<string> act) =>

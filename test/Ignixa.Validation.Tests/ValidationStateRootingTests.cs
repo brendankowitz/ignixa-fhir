@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
@@ -62,6 +63,31 @@ public class ValidationStateRootingTests
     }
 
     [Fact]
+    public void GivenAnInvariantContradictingResource_WhenValidatingAtFullWithNoStateSupplied_ThenTheConstraintFails()
+    {
+        // Arrange - the negative twin of the test above. If %resource actually resolves to the bound
+        // element (rather than an unrooted, empty %resource), this constraint MUST fail because "abc" !=
+        // "not-abc". FhirPathInvariantCheck returns Success() on parse failure, an unsupported engine
+        // feature, and an AppliesTo miss - none of which apply here - so a failure here is the only signal
+        // that distinguishes "the invariant ran and %resource was bound" from "the invariant never ran".
+        var element = ToElement("""{ "resourceType": "Patient", "id": "abc" }""");
+        var schema = new ValidationSchema(
+            "http://hl7.org/fhir/StructureDefinition/Patient",
+            "Patient",
+            universalChecks: [],
+            specChecks: [],
+            profileChecks: [ResourceIdInvariant(expectedId: "not-abc")]);
+
+        // Act - state omitted, same as every production caller.
+        var result = schema.Validate(element, new ValidationSettings { Depth = ValidationDepth.Full });
+
+        // Assert
+        result.IsValid.ShouldBeFalse(Describe(result));
+        result.Issues.Count.ShouldBe(1, Describe(result));
+        result.Issues[0].Code.ShouldBe("test-resource-bound-1");
+    }
+
+    [Fact]
     public void GivenTheValidationStateType_WhenInspectingItsPublicConstructors_ThenThereAreNone()
     {
         // ForRoot is the only public entry point, and it requires the root. A public constructor of any
@@ -72,13 +98,34 @@ public class ValidationStateRootingTests
             .ShouldBeEmpty();
     }
 
-    private FhirPathInvariantCheck ResourceIdInvariant() => new(
+    [Theory]
+    [InlineData(nameof(ResourceScope.Resource))]
+    [InlineData(nameof(ResourceScope.RootResource))]
+    public void GivenResourceScope_WhenInspectingItsMembers_ThenBothAreRequired(string memberName)
+    {
+        // "Unrooted state is unrepresentable" rests equally on ResourceScope.Resource/RootResource being
+        // required and non-nullable (ResourceScope.cs:57,64), not only on ValidationState's constructor
+        // shape above. If either member lost `required` (or went nullable), the compiler would stop
+        // enforcing the guarantee at every call site, and ForRoot/EnterContainedResource would keep
+        // compiling with a scope that could carry a null resource.
+        PropertyInfo property = typeof(ResourceScope).GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance)
+            ?? throw new InvalidOperationException($"Expected public property '{memberName}' on {nameof(ResourceScope)}.");
+
+        property.GetCustomAttribute<RequiredMemberAttribute>().ShouldNotBeNull(
+            $"{memberName} must be marked `required` so a {nameof(ResourceScope)} cannot be built without it.");
+
+        var nullabilityContext = new NullabilityInfoContext();
+        NullabilityInfo nullability = nullabilityContext.Create(property);
+        nullability.ReadState.ShouldBe(NullabilityState.NotNull, $"{memberName} must be non-nullable.");
+    }
+
+    private FhirPathInvariantCheck ResourceIdInvariant(string expectedId = "abc") => new(
         new Ignixa.Specification.ConstraintDefinition
         {
             Key = "test-resource-bound-1",
             Severity = ConstraintSeverity.Error,
             Human = "%resource must be bound to the resource under validation",
-            Expression = "%resource.id = 'abc'",
+            Expression = $"%resource.id = '{expectedId}'",
             Xpath = null,
             AppliesTo = ["Patient"]
         },

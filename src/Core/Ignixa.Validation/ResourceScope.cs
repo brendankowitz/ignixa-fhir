@@ -14,17 +14,17 @@ namespace Ignixa.Validation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Immutable, and never absent: both members are <c>required</c>, and the only way to reach one is
-/// <see cref="ValidationState.ForRoot"/> at construction or
-/// <see cref="ValidationState.EnterContainedResource"/> at a contained boundary. An unrooted scope is
-/// therefore unrepresentable — see <see cref="ValidationState.ForRoot"/> for the bug that made that
-/// worth enforcing in the type rather than in a caller's memory. Never re-pointed per element:
-/// <c>%resource</c> must remain the enclosing resource, not the constrained sub-element.
+/// Immutable, and never absent: both members are <c>required</c> and non-nullable, so an unrooted
+/// scope is unrepresentable regardless of who constructs one — see <see cref="ValidationState.ForRoot"/>
+/// for the bug that made that worth enforcing in the type rather than in a caller's memory. In
+/// practice the two producers are <see cref="ValidationState.ForRoot"/> at construction and
+/// <see cref="ValidationState.EnterContainedResource"/> at a contained boundary. Never re-pointed per
+/// element: <c>%resource</c> must remain the enclosing resource, not the constrained sub-element.
 /// </para>
 /// <para>
 /// This scope deliberately carries NO resolver. Reference resolution is
 /// <c>Ignixa.FhirPath.Evaluation.ReferenceIndex</c>'s job, and there is exactly one implementation of
-/// it; each consumer builds that index from this scope's <c>RootResource ?? Resource</c> for itself:
+/// it; each consumer builds that index from this scope's <c>RootResource</c> for itself:
 /// </para>
 /// <list type="bullet">
 /// <item><description>

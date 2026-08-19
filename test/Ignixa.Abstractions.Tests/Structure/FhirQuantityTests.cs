@@ -115,5 +115,6 @@ public class FhirQuantityTests
 
         stated.Equals(terse).ShouldBeTrue();
         stated.ToString().ShouldNotBe(terse.ToString());
+        stated.GetHashCode().ShouldBe(terse.GetHashCode());
     }
 }

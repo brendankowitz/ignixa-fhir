@@ -14,10 +14,11 @@ namespace Ignixa.FhirPath.Types;
 /// Unit-aware arithmetic over <see cref="FhirQuantity"/>.
 /// </summary>
 /// <remarks>
-/// These are extension methods rather than members of <see cref="FhirQuantity"/> because each one
-/// either needs an <see cref="IQuantityUnitConverter"/> or encodes a FHIRPath rule about what an
-/// impossible operation yields — a <see langword="null"/> the evaluator turns into an empty
-/// collection. Both are evaluation concerns, and keeping them out of <c>Ignixa.Abstractions</c> is
+/// These are extension methods rather than members of <see cref="FhirQuantity"/> because most of them
+/// either need an <see cref="IQuantityUnitConverter"/> or encode a FHIRPath rule about what an
+/// impossible operation yields — a <see langword="null"/> the evaluator turns into an empty collection
+/// (<see cref="Multiply"/> is the exception: it needs no converter and always succeeds, but lives here
+/// for symmetry with the rest of the arithmetic). Keeping these out of <c>Ignixa.Abstractions</c> is
 /// what lets the value type be shared without sharing an opinion on unit algebra.
 /// </remarks>
 public static class QuantityArithmetic

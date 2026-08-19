@@ -43,8 +43,7 @@ public record ValidationState
     /// Seeding costs nothing: it records two element references and walks nothing. Reference resolution
     /// is not set up here — see <see cref="ResourceScope"/> for where the <see cref="ReferenceIndex"/>
     /// that backs <c>resolve()</c> and <c>ReferenceResolutionCheck</c> is actually built, and why this
-    /// type no longer builds one of its own. There is therefore no depth at which skipping the root
-    /// buys anything.
+    /// type no longer builds one of its own.
     /// </para>
     /// </remarks>
     public static ValidationState ForRoot(IElement resource)

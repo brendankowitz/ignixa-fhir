@@ -3,6 +3,7 @@
 //     Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // </copyright>
 
+using System.Globalization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
 using Ignixa.Domain.Models;
@@ -58,7 +59,7 @@ public static class HistoryQueryParametersParser
     private static int ParseCount(IQueryCollection queryString)
     {
         if (queryString.TryGetValue("_count", out var countValue) &&
-            int.TryParse(countValue.ToString(), out var count))
+            int.TryParse(countValue.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var count))
         {
             return count;
         }
@@ -69,7 +70,7 @@ public static class HistoryQueryParametersParser
     private static int ParseOffset(IQueryCollection queryString)
     {
         if (queryString.TryGetValue("_offset", out var offsetValue) &&
-            int.TryParse(offsetValue.ToString(), out var offset))
+            int.TryParse(offsetValue.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var offset))
         {
             return offset;
         }
@@ -85,7 +86,7 @@ public static class HistoryQueryParametersParser
             var valueString = value.ToString();
 
             // Try parsing ISO 8601 format (FHIR standard)
-            if (DateTimeOffset.TryParse(valueString, out var result))
+            if (DateTimeOffset.TryParse(valueString, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
             {
                 return result;
             }

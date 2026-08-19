@@ -16,8 +16,7 @@ representation still held up and found:
   the wire literal alongside the parsed value (Finding (e)). Ignixa evaluated one lossy candidate
   container (`DateTimeOffset`) and generalised from it.
 - Ignixa already ships the pattern this ADR adopts, for `Quantity`: `QuantityElement.Value` returns
-  a non-BCL typed object, and `Types.Quantity` already carries an optional precision field
-  (Finding (g)).
+  a non-BCL typed object (Finding (g)).
 - Collapsing fidelity and evaluation into one `string`-shaped slot forced ~500 lines of
   string-parsing compensation in `FhirPathEvaluator.cs` (precision re-derived at 7 call sites in
   that file — 9 across both files together with `BoundaryFunctions.cs` — two already-divergent
@@ -43,7 +42,10 @@ before the window closes rather than waiting for more "trigger conditions."
 
 `IElement.Value` returns a typed `FhirTemporal` for `date`, `dateTime`, `instant`, and `time`,
 carrying the wire literal and the parsed precision together — the investigation's Option 3, scoped
-to temporals only. `Quantity` is left alone; it already has this shape.
+to temporals only. `Quantity`'s precedent is narrower than that: `QuantityElement.Value` already
+returns a non-BCL typed object, but that type has since moved assemblies (to `FhirQuantity` in
+`Ignixa.Abstractions`) and shed `IComparable`, `Precision`, and the `Add`/`Subtract`/`ConvertTo`/
+`CanCombineWith`/`DivideBy` members it used to carry.
 
 `FhirTemporal` (`src/Core/Ignixa.Abstractions/Structure/FhirTemporal.cs`) is a sealed class,
 constructed only via `TryParse` (malformed wire data is expected input, not a programmer error, so
@@ -104,7 +106,9 @@ any package, removing it broke nothing that existed.
 Nothing is lost with it: `Literal` is the wire truth, `Precision` states what is known, and the
 ordering bounds already back comparison. A caller needing a `DateTimeOffset` must say *which* one —
 lower bound, upper bound, or a UTC normalisation — so if the need arises it returns as a member named
-for the answer it gives, not as a bare `Value` whose meaning changes with precision.
+for the answer it gives, not as a bare `Value` whose meaning changes with precision. (No such member
+is exposed today: the ordering bounds backing comparison, `_lowerBound` and `_upperBound`, are
+private fields, not a public API.)
 
 **One design point remains flagged for revisit before 1.0, not deferred indefinitely:**
 

@@ -6,6 +6,9 @@
 #nullable enable
 
 using System.Globalization;
+using Ignixa.Application.Tests.Search.Parsing;
+using Ignixa.Search.Exceptions;
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Shouldly;
@@ -210,34 +213,101 @@ public class SearchValueCultureInvarianceTests
         result.ShouldBe(Literal);
     }
 
-    [Theory]
-    [MemberData(nameof(CorruptingCultures))]
-    public void GivenANegativeCountValue_WhenTheHostCultureVaries_ThenItParsesToTheSameNumber(string cultureName)
+    [Fact]
+    public void GivenANegativeCountValue_WhenBuildingSearchOptionsUnderArSaCulture_ThenTheNonNegativeMessageIsThrown()
     {
         // Arrange - ar-SA's NegativeSign is U+061C followed by '-', and .NET does NOT fall back to a bare
         // ASCII '-' for the leading sign, so a provider-less int.TryParse("-5") returns false there while
-        // succeeding everywhere else. Both branches of _count validation reject the value, so the observable
-        // difference was only the error message - but the parse itself must not depend on the host locale.
-        const string CountValue = "-5";
+        // succeeding everywhere else. SearchOptionsBuilder.cs:128 must parse with InvariantCulture so "-5"
+        // parses cleanly under ar-SA too - if it regressed to the provider-less overload, the parse itself
+        // would fail here and the wrong exception message (":130-133", "not a valid integer") would fire
+        // instead of the real defect this exercises (":135-139", "non-negative integer").
+        var harness = SearchOptionsBuilderHarness.ForPatient();
 
         // Act
-        string result = UnderCulture(
-            cultureName,
-            () => int.TryParse(CountValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
-                ? parsed.ToString(CultureInfo.InvariantCulture)
-                : "PARSE-FAIL");
+        BadSearchRequestException exception = UnderCulture(
+            "ar-SA",
+            () => Should.Throw<BadSearchRequestException>(() => harness.Build([("_count", "-5")])));
 
         // Assert
-        result.ShouldBe("-5");
+        exception.Message.ShouldContain("must be a non-negative integer");
+        exception.Message.ShouldNotContain("is not a valid integer");
+    }
+
+    [Fact]
+    public void GivenAPositiveCountValue_WhenBuildingSearchOptionsUnderArSaCulture_ThenMaxItemCountIsSet()
+    {
+        // Arrange
+        var harness = SearchOptionsBuilderHarness.ForPatient();
+
+        // Act
+        SearchOptions options = UnderCulture("ar-SA", () => harness.Build([("_count", "5")]));
+
+        // Assert
+        options.MaxItemCount.ShouldBe(5);
+    }
+
+    [Fact]
+    public void GivenANegativeIncludesCountValue_WhenBuildingSearchOptionsUnderArSaCulture_ThenTheNonNegativeMessageIsThrown()
+    {
+        // Arrange - the same locale hazard as _count, but for _includesCount (SearchOptionsBuilder.cs:216),
+        // which had zero coverage of any kind before this.
+        var harness = SearchOptionsBuilderHarness.ForPatient();
+
+        // Act
+        BadSearchRequestException exception = UnderCulture(
+            "ar-SA",
+            () => Should.Throw<BadSearchRequestException>(() => harness.Build([("_includesCount", "-5")])));
+
+        // Assert
+        exception.Message.ShouldContain("must be a non-negative integer");
+        exception.Message.ShouldNotContain("is not a valid integer");
+    }
+
+    [Fact]
+    public void GivenAPositiveIncludesCountValue_WhenBuildingSearchOptionsUnderArSaCulture_ThenIncludesMaxItemCountIsSet()
+    {
+        // Arrange
+        var harness = SearchOptionsBuilderHarness.ForPatient();
+
+        // Act
+        SearchOptions options = UnderCulture("ar-SA", () => harness.Build([("_includesCount", "5")]));
+
+        // Assert
+        options.IncludesMaxItemCount.ShouldBe(5);
+    }
+
+    [Theory]
+    [MemberData(nameof(CorruptingCultures))]
+    public void GivenAPatientEverythingDateFilter_WhenTheHostCultureVaries_ThenTheToStringDatesStayGregorianInvariant(string cultureName)
+    {
+        // Arrange - th-TH's default calendar is Buddhist (2026 -> 2569) and ar-SA's is UmAlQura
+        // (2026-03-05 -> 1447-09-16). The custom "yyyy-MM-dd" format resolves against
+        // CultureInfo.CurrentCulture.Calendar unless a provider pins it to invariant/Gregorian.
+        var expression = new PatientEverythingExpression(
+            "patient-1",
+            startDate: new DateTimeOffset(2026, 3, 5, 0, 0, 0, TimeSpan.Zero),
+            endDate: new DateTimeOffset(2026, 3, 10, 0, 0, 0, TimeSpan.Zero));
+
+        // Act
+        string result = UnderCulture(cultureName, expression.ToString);
+
+        // Assert
+        result.ShouldBe("(PatientEverything 'patient-1' start=2026-03-05 end=2026-03-10)");
     }
 
     private static string UnderCulture(string cultureName, Func<string?> act)
+    {
+        return UnderCulture<string?>(cultureName, act)!;
+    }
+
+    private static T UnderCulture<T>(string cultureName, Func<T> act)
     {
         CultureInfo originalCulture = CultureInfo.CurrentCulture;
         try
         {
             CultureInfo.CurrentCulture = new CultureInfo(cultureName);
-            return act()!;
+            return act();
         }
         finally
         {

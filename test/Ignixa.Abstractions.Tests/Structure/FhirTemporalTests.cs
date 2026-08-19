@@ -1,4 +1,4 @@
-﻿// -------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------
 // Copyright (c) Ignixa Contributors. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
@@ -585,6 +585,22 @@ public class FhirTemporalTests
         result.ShouldNotBeNull();
         result.Literal.ShouldBe(literal);
         result.ToString().ShouldBe(literal);
+    }
+
+    [Fact]
+    public void GivenLeapDay_WhenComparedToAdjacentDates_ThenItOrdersBetweenThem()
+    {
+        // The bounds FhirTemporal resolves a literal to are private, so acceptance
+        // (ShouldBeTrue above) does not prove "2024-02-29" resolved to the calendar date
+        // February 29th rather than merely being accepted as a well-formed literal. Ordering
+        // against its immediate neighbours is the observable substitute: only a leap-day-correct
+        // parse sorts strictly after Feb 28 and strictly before Mar 1.
+        FhirTemporal.TryParse("2024-02-28", FhirPrimitive.Date, out var feb28).ShouldBeTrue();
+        FhirTemporal.TryParse("2024-02-29", FhirPrimitive.Date, out var feb29).ShouldBeTrue();
+        FhirTemporal.TryParse("2024-03-01", FhirPrimitive.Date, out var mar01).ShouldBeTrue();
+
+        feb29!.CompareTo(feb28).ShouldBeGreaterThan(0);
+        feb29.CompareTo(mar01).ShouldBeLessThan(0);
     }
 
     [Theory]

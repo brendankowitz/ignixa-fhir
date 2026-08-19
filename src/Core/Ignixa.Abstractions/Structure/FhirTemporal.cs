@@ -10,7 +10,7 @@ namespace Ignixa.Abstractions;
 
 /// <summary>
 /// A FHIR temporal value (<c>date</c>, <c>dateTime</c>, <c>instant</c> or <c>time</c>) that carries
-/// the parsed value and the original wire literal at the same time.
+/// the wire literal and its parsed precision at the same time.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -149,7 +149,7 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// day is not a point on the calendar. What it must never do is
     /// override a fact the literal already states. <see cref="HasTimezone"/> is read from the literal for
     /// that reason -- forcing it off for <see cref="FhirPrimitive.Date"/> once let a mislabelled
-    /// <c>dateTime</c> report a floating local time while holding a resolved UTC instant, and because
+    /// <c>dateTime</c> report a floating local time while ordering as a fixed instant, and because
     /// <see cref="HasTimezone"/> is an equality and ordering key, that contradiction reached collections.
     /// </para>
     /// </remarks>

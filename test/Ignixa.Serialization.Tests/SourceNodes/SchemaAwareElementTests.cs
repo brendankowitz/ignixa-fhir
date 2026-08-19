@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2025, Ignixa Contributors
  *
  * Unit tests for SchemaAwareElement - validates choice type navigation,

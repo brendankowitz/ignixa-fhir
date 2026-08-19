@@ -111,8 +111,8 @@ public interface IElement
 `IElement.Value` is `object?`, and callers need to handle more than one shape:
 
 - `bool`, `int`, `decimal` for `boolean`, `integer`/`unsignedInt`/`positiveInt`, and `decimal`.
-- [`FhirTemporal`](#fhirtemporal) for `date`, `dateTime`, `instant`, and `time` — the parsed value and
-  the original wire literal together, not a bare `string`. If the literal fails to parse, the value
+- [`FhirTemporal`](#fhirtemporal) for `date`, `dateTime`, `instant`, and `time` — the wire literal and
+  its parsed precision together, not a bare `string`. If the literal fails to parse, the value
   falls back to the raw wire `string` instead of dropping the element.
 - The FHIR wire-format `string` for every other primitive (including `integer64` and `base64Binary`,
   which are not yet promoted to `long`/`byte[]`).
@@ -215,7 +215,7 @@ var birthDate = element.Select("birthDate.toDateTime()").FirstOrDefault();
 ### FhirTemporal
 
 The typed value `IElement.Value` returns for `date`, `dateTime`, `instant`, and `time` primitives.
-Carries the wire literal and the parsed precision together, so it is typed without losing partial-precision
+Carries the wire literal and its parsed precision together, so it is typed without losing partial-precision
 fidelity (`"1974"` is not forced into a full `DateTimeOffset`):
 
 ```csharp
@@ -224,7 +224,6 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     public string Literal { get; }              // Wire text verbatim, "@" sigil stripped
     public FhirTemporalPrecision Precision { get; }
     public FhirPrimitive Kind { get; }           // Date, DateTime, Instant, or Time
-    public DateTimeOffset? Value { get; }        // null at Year/Month precision, and for Time
     public bool HasTimezone { get; }
 
     public static bool TryParse(string? literal, FhirPrimitive kind, out FhirTemporal? result);
@@ -232,9 +231,13 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
 }
 ```
 
-`Value` is `null` whenever materializing a `DateTimeOffset` would fabricate data the source didn't
-supply — year/month precision, and every `time` (a time of day is not a point on the calendar). Use
-`Literal` for the source text and `Precision` to know how much of `Value` (when non-null) to trust.
+There is deliberately no resolved-instant member. One would have to be `null` at year/month precision
+and for every `time`, because materializing a `DateTimeOffset` there fabricates data the source never
+supplied — which is the same ambiguous null this type exists to remove, sitting one dereference from
+`IElement.Value`. Use `Literal` for the source text and `Precision` for how much of it is real. Code
+needing a `DateTimeOffset` has to say *which* one it means — the lower bound, the upper bound, or a
+UTC normalization — so it belongs on a member named for that answer rather than a bare `Value` whose
+meaning changes with precision. See [ADR-2610](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/typed-models/adr-2610-typed-temporal-values.md).
 
 `Compare` returns `null` for an indeterminate FHIRPath ordering (e.g. `@2012 > @2012-01`, or comparing
 a timezone-bearing value against a timezone-less one) rather than an arbitrary `true`/`false` — use it

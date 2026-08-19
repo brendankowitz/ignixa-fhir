@@ -21,14 +21,15 @@ public static class SearchParameterInfoExtensions
     /// will return the same hash.
     /// </summary>
     /// <remarks>
-    /// All ordering here is <see cref="StringComparer.Ordinal"/> because the hash is persisted and compared
-    /// across servers to decide whether a reindex is required. Linguistic collation varies by host locale
-    /// (measured: 51 of 890 installed cultures order the R4 parameter URLs differently from the invariant
-    /// culture, giving 128 of 135 resource types a locale-dependent hash), which would make a server
-    /// spuriously reindex purely because of where it runs.
+    /// All ordering here is <see cref="StringComparer.Ordinal"/> because this hash is intended to be
+    /// persisted and compared across servers to decide whether a reindex is required, once that reindex
+    /// path lands; for that comparison to be meaningful, ordering must be stable across hosts. Linguistic
+    /// collation varies by host locale, which would otherwise make a server spuriously compute a different
+    /// hash purely because of where it runs -- see <c>SearchParameterHashCultureInvarianceTests</c> for the
+    /// measured divergence.
     /// </remarks>
     /// <param name="searchParamaterInfos">A list of <see cref="SearchParameterInfo" /></param>
-    /// <returns>A hash based on the search parameter uri and last updated value.</returns>
+    /// <returns>A hash based on the search parameter uri, type, expression, target resource types, and base resource types.</returns>
     internal static string CalculateSearchParameterHash(this IEnumerable<SearchParameterInfo> searchParamaterInfos)
     {
         EnsureArg.IsNotNull(searchParamaterInfos, nameof(searchParamaterInfos));
