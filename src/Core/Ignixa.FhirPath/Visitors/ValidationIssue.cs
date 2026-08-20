@@ -26,6 +26,20 @@ public sealed record ValidationIssue
     public bool IsIndeterminate { get; init; }
 
     /// <summary>
+    /// Gets whether the issue reports a subexpression the analyzer proved yields the empty collection
+    /// for every conformant input.
+    /// </summary>
+    /// <remarks>
+    /// Mutually exclusive with <see cref="IsIndeterminate"/>: an always-empty finding is a decided fact,
+    /// not an admission that the expression could not be analysed. It is carried as structured state
+    /// rather than left to message matching because it is the only signal distinguishing a probable typo
+    /// (<c>status</c> against a <c>Patient</c> root) from a correct expression — both are
+    /// <see cref="Severity"/> <see cref="ValidationIssueSeverity.Warning"/> and both leave
+    /// <c>AnalysisResult.IsValid</c> true.
+    /// </remarks>
+    public bool IsAlwaysEmpty { get; init; }
+
+    /// <summary>
     /// Gets the location information (line, column, position).
     /// </summary>
     public string? Location { get; init; }

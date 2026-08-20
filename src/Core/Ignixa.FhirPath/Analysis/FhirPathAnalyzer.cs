@@ -829,7 +829,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             else if (!focusTypes.HasUnknown && !focusTypes.CanBeOfType(typeName))
             {
                 // An indeterminate focus can hold anything at runtime, so "always empty" is not decidable.
-                context.AddWarning(
+                context.AddAlwaysEmptyWarning(
                     $"Type filter '{typeName}' will always be empty. Focus types: {focusTypes.TypeNames()}",
                     expression);
             }
@@ -1226,13 +1226,28 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     /// can actually give: always empty, indeterminate, or invalid.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A root-relative name that some other resource declares is <em>decidable</em> when the root type is
     /// concrete: the analyzer knows the root type and knows it has no such element, so the navigation is
     /// always empty rather than unanalysable. Reporting it as indeterminate would be factually wrong and
     /// would silently downgrade any typo landing in the union of top-level element names across the whole
-    /// specification (<c>status</c>, <c>date</c>, <c>code</c>, <c>subject</c>, ...). Only an abstract root
-    /// (<c>Resource</c>, <c>DomainResource</c>) leaves the runtime type genuinely unknown, so only that case
-    /// propagates an indeterminate type.
+    /// specification (<c>status</c>, <c>date</c>, <c>code</c>, <c>subject</c>, ...). Only an abstract
+    /// <em>resource</em> root (<c>Resource</c>, <c>DomainResource</c>) leaves the runtime type genuinely
+    /// unknown, so only that case propagates an indeterminate type. <c>IsAbstract</c> alone is not the
+    /// test: <c>Element</c>, <c>BackboneElement</c>, <c>DataType</c>, <c>BackboneType</c> and
+    /// <c>PrimitiveType</c> are abstract too, and a runtime <c>Element</c> is never an <c>Appointment</c>,
+    /// so a root-property miss on one of those is exactly as decidable as it is on <c>Patient</c>.
+    /// </para>
+    /// <para>
+    /// The always-empty outcome is reached only for a bare, root-relative name. The identical fact
+    /// reported against any qualified focus stays an error: the expression <c>status</c> analysed at root
+    /// <c>Patient</c> warns, while <c>Patient.status</c>, <c>$this.status</c>, <c>%resource.status</c> and
+    /// <c>Patient.where(status='active')</c> all report "Property 'status' not found" — including the
+    /// resource-qualified form most authors would call the same expression. That asymmetry is
+    /// pre-existing: the classifier keys on <see cref="FhirPathTypeSet.IsRoot"/>, not on decidability.
+    /// Reconciling it would reclassify every "property not found" error the analyzer raises, which is its
+    /// principal typo signal, so it is recorded here rather than changed.
+    /// </para>
     /// </remarks>
     private void ReportUnresolvedProperty(
         string propertyName,
@@ -1249,7 +1264,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return;
         }
 
-        if (focusTypes.Types.Any(focusType => focusType.Type?.Info.IsAbstract == true))
+        if (focusTypes.Types.Any(focusType => focusType.Type?.Info is { IsAbstract: true, IsResource: true }))
         {
             result.AddUnknown(path: propertyName);
             context.AddIndeterminateWarning(
@@ -1258,7 +1273,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return;
         }
 
-        context.AddWarning(
+        context.AddAlwaysEmptyWarning(
             $"Property '{propertyName}' will always be empty on root type '{context.RootType}'. It is declared by another resource type, but not by this one.",
             expression);
     }

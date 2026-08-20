@@ -38,8 +38,11 @@ public sealed class AnalysisResult
     /// This is deliberately stricter than "no errors were reported": an expression the analyzer could not
     /// fully reason about is not certified valid. Callers writing a rejection gate should choose between
     /// this and <see cref="IsValidOrIndeterminate"/> explicitly. Against the shipped search-parameter
-    /// corpus, <c>Severity == Error</c> is empty for all five FHIR versions, while <c>IsValid</c> is false
-    /// for up to 5.5% of parameter/base-resource pairs, all of them indeterminate rather than invalid.
+    /// corpus, <c>Severity == Error</c> is confined to a single defective upstream expression — 26 of
+    /// 1,977 parameter/base-resource pairs on R5 and 25 of 2,027 on R6, none on STU3, R4 or R4B — and
+    /// <c>IsValid</c> is additionally false wherever the result is indeterminate, up to 4.2% of pairs
+    /// (83 of 1,977 on R5). A decidably always-empty navigation is neither: it leaves <c>IsValid</c>
+    /// true, and <see cref="HasAlwaysEmptySubexpression"/> is the only signal for it.
     /// </remarks>
     public bool IsValid =>
         !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error) &&
@@ -56,6 +59,20 @@ public sealed class AnalysisResult
     public bool IsValidOrIndeterminate =>
         !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error);
 
+    /// <summary>
+    /// Gets whether some subexpression provably yields empty for every conformant input.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately independent of <see cref="IsValid"/>. An always-empty navigation is a decided fact,
+    /// so treating it as invalid would contradict the analyzer's own reasoning; but it is also the shape
+    /// a typo takes once the root type is known concretely (<c>status</c> against a <c>Patient</c> root is
+    /// decidably empty, and almost certainly a mistake). Neither <see cref="IsValid"/> nor
+    /// <see cref="IsValidOrIndeterminate"/> separates that case from a correct expression, so this
+    /// predicate exists to let a caller apply its own policy without matching on warning text. It is not
+    /// evidence of a defect on its own: an expression written as a union across resource types is
+    /// legitimately empty on most of them.
+    /// </remarks>
+    public bool HasAlwaysEmptySubexpression => Issues.Any(issue => issue.IsAlwaysEmpty);
 
     /// <summary>
     /// Gets whether static analysis could not determine the expression's validity.
