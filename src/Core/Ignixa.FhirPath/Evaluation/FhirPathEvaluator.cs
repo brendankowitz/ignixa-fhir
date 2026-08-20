@@ -1733,7 +1733,9 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return CompareDateTimesWithPrecision(leftValue, rightValue, leftType, rightType, greater, orEqual);
             }
 
-            // Handle mixed numeric comparison (e.g. 1.5 > 1)
+            // Handle mixed numeric comparison (e.g. 1.5 > 1). Must stay above the wire-string branch
+            // below: if WireValue.AsWireString ever covers a numeric type, a numeric pair would reach
+            // that branch first and be ordered as text, where "10" sorts before "9".
             if ((leftValue is int || leftValue is decimal || leftValue is long) &&
                 (rightValue is int || rightValue is decimal || rightValue is long))
             {

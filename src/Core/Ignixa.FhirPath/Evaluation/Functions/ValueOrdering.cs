@@ -5,8 +5,6 @@
  * max() are defined in terms of, and a total order for sort().
  */
 
-global using SortComparer = Ignixa.FhirPath.Evaluation.Functions.ValueOrdering.SortComparer;
-
 using System.Globalization;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Types;

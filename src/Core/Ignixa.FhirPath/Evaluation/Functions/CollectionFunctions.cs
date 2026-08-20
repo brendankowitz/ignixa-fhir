@@ -983,7 +983,7 @@ internal static class CollectionFunctions
 
         if (arguments.Count == 0)
         {
-            return RunSort(list.OrderBy(e => (IElement?)e, SortComparer.NullsLow));
+            return RunSort(list.OrderBy(e => (IElement?)e, ValueOrdering.SortComparer.NullsLow));
         }
 
         // Extract sort key info (expression and direction) for all arguments
@@ -1005,7 +1005,9 @@ internal static class CollectionFunctions
 
         // Apply first sort key
         var firstKey = sortKeys[0];
-        var firstComparer = firstKey.IsDescending ? SortComparer.NullsHigh : SortComparer.NullsLow;
+        var firstComparer = firstKey.IsDescending
+            ? ValueOrdering.SortComparer.NullsHigh
+            : ValueOrdering.SortComparer.NullsLow;
         IOrderedEnumerable<IElement> orderedList = firstKey.IsDescending
             ? list.OrderByDescending(createKeySelector(firstKey.Expression), firstComparer)
             : list.OrderBy(createKeySelector(firstKey.Expression), firstComparer);
@@ -1015,7 +1017,9 @@ internal static class CollectionFunctions
         {
             var key = sortKeys[i];
             var keySelector = createKeySelector(key.Expression);
-            var keyComparer = key.IsDescending ? SortComparer.NullsHigh : SortComparer.NullsLow;
+            var keyComparer = key.IsDescending
+                ? ValueOrdering.SortComparer.NullsHigh
+                : ValueOrdering.SortComparer.NullsLow;
             orderedList = key.IsDescending
                 ? orderedList.ThenByDescending(keySelector, keyComparer)
                 : orderedList.ThenBy(keySelector, keyComparer);

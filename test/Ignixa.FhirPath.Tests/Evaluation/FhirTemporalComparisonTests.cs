@@ -150,6 +150,15 @@ public class FhirTemporalComparisonTests
     [Fact]
     public void GivenDateLookingStringsForTheSameInstant_WhenOrdered_ThenUsesTemporalSemantics()
     {
+        // Pins current behaviour rather than asserting a spec requirement: FHIRPath does not oblige an
+        // untyped string that merely looks like a dateTime to be compared as one. This is a guard, not a
+        // regression test - it exists so that changing the IsDateTimeString branch has to be deliberate.
+        //
+        // The literals are load-bearing and must not be "simplified" to two same-offset timestamps. The
+        // two offsets denote the same instant, so the temporal reading answers true, while ordinal
+        // comparison reaches '2' against '1' at the hour and answers false. Two same-offset ISO-8601
+        // timestamps agree under both readings, which would leave the test passing while pinning nothing.
+
         // Arrange
         var root = CreateTemporalElement("birthDate", "1974-12-25", FhirPrimitive.Date, "date");
         var expr = _parser.Parse("'2012-01-01T20:00:00+10:00' <= '2012-01-01T10:00:00Z'");

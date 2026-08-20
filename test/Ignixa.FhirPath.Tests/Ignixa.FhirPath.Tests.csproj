@@ -34,17 +34,20 @@
     project's pinned Firely 5.11.4 rather than the 6.0.1 the repo ships against.
 
     Why not a ProjectReference to Ignixa.Extensions.FirelySdk5, which already link-compiles all six
-    adapter sources for exactly this reason: its folder-local Directory.Packages.props pins
-    Hl7.Fhir.Base to 5.13.1, and NuGet unifies a transitive dependency to the highest version in the
-    graph, so referencing it would float this project's 5.11.4 up to 5.13.1 and defeat the ADR 2608 pin
-    below. The pin is the whole point of the harness, so the dependency loses. Only two of the six
-    sources are needed: the parity tests drive IgnixaElementAdapter and the primitive-value translation
-    it depends on, not the reverse (Ignixa-to-Firely) direction.
+    adapter sources for exactly this reason: measured, it restores but does not compile. The pin itself
+    survives restore - CentralPackageTransitivePinningEnabled plus the VersionOverride below hold this
+    project at 5.11.4 rather than floating it to the 5.13.1 that project's folder-local
+    Directory.Packages.props asks for - but the reference then contributes an assembly built against
+    5.13.1, and the build fails two ways: MSB3277 (a conflict between Hl7.Fhir.Base 5.11.4 and 5.13.1
+    "that could not be resolved", 5.11.4 winning as primary), and CS0436 on IgnixaElementAdapter, because
+    that project link-compiles the same sources this one does, so the type arrives both as source and as
+    metadata. Only two of the six sources are needed: the parity tests drive IgnixaElementAdapter and the
+    primitive-value translation it depends on, not the reverse (Ignixa-to-Firely) direction.
 
     This holds only while no project in this graph references Ignixa.Extensions.FirelySdk6. If one of
     the four Core references above ever takes that dependency, this assembly gets both a compiled and a
-    referenced IgnixaElementAdapter, they become two distinct types, and the result is CS0433 at best
-    and an unreadable type mismatch at worst. An extern alias would be the fix; there is nothing to
+    referenced IgnixaElementAdapter, they become two distinct types, and the result is the same CS0436 at
+    best and an unreadable type mismatch at worst. An extern alias would be the fix; there is nothing to
     alias today.
 
     Compiling at 5.11.4 means these tests pin the adapter's behaviour on the engine fhir-server will

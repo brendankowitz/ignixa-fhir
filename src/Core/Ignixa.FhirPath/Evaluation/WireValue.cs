@@ -40,6 +40,13 @@ internal static class WireValue
     /// round-trippable ISO 8601 rendering for a <see cref="DateTimeOffset"/> or <see cref="DateTime"/>, and
     /// <see langword="null"/> for everything else.
     /// </returns>
+    /// <remarks>
+    /// The set of types covered here is part of ordering dispatch, not just formatting. The comparison
+    /// operators in <see cref="FhirPathEvaluator"/> select their string-comparison branch by testing this
+    /// method, and only the numeric branch sitting above it keeps numbers out of that branch. Covering a
+    /// numeric type here would silently route numeric ordering through an ordinal string compare, where
+    /// "10" sorts before "9". Widen the type set only together with the branches that consume it.
+    /// </remarks>
     public static string? AsWireString(object? value)
     {
         return value switch

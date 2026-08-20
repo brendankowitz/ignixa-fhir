@@ -336,11 +336,16 @@ public class CollectionEquivalenceTests
     // pairing exists, not whether a particular traversal finds one.
     //
     // A first-fit matcher pairs 1.0 with 1.0, leaving 1.04 to fail against 0.96, so it answers false for
-    // one operand order and true for the other. Asserting both orders together is what pins the
-    // order-independence; asserting the value true is what pins the answer being the correct one rather
-    // than merely a consistent one.
+    // one ordering of the right operand and true for the other. Asserting both orderings together is what
+    // pins the order-independence; asserting the value true is what pins the answer being the correct one
+    // rather than merely a consistent one.
+    //
+    // What varies below is item order within the right operand - the operands themselves are never
+    // swapped. Do not read these as commutativity coverage: swapping the operands is a separate property
+    // and it does not hold today (1 'm' ~ 104 'cm' is true while 104 'cm' ~ 1 'm' is false), which is
+    // tracked as a parity-corpus finding.
     [Fact]
-    public void GivenNonTransitivelyEquivalentDecimalCollections_WhenComparedInEitherOperandOrder_ThenBothAreEquivalent()
+    public void GivenNonTransitivelyEquivalentDecimalCollections_WhenTheRightOperandIsReordered_ThenBothAreEquivalent()
     {
         var root = new ScalarRoot();
 
@@ -354,7 +359,7 @@ public class CollectionEquivalenceTests
     // !~ negates the same matching, so it inherits any order-dependence in it rather than having one of
     // its own. Covered separately because it is the operator search-parameter authors would reach for.
     [Fact]
-    public void GivenNonTransitivelyEquivalentDecimalCollections_WhenNegatedInEitherOperandOrder_ThenNeitherIsInequivalent()
+    public void GivenNonTransitivelyEquivalentDecimalCollections_WhenNegatedWithTheRightOperandReordered_ThenNeitherIsInequivalent()
     {
         var root = new ScalarRoot();
 
@@ -369,7 +374,7 @@ public class CollectionEquivalenceTests
     // 96 'cm' converts to 0.96 'm' and is equivalent to 1.0 'm' at one decimal place, 1.04 'm' ~ 1.0 'm'
     // holds, and 1.04 'm' ~ 96 'cm' does not. The pairing 1.0-96 'cm' and 1.04-1.0 'm' is the perfect one.
     [Fact]
-    public void GivenNonTransitivelyEquivalentQuantityCollectionsAcrossUnits_WhenComparedInEitherOperandOrder_ThenBothAreEquivalent()
+    public void GivenNonTransitivelyEquivalentQuantityCollectionsAcrossUnits_WhenTheRightOperandIsReordered_ThenBothAreEquivalent()
     {
         var root = new ScalarRoot();
 
