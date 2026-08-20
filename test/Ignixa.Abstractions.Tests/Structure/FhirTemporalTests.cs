@@ -135,6 +135,22 @@ public class FhirTemporalTests
     }
 
     [Fact]
+    public void GivenSubTickFractionalSeconds_WhenCompared_ThenTheyRemainDistinctLiteralsButEqualValues()
+    {
+        // Arrange
+        FhirTemporal.TryParse("2012-01-01T00:00:00.12345678Z", FhirPrimitive.Instant, out var first);
+        FhirTemporal.TryParse("2012-01-01T00:00:00.12345679Z", FhirPrimitive.Instant, out var second);
+
+        // Assert
+        first.ShouldNotBeNull();
+        second.ShouldNotBeNull();
+        first.Literal.ShouldBe("2012-01-01T00:00:00.12345678Z");
+        second.Literal.ShouldBe("2012-01-01T00:00:00.12345679Z");
+        first.Equals(second).ShouldBeTrue();
+        first.GetHashCode().ShouldBe(second.GetHashCode());
+    }
+
+    [Fact]
     public void GivenValuesOfDifferingPrecisionThatOverlap_WhenCompared_ThenResultIsIndeterminate()
     {
         // Arrange

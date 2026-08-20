@@ -28,6 +28,11 @@ public enum FhirTemporalPrecision
     Day,
 
     /// <summary>Hour precision, e.g. <c>1974-12-25T14</c>.</summary>
+    /// <remarks>
+    /// Reserved for structural FHIRPath classification and internal precision arithmetic.
+    /// <see cref="FhirTemporal.TryParse"/> intentionally rejects hour-only values because FHIR
+    /// <c>dateTime</c> wire values require minute precision.
+    /// </remarks>
     Hour,
 
     /// <summary>Minute precision, e.g. <c>1974-12-25T14:30</c>.</summary>

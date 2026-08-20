@@ -59,7 +59,7 @@ public class IgnixaElementAdapter : IElement
         {
             if (!_translatedValueResolved)
             {
-                _translatedValue = FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value);
+                _translatedValue = FirelyPrimitiveValues.ToIgnixa(_firelyElement.Value, _firelyElement.InstanceType);
                 _translatedValueResolved = true;
             }
 

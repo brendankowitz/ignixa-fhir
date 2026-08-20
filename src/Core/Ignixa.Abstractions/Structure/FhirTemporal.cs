@@ -152,8 +152,13 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// <c>dateTime</c> report a floating local time while ordering as a fixed instant, and because
     /// <see cref="HasTimezone"/> is an equality and ordering key, that contradiction reached collections.
     /// </para>
+    /// <para>
+    /// Hour-only values are intentionally rejected even though <see cref="GetLiteralPrecision"/> classifies
+    /// their shape. <see cref="FhirTemporal"/> models FHIR wire values, whose <c>dateTime</c> grammar
+    /// requires minute precision; FHIRPath hour-only literals therefore remain untyped strings.
+    /// </para>
     /// </remarks>
-    public static bool TryParse(string? literal, FhirPrimitive kind, out FhirTemporal? result)
+    public static bool TryParse(string? literal, FhirPrimitive kind, [NotNullWhen(true)] out FhirTemporal? result)
     {
         result = null;
 
@@ -258,12 +263,13 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         // Timezone-vs-no-timezone is indeterminate whenever both operands carry a time of day: a
         // floating local time could sit at any offset, so it overlaps a fixed instant rather than
         // ordering against it, and FHIRPath requires empty. This mirrors the evaluator's string
-        // fallback (leftHasTz != rightHasTz => null). Gate on time-of-day presence (Precision >= Hour):
+        // fallback (leftHasTz != rightHasTz => null). Gate on time-of-day presence (Precision >= Minute):
         // a date has no timezone by definition, so a HasTimezone difference between date-precision
         // values is meaningless, not a mismatch. Placed ahead of both comparison branches so it governs
-        // the second-or-finer point comparison and the coarser interval comparison alike.
-        if (left.Precision >= FhirTemporalPrecision.Hour
-            && right.Precision >= FhirTemporalPrecision.Hour
+        // the second-or-finer point comparison and the coarser interval comparison alike. Hour is a
+        // structural classification only; TryParse intentionally does not construct hour-precision values.
+        if (left.Precision >= FhirTemporalPrecision.Minute
+            && right.Precision >= FhirTemporalPrecision.Minute
             && left.HasTimezone != right.HasTimezone)
         {
             return null;
@@ -321,6 +327,11 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// so a non-zero result there means "ordered", not "unequal", and a <see langword="null"/> result means
     /// the ordering is indeterminate rather than that the values differ. Use this method, never
     /// <see cref="Compare"/>, to decide equality.
+    /// </para>
+    /// <para>
+    /// Equality is limited to <see cref="DateTime"/> tick resolution (100 ns). Fractional seconds with
+    /// more precision can retain distinct <see cref="Literal"/> spellings while comparing equal when
+    /// parsing rounds them to the same tick; <see cref="GetHashCode"/> intentionally follows that equality.
     /// </para>
     /// </remarks>
     public bool Equals(FhirTemporal? other)

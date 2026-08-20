@@ -101,6 +101,7 @@ internal static class FirelyPrimitiveValues
     /// Converts a value read from a Firely <c>ITypedElement</c> into the representation Ignixa uses.
     /// </summary>
     /// <param name="value">The value as Firely reports it.</param>
+    /// <param name="instanceType">The FHIR type name of the element the value came from.</param>
     /// <returns>The equivalent value in Ignixa's representation.</returns>
     /// <remarks>
     /// Temporal types are translated from Firely's <c>Hl7.Fhir.ElementModel.Types</c> to
@@ -111,9 +112,13 @@ internal static class FirelyPrimitiveValues
     /// data, not a programmer error — the string is returned unchanged so that navigation and
     /// serialization can still work on the raw text.
     /// </remarks>
-    public static object? ToIgnixa(object? value) => value switch
+    public static object? ToIgnixa(object? value, string? instanceType) => value switch
     {
-        P.DateTime dateTime => ToTemporalOrFallback(dateTime.ToString(), FhirPrimitive.DateTime),
+        P.DateTime dateTime => ToTemporalOrFallback(
+            dateTime.ToString(),
+            string.Equals(instanceType, FhirTypeConstants.Instant, StringComparison.OrdinalIgnoreCase)
+                ? FhirPrimitive.Instant
+                : FhirPrimitive.DateTime),
         P.Date date => ToTemporalOrFallback(date.ToString(), FhirPrimitive.Date),
         P.Time time => ToTemporalOrFallback(time.ToString(), FhirPrimitive.Time),
         P.Quantity quantity => new FhirQuantity(quantity.Value, quantity.Unit),
@@ -121,7 +126,7 @@ internal static class FirelyPrimitiveValues
     };
 
     private static object? ToTemporalOrFallback(string? literal, FhirPrimitive kind) =>
-        literal is not null && FhirTemporal.TryParse(literal, kind, out var temporal) && temporal is not null
+        literal is not null && FhirTemporal.TryParse(literal, kind, out var temporal)
             ? temporal
             : literal;
 

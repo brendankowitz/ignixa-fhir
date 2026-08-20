@@ -356,6 +356,24 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Fact]
+    public void GivenFirelyInstant_WhenReadThroughIgnixaElementAdapter_ThenPreservesInstantKind()
+    {
+        // Arrange
+        var element = new StubTypedElement
+        {
+            InstanceType = "instant",
+            Value = P.DateTime.Parse("2013-01-01T11:22:33.123Z"),
+        };
+
+        // Act
+        var value = new IgnixaElementAdapter(element).Value;
+
+        // Assert
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal(FhirPrimitive.Instant, temporal.Kind);
+    }
+
+    [Fact]
     public void GivenFirelyDate_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal()
     {
         // Arrange
@@ -564,10 +582,13 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Theory]
-    [InlineData("value = 5 'mg'")]
-    [InlineData("value > 1 'mg'")]
-    [InlineData("value ~ 5 'mg'")]
-    public void GivenFirelyBackedElement_WhenComparingQuantitiesInFhirPath_ThenYieldsBooleanRatherThanEmpty(string expression)
+    [InlineData("value = 5 'mg'", true)]
+    [InlineData("value > 1 'mg'", true)]
+    [InlineData("value ~ 5 'mg'", true)]
+    [InlineData("value !~ 5 'mg'", false)]
+    public void GivenFirelyBackedElement_WhenComparingQuantitiesInFhirPath_ThenYieldsExpectedBoolean(
+        string expression,
+        bool expected)
     {
         // The quantity counterpart of the date defect above, and the reason the translation has to
         // produce Ignixa's own Quantity rather than be matched for structurally in one helper:
@@ -592,7 +613,7 @@ public class FirelyPrimitiveValueContractTests
 
         // Assert
         var result = Assert.Single(results);
-        Assert.Equal(true, result.Value);
+        Assert.Equal(expected, result.Value);
     }
 
     #endregion

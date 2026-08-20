@@ -226,10 +226,10 @@ internal class SchemaAwareElement : IElement
                 int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? (object)i : text,
             "decimal" =>
                 decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? (object)d : text,
-            "date" => FhirTemporal.TryParse(text, FhirPrimitive.Date, out var td) ? (object)td! : text,
-            "dateTime" => FhirTemporal.TryParse(text, FhirPrimitive.DateTime, out var tdt) ? (object)tdt! : text,
-            "instant" => FhirTemporal.TryParse(text, FhirPrimitive.Instant, out var ti) ? (object)ti! : text,
-            "time" => FhirTemporal.TryParse(text, FhirPrimitive.Time, out var tt) ? (object)tt! : text,
+            "date" => FhirTemporal.TryParse(text, FhirPrimitive.Date, out var td) ? td : text,
+            "dateTime" => FhirTemporal.TryParse(text, FhirPrimitive.DateTime, out var tdt) ? tdt : text,
+            "instant" => FhirTemporal.TryParse(text, FhirPrimitive.Instant, out var ti) ? ti : text,
+            "time" => FhirTemporal.TryParse(text, FhirPrimitive.Time, out var tt) ? tt : text,
             // FHIRPath engine handles type checking via InstanceType, no prefix needed here
             _ => text
         };
