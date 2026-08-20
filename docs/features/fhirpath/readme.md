@@ -10,6 +10,12 @@ In Progress
 
 This feature provides FHIRPath expression evaluation capabilities used throughout the FHIR server for search parameters, invariants, validation, and data extraction.
 
+## Reference
+
+| Document | Description |
+|----------|-------------|
+| [Firely 5.11.4 Parity Inventory](firely-parity.md) | Every behaviour that differs between Ignixa and the Firely 5.11.4 engine the [fhir-server seam](https://github.com/microsoft/fhir-server/blob/personal/bkowitz/ignixa-fhirpath-seam/docs/arch/adr-2608-ignixa-fhirpath-seam.md) replaces, ranked by reachability from shipped SearchParameter expressions. Kept current by a differential harness that fails on a new divergence. |
+
 ## Investigations
 
 | Investigation | Status | Created | Description |
@@ -18,7 +24,7 @@ This feature provides FHIRPath expression evaluation capabilities used throughou
 | [Gap Analysis](investigations/gap-analysis.md) | Complete | 2025-11-18 | Analysis of FHIRPath implementation gaps and missing functionality |
 | [Visitor Pattern Evaluation](investigations/visitor-pattern-evaluation.md) | Complete | 2026-01-09 | Comparison of switch-based vs visitor pattern for FhirPath AST traversal |
 | [Performance vs Firely SDK](investigations/fhirpath-performance-analysis.md) | Complete | 2026-01-11 | Deep analysis proving 3,220x speedup over Firely through compiled delegates |
-| [Official Test Suite Integration](investigations/official-test-suite-integration.md) | Complete | 2026-01-12 | Leveraging HL7's official FHIRPath test cases (2,328 tests, 76.9% pass rate) for specification compliance validation |
+| [Official Test Suite Integration](investigations/official-test-suite-integration.md) | Complete | 2026-01-12 | Leveraging HL7's official FHIRPath test cases (2,900 tests executed, 2,881 genuinely asserted) for specification compliance validation |
 | [Instance Creation Delegate](investigations/instance-creation-delegate.md) | Implemented | 2026-06-16 | Instance-selector construction is delegated to a host-provided creation delegate on EvaluationContext; documents the spec-silent choices Ignixa makes |
 
 ### Performance Comparison: Ignixa vs Firely

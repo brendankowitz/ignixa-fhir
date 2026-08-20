@@ -52,7 +52,7 @@ public class BindingCheckTerminologySeverityTests : IClassFixture<BindingCheckTe
             "http://hl7.org/fhir/ValueSet/administrative-gender",
             strength,
             _terminologyService);
-        return check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
+        return check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     [Fact]

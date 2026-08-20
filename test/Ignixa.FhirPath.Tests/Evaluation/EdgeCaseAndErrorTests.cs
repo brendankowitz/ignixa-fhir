@@ -8,6 +8,7 @@ using Ignixa.FhirPath;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
+using Ignixa.Specification.Extensions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
@@ -80,18 +81,19 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenNonExistentVariable_WhenReferenced_ThenReturnsEmpty()
+    public void GivenNonExistentVariable_WhenReferenced_ThenSignalsError()
     {
-        // Arrange
+        // Arrange - FHIRPath 1.9 makes reading an undefined environment variable an error, not an empty
+        // collection; a silent empty is indistinguishable from a variable that is bound to nothing.
         var context = new EvaluationContext();
         var expr = _parser.Parse("%nonExistent");
         var root = CreateIntegerElement(0);
 
         // Act
-        var result = _evaluator.Evaluate(root, expr, context).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr, context).ToList());
 
         // Assert
-        Assert.Empty(result);
+        Assert.Contains("nonExistent", exception.Message, StringComparison.Ordinal);
     }
 
     #endregion
@@ -413,7 +415,7 @@ public class EdgeCaseAndErrorTests
         var root = CreateIntegerElement(0);
 
         // Act & Assert - String functions on non-strings throw (matching Firely/fhirpath.js behavior)
-        var ex = Assert.Throws<InvalidOperationException>(() => 
+        var ex = Assert.Throws<FhirPathEvaluationException>(() => 
             _evaluator.Evaluate(root, expr).ToList());
         
         Assert.Contains("upper", ex.Message, StringComparison.OrdinalIgnoreCase);
@@ -586,43 +588,40 @@ public class EdgeCaseAndErrorTests
     }
 
     [Fact]
-    public void GivenBooleanOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    public void GivenBooleanOperand_WhenUnaryMinus_ThenSignalsError()
     {
-        // Regression for #246 (testLiteralIntegerNegative1Invalid, testPrecedence1):
-        // FHIRPath spec: unary minus on non-numeric operand (e.g. boolean) is undefined.
-        // Spec test '-1.convertsToInteger()' is marked invalid="semantic":
-        //   parses as -(1.convertsToInteger()) -> -(true) -> empty (not -1).
+        // Official tests testLiteralIntegerNegative1Invalid and testPrecedence1, both '-1.convertsToInteger()':
+        // unary minus binds looser than the invocation, so this parses as -(1.convertsToInteger()) -> -(true),
+        // which the Unary Operators clause makes an error. The load-bearing part of #251 still holds - the
+        // result must never be -1, which is what Convert.ToDecimal(true) used to produce.
         var expr = _parser.Parse("-1.convertsToInteger()");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        Assert.Empty(result);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("boolean", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void GivenBooleanOperandFromConvertsToDecimal_WhenUnaryMinus_ThenReturnsEmpty()
+    public void GivenBooleanOperandFromConvertsToDecimal_WhenUnaryMinus_ThenSignalsError()
     {
-        // Regression for #246 testLiteralDecimalNegative01Invalid:
-        // '-0.1.convertsToDecimal()' must parse as -(0.1.convertsToDecimal()) -> -(true) -> empty.
+        // Official test testLiteralDecimalNegative01Invalid: '-0.1.convertsToDecimal()' parses as
+        // -(0.1.convertsToDecimal()) -> -(true), which must error rather than yield -0.1 or empty.
         var expr = _parser.Parse("-0.1.convertsToDecimal()");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        Assert.Empty(result);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("boolean", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void GivenStringOperand_WhenUnaryMinus_ThenReturnsEmpty()
+    public void GivenStringOperand_WhenUnaryMinus_ThenSignalsError()
     {
-        // FHIRPath spec: unary minus on a string is undefined.
+        // Unary minus is defined only for Integer, Decimal and Quantity; a string operand is an error.
         var expr = _parser.Parse("-'5'");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        Assert.Empty(result);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("string", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -753,6 +752,148 @@ public class EdgeCaseAndErrorTests
         // Assert
         Assert.Empty(result);
     }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) as `integer`")]
+    [InlineData("(1 | 2 | 3).as(`integer`)")]
+    public void GivenMultipleItemsUnderR5_WhenTypeAs_ThenThrows(string expression)
+    {
+        // FHIRPath 1.6.3 for the 'as' operator: "If there is more than one item in the input
+        // collection, the evaluator will throw an error". as() inherits it, being defined as
+        // backwards compatibility "just as with the 'as' keyword". Asserted for both forms because
+        // they are separate code paths - the operator in FhirPathEvaluator.EvaluateTypeAs, the
+        // function in CollectionFunctions.As - and the rule is independently droppable from either.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R5);
+
+        // Act & Assert
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr, context).ToList());
+        Assert.Contains("single item", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) as `integer`")]
+    [InlineData("(1 | 2 | 3).as(`integer`)")]
+    public void GivenMultipleItemsUnderR4_WhenTypeAs_ThenBothFormsFilterElementWise(string expression)
+    {
+        // The rule is gated on the schema version because HL7's own R4/R4B SearchParameters break it.
+        // See TypeMatcher.EnsureSingletonInput. Asserting the R4 side explicitly means the gate cannot
+        // be dropped without a test going red - the R5 theory above passes either way.
+        //
+        // Both spellings are asserted against the SAME expected count on purpose: the operator used to
+        // return empty for a non-singleton input while as() filtered element-wise, and that disagreement
+        // was the reason Observation.component.value as Quantity indexed nothing for a blood pressure.
+        // Pinning one count for both forms is what stops the two drifting apart again.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R4);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        Assert.Equal(3, result.Count);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) as `integer`")]
+    [InlineData("(1 | 2 | 3).as(`integer`)")]
+    public void GivenMultipleItemsAndNoSchema_WhenTypeAs_ThenBothFormsFilterElementWise(string expression)
+    {
+        // No schema means no version, and the two ways to be wrong are not symmetric: enforcing when
+        // we should not silently drops search index entries, while not enforcing returns a collection
+        // where the spec wanted an error - which is what Firely does on every version anyway.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).ToList();
+
+        // Assert
+        Assert.Equal(3, result.Count);
+    }
+
+    [Theory]
+    [InlineData("(1 | 'two' | 3) as `integer`", 2)]
+    [InlineData("(1 | 'two' | 3).as(`integer`)", 2)]
+    public void GivenAMixedTypeCollectionUnderR4_WhenTypeAs_ThenOnlyMatchingItemsSurvive(string expression, int expectedCount)
+    {
+        // Element-wise means filtering, not passing the whole collection through. A homogeneous
+        // collection cannot tell those two apart - this one can.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R4);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        Assert.Equal(expectedCount, result.Count);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3).ofType(`integer`)")]
+    public void GivenMultipleItemsUnderR5_WhenOfType_ThenDoesNotThrow(string expression)
+    {
+        // The singleton rule is specific to the cast and type-test operators. ofType() is specified as a
+        // filter over a collection, so a multi-item input is its normal case - it shares
+        // TypeMatcher.FilterByType with 'as', which is exactly why the guard must not live inside it.
+        // Run under R5, the version that does enforce the rule for 'as', so the exemption is what is
+        // being asserted.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(FhirVersion.R5);
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr, context).ToList();
+
+        // Assert
+        Assert.NotNull(result);
+    }
+
+    [Theory]
+    [InlineData("(1 | 2 | 3) is `integer`", FhirVersion.R5)]
+    [InlineData("(1 | 2 | 3).is(`integer`)", FhirVersion.R5)]
+    [InlineData("(1 | 2 | 3) is `integer`", FhirVersion.R4)]
+    [InlineData("(1 | 2 | 3).is(`integer`)", FhirVersion.R4)]
+    public void GivenMultipleItems_WhenTypeIs_ThenThrowsOnEveryVersion(string expression, FhirVersion version)
+    {
+        // FHIRPath for the 'is' operator, unchanged between N1 6.3.1 and the 3.0.0 build: "If the input
+        // collections contains more than one item, the evaluator will throw an error". The operator used
+        // to return empty here while is() the function threw, so the same question got two answers
+        // depending on spelling - both forms are asserted for that reason.
+        //
+        // Unlike 'as' this is NOT version gated, and R4 is included to pin that. The 'as' gate exists
+        // because HL7's R4/R4B SearchParameters put 0..* paths on the left of 'as'; no shipped artifact
+        // does the same to 'is', which appears only as where(resolve() is Patient) and STU3's
+        // Condition.abatement.is(dateTime) over a 0..1 choice. See
+        // TypeMatcher.EnsureSingletonTypeTestInput.
+
+        // Arrange
+        var expr = _parser.Parse(expression);
+        var root = CreateIntegerElement(0);
+        var context = ContextFor(version);
+
+        // Act & Assert
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr, context).ToList());
+        Assert.Contains("single item", exception.Message, StringComparison.Ordinal);
+    }
+
+    private static EvaluationContext ContextFor(FhirVersion version) => new()
+    {
+        Schema = version.GetSchemaProvider(),
+    };
 
     #endregion
 

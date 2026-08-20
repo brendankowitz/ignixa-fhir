@@ -16,10 +16,11 @@ namespace Ignixa.DataLayer.SqlEntityFramework.Search;
 /// A SQL-index optimization: adds a redundant <c>DateTimeStart &lt;= y</c> bound to a containment-shaped
 /// date predicate — <c>And(DateTimeStart &gt;= x, DateTimeEnd &lt;= y)</c> becomes
 /// <c>And(DateTimeStart &gt;= x, DateTimeStart &lt;= y, DateTimeEnd &lt;= y)</c> — which constrains the
-/// range scan over the <c>(DateTimeStart, DateTimeEnd)</c> index. Only the <c>:ap</c> comparator
-/// produces the containment shape today; ordinary date equality uses an overlap shape
-/// (<c>DateTimeStart &lt;= end AND DateTimeEnd &gt;= start</c>) that this rewriter deliberately leaves
-/// untouched. It lives in the SQL layer, not the shared <see cref="LegacyExpressionLowerer"/> bridge,
+/// range scan over the <c>(DateTimeStart, DateTimeEnd)</c> index. The added bound is redundant by
+/// construction: containment already implies <c>DateTimeStart &lt;= DateTimeEnd &lt;= y</c>, so this is
+/// purely an index hint and never changes which rows match. <c>eq</c> is the comparator that produces the
+/// containment shape; <c>:ap</c> and <c>ne</c> produce overlap and disjunction shapes respectively, which
+/// this rewriter leaves untouched. It lives in the SQL layer, not the shared <see cref="LegacyExpressionLowerer"/> bridge,
 /// because it is specific to the SQL search-index schema — other old-shape backends (e.g. CosmosDB) share
 /// the bridge but must not inherit this SQL-only rewrite. Runs on the lowered field-level tree.
 /// </summary>

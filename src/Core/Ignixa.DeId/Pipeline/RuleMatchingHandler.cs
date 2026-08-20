@@ -26,6 +26,11 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
             resourceType,
             context.Options.Rules.Length);
 
+        // Captured once: rule matching runs before any de-identification mutation, so every rule
+        // can safely share one snapshot instead of paying for a fresh re-derive per rule (context.Element
+        // re-derives on every read so that later pipeline stages never observe a stale, pre-mutation tree).
+        var rootElement = context.Element;
+
         foreach (var rule in context.Options.Rules)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -42,7 +47,7 @@ internal sealed class RuleMatchingHandler(ILogger<RuleMatchingHandler> logger) :
 
             try
             {
-                var matchedElements = context.Element.Select(rule.Path);
+                var matchedElements = rootElement.Select(rule.Path);
 
                 if (matchedElements.Count > 0)
                 {

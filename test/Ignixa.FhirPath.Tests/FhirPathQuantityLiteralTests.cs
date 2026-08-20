@@ -234,7 +234,7 @@ public class FhirPathQuantityLiteralTests(ITestOutputHelper output)
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = (Types.Quantity)result.Value!;
+        var quantity = (FhirQuantity)result.Value!;
         Assert.Equal(2.5m, quantity.Value);
         Assert.Equal("1", quantity.Unit); // Dimensionless unit
     }

@@ -5,13 +5,19 @@
 
 using Shouldly;
 using Ignixa.Abstractions;
-using Ignixa.Application.Operations.Features.Transform;
+using Ignixa.Application.Features.Experimental.Transform;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.Application.Tests.Features.Transform;
 
+/// <summary>
+/// This class does not enforce an execution-time timeout despite its name - see the remarks on
+/// <see cref="FhirPathEvaluatorWithTimeout"/> for why. These tests cover what it actually does:
+/// successful evaluation, forwarding a caller's <see cref="CancellationToken"/> before evaluation
+/// starts, and not losing evaluation-time errors to the lazy-enumerable trap described below.
+/// </summary>
 public class FhirPathEvaluatorWithTimeoutTests
 {
     #region Successful Evaluation Tests
@@ -26,7 +32,6 @@ public class FhirPathEvaluatorWithTimeoutTests
         var evaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
             cache,
             evaluator,
-            TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
         var element = new TestElement("Patient", "Patient");
@@ -49,7 +54,6 @@ public class FhirPathEvaluatorWithTimeoutTests
         var evaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
             cache,
             evaluator,
-            TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
         var element = new TestElement("Patient", "Patient");
@@ -60,35 +64,6 @@ public class FhirPathEvaluatorWithTimeoutTests
         // Assert
         result.ShouldNotBeNull();
         result.Count().ShouldBe(1);
-    }
-
-    #endregion
-
-    #region Timeout Tests
-
-    [Fact(Skip = "Flaky test - timing-sensitive timeout behavior varies on CI runners")]
-    public async Task GivenShortTimeout_WhenComplexExpression_ThenThrowsTimeoutException()
-    {
-        // Arrange
-        var parser = new FhirPathParser();
-        var cache = new FhirPathExpressionCache(parser, NullLogger<FhirPathExpressionCache>.Instance);
-        var evaluator = new FhirPathEvaluator();
-
-        // Use very short timeout to simulate timeout condition
-        var evaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
-            cache,
-            evaluator,
-            TimeSpan.FromMilliseconds(1), // 1ms timeout - very aggressive
-            NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
-
-        var element = new TestElement("Patient", "Patient");
-
-        // Act & Assert
-        // With 1ms timeout, this should reliably timeout on most systems
-        var act = async () => await evaluatorWithTimeout.EvaluateAsync("Patient", element, CancellationToken.None);
-
-        var exception = await Should.ThrowAsync<TimeoutException>(act);
-        exception.Message.ShouldContain("FHIRPath expression timed out");
     }
 
     #endregion
@@ -105,7 +80,6 @@ public class FhirPathEvaluatorWithTimeoutTests
         var evaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
             cache,
             evaluator,
-            TimeSpan.FromSeconds(10),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
         var element = new TestElement("Patient", "Patient");
@@ -128,7 +102,6 @@ public class FhirPathEvaluatorWithTimeoutTests
         var act = () => new FhirPathEvaluatorWithTimeout(
             null!,
             new FhirPathEvaluator(),
-            TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
         Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("expressionCache");
@@ -145,47 +118,33 @@ public class FhirPathEvaluatorWithTimeoutTests
         var act = () => new FhirPathEvaluatorWithTimeout(
             cache,
             null!,
-            TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
         Should.Throw<ArgumentNullException>(act).ParamName.ShouldBe("evaluator");
     }
 
-    [Fact]
-    public void GivenZeroTimeout_WhenConstructing_ThenThrowsArgumentException()
-    {
-        // Arrange
-        var parser = new FhirPathParser();
-        var cache = new FhirPathExpressionCache(parser, NullLogger<FhirPathExpressionCache>.Instance);
-
-        // Act & Assert
-        var act = () => new FhirPathEvaluatorWithTimeout(
-            cache,
-            new FhirPathEvaluator(),
-            TimeSpan.Zero,
-            NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
-
-        Should.Throw<ArgumentException>(act).ParamName.ShouldBe("timeout");
-    }
-
-    [Fact]
-    public void GivenNegativeTimeout_WhenConstructing_ThenThrowsArgumentException()
-    {
-        // Arrange
-        var parser = new FhirPathParser();
-        var cache = new FhirPathExpressionCache(parser, NullLogger<FhirPathExpressionCache>.Instance);
-
-        // Act & Assert
-        var act = () => new FhirPathEvaluatorWithTimeout(
-            cache,
-            new FhirPathEvaluator(),
-            TimeSpan.FromSeconds(-1),
-            NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
-
-        Should.Throw<ArgumentException>(act).ParamName.ShouldBe("timeout");
-    }
-
     #endregion
+
+    [Fact]
+    public async Task GivenAnExpressionThatThrowsDuringEvaluation_WhenEvaluateAsync_ThenTheAwaitThrowsRatherThanTheEnumeration()
+    {
+        // Arrange: '&' is a singleton operator, so a three-item left operand is an evaluation-time
+        // error. The expression parses cleanly, so nothing fails before evaluation starts.
+        var parser = new FhirPathParser();
+        var cache = new FhirPathExpressionCache(parser, NullLogger<FhirPathExpressionCache>.Instance);
+        var evaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
+            cache,
+            new FhirPathEvaluator(),
+            NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
+
+        var element = new TestElement("Patient", "Patient");
+
+        // Act & Assert: FhirPathEvaluator.Evaluate returns a lazy sequence, so this await used to
+        // complete successfully and hand back a sequence that threw on first enumeration - outside the
+        // Task, outside the timeout, and outside every catch in EvaluateAsync.
+        await Should.ThrowAsync<FhirPathEvaluationException>(
+            async () => await evaluatorWithTimeout.EvaluateAsync("(1 | 2 | 3) & 'b'", element, CancellationToken.None));
+    }
 
     #region Test Helpers
 

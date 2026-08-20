@@ -1,15 +1,18 @@
 using System.Collections.Frozen;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Analysis;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Tests.TestHelpers;
+using Ignixa.FhirPath.Visitors;
 using Ignixa.Serialization;
 using Ignixa.Serialization.SourceNodes;
 using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Xunit;
 using Xunit.Abstractions;
+using Xunit.Sdk;
 
 namespace Ignixa.FhirPath.Tests;
 
@@ -141,6 +144,56 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
 
+    /// <summary>
+    /// Official <c>invalid</c>-marked cases the engine does not yet signal an error for, keyed by test name
+    /// with the specific gap that defers each one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every entry here used to pass vacuously: <see cref="RunInvalidExpressionTest"/> caught its own
+    /// <c>Assert.Fail</c> and logged it as a success, so the whole <c>invalid</c> category was unverified.
+    /// With that fixed, these are the cases that genuinely fail, and each is skipped by name rather than
+    /// suppressed as a category - a skip that names its gap is auditable, a silent pass is not.
+    /// </para>
+    /// <para>
+    /// Adding a name here is a deferral, never a fix. Removing one should follow from making the engine
+    /// signal the error, not from relaxing the assertion.
+    /// </para>
+    /// <para>
+    /// "The engine" here means the evaluator specifically. The cases where the spec mandates an empty
+    /// result but the suite encodes the stricter option - unresolved paths, choice-element shorthand,
+    /// positional access over an unordered collection - are no longer deferred: <see cref="RunInvalidExpressionTest"/>
+    /// consults <see cref="FhirPathAnalyzer"/> after evaluation, which is where this codebase's opt-in
+    /// strict typing lives. Note that <see cref="AssertDeferralIsStillNeeded"/> still only re-runs the
+    /// evaluator, so it will not notice a gap that the analyzer alone has closed.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, string> _unsignalledInvalidCases = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        // Empty by design, not by omission. Every case that was deferred here has since been closed:
+        // the unresolved-path and ordering cases by RunInvalidExpressionTest consulting FhirPathAnalyzer
+        // (the evaluator was always conformant - the spec mandates empty and makes strict typing opt-in),
+        // the defineVariable scope cases by VariableScope giving defineVariable real lexical scoping, and
+        // testFHIRPathAsFunction21 by version-gating the singleton rule, which moved it to the
+        // version-conditional skip in RunTestCase rather than a blanket deferral.
+    }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The deferred case names, exposed so <see cref="OfficialTestSuiteSkipListTests"/> can prove each one
+    /// still names a real, still-invalid case in the official suites.
+    /// </summary>
+    public static IEnumerable<string> DeferredInvalidCaseNames => _unsignalledInvalidCases.Keys;
+
+    /// <summary>
+    /// The deferred cases with their justifications, exposed for the same guard tests.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> DeferredInvalidCaseReasons => _unsignalledInvalidCases;
+
+    /// <summary>
+    /// The resolved directory containing <c>TestData/fhir-test-cases</c>, exposed for the guard tests.
+    /// </summary>
+    public static string ProjectRoot => _projectRoot;
+
     // Functions that throw NotImplementedException at runtime - tests are run but expected to fail
     // These functions are explicitly defined to throw for proper test tracking.
     // Type introspection: conformsTo()
@@ -205,7 +258,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     // No longer used - we run all tests and let them fail/pass naturally
     // private static bool ShouldSkipTest(FhirPathTestCase testCase) { ... }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(GetR4TestCases))]
     [Trait("Category", "OfficialTestSuite")]
     [Trait("FhirVersion", "R4")]
@@ -214,7 +267,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         RunTestCase(testCase, FhirVersion.R4);
     }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(GetR4BTestCases))]
     [Trait("Category", "OfficialTestSuite")]
     [Trait("FhirVersion", "R4B")]
@@ -223,7 +276,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         RunTestCase(testCase, FhirVersion.R4B);
     }
 
-    [Theory]
+    [SkippableTheory]
     [MemberData(nameof(GetR5TestCases))]
     [Trait("Category", "OfficialTestSuite")]
     [Trait("FhirVersion", "R5")]
@@ -237,23 +290,33 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // Arrange
         ArgumentNullException.ThrowIfNull(testCase);
 
-        // Pass with comment for version-specific tests where behavior differs between R4/R4B and R5
-        // testPlusDate19: R4/R4B truncate fractional seconds to integers, R5 preserves them
-        // Our implementation follows R5 behavior (sub-second precision preserved)
+        // Version-specific behaviour: R4/R4B truncate fractional seconds to integers, R5 preserves them,
+        // and our implementation follows R5 (sub-second precision preserved).
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testPlusDate19")
         {
-            _output.WriteLine("[SKIPPED] testPlusDate19: R4/R4B expect truncation of fractional seconds; our implementation follows R5 behavior");
+            SkipTest("testPlusDate19: R4/R4B expect truncation of fractional seconds; this implementation follows R5 behaviour");
             return;
         }
 
-        // Pass with comment for quantity algebra tests - Fhir.Metrics library doesn't support unit multiplication/division
-        // with different prefixes (e.g., cm * m). These tests require full UCUM algebra support.
-        // testQuantity9: 2.0 'cm' * 2.0 'm' = 0.040 'm2' (unit multiplication)
-        // testQuantity10: 4.0 'g' / 2.0 'm' = 2 'g/m' (unit division)
-        // testQuantity11: 1.0 'm' / 1.0 'm' = 1 '1' (dimensionless) - this one might work now with canonical conversion
+        // Singleton cardinality for 'as'/'as()'. The suite marks Patient.name.as(HumanName) invalid in
+        // all three versions, but the rule is only enforceable from R5: HL7's own R4/R4B SearchParameter
+        // definitions spell 58 and 59 casts with the 'as' operator, many of them over 0..* paths, and
+        // rewrote almost all of them to ofType() in R5. Enforcing below R5 would make the indexer throw on those
+        // shipped expressions, so TypeMatcher.EnsureSingletonInput gates on the schema version and this
+        // case is genuinely not signalled on R4/R4B. HAPI draws the line in the same place and for the
+        // same reason (doNotEnforceAsSingletonRule below R5).
+        if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testFHIRPathAsFunction21")
+        {
+            SkipTest("testFHIRPathAsFunction21: the 'as' singleton rule is enforced from R5 onwards, because HL7's own R4/R4B SearchParameters violate it - see TypeMatcher.EnsureSingletonInput");
+            return;
+        }
+
+        // Quantity algebra: Fhir.Metrics does not support unit multiplication/division across prefixes.
+        // testQuantity9:  2.0 'cm' * 2.0 'm' = 0.040 'm2' (unit multiplication)
+        // testQuantity10: 4.0 'g'  / 2.0 'm' = 2 'g/m'    (unit division)
         if (testCase.Name is "testQuantity9" or "testQuantity10")
         {
-            _output.WriteLine($"[SKIPPED] {testCase.Name}: Requires full UCUM unit algebra; Fhir.Metrics library limitation");
+            SkipTest($"{testCase.Name}: requires full UCUM unit algebra; Fhir.Metrics library limitation");
             return;
         }
 
@@ -315,12 +378,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         List<IElement> resultList;
         try
         {
-            var context = new FhirEvaluationContext
-            {
-                Resource = element,
-                ElementResolver = TestElementResolver.Create(element)
-            };
-            resultList = _evaluator.Evaluate(element, expression, context).ToList();
+            resultList = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
         }
         catch (NotSupportedException ex)
         {
@@ -346,72 +404,198 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
     /// <summary>
     /// Runs a test case that expects an invalid expression (syntax, semantic, or execution error).
-    /// The test passes if parsing or evaluation throws the expected error type.
+    /// The test passes only if the engine itself signals an error - a <c>syntax</c> case must fail at
+    /// parse time, a <c>semantic</c>/<c>execution</c> case at parse time, at evaluation time, or under
+    /// static analysis.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every <c>Assert.Fail</c> below sits outside a <c>try</c> on purpose. An earlier version wrapped the
+    /// whole method body in one, so xunit's own <c>FailException</c> landed in the trailing
+    /// <c>catch (Exception)</c> and was logged as <c>[INVALID-OK]</c> - which made every single
+    /// <c>invalid</c>-marked case pass unconditionally. The <c>IsEngineSignalledError</c> filters keep that
+    /// from coming back if this method is ever restructured.
+    /// </para>
+    /// <para>
+    /// The analyzer is consulted last, not first, even though HAPI's runner calls <c>check()</c> before
+    /// <c>evaluate()</c>. Ordering it after evaluation keeps the existing assertion path exactly as strict
+    /// as it was: every case the evaluator already signals still passes because the evaluator signalled it,
+    /// so a later analyzer regression cannot mask an evaluator regression. The acceptance set is the same
+    /// either way - a case passes if either layer rejects it.
+    /// </para>
+    /// </remarks>
     private void RunInvalidExpressionTest(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider)
     {
+        if (_unsignalledInvalidCases.TryGetValue(testCase.Name, out var deferralReason))
+        {
+            AssertDeferralIsStillNeeded(testCase, element, schemaProvider, deferralReason);
+            return;
+        }
+
         var invalidType = testCase.InvalidType ?? "syntax";
 
+        Expression expression;
         try
         {
-            // Try to parse the expression
+            expression = _parser.Parse(testCase.Expression);
+        }
+        catch (Exception ex) when (IsEngineSignalledError(ex))
+        {
+            _output.WriteLine($"[INVALID-OK] {testCase.Name}: parse-time error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        if (invalidType == "syntax")
+        {
+            Assert.Fail($"Expected syntax error but expression parsed successfully in test '{testCase.Name}' (group: {testCase.GroupName}): {testCase.Expression}");
+        }
+
+        List<IElement> results;
+        try
+        {
+            // Force evaluation by iterating results - the evaluator is lazy
+            results = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
+        }
+        catch (Exception ex) when (IsEngineSignalledError(ex))
+        {
+            _output.WriteLine($"[INVALID-OK] {testCase.Name}: evaluation error as expected ({invalidType}): {ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        if (DescribeAnalyzerRejection(testCase, element, schemaProvider) is { } analyzerDiagnostics)
+        {
+            _output.WriteLine($"[INVALID-OK] {testCase.Name}: static analysis error as expected ({invalidType}): {analyzerDiagnostics}");
+            return;
+        }
+
+        Assert.Fail($"""
+            Expected {invalidType} error but neither evaluation nor static analysis rejected the expression in test '{testCase.Name}' (group: {testCase.GroupName})
+            Expression: {testCase.Expression}
+            Input file: {testCase.InputFile}
+            Actual outputs: {FormatActualOutputs(results)}
+            """);
+    }
+
+    /// <summary>
+    /// Runs <see cref="FhirPathAnalyzer"/> over the case and returns its rejection diagnostics joined into
+    /// one line, or <see langword="null"/> when the analyzer accepts the expression.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the layer the suite's schema-aware <c>invalid</c> cases actually belong to. FHIRPath 1.4.4
+    /// mandates an EMPTY collection for a path that does not resolve ("<c>Patient.name</c> will return an
+    /// empty collection (not null)"), and 1.3 makes strict typing explicitly opt-in ("implementations may
+    /// choose to protect against such cases by employing strict typing"). Making the evaluator throw would
+    /// contradict the base spec, so the opt-in lives in the analyzer and the harness runs it - the same
+    /// split as HAPI's runner, which calls <c>check()</c> alongside <c>evaluate()</c>.
+    /// </para>
+    /// <para>
+    /// Two diagnostic kinds are filtered out rather than read as a rejection. <c>Analysis failed:</c> is
+    /// <see cref="FhirPathAnalyzer.Analyze(Expression, string)"/>'s own crash-catch, and a <c>Parse error:</c>
+    /// would mean the analyzer's parser rejected an expression this method already parsed successfully a few
+    /// lines above. Both are engine defects; letting either stand in for "the expression was correctly
+    /// refused" would turn a bug into a green test. Everything that does count is echoed to the test output
+    /// so the reason a case passed stays auditable rather than being reduced to a boolean.
+    /// </para>
+    /// </remarks>
+    private static string? DescribeAnalyzerRejection(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider)
+    {
+        if (string.IsNullOrEmpty(element.InstanceType))
+        {
+            return null;
+        }
+
+        var analysis = new FhirPathAnalyzer(schemaProvider).Analyze(testCase.Expression, element.InstanceType);
+
+        var diagnostics = analysis.Issues
+            .Where(issue => issue.Severity == ValidationIssueSeverity.Error)
+            .Select(issue => issue.Message)
+            .Where(IsDiagnosisRatherThanAnalyzerFailure)
+            .ToList();
+
+        return diagnostics.Count == 0 ? null : string.Join(" | ", diagnostics);
+    }
+
+    private static bool IsDiagnosisRatherThanAnalyzerFailure(string message) =>
+        !message.StartsWith("Analysis failed:", StringComparison.Ordinal) &&
+        !message.StartsWith("Parse error:", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Fails when a deferred case is no longer a gap. <see cref="SkipTest"/> only reports a skip, and
+    /// <see cref="OfficialTestSuiteSkipListTests"/> only proves the named case still exists upstream and is
+    /// still marked invalid - which stays true forever - so neither of them notices when the engine starts
+    /// signalling the error and the entry goes stale. This does: it runs the deferred case and fails if the
+    /// engine now signals, so closing a gap forces the list entry to be removed.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately re-runs the evaluator only, not <see cref="DescribeAnalyzerRejection"/>. Every remaining
+    /// entry is deferred on an evaluator gap, and a gap closed in the analyzer instead has to be retired by
+    /// hand - checking both here would fail the entries currently being worked on in parallel rather than
+    /// reporting on the one that was fixed.
+    /// </remarks>
+    private void AssertDeferralIsStillNeeded(FhirPathTestCase testCase, IElement element, IFhirSchemaProvider schemaProvider, string deferralReason)
+    {
+        try
+        {
             var expression = _parser.Parse(testCase.Expression);
 
-            // If parsing succeeded and we expected a syntax error, that's a failure
-            if (invalidType == "syntax")
-            {
-                Assert.Fail($"Expected syntax error but expression parsed successfully: {testCase.Expression}");
-                return;
-            }
+            _ = _evaluator.Evaluate(element, expression, BuildContext(element, schemaProvider)).ToList();
+        }
+        catch (Exception ex) when (IsEngineSignalledError(ex))
+        {
+            Assert.Fail($"""
+                '{testCase.Name}' is deferred in _unsignalledInvalidCases but the engine now signals the error, so the entry is stale and must be removed.
+                Expression: {testCase.Expression}
+                Signalled: {ex.GetType().Name}: {ex.Message}
+                Deferral reason on file: {deferralReason}
+                """);
+        }
 
-            // Try to evaluate the expression
-            var context = new FhirEvaluationContext
-            {
-                Resource = element,
-                ElementResolver = TestElementResolver.Create(element)
-            };
+        SkipTest($"{testCase.Name}: {deferralReason}");
+    }
 
-            // Force evaluation by iterating results
-            var results = _evaluator.Evaluate(element, expression, context).ToList();
+    /// <summary>
+    /// Builds the evaluation context every case is run under. The version's schema is supplied so the type
+    /// operators can tell an unresolvable type identifier from a type that simply does not match, which the
+    /// suite's <c>as(string1)</c> / <c>ofType(string1)</c> cases require.
+    /// </summary>
+    private static FhirEvaluationContext BuildContext(IElement element, IFhirSchemaProvider schemaProvider) => new()
+    {
+        Resource = element,
+        ElementResolver = TestElementResolver.Create(element),
+        Schema = schemaProvider
+    };
 
-            // If we get here, no error was thrown - fail the test
-            Assert.Fail($"Expected {invalidType} error but expression evaluated successfully: {testCase.Expression}");
-        }
-        catch (NotImplementedException ex)
-        {
-            // NotImplementedException counts as semantic/execution error
-            if (invalidType is "semantic" or "execution")
-            {
-                _output.WriteLine($"[INVALID-OK] {testCase.Name}: NotImplementedException thrown as expected ({invalidType})");
-                return;
-            }
-            Assert.Fail($"Expected {invalidType} error but got NotImplementedException: {ex.Message}");
-        }
-        catch (InvalidOperationException ex)
-        {
-            // InvalidOperationException typically indicates semantic/execution errors
-            if (invalidType is "semantic" or "execution")
-            {
-                _output.WriteLine($"[INVALID-OK] {testCase.Name}: InvalidOperationException thrown as expected ({invalidType})");
-                return;
-            }
-            Assert.Fail($"Expected {invalidType} error but got InvalidOperationException: {ex.Message}");
-        }
-        catch (Exception ex) when (invalidType == "syntax")
-        {
-            // Any parse error for syntax tests is acceptable
-            _output.WriteLine($"[INVALID-OK] {testCase.Name}: Parse error thrown as expected (syntax): {ex.GetType().Name}");
-        }
-        catch (Exception ex)
-        {
-            // For semantic/execution, any exception is acceptable
-            if (invalidType is "semantic" or "execution")
-            {
-                _output.WriteLine($"[INVALID-OK] {testCase.Name}: Exception thrown as expected ({invalidType}): {ex.GetType().Name}");
-                return;
-            }
-            throw;
-        }
+    /// <summary>
+    /// Distinguishes an error signalled by the FHIRPath engine from an assertion raised by this harness.
+    /// xunit assertion failures (<see cref="XunitException"/>, including <c>Assert.Fail</c>'s
+    /// <c>FailException</c>) must never be mistaken for the engine reporting an invalid expression.
+    /// </summary>
+    private static bool IsEngineSignalledError(Exception exception) => exception is not XunitException;
+
+    /// <summary>
+    /// Records that this test case is deliberately not asserted, with the reason, and stops the test.
+    /// </summary>
+    /// <remarks>
+    /// This reports as a real skip. xunit v2.9.3 has no working dynamic skip of its own - <c>Assert.Skip</c>
+    /// does not exist and <c>xunit.execution</c> 2.9.3 does not honour its own <c>Xunit.Sdk.SkipException</c>'s
+    /// <c>DynamicSkipToken</c> - so the deferrals used to report as passes, indistinguishable from real
+    /// coverage. <c>Xunit.SkippableFact</c> supplies the missing mechanism: the <c>[SkippableTheory]</c>
+    /// attribute on the three suite entry points installs a runner that translates a thrown
+    /// <c>Xunit.SkipException</c> into a skipped result carrying the reason.
+    /// The reason string remains the compensating control: every deferral is named, justified in
+    /// <see cref="_unsignalledInvalidCases"/>, checked against the upstream suites by
+    /// <see cref="OfficialTestSuiteSkipListTests"/>, and re-run by
+    /// <see cref="AssertDeferralIsStillNeeded"/> so a gap that has since closed fails instead of skipping.
+    /// </remarks>
+    private void SkipTest(string reason)
+    {
+        _output.WriteLine($"[SKIPPED] {reason}");
+
+        // Xunit.SkipException, not Xunit.Sdk.SkipException: only the former prefixes the message with
+        // the DynamicSkipToken that SkippableFact's runner looks for. The latter is the one xunit 2.9.3
+        // ships and ignores.
+        throw new Xunit.SkipException(reason);
     }
 
     private static void ValidatePredicateResult(FhirPathTestCase testCase, IReadOnlyList<IElement> actualResults)
@@ -538,6 +722,17 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
             double => "decimal",
             string str when str.StartsWith('@') => ParseFhirPathTypePrefix(str),
             string => "string",
+            FhirTemporal temporal => temporal.Kind switch
+            {
+                FhirPrimitive.Date => "date",
+                FhirPrimitive.DateTime => "dateTime",
+                FhirPrimitive.Instant => "instant",
+                FhirPrimitive.Time => "time",
+                _ => "dateTime"
+            },
+            // Named explicitly rather than left to the CLR-name fallback below: the suite asserts the
+            // FHIRPath system type, which is Quantity regardless of what the carrier class is called.
+            FhirQuantity => "Quantity",
             _ => value.GetType().Name
         };
     }

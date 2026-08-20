@@ -512,8 +512,8 @@ internal static class StringFunctions
 
         // Concatenate all string values with the separator
         var strings = focusElements
-            .Where(e => e.Value is string)
-            .Select(e => (string)e.Value!)
+            .Select(e => WireValue.AsWireString(e.Value))
+            .OfType<string>()
             .ToList();
 
         // Per FHIRPath, join() over an empty input collection yields empty ({}),

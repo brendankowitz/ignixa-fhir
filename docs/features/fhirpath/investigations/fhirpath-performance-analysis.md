@@ -339,7 +339,7 @@ Execution-SearchParam:        235.18 ns  (StdDev: 4.31 ns)
 | **Compilation Strategy** | Pattern-based (92% coverage) | Universal (100% coverage) |
 | **Fallback** | Visitor-based interpreter | None (all interpreted) |
 | **Caching** | 2-level (AST + delegates) | 1-level (compiled expressions) |
-| **Cache Size** | Unbounded (ConcurrentDictionary) | 500-item limit |
+| **Cache Size** | Bounded: 4096 entries/generation per cache, generational hot/cold rotation (`BoundedExpressionCache`) | 500-item limit |
 | **Type System** | Custom `Expression` AST | Custom `Expression` AST |
 | **Execution Context** | Struct-based `EvaluationContext` | Dictionary-based `Closure` |
 | **Variable Lookup** | Direct field access | Dictionary lookup + parent chain |
@@ -437,11 +437,11 @@ return expr switch
 
 ### 5. Dual Caching
 **Firely:** 500-item expression cache
-**Ignixa:** Unbounded AST cache + unbounded delegate cache
+**Ignixa:** Bounded AST cache + bounded delegate cache, 4096 entries per generation with a 2-generation hot/cold rotation (`BoundedExpressionCache`, see `docs/features/caching/investigations/architecture.md`)
 
 **Impact:**
-- Firely: Cache eviction on high-cardinality workloads
-- Ignixa: Zero cache misses after warm-up
+- Firely: Cache eviction on high-cardinality workloads (500-item cliff)
+- Ignixa: Zero cache misses for the shipped SearchParameter corpus (2,396 distinct expressions across STU3/R4/R4B/R5/R6, well inside the 4096 capacity) and for ordinary custom-SearchParameter workloads. Tenants registering enough distinct expressions to exceed capacity get rotation-driven re-parses, not unbounded growth — the caches were unbounded `ConcurrentDictionary`s until commit `0a708414` fixed the caller-drivable leak this created for tenant-defined SearchParameters.
 
 ### 6. Minimal Allocations
 **Firely allocations per execution:**

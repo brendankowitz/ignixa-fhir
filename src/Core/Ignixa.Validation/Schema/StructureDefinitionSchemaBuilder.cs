@@ -430,7 +430,7 @@ public class StructureDefinitionSchemaBuilder
         // enforces nothing, so no check is created and valid base resources are never rejected.
         var slicingChecks = elements
             .Where(e => e is ITypeExtended ext && ext.Slicing is { Slices.Count: > 0 })
-            .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!));
+            .Select(e => new SlicingCheck(SlicedElementName(e), ((ITypeExtended)e).Slicing!, _logger));
         profileChecks.AddRange(slicingChecks);
 
         // Build the canonical URL from the type name
@@ -485,29 +485,6 @@ public class StructureDefinitionSchemaBuilder
             ["que-12"] = (
                 "enableWhen.count() > 2 implies enableBehavior.exists()",
                 "enableWhen.count() >= 2 implies enableBehavior.exists()"),
-        };
-
-    /// <summary>
-    /// Datatype invariants absent from the generated core schema (the codegen emits
-    /// <c>constraints: null</c> for complex datatypes such as Period) but enforced by the HL7
-    /// reference validator. Injected into the datatype's own build so they evaluate once per
-    /// occurrence at that element's altitude, exactly like any element-owned constraint. Keyed by
-    /// the datatype name.
-    /// </summary>
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<IConstraint>> SupplementalDatatypeConstraints =
-        new Dictionary<string, IReadOnlyList<IConstraint>>(StringComparer.Ordinal)
-        {
-            ["Period"] = new IConstraint[]
-            {
-                new Ignixa.Abstractions.ConstraintDefinition
-                {
-                    Key = "per-1",
-                    Severity = "error",
-                    Human = "If present, start SHALL have a lower or equal value than end",
-                    Expression = "start.hasValue().not() or end.hasValue().not() or (start <= end)",
-                    Xpath = null,
-                },
-            },
         };
 
     /// <summary>
@@ -631,19 +608,6 @@ public class StructureDefinitionSchemaBuilder
 
                 seenConstraints.Add(constraint.Key);
                 checks.Add(new FhirPathInvariantCheck(NormalizeConstraint(constraint), schema, parser, appliesTo, logger));
-            }
-        }
-
-        // Inject datatype invariants missing from codegen (e.g. Period's per-1). These belong to the
-        // type currently being built, so they run at this altitude once per occurrence.
-        if (SupplementalDatatypeConstraints.TryGetValue(typeDefinition.Info.Name, out var supplemental))
-        {
-            foreach (var constraint in supplemental)
-            {
-                if (seenConstraints.Add(constraint.Key))
-                {
-                    checks.Add(new FhirPathInvariantCheck(constraint, schema, parser, appliesTo: null, logger));
-                }
             }
         }
 

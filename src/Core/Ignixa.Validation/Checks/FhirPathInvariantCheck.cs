@@ -20,9 +20,30 @@ namespace Ignixa.Validation.Checks;
 /// Used in Spec and Full validation depths.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This check evaluates FHIRPath constraint expressions defined in FHIR StructureDefinitions.
 /// Examples: ele-1 (all elements must have @value or children), dom-1 (contained resources must have id).
 /// Uses lazy compilation for performance - expressions are parsed once and cached.
+/// </para>
+/// <para>
+/// <b>Exception-path severity is a deliberate position, not an oversight.</b> The spec's
+/// conformance-rules.html is silent on what to do when a constraint expression cannot be evaluated
+/// at all. Firely's side is confirmed against source: <c>FhirPathValidator.runInvariantInternal</c>
+/// catches any exception into <c>Issue.PROFILE_ELEMENTDEF_INVALID_FHIRPATH_EXPRESSION</c>, which
+/// reflection over 5.11.4 gives <c>Severity = Warning, Code = 2009</c>, and <c>InvariantValidator.Validate</c>
+/// returns before the declared-severity branch runs - so Firely always degrades an evaluation
+/// exception to a non-failing Warning, regardless of the constraint's declared severity. Whether HAPI
+/// disagrees is unconfirmed: it reportedly reports an Error and counts it toward the resource's
+/// failure tally (per <c>hapifhir/org.hl7.fhir.core</c> issues #1338 and #1326 - observed from the
+/// issue discussion, not confirmed against HAPI's source). This code follows Firely: a known engine
+/// gap (<see cref="NotSupportedException"/>) or an expression the
+/// engine correctly refuses to evaluate (<see cref="FhirPathEvaluationException"/>) never fails
+/// the resource. The fhir-server ingestion seam sits downstream of this check and must not start
+/// rejecting resources Firely accepts over a constraint neither engine can evaluate - HAPI's
+/// stricter reading would do exactly that. An exception of any other type is treated as a genuine
+/// engine defect and fails loudly, so it cannot silently pass a resource or inflate conformance
+/// metrics.
+/// </para>
 /// </remarks>
 public class FhirPathInvariantCheck : IValidationCheck
 {
@@ -157,8 +178,7 @@ public class FhirPathInvariantCheck : IValidationCheck
         // (datatypes, backbones) still get ele-1; empty complex datatypes remain covered structurally
         // by StructuralShapeCheck.
         if (string.Equals(_constraint.Key, "ele-1", StringComparison.Ordinal)
-            && state.Scope.Resource is { } resourceRoot
-            && ReferenceEquals(element, resourceRoot))
+            && ReferenceEquals(element, state.Scope.Resource))
         {
             return ValidationResult.Success();
         }
@@ -186,11 +206,11 @@ public class FhirPathInvariantCheck : IValidationCheck
 
         try
         {
-            // Evaluate the FHIRPath expression. When tree-context scope has been seeded
-            // (resource roots and contained recursion), supply %resource / %rootResource /
-            // resolve() so root-referencing invariants (dom-*, bdl-*) evaluate correctly.
-            // When scope is unseeded (some direct callers/tests), fall back to a bare context,
-            // which defaults %resource to the constrained element as before.
+            // Evaluate the FHIRPath expression, supplying %resource / %rootResource / resolve()
+            // from the tree-context scope so root-referencing invariants (dom-*, bdl-*) evaluate
+            // correctly. %context is bound from the node handed to the evaluator, which is the
+            // constrained element - what the ~30 shipped %context invariants (ig-1, sdf-24/25,
+            // exs-14..21) expect.
             var result = _evaluator.Value.Evaluate(element, expression, BuildEvaluationContext(state));
 
             // Convert result to boolean
@@ -245,6 +265,28 @@ public class FhirPathInvariantCheck : IValidationCheck
 
             return new ValidationResult(isValid: true, issues: new[] { issue });
         }
+        catch (FhirPathEvaluationException ex)
+        {
+            // A constraint the engine CORRECTLY REFUSED to evaluate — the expression is ill-formed for
+            // the data it was handed, and FHIRPath requires signalling an error rather than yielding a
+            // value. That is a defect in the constraint, not evidence that the resource is invalid, so it
+            // gets the same non-failing Warning as the engine-gap path above. R4's tim-9 is the canonical
+            // case: it feeds a repeating Timing.repeat.when to 'in', which is only defined for a singleton
+            // (R5 rewrote it as when.select($this in (…)).allFalse() for exactly this reason). Failing the
+            // resource here would reject a perfectly conformant instance for a bug in the spec's own text.
+            _logger?.LogWarning(
+                ex,
+                "Constraint {ConstraintKey} is not evaluable against this instance; treating as non-failing",
+                _constraint.Key);
+
+            var issue = new ValidationIssue(
+                IssueSeverity.Warning,
+                _constraint.Key,
+                element.Location ?? string.Empty,
+                $"Constraint '{_constraint.Key}' could not be evaluated: {ex.Message}");
+
+            return new ValidationResult(isValid: true, issues: new[] { issue });
+        }
         catch (Exception ex)
         {
             // An UNEXPECTED evaluation failure — a defect in our engine or malformed data, not a known
@@ -268,25 +310,25 @@ public class FhirPathInvariantCheck : IValidationCheck
     /// <summary>
     /// Builds the FHIRPath evaluation context from the validation scope. Always carries the
     /// instance-creation delegate so instance selectors (<c>Type { ... }</c>) construct
-    /// schema-backed nodes; resource scope (%resource / %rootResource / resolve()) is layered
-    /// on when seeded. A fresh context is returned per evaluation because
-    /// <see cref="EvaluationContext.DefinedVariables"/> is mutated by <c>defineVariable()</c>;
-    /// sharing one instance would leak variables between constraints and race across threads.
+    /// schema-backed nodes, and always carries the resource scope (%resource / %rootResource /
+    /// resolve()) — <see cref="ValidationState"/> cannot exist without one. A fresh context is returned
+    /// per evaluation because <see cref="EvaluationContext.DefinedVariables"/> is mutated by
+    /// <c>defineVariable()</c>; sharing one instance would leak variables between constraints and race
+    /// across threads.
     /// </summary>
     private EvaluationContext BuildEvaluationContext(ValidationState state)
     {
         var scope = state.Scope;
-        if (scope.Resource is null)
-        {
-            return new EvaluationContext().WithInstanceCreator(_instanceCreator.Value);
-        }
 
+        // No ElementResolver: resolve() resolves in-instance from Resource/RootResource via
+        // EvaluationContext.ReferenceIndexCache. ElementResolver is the seam for a HOST resolver
+        // reaching OUTSIDE the instance, and validation has no such host - see ResourceScope.
         return new FhirEvaluationContext
         {
             Resource = scope.Resource,
             RootResource = scope.RootResource,
-            ElementResolver = scope.Resolver,
-            InstanceCreator = _instanceCreator.Value
+            InstanceCreator = _instanceCreator.Value,
+            Schema = _schema
         };
     }
 

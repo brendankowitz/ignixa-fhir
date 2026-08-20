@@ -48,7 +48,7 @@ public class NavigationBenchmarks
         var json = ReadEmbeddedResource(assembly, "Ignixa.Benchmarks.TestData.observation-medium.json");
 
         // Ignixa setup
-        _ignixaObservation = JsonSerializer.Deserialize<ResourceJsonNode>(json)!;
+        _ignixaObservation = ResourceJsonNode.Parse(json);
         var searchParamOptions = new Ignixa.Search.Definition.SearchParameterResolutionOptions();
         _versionContext = new FhirVersionContext(NullLoggerFactory.Instance, searchParamOptions, NullFhirBaseUriProvider.Instance);
         _ignixaSchemaProvider = _versionContext.GetBaseSchemaProvider(FhirVersion.R4);

@@ -25,9 +25,33 @@ public sealed class DeIdContext
     public ResourceJsonNode Resource { get; }
 
     /// <summary>
-    /// The root element of the resource.
+    /// The root element of the resource, re-derived from <see cref="Resource"/> on every read.
     /// </summary>
-    public IElement Element { get; }
+    /// <remarks>
+    /// An <see cref="IElement"/> tree is a snapshot of the JsonNode graph it was built from, not a
+    /// live view of it (see the memoisation comment on <c>SchemaAwareElement._cachedValue</c>) --
+    /// and de-identification processors mutate <see cref="Resource"/>'s underlying JsonNode tree
+    /// directly via <c>ElementMutationTool</c> without reliably calling
+    /// <see cref="ResourceJsonNode.InvalidateCaches"/> (<c>SubstituteProcessor</c>'s keep-path is the
+    /// one exception that does call it; nothing enforces that every other processor follows suit). A
+    /// field captured once at construction would
+    /// therefore go stale the moment the first processor ran: <c>ValidationHandler</c> validating
+    /// input is fine (it runs before any mutation), but <c>OutputFormattingHandler</c> validating
+    /// output would be inspecting the pre-de-identification tree while claiming to validate the
+    /// result. Forcing a fresh derive on every read makes that staleness unrepresentable instead of
+    /// depending on every mutation site remembering to invalidate.
+    /// Callers that need one consistent snapshot across multiple reads taken before any mutation
+    /// (e.g. rule matching, which evaluates a FHIRPath expression per configured rule) should capture
+    /// this property once into a local variable rather than re-reading it in a loop.
+    /// </remarks>
+    public IElement Element
+    {
+        get
+        {
+            Resource.InvalidateCaches();
+            return Resource.ToElement(Schema);
+        }
+    }
 
     /// <summary>
     /// The FHIR schema provider for parsing and validation.
@@ -74,19 +98,16 @@ public sealed class DeIdContext
     /// Creates a new de-identifier context.
     /// </summary>
     /// <param name="resource">The resource to de-identify.</param>
-    /// <param name="element">The root element.</param>
     /// <param name="schema">The FHIR schema provider.</param>
     /// <param name="settings">Per-request settings.</param>
     /// <param name="options">Configuration options.</param>
     public DeIdContext(
         ResourceJsonNode resource,
-        IElement element,
         IFhirSchemaProvider schema,
         RequestOptions settings,
         DeIdOptions options)
     {
         Resource = resource;
-        Element = element;
         Schema = schema;
         Settings = settings;
         Options = options;

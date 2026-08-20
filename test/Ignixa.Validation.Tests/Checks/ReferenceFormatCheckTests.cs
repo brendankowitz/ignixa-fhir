@@ -39,10 +39,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -67,10 +68,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -94,10 +96,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -121,10 +124,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -148,10 +152,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -177,10 +182,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert - FHIR spec does not reject bare strings at parse time in MS FHIR Server
         result.IsValid.ShouldBeTrue();
@@ -204,10 +210,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();
@@ -231,10 +238,11 @@ public class ReferenceFormatCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new ReferenceFormatCheck("subject");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         result.IsValid.ShouldBeTrue();

@@ -3,6 +3,7 @@
 // Licensed under the MIT License (MIT). See LICENSE in the repo root for license information.
 // -------------------------------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Azure;
@@ -483,7 +484,7 @@ public static class FhirEndpoints
             parsedIfMatch = ConditionalHeaderParser.ParseIfNoneMatch(ifMatchHeader);
 
             // Validate ETag format: must be numeric and >= 1
-            if (parsedIfMatch != null && (!int.TryParse(parsedIfMatch, out var versionId) || versionId < 1))
+            if (parsedIfMatch != null && (!int.TryParse(parsedIfMatch, NumberStyles.Integer, CultureInfo.InvariantCulture, out var versionId) || versionId < 1))
             {
                 logger.LogWarning("Invalid ETag in If-Match header: {IfMatch} - must be numeric and >= 1", ifMatchHeader.SanitizeForLog());
                 throw new BadRequestException($"Invalid ETag value: {ifMatchHeader}. ETag must be a positive integer.");
@@ -1405,7 +1406,7 @@ public static class FhirEndpoints
 
         // Extract _count parameter
         var queryParams = QueryHelpers.ParseQuery(queryString);
-        if (queryParams.TryGetValue("_count", out var countValue) && int.TryParse(countValue.FirstOrDefault(), out var parsedCount))
+        if (queryParams.TryGetValue("_count", out var countValue) && int.TryParse(countValue.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCount))
         {
             count = parsedCount;
 

@@ -111,8 +111,7 @@ public class ValidationBehavior : IPipelineBehavior<CreateOrUpdateResourceComman
                     Depth = validationDepth,
                     TerminologyService = _terminologyService
                 };
-                var state = new ValidationState();
-                var validationResult = schema.Validate(element, settings, state);
+                var validationResult = schema.Validate(element, settings);
 
                 if (!validationResult.IsValid)
                 {

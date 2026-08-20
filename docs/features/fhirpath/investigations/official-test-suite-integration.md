@@ -47,7 +47,7 @@ Integrate the official HL7 FHIR FHIRPath test suite from the [fhir-test-cases re
 The [fhir-test-cases repository](https://github.com/FHIR/fhir-test-cases) contains:
 
 **R4 FHIRPath Tests**:
-- `r4/fhirpath/tests-fhir-r4.xml` - Main test suite (1000+ tests)
+- `r4/fhirpath/tests-fhir-r4.xml` - Main test suite (935 tests)
 - `r4/examples/` - Input FHIR resources (patient-example.xml, observation-example.xml, etc.)
 
 **R5 FHIRPath Tests**:
@@ -253,28 +253,78 @@ This investigation focuses on **direct XML integration**. Other approaches worth
 
 Full test suite integration completed across all FHIR versions:
 
-| Version | Total Tests | Passed | Failed | Skipped | Pass Rate |
-|---------|------------|--------|--------|---------|-----------|
-| **R4**  | 749        | 560    | 171    | 18      | 74.7%     |
-| **R4B** | 747        | 559    | 171    | 17      | 76.6%     |
-| **R5**  | 832        | 627    | 183    | 22      | 77.4%     |
-| **Total** | **2,328** | **1,746** | **525** | **57** | **76.9%** |
+Full test suite integration completed across all FHIR versions. Numbers below re-measured against
+`fhir-test-cases` 1.7.46; the figures originally recorded here in January 2026 predated most of the
+engine work and were stale in every column.
 
-**Test Coverage Distribution** (by group):
-- `testBasics`, `testType`, `testCollections` - 90%+ pass rate
-- `testFunctions`, `testArithmetic` - 75-85% (most functions implemented)
-- `testQuantities` - 60% (UCUM unit conversion gaps)
-- `testDateTime`, `testNavigation` - 75% (edge cases in timezone handling)
-- `defineVariable` - 90%+ (FHIRPath 2.0 support added)
-- String functions (`split`, `trim`, `encode`, `escape`) - 95%+ pass rate
-- Math functions (`round`, `abs`, `sqrt`, `ln`, `exp`) - 95%+ pass rate
+| Version | Executed | Passed | Failed | Skipped | Not supported | Genuinely asserted |
+|---------|----------|--------|--------|---------|----------------|---------------------|
+| **R4**    | 935       | 931       | 0     | 4      | 2     | 929 (99.4%)     |
+| **R4B**   | 933       | 929       | 0     | 4      | 2     | 927 (99.4%)     |
+| **R5**    | 1,032     | 1,030     | 0     | 2      | 5     | 1,025 (99.3%)   |
+| **Total** | **2,900** | **2,890** | **0** | **10** | **9** | **2,881 (99.3%)** |
 
-**Known Gaps** (tracked in issue #184):
+(Measured against `fhir-test-cases` 1.7.46, `dotnet test test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj
+--filter "FullyQualifiedName~OfficialTestSuite_R4&FullyQualifiedName!~OfficialTestSuite_R4B"` and the
+equivalent `_R4B` / `_R5` filters.)
+
+Read the last column, not the "Failed" column. Every case in the suite now either asserts and passes or
+is accounted for explicitly, so a raw pass rate reads 100% and tells you nothing. Two things are worth
+watching, and they are not the same thing anymore:
+
+- **`_unsignalledInvalidCases` is empty.** Every deferral it ever held has been closed: the unresolved-path
+  and ordering cases by `RunInvalidExpressionTest` now consulting `FhirPathAnalyzer`, the `defineVariable`
+  scope cases by `VariableScope` giving `defineVariable` real lexical scoping, and
+  `testFHIRPathAsFunction21` by version-gating the singleton rule instead of blanket-deferring it. That
+  means `AssertDeferralIsStillNeeded` - the guard that re-runs a deferred case and fails if the engine now
+  signals the error, so a closed gap can't sit unnoticed in the list - currently iterates over nothing.
+  **It is not protecting anything today.** Its value is entirely prospective: if a case is ever deferred
+  again, this is the guard that will catch the gap closing without the entry being removed. Read a claim
+  of "35 deferred cases" anywhere else in this repo's history as stale - it described an earlier state of
+  this dictionary, not the current one.
+- **Skipped (10)**, all of them version- or library-specific, none of them deferrals:
+  `testPlusDate19` and `testFHIRPathAsFunction21` skip on R4/R4B only (2 each, 4 total) because both
+  encode behaviour this implementation deliberately doesn't enforce below R5, and
+  `testQuantity9`/`testQuantity10` skip on all three versions (6 total) because Fhir.Metrics doesn't do
+  UCUM unit algebra across prefixes. These report as real xunit skips via `Xunit.SkippableFact` (xunit
+  2.9.3 has no working dynamic skip of its own, so before that they reported as passes and were
+  indistinguishable from coverage) - but they never touch `_unsignalledInvalidCases` or
+  `AssertDeferralIsStillNeeded`, because that machinery is specific to `invalid`-marked cases, and none of
+  these four are.
+- **Not supported (9)** - `NotSupportedException` early returns: `conformsTo()` (6, two cases × three
+  versions) and `%terminologies` (3, R5 only). These count as xunit passes, not skips; they're broken out
+  here because the test short-circuits on catching the exception rather than asserting anything.
+
+The actual remaining teeth against a regression in the `invalid`-marked cases are `RunInvalidExpressionTest`'s
+`Assert.Fail` calls, which sit outside the `try`/`catch` on purpose - an earlier version wrapped the whole
+method body in one `try`, so xunit's own `FailException` landed in the trailing `catch (Exception)` and
+every `invalid`-marked case passed unconditionally regardless of what the engine did. Fixing that bug is
+what turned the whole `invalid` category from unverified into genuinely asserted, and it's what surfaced
+the 35 real gaps that then went into `_unsignalledInvalidCases` as named deferrals. Subsequent engine work
+(`FhirPathAnalyzer` static analysis, `VariableScope` lexical scoping, version-gating the `as` singleton
+rule) is what closed all 35 down to zero - the `Assert.Fail` fix exposed the gaps, it didn't close them.
+
+Three R5 cases are CDA-mode and excluded at parse time, so 2,903 parse and 2,900 execute.
+
+**Test Coverage Distribution** (by group, counting only genuinely asserted cases):
+- `testBasics` - 5/7; `testType` - 30/30
+- `testQuantity` - 9/11 (`testQuantity9`/`10` need full UCUM unit algebra; Fhir.Metrics limitation)
+- `defineVariable` (R5 only) - 21/21, no deferrals. `defineVariable9`/`10`/`12`/`16` and
+  `dvUsageOutsideScopeThrows` were deferred until `%context` was implemented and `defineVariable`
+  bindings were scoped lexically (`VariableScope`); reading an undefined `%name` now signals an error
+  per FHIRPath §1.9 instead of yielding empty
+- String functions (`split`, `trim`, `encode`, `escape`) - no deferrals, no failures
+- Math functions (`round`, `abs`, `sqrt`, `ln`, `exp`) - no deferrals, no failures
+- `testAggregate`, `LowBoundary`, `HighBoundary` - no deferrals, no failures
+
+**Known Gaps**:
 - `conformsTo()` function - Profile validation (requires StructureDefinition validation)
-- `lowBoundary()`/`highBoundary()` - Precision boundary functions
-- UCUM quantity conversion incomplete (unit normalization)
-- `aggregate()` - Complex aggregation with accumulator
-- Some edge cases: literal escape sequences (`\/`, `\f`), root context access
+- `%terminologies` - requires a terminology server binding
+- UCUM quantity conversion incomplete (unit multiplication/division across prefixes)
+
+`lowBoundary()`/`highBoundary()`, `aggregate()` and `combine()` were listed here as gaps and are now
+implemented (`BoundaryFunctions`, `CollectionFunctions`); their groups pass clean. Issue #184, which
+tracked this work, is closed.
 
 ### Implementation Details
 
@@ -289,42 +339,38 @@ Full test suite integration completed across all FHIR versions:
 </Target>
 ```
 
-**Native XML to JSON Converter** (242 lines, zero dependencies):
+**Native XML to JSON Converter** (`FhirXmlToJsonConverter`, 249 lines, zero dependencies):
 - Converts FHIR XML test input files to JSON for `ResourceJsonNode.Parse()`
 - Handles attributes (`value`, `url`, `id`), namespaces, arrays, primitives
-- Performance: 10,000+ conversions/sec
 
-**Test Suite Parser** (58 lines):
+**Test Suite Parser** (`FhirPathTestSuiteParser`, 91 lines):
 - Parses `tests-fhir-r4.xml`, `tests-fhir-r4b.xml`, `tests-fhir-r5.xml`
 - Extracts test groups, expressions, expected outputs (typed), input files
-- Skips tests with `invalid="true"` or `invalid="semantic"` attributes
+- Records `invalid="true"` / `invalid="semantic"` as `IsInvalidTest` rather than skipping. The runner
+  *executes* these through `RunInvalidExpressionTest` and asserts the engine signals an error; 82 cases
+  are covered this way. (This reverses the original design, which dropped them.)
 
 **xUnit Theory Runner**:
 ```csharp
-[Theory]
-[MemberData(nameof(GetR4Tests))]
-public void R4TestSuite(string group, string name, string expression, /* ... */) {
-    var element = LoadInputResource(inputFile, FhirVersion.R4);
-    var result = _evaluator.Evaluate(element, expression);
-    AssertExpectedOutputs(result, expectedOutputs, ordered);
+[SkippableTheory]
+[MemberData(nameof(GetR4TestCases))]
+public void OfficialTestSuite_R4(FhirPathTestCase testCase) {
+    RunTestCase(testCase, FhirVersion.R4);
 }
 ```
-
-**FhirPathAnalyzer Coverage** (issue #184):
-- Analyzer pass rate: 88.7% (2,065/2,328 tests)
-- Firely SDK analyzer: 88.3% (2,056/2,328 tests)
-- Validates analyzer/evaluator parity (both detect same syntax/semantic errors)
+`[SkippableTheory]` (from `Xunit.SkippableFact`) is what lets `SkipTest` turn a deferral into a real
+skipped result instead of a silent pass.
 
 ### Acceptance Criteria Met
 
-- ✅ Zero new dependencies beyond `System.Xml.Linq` and MSBuild tasks
-- ✅ Test discovery completes in <2 seconds (cached XML parsing)
+- ✅ Only new test dependency beyond `System.Xml.Linq` and MSBuild tasks is `Xunit.SkippableFact`,
+  needed because xunit 2.9.3 cannot skip dynamically
 - ✅ Failed tests report expression, expected vs actual output, input file reference
 - ✅ Tests run in parallel via xUnit's default parallelization
 - ✅ Coverage report via `dotnet test --logger "console;verbosity=detailed"`
-- ✅ Full R4/R4B/R5 suite (2,328 tests) - exceeded Phase 1 goal of 200 tests
+- ✅ Full R4/R4B/R5 suite (2,900 tests executed) - exceeded Phase 1 goal of 200 tests
 - ✅ FHIRPath 2.0 support: Comments, `defineVariable()`, backtick variables, escape sequences
-- ✅ Comprehensive function coverage: 60+ functions including math, string manipulation, encoding
+- ✅ Comprehensive function coverage: 120 registered `[FhirPathFunction]` implementations
 
 ### Risk Mitigation Applied
 
@@ -335,14 +381,18 @@ public void R4TestSuite(string group, string name, string expression, /* ... */)
 
 ### Next Steps
 
-1. **Gap closure** (target 85-90% pass rate):
+1. **Gap closure** (19 of 2,900 cases are not asserted: 10 skipped, 9 unsupported - the deferral list is
+   empty, see the table above):
    - ✅ ~~Math functions (round, abs, sqrt, ln, exp, power, floor, ceiling, truncate)~~ - Complete
    - ✅ ~~String functions (trim, split, contains, encode/decode, escape/unescape)~~ - Complete
    - ✅ ~~FHIRPath 2.0 features (comments, defineVariable, backtick variables)~~ - Complete
-   - 🔲 `conformsTo()` - Requires profile validation infrastructure
-   - 🔲 `lowBoundary()`/`highBoundary()` - Precision boundary calculations
-   - 🔲 UCUM library integration for quantity unit conversion
-   - 🔲 `aggregate()` edge cases
-   - 🔲 Literal escape sequence edge cases (`\/`, `\f`)
+   - ✅ ~~`lowBoundary()`/`highBoundary()` - Precision boundary calculations~~ - Complete
+   - ✅ ~~`aggregate()` edge cases~~ - Complete
+   - 🔲 `conformsTo()` - Requires profile validation infrastructure (6 cases)
+   - 🔲 `%terminologies` - Requires a terminology server binding (3 cases, R5)
+   - 🔲 UCUM library integration for quantity unit conversion (`testQuantity9`/`testQuantity10`, so 2
+     distinct cases but 6 skips, since both skip on all three versions)
+   - ✅ ~~The deferred cases in `_unsignalledInvalidCases` - invalid expressions the engine does not yet
+     signal an error for~~ - Complete; all 35 closed and the dictionary is now empty
 2. **CI integration**: Add pass rate tracking to GitHub Actions (fail on regression)
 3. **Performance optimization**: Leverage compiled delegate caching for test suite expressions

@@ -410,8 +410,7 @@ public class CreateOrUpdateResourceHandler : IRequestHandler<CreateOrUpdateResou
         {
             Depth = ValidationDepth.Spec // Use Spec-level validation for X-Provenance
         };
-        var state = new ValidationState();
-        var validationResult = schema.Validate(element, settings, state);
+        var validationResult = schema.Validate(element, settings);
 
         if (!validationResult.IsValid)
         {

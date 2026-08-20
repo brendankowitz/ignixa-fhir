@@ -31,7 +31,7 @@ public sealed class Ws4ValidationModesTests
     {
         var element = JsonNodeSourceNode.Create(JsonNode.Parse(json)!).ToElement(TestSchemaProvider.GetR4Schema());
         var schema = Resolver.GetSchema($"http://hl7.org/fhir/StructureDefinition/{element.InstanceType}")!;
-        var state = new ValidationState().EnterRootResource(element);
+        var state = ValidationState.ForRoot(element);
         return schema.Validate(element, settings, state);
     }
 

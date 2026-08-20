@@ -227,6 +227,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.SqlServer.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.DataLayer.SqlServer.IntegrationTests", "test\Ignixa.DataLayer.SqlServer.IntegrationTests\Ignixa.DataLayer.SqlServer.IntegrationTests.csproj", "{62B769CC-71F9-4D7E-800E-5EB56BFC8D05}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Abstractions.Tests", "test\Ignixa.Abstractions.Tests\Ignixa.Abstractions.Tests.csproj", "{58AB6B6C-D8B1-4C13-9568-5091657A180F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1113,6 +1115,18 @@ Global
 		{62B769CC-71F9-4D7E-800E-5EB56BFC8D05}.Release|x64.Build.0 = Release|Any CPU
 		{62B769CC-71F9-4D7E-800E-5EB56BFC8D05}.Release|x86.ActiveCfg = Release|Any CPU
 		{62B769CC-71F9-4D7E-800E-5EB56BFC8D05}.Release|x86.Build.0 = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x64.Build.0 = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x86.Build.0 = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x64.ActiveCfg = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x64.Build.0 = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x86.ActiveCfg = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1201,5 +1215,6 @@ Global
 		{EDF987AD-0132-447A-94EF-D31DE68641B5} = {3AB9C3B3-CB6C-414B-87A7-CAFB3AC9FAAA}
 		{8928F7E9-068B-4D24-A86F-E15F2CB8BEB8} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{62B769CC-71F9-4D7E-800E-5EB56BFC8D05} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal

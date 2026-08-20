@@ -144,11 +144,54 @@ public sealed class ValidationSchema
     /// </summary>
     /// <param name="element">The element to validate.</param>
     /// <param name="settings">Validation settings (including depth).</param>
-    /// <param name="state">Current validation state. Optional - a default state will be used if not provided.</param>
     /// <returns>Combined validation result from all checks.</returns>
-    public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState? state = null)
+    /// <remarks>
+    /// Rooting the state at <paramref name="element"/> is correct by construction rather than a guess: a
+    /// <see cref="ValidationSchema"/> is built per StructureDefinition and carries the
+    /// <see cref="ResourceType"/> it validates, so <paramref name="element"/> is by contract the resource this
+    /// schema applies to. That is the difference from <c>FhirPathEvaluator.Evaluate</c>, whose input is any
+    /// node and which therefore must not infer a resource.
+    /// </remarks>
+    public ValidationResult Validate(IElement element, ValidationSettings settings)
+        => Validate(element, settings, ValidationState.ForRoot(element));
+
+    /// <summary>
+    /// Validates an element as part of an enclosing validation, continuing that validation's state.
+    /// </summary>
+    /// <param name="element">The element to validate.</param>
+    /// <param name="settings">Validation settings (including depth).</param>
+    /// <param name="state">State from the enclosing validation.</param>
+    /// <returns>Combined validation result from all checks.</returns>
+    /// <remarks>
+    /// <para>
+    /// Internal because the correct scope discipline depends on what is being descended into, and only the
+    /// checks know which applies. <c>ContainedResourceCheck</c> re-roots — <c>%resource</c> moves to the
+    /// contained resource while <c>%rootResource</c> stays on the container. <c>NestedComplexTypeCheck</c> and
+    /// <c>ChoiceVariantNestedCheck</c> deliberately do not re-root, because a nested datatype is not a
+    /// resource and <c>%resource</c> must keep pointing at the one that encloses it. So there is no single
+    /// correspondence between <paramref name="element"/> and <paramref name="state"/> that could be asserted
+    /// here, and an external caller has no way to know which discipline their case wants.
+    /// </para>
+    /// <para>
+    /// The failure mode this closes is mis-rooting, which <see cref="ValidationState.ForRoot"/> alone does not
+    /// prevent: a caller who passes a state rooted at a different element than the one being validated gets
+    /// <c>%resource</c> silently bound to the wrong resource, and only at <see cref="ValidationDepth.Full"/>
+    /// where invariants run. What actually breaks is not every invariant — two equal-but-not-identical
+    /// wrappers over the same underlying resource evaluate every <em>value-based</em> constraint identically.
+    /// It is specifically the reference-identity root exemption in <c>FhirPathInvariantCheck</c>
+    /// (<c>ReferenceEquals(element, state.Scope.Resource)</c>, which excuses <c>ele-1</c> at the resource
+    /// root): a state rooted at a different instance than the one being validated makes that comparison
+    /// false, and <c>ele-1</c> fires spuriously on the root. Two calls to the <c>ISourceNavigator.ToElement()</c>
+    /// extension are enough to trigger it, since each returns a fresh <c>SchemaAwareElement</c> instance; the
+    /// caching <c>ResourceJsonNode.ToElement(ISchema)</c> does not reproduce it, since it returns the same
+    /// cached instance for the same schema. External callers use the two-argument overload, which cannot be
+    /// mis-rooted.
+    /// </para>
+    /// </remarks>
+    internal ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
-        state ??= new ValidationState();
+        ArgumentNullException.ThrowIfNull(state);
+
         var results = new List<ValidationResult>();
 
         // Universal checks always run (all depths)

@@ -437,8 +437,8 @@ internal static class FhirSpecificFunctions
     /// </summary>
     private static string? ExtractUnitFromQuantity(IElement element)
     {
-        // Handle Quantity type from our Types namespace
-        if (element.Value is Quantity qty)
+        // Handle the FhirQuantity value carried by a FHIRPath quantity literal
+        if (element.Value is FhirQuantity qty)
         {
             return qty.Unit;
         }

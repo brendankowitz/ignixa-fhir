@@ -15,6 +15,7 @@ using Ignixa.Extensions.FirelySdk;
 using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Parser;
 using Xunit;
+using IgnixaQuantity = Ignixa.Abstractions.FhirQuantity;
 using P = Hl7.Fhir.ElementModel.Types;
 
 namespace Ignixa.Extensions.Tests.FirelySdk;
@@ -29,6 +30,8 @@ public class FirelyPrimitiveValueContractTests
 
     [Theory]
     [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013-01-01T11:22:33")]
+    [InlineData("dateTime", "2013-01-01T11:22")]
     [InlineData("dateTime", "2013")]
     [InlineData("instant", "2013-01-01T11:22:33.123Z")]
     public void GivenIgnixaDateTimeString_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDateTime(string instanceType, string text)
@@ -277,14 +280,69 @@ public class FirelyPrimitiveValueContractTests
         Assert.Null(new TypedElementAdapter(element).Value);
     }
 
+    [Theory]
+    [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013-01-01T11:22:33")]
+    [InlineData("dateTime", "2013-01-01T11:22")]
+    [InlineData("dateTime", "2013")]
+    [InlineData("instant", "2013-01-01T11:22:33.123Z")]
+    public void GivenIgnixaFhirTemporalDateTime_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDateTime(string instanceType, string literal)
+    {
+        // FhirTemporal is the value type for temporal primitives originating from SchemaAwareElement.
+        // TypedElementAdapter.Value must translate it to the Firely type the SDK expects.
+
+        // Arrange
+        Assert.True(FhirTemporal.TryParse(literal, FhirPrimitive.DateTime, out var temporal));
+        var element = new StubElement { InstanceType = instanceType, Value = temporal };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var dateTime = Assert.IsType<P.DateTime>(value);
+        Assert.Equal(literal, dateTime.ToString());
+    }
+
+    [Fact]
+    public void GivenIgnixaFhirTemporalDate_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyDate()
+    {
+        // Arrange
+        Assert.True(FhirTemporal.TryParse("2013-01-01", FhirPrimitive.Date, out var temporal));
+        var element = new StubElement { InstanceType = "date", Value = temporal };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var date = Assert.IsType<P.Date>(value);
+        Assert.Equal("2013-01-01", date.ToString());
+    }
+
+    [Fact]
+    public void GivenIgnixaFhirTemporalTime_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyTime()
+    {
+        // Arrange
+        Assert.True(FhirTemporal.TryParse("11:22:33", FhirPrimitive.Time, out var temporal));
+        var element = new StubElement { InstanceType = "time", Value = temporal };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var time = Assert.IsType<P.Time>(value);
+        Assert.Equal("11:22:33", time.ToString());
+    }
+
     #endregion
 
     #region Firely -> Ignixa
 
     [Theory]
     [InlineData("2013-01-01T11:22:33+10:00")]
+    [InlineData("2013-01-01T11:22:33")]
+    [InlineData("2013-01-01T11:22")]
     [InlineData("2013")]
-    public void GivenFirelyDateTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsWireFormatString(string text)
+    public void GivenFirelyDateTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal(string text)
     {
         // Arrange
         var element = new StubTypedElement { InstanceType = "dateTime", Value = P.DateTime.Parse(text) };
@@ -293,11 +351,12 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal(text, Assert.IsType<string>(value));
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal(text, temporal.Literal);
     }
 
     [Fact]
-    public void GivenFirelyDate_WhenReadThroughIgnixaElementAdapter_ThenReturnsWireFormatString()
+    public void GivenFirelyDate_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal()
     {
         // Arrange
         var element = new StubTypedElement { InstanceType = "date", Value = P.Date.Parse("2013-01-01") };
@@ -306,11 +365,12 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal("2013-01-01", Assert.IsType<string>(value));
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal("2013-01-01", temporal.Literal);
     }
 
     [Fact]
-    public void GivenFirelyTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsWireFormatString()
+    public void GivenFirelyTime_WhenReadThroughIgnixaElementAdapter_ThenReturnsFhirTemporal()
     {
         // Arrange
         var element = new StubTypedElement { InstanceType = "time", Value = P.Time.Parse("11:22:33") };
@@ -319,7 +379,8 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Equal("11:22:33", Assert.IsType<string>(value));
+        var temporal = Assert.IsType<FhirTemporal>(value);
+        Assert.Equal("11:22:33", temporal.Literal);
     }
 
     [Fact]
@@ -352,20 +413,14 @@ public class FirelyPrimitiveValueContractTests
     }
 
     [Fact]
-    public void GivenFirelyQuantityValue_WhenReadThroughIgnixaElementAdapter_ThenPassesThroughUntranslated()
+    public void GivenFirelyQuantityValue_WhenReadThroughIgnixaElementAdapter_ThenReturnsIgnixaQuantity()
     {
-        // Pins a known gap rather than asserting desired behaviour.
-        //
-        // Firely surfaces Quantity as Hl7.Fhir.ElementModel.Types.Quantity. Ignixa's evaluator
-        // tests `element.Value is Ignixa.FhirPath.Types.Quantity` (FhirPathEvaluator.cs:649), a
-        // different type, so it never matches. The consequence is silent: on an adapted Firely
-        // element, `value.toQuantity() = 5 'mg'` and `value.toQuantity() > 1 'mg'` both yield an
-        // empty collection instead of a boolean.
-        //
-        // This shim cannot fix it. Ignixa.FhirPath.Types.Quantity lives in Ignixa.FhirPath, which
-        // Ignixa.Extensions.FirelySdk6 deliberately does not reference - translating here would
-        // invert the layering. The fix belongs either in Ignixa.FhirPath (accept P.Quantity) or in
-        // moving Quantity down to Ignixa.Abstractions. Update this test when that lands.
+        // Firely surfaces Quantity as Hl7.Fhir.ElementModel.Types.Quantity; Ignixa's canonical
+        // quantity is Ignixa.Abstractions.FhirQuantity. Roughly forty sites across the evaluator and
+        // its function libraries reach that type by testing `element.Value is FhirQuantity`
+        // straight off IElement.Value, so an untranslated P.Quantity misses every one of them at
+        // once - equality, equivalence, ordering, arithmetic and aggregation all silently degrade
+        // to an empty collection. Translating here is what closes all of them together.
 
         // Arrange
         var quantity = new P.Quantity(5m, "mg");
@@ -375,7 +430,46 @@ public class FirelyPrimitiveValueContractTests
         var value = new IgnixaElementAdapter(element).Value;
 
         // Assert
-        Assert.Same(quantity, value);
+        var translated = Assert.IsType<IgnixaQuantity>(value);
+        Assert.Equal(5m, translated.Value);
+        Assert.Equal("mg", translated.Unit);
+    }
+
+    [Fact]
+    public void GivenIgnixaQuantityValue_WhenReadThroughTypedElementAdapter_ThenReturnsFirelyQuantity()
+    {
+        // The mirror direction, asserted separately because the two adapters translate through
+        // different methods and the asymmetry that integer64 documents is independently
+        // reintroducible here.
+
+        // Arrange
+        var element = new StubElement { InstanceType = "Quantity", Value = new IgnixaQuantity(5m, "mg") };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        var translated = Assert.IsType<P.Quantity>(value);
+        Assert.Equal(5m, translated.Value);
+        Assert.Equal("mg", translated.Unit);
+    }
+
+    [Fact]
+    public void GivenWireQuantityElement_WhenReadThroughTypedElementAdapter_ThenValueIsNotSynthesised()
+    {
+        // A Quantity read off the wire is a complex element: it reports InstanceType "Quantity" but
+        // carries no primitive value at all, holding value/unit/code as children instead. The
+        // quantity arm of ToFirely is therefore keyed on the CLR type rather than on InstanceType;
+        // keying it on the name would try to translate this null.
+
+        // Arrange
+        var element = new StubElement { InstanceType = "Quantity", Value = null };
+
+        // Act
+        var value = new TypedElementAdapter(element).Value;
+
+        // Assert
+        Assert.Null(value);
     }
 
     #endregion
@@ -384,12 +478,17 @@ public class FirelyPrimitiveValueContractTests
 
     [Theory]
     [InlineData("dateTime", "2013-01-01T11:22:33+10:00")]
+    [InlineData("dateTime", "2013-01-01T11:22:33")]
+    [InlineData("dateTime", "2013-01-01T11:22")]
     [InlineData("dateTime", "2013")]
     [InlineData("date", "2013-01-01")]
     [InlineData("time", "11:22:33")]
     public void GivenIgnixaTemporalString_WhenRoundTrippedThroughBothAdapters_ThenPrecisionIsPreserved(string instanceType, string text)
     {
-        // Precision matters: a year-only dateTime must not be widened into a full timestamp.
+        // Precision matters: a year-only dateTime must not be widened into a full timestamp, and a
+        // timezone-less dateTime must not acquire one -- the adapters sit either side of a Firely type
+        // that resolves everything to an offset, so an invented "Z" here would be invisible until it
+        // reached FHIRPath comparison and turned an indeterminate result into a definite one.
         // Note this case is weak on its own - a pass-through adapter satisfies it too, because the
         // identity function trivially round-trips. The DateTimeOffset theory below is the one with
         // mutation-detection power; this one guards against a lossy parse/render pair.
@@ -402,7 +501,7 @@ public class FirelyPrimitiveValueContractTests
         var backToIgnixa = new IgnixaElementAdapter(new StubTypedElement { InstanceType = instanceType, Value = firelyValue }).Value;
 
         // Assert
-        Assert.Equal(text, backToIgnixa);
+        Assert.Equal(text, Assert.IsType<FhirTemporal>(backToIgnixa).Literal);
     }
 
     [Theory]
@@ -428,7 +527,7 @@ public class FirelyPrimitiveValueContractTests
 
         // Assert
         Assert.IsNotType<string>(firelyValue);
-        Assert.Equal(expected, Assert.IsType<string>(backToIgnixa));
+        Assert.Equal(expected, Assert.IsType<FhirTemporal>(backToIgnixa).Literal);
     }
 
     #endregion
@@ -457,6 +556,38 @@ public class FirelyPrimitiveValueContractTests
         // Act
         var results = new FhirPathEvaluator()
             .Evaluate(new IgnixaElementAdapter(patient), ast)
+            .ToList();
+
+        // Assert
+        var result = Assert.Single(results);
+        Assert.Equal(true, result.Value);
+    }
+
+    [Theory]
+    [InlineData("value = 5 'mg'")]
+    [InlineData("value > 1 'mg'")]
+    [InlineData("value ~ 5 'mg'")]
+    public void GivenFirelyBackedElement_WhenComparingQuantitiesInFhirPath_ThenYieldsBooleanRatherThanEmpty(string expression)
+    {
+        // The quantity counterpart of the date defect above, and the reason the translation has to
+        // produce Ignixa's own Quantity rather than be matched for structurally in one helper:
+        // equality, ordering and equivalence are three separate call sites that each test
+        // `is FhirQuantity` independently, and an untranslated P.Quantity misses all three.
+
+        // Arrange
+        var value = new StubTypedElement { Name = "value", InstanceType = "Quantity", Value = new P.Quantity(5m, "mg") };
+        var observation = new StubTypedElement
+        {
+            Name = "Observation",
+            InstanceType = "Observation",
+            ChildElements = { value },
+        };
+
+        var ast = new FhirPathParser().Parse(expression);
+
+        // Act
+        var results = new FhirPathEvaluator()
+            .Evaluate(new IgnixaElementAdapter(observation), ast)
             .ToList();
 
         // Assert
@@ -570,7 +701,7 @@ public class FirelyPrimitiveValueContractTests
         var value = element.ToIgnixaElement().Value;
 
         // Assert
-        Assert.Equal("2013-01-01", Assert.IsType<string>(value));
+        Assert.Equal("2013-01-01", Assert.IsType<FhirTemporal>(value).Literal);
     }
 
     [Fact]

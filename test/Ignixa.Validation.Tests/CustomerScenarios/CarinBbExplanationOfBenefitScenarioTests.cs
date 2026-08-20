@@ -71,7 +71,7 @@ public class CarinBbExplanationOfBenefitScenarioTests
         schema.ShouldNotBeNull($"Base R4 schema for '{resourceType}' must resolve");
 
         var settings = new ValidationSettings { Depth = depth };
-        return schema!.Validate(source.ToElement(_schema), settings, new ValidationState());
+        return schema!.Validate(source.ToElement(_schema), settings, ValidationState.ForRoot(source.ToElement(_schema)));
     }
 
     private void DumpIssues(ValidationResult result, string label)
