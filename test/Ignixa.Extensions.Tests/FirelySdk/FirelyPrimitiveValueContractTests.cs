@@ -13,6 +13,7 @@ using Hl7.Fhir.Specification;
 using Ignixa.Abstractions;
 using Ignixa.Extensions.FirelySdk;
 using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Xunit;
 using IgnixaQuantity = Ignixa.Abstractions.FhirQuantity;
@@ -371,6 +372,32 @@ public class FirelyPrimitiveValueContractTests
         // Assert
         var temporal = Assert.IsType<FhirTemporal>(value);
         Assert.Equal(FhirPrimitive.Instant, temporal.Kind);
+    }
+
+    /// <remarks>
+    /// The <c>Kind</c> assertion above pins the mechanism; this pins the consequence. A value read
+    /// through the adapter and re-wrapped as a FHIRPath constant is typed by
+    /// <c>FhirPathEvaluator.GetFhirPathTypeName</c>, which is the only place <c>Kind</c> distinguishes
+    /// <c>Instant</c> from <c>DateTime</c>, and is also what stamps SQL-on-FHIR column types. Losing
+    /// the kind at the adapter seam silently retypes such values as <c>dateTime</c>.
+    /// </remarks>
+    [Fact]
+    public void GivenFirelyInstant_WhenAdapterValueIsEvaluatedAsFhirPathConstant_ThenTypedAsInstant()
+    {
+        // Arrange
+        var element = new StubTypedElement
+        {
+            InstanceType = "instant",
+            Value = P.DateTime.Parse("2013-01-01T11:22:33.123Z"),
+        };
+        var adapted = new IgnixaElementAdapter(element);
+        var constant = new ConstantExpression(adapted.Value!);
+
+        // Act
+        var results = new FhirPathEvaluator().Evaluate(adapted, constant).ToList();
+
+        // Assert
+        Assert.Equal("instant", Assert.Single(results).InstanceType);
     }
 
     [Fact]

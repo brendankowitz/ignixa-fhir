@@ -221,11 +221,11 @@ internal class SchemaAwareElement : IElement
         // which FHIR decimals permit (e.g. "1.2e3").
         return InstanceType switch
         {
-            "boolean" => bool.TryParse(text, out var b) ? (object)b : text,
+            "boolean" => bool.TryParse(text, out var b) ? b : text,
             "integer" or "unsignedInt" or "positiveInt" =>
-                int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? (object)i : text,
+                int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? i : text,
             "decimal" =>
-                decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? (object)d : text,
+                decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : text,
             "date" => FhirTemporal.TryParse(text, FhirPrimitive.Date, out var td) ? td : text,
             "dateTime" => FhirTemporal.TryParse(text, FhirPrimitive.DateTime, out var tdt) ? tdt : text,
             "instant" => FhirTemporal.TryParse(text, FhirPrimitive.Instant, out var ti) ? ti : text,

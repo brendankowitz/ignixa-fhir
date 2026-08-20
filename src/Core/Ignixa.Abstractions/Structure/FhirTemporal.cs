@@ -153,9 +153,12 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
     /// <see cref="HasTimezone"/> is an equality and ordering key, that contradiction reached collections.
     /// </para>
     /// <para>
-    /// Hour-only values are intentionally rejected even though <see cref="GetLiteralPrecision"/> classifies
-    /// their shape. <see cref="FhirTemporal"/> models FHIR wire values, whose <c>dateTime</c> grammar
-    /// requires minute precision; FHIRPath hour-only literals therefore remain untyped strings.
+    /// Hour-only values are rejected even though <see cref="GetLiteralPrecision"/> classifies their shape.
+    /// The bounds are derived with <c>DateTimeOffset.TryParse</c>, which will not parse an hour-only time
+    /// of day, so such literals fail at the bounds and never reach the constructor. That cutoff is kept
+    /// rather than worked around: <see cref="FhirTemporal"/> models FHIR wire values, and the
+    /// <c>dateTime</c> grammar has no hour-only form -- a time of day requires seconds and a timezone.
+    /// FHIRPath hour-only literals therefore remain untyped strings.
     /// </para>
     /// </remarks>
     public static bool TryParse(string? literal, FhirPrimitive kind, [NotNullWhen(true)] out FhirTemporal? result)
@@ -263,13 +266,16 @@ public sealed class FhirTemporal : IEquatable<FhirTemporal>, IComparable<FhirTem
         // Timezone-vs-no-timezone is indeterminate whenever both operands carry a time of day: a
         // floating local time could sit at any offset, so it overlaps a fixed instant rather than
         // ordering against it, and FHIRPath requires empty. This mirrors the evaluator's string
-        // fallback (leftHasTz != rightHasTz => null). Gate on time-of-day presence (Precision >= Minute):
+        // fallback (leftHasTz != rightHasTz => null). Gate on time-of-day presence (Precision >= Hour):
         // a date has no timezone by definition, so a HasTimezone difference between date-precision
         // values is meaningless, not a mismatch. Placed ahead of both comparison branches so it governs
-        // the second-or-finer point comparison and the coarser interval comparison alike. Hour is a
-        // structural classification only; TryParse intentionally does not construct hour-precision values.
-        if (left.Precision >= FhirTemporalPrecision.Minute
-            && right.Precision >= FhirTemporalPrecision.Minute
+        // the second-or-finer point comparison and the coarser interval comparison alike. Hour is
+        // included even though TryParse constructs no hour-precision values today: the rule is about
+        // carrying a time of day at all, so gating here keeps it correct whether or not that stays true,
+        // and the invariant that would make a narrower gate safe lives in DateTimeOffset.TryParse rather
+        // than in this type.
+        if (left.Precision >= FhirTemporalPrecision.Hour
+            && right.Precision >= FhirTemporalPrecision.Hour
             && left.HasTimezone != right.HasTimezone)
         {
             return null;
