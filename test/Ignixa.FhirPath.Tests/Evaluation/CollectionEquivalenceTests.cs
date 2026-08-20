@@ -210,6 +210,71 @@ public class CollectionEquivalenceTests
     }
     """;
 
+    private const string NonTransitiveQuantityBundleJson = """
+    {
+      "resourceType": "Bundle",
+      "type": "collection",
+      "entry": [
+        {
+          "resource": {
+            "resourceType": "Observation",
+            "id": "left-coarse",
+            "status": "final",
+            "code": { "text": "length" },
+            "valueQuantity": {
+              "value": 1.0,
+              "unit": "m",
+              "system": "http://unitsofmeasure.org",
+              "code": "m"
+            }
+          }
+        },
+        {
+          "resource": {
+            "resourceType": "Observation",
+            "id": "left-fine",
+            "status": "final",
+            "code": { "text": "length" },
+            "valueQuantity": {
+              "value": 1.04,
+              "unit": "m",
+              "system": "http://unitsofmeasure.org",
+              "code": "m"
+            }
+          }
+        },
+        {
+          "resource": {
+            "resourceType": "Observation",
+            "id": "right-metres",
+            "status": "final",
+            "code": { "text": "length" },
+            "valueQuantity": {
+              "value": 1.0,
+              "unit": "m",
+              "system": "http://unitsofmeasure.org",
+              "code": "m"
+            }
+          }
+        },
+        {
+          "resource": {
+            "resourceType": "Observation",
+            "id": "right-centimetres",
+            "status": "final",
+            "code": { "text": "length" },
+            "valueQuantity": {
+              "value": 96,
+              "unit": "cm",
+              "system": "http://unitsofmeasure.org",
+              "code": "cm"
+            }
+          }
+        }
+      ]
+    }
+    """;
+
     private static readonly IFhirSchemaProvider Schema = FhirVersion.R4.GetSchemaProvider();
 
     private readonly FhirPathParser _parser = new();
@@ -261,6 +326,79 @@ public class CollectionEquivalenceTests
             "Bundle.entry.take(2).resource.value ~ Bundle.entry.skip(2).resource.value");
 
         result.ShouldBeTrue();
+    }
+
+    // Equivalence rounds decimals to the LESSER of the two stated precisions, which makes the relation
+    // non-transitive: 1.0 ~ 0.96 (both round to 1.0 at one decimal place) and 1.04 ~ 1.0 (both round to
+    // 1.0 at one place), yet 1.04 ~ 0.96 is false (two places apply, and they differ). The spec-correct
+    // answer for the collections is therefore true, because the one-to-one pairing 1.0-0.96 and
+    // 1.04-1.0 exists and makes every pair equivalent - and the definition asks only whether SOME such
+    // pairing exists, not whether a particular traversal finds one.
+    //
+    // A first-fit matcher pairs 1.0 with 1.0, leaving 1.04 to fail against 0.96, so it answers false for
+    // one operand order and true for the other. Asserting both orders together is what pins the
+    // order-independence; asserting the value true is what pins the answer being the correct one rather
+    // than merely a consistent one.
+    [Fact]
+    public void GivenNonTransitivelyEquivalentDecimalCollections_WhenComparedInEitherOperandOrder_ThenBothAreEquivalent()
+    {
+        var root = new ScalarRoot();
+
+        var firstOrder = EvaluateBoolean(root, "(1.0 | 1.04) ~ (1.0 | 0.96)");
+        var reversedOrder = EvaluateBoolean(root, "(1.0 | 1.04) ~ (0.96 | 1.0)");
+
+        firstOrder.ShouldBe(reversedOrder);
+        firstOrder.ShouldBeTrue();
+    }
+
+    // !~ negates the same matching, so it inherits any order-dependence in it rather than having one of
+    // its own. Covered separately because it is the operator search-parameter authors would reach for.
+    [Fact]
+    public void GivenNonTransitivelyEquivalentDecimalCollections_WhenNegatedInEitherOperandOrder_ThenNeitherIsInequivalent()
+    {
+        var root = new ScalarRoot();
+
+        var firstOrder = EvaluateBoolean(root, "(1.0 | 1.04) !~ (1.0 | 0.96)");
+        var reversedOrder = EvaluateBoolean(root, "(1.0 | 1.04) !~ (0.96 | 1.0)");
+
+        firstOrder.ShouldBe(reversedOrder);
+        firstOrder.ShouldBeFalse();
+    }
+
+    // Unit conversion admits the same non-transitivity, so the defect is not confined to bare decimals:
+    // 96 'cm' converts to 0.96 'm' and is equivalent to 1.0 'm' at one decimal place, 1.04 'm' ~ 1.0 'm'
+    // holds, and 1.04 'm' ~ 96 'cm' does not. The pairing 1.0-96 'cm' and 1.04-1.0 'm' is the perfect one.
+    [Fact]
+    public void GivenNonTransitivelyEquivalentQuantityCollectionsAcrossUnits_WhenComparedInEitherOperandOrder_ThenBothAreEquivalent()
+    {
+        var root = new ScalarRoot();
+
+        var firstOrder = EvaluateBoolean(root, "(1.0 'm' | 1.04 'm') ~ (1.0 'm' | 96 'cm')");
+        var reversedOrder = EvaluateBoolean(root, "(1.0 'm' | 1.04 'm') ~ (96 'cm' | 1.0 'm')");
+
+        firstOrder.ShouldBe(reversedOrder);
+        firstOrder.ShouldBeTrue();
+    }
+
+    // Strengthens the reordering guard above, which compares only equal-or-not complex elements and so
+    // cannot see a matcher that fails to back out of a bad pairing. These are resource-backed Quantity
+    // elements - null Value, content in children - so the comparison runs the full ladder: structural
+    // descent, quantity extraction, unit conversion, and the non-transitive precision rule.
+    [Fact]
+    public void GivenNonTransitivelyEquivalentQuantityElementsInDifferentOrders_WhenComparedForEquivalence_ThenTheyAreEquivalent()
+    {
+        var bundle = ParseNative(NonTransitiveQuantityBundleJson);
+
+        var firstOrder = EvaluateBoolean(
+            bundle,
+            "Bundle.entry.take(2).resource.value ~ Bundle.entry.skip(2).resource.value");
+        var reversedOrder = EvaluateBoolean(
+            bundle,
+            "Bundle.entry.take(2).resource.value ~ "
+            + "(Bundle.entry.last().resource.value | Bundle.entry.skip(2).first().resource.value)");
+
+        firstOrder.ShouldBe(reversedOrder);
+        firstOrder.ShouldBeTrue();
     }
 
     [Theory]

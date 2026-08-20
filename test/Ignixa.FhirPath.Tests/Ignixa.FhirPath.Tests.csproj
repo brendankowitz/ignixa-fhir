@@ -29,7 +29,28 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
-  <!-- Compile the production adapter against the parity suite's pinned Firely 5.11.4 dependency. -->
+  <!--
+    The two adapter sources the parity tests exercise, link-compiled here so they build against this
+    project's pinned Firely 5.11.4 rather than the 6.0.1 the repo ships against.
+
+    Why not a ProjectReference to Ignixa.Extensions.FirelySdk5, which already link-compiles all six
+    adapter sources for exactly this reason: its folder-local Directory.Packages.props pins
+    Hl7.Fhir.Base to 5.13.1, and NuGet unifies a transitive dependency to the highest version in the
+    graph, so referencing it would float this project's 5.11.4 up to 5.13.1 and defeat the ADR 2608 pin
+    below. The pin is the whole point of the harness, so the dependency loses. Only two of the six
+    sources are needed: the parity tests drive IgnixaElementAdapter and the primitive-value translation
+    it depends on, not the reverse (Ignixa-to-Firely) direction.
+
+    This holds only while no project in this graph references Ignixa.Extensions.FirelySdk6. If one of
+    the four Core references above ever takes that dependency, this assembly gets both a compiled and a
+    referenced IgnixaElementAdapter, they become two distinct types, and the result is CS0433 at best
+    and an unreadable type mismatch at worst. An extern alias would be the fix; there is nothing to
+    alias today.
+
+    Compiling at 5.11.4 means these tests pin the adapter's behaviour on the engine fhir-server will
+    actually run, which is the more useful target for a parity claim. Ignixa.Extensions.Tests covers the
+    same adapter at 6.0.1, so the two are complementary and the shipped SDK-6 path is not left unguarded.
+  -->
   <ItemGroup>
     <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs"
              Link="FirelySdkAdapter\FirelyPrimitiveValues.cs" />
