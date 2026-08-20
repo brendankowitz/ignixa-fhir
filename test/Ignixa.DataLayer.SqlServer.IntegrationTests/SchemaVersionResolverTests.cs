@@ -55,8 +55,8 @@ public class SchemaVersionResolverTests
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException(
-                "TEST_SQL_CONNECTION_STRING must be set to run this test (see docker-compose.test.yml).");
+            throw new SkipException(
+                "TEST_SQL_CONNECTION_STRING is not set (see docker-compose.test.yml) -- skipping, not failing.");
         }
 
         return connectionString;
@@ -115,7 +115,7 @@ public class SchemaVersionResolverTests
             new ThrowingSchemaVersionResolver(),
             NullLogger<SchemaDeployer>.Instance);
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenATenantWithAStampedVersion_WhenGetCurrentVersionAsyncCalled_ThenReturnsIt()
     {
         // Arrange -- a real, empty, freshly-created database (unique name per test run), deployed
@@ -143,7 +143,7 @@ public class SchemaVersionResolverTests
         }
     }
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenATenantWithNoSchemaVersionTableAtAll_WhenGetCurrentVersionAsyncCalled_ThenReturnsZero()
     {
         // Arrange -- a real, empty, freshly-created database that has NEVER had any schema deployed

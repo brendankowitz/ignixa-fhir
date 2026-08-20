@@ -1,8 +1,9 @@
 # Ignixa.DataLayer.SqlServer.Database
 
 SQL Database Project (SSDT) decomposing the FHIR resource/search schema into one file per
-object, used by `SchemaDeployer` to provision brand-new tenant databases (see
-`Ignixa.DataLayer.SqlServer`).
+object, used by `SchemaDeployer` (see `Ignixa.DataLayer.SqlServer`) both to provision
+brand-new tenant databases and to upgrade existing tenants that are behind the current
+schema version.
 
 ## Provenance
 

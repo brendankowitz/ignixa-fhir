@@ -8,13 +8,12 @@ public class PostDeploymentScriptIdempotencyTests
 {
     private const string DacpacResourceName = "Ignixa.DataLayer.SqlServer.Schema.dacpac";
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenAnAlreadyDeployedDatabase_WhenPublishedAgain_ThenSucceedsWithoutError()
     {
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING")
-            ?? throw new InvalidOperationException(
-                "TEST_SQL_CONNECTION_STRING is not set. Run the docker-compose.test.yml SQL Server " +
-                "container and set this environment variable before running integration tests.");
+            ?? throw new SkipException(
+                "TEST_SQL_CONNECTION_STRING is not set (see docker-compose.test.yml) -- skipping, not failing.");
 
         var databaseName = $"IgnixaPostDeployIdempotency_{Guid.NewGuid():N}";
         var builder = new SqlConnectionStringBuilder(connectionString) { InitialCatalog = databaseName };

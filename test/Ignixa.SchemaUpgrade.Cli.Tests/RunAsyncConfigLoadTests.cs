@@ -41,8 +41,9 @@ public class RunAsyncConfigLoadTests
             using var input = new StringReader(string.Empty);
             using var output = new StringWriter();
 
+            var options = new CliUpgradeOptions(TenantId: 999, AutoConfirm: true, AllowDataLoss: false, ConfigPath: configPath);
             var exception = await Record.ExceptionAsync(() =>
-                Program.RunAsync(tenantId: 999, autoConfirm: true, allowDataLoss: false, configPath, input, output, CancellationToken.None));
+                Program.RunAsync(options, input, output, CancellationToken.None));
 
             exception.ShouldNotBeNull();
             exception.ShouldNotBeOfType<FileNotFoundException>();
@@ -78,8 +79,9 @@ public class RunAsyncConfigLoadTests
             using var input = new StringReader(string.Empty);
             using var output = new StringWriter();
 
+            var options = new CliUpgradeOptions(TenantId: 999, AutoConfirm: true, AllowDataLoss: false, ConfigPath: "appsettings.json");
             var exception = await Record.ExceptionAsync(() =>
-                Program.RunAsync(tenantId: 999, autoConfirm: true, allowDataLoss: false, "appsettings.json", input, output, CancellationToken.None));
+                Program.RunAsync(options, input, output, CancellationToken.None));
 
             exception.ShouldNotBeNull();
             exception.ShouldNotBeOfType<FileNotFoundException>();

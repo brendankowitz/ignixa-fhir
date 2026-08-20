@@ -56,8 +56,8 @@ public class SchemaDeployerUpgradeTests
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException(
-                "TEST_SQL_CONNECTION_STRING must be set to run this test (see docker-compose.test.yml).");
+            throw new SkipException(
+                "TEST_SQL_CONNECTION_STRING is not set (see docker-compose.test.yml) -- skipping, not failing.");
         }
 
         return connectionString;
@@ -136,7 +136,7 @@ public class SchemaDeployerUpgradeTests
             new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenATenantAlreadyAtCurrentVersion_WhenUpgradeIfNeededAsyncCalled_ThenDoesNothing()
     {
         // Arrange -- deploy fresh via DeployIfEmptyAsync (stamps CurrentVersion per Task 1).
@@ -183,7 +183,7 @@ public class SchemaDeployerUpgradeTests
     // branch has been rebased, so any hash cited here would not survive.)
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenATenantOnAnOlderRealSchema_WhenUpgradeIfNeededAsyncCalled_ThenUpgradesToCurrentAndStampsTheVersion()
     {
         // Arrange -- a real, empty, freshly-created database.
@@ -239,7 +239,45 @@ public class SchemaDeployerUpgradeTests
         }
     }
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
+    public async Task GivenATenantOnAnOlderRealSchemaAndAutomaticDeploymentDisabled_WhenUpgradeIfNeededAsyncCalled_ThenThrowsAndDoesNotModifySchema()
+    {
+        // Arrange -- a real, empty, freshly-created database on the OLD (pre-Phase-C, version 0)
+        // schema, exactly like GivenATenantOnAnOlderRealSchema_.../ThenUpgradesToCurrentAndStampsTheVersion,
+        // but with automatic deployment disabled. Bootstrapping the SchemaVersion table is not exempt
+        // from AutomaticSchemaDeploymentEnabled -- an operator who opted out must be told to use the
+        // CLI even for a tenant that predates schema versioning.
+        var databaseName = $"SchemaDeployerUpgradeTest_{Guid.NewGuid():N}";
+        var connectionString = BuildConnectionStringForDatabase(databaseName);
+        await CreateEmptyDatabaseAsync(databaseName, CancellationToken.None);
+
+        try
+        {
+            var oldDacpacPath = Path.Combine(AppContext.BaseDirectory, "Fixtures", OldDacpacFixtureFileName);
+            using (var oldDacpacStream = File.OpenRead(oldDacpacPath))
+            using (var oldPackage = DacPackage.Load(oldDacpacStream))
+            {
+                var oldDacServices = new DacServices(connectionString);
+                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, cancellationToken: CancellationToken.None);
+            }
+
+            var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: false);
+
+            // Act / Assert
+            await Should.ThrowAsync<InvalidOperationException>(
+                () => deployer.UpgradeIfNeededAsync(1, CancellationToken.None));
+
+            var tableNamesAfterAttempt = await GetTableNamesAsync(connectionString, CancellationToken.None);
+            tableNamesAfterAttempt.ShouldNotContain("SchemaVersion");
+            tableNamesAfterAttempt.ShouldNotContain("TermCodeSystem");
+        }
+        finally
+        {
+            await DropDatabaseAsync(databaseName, CancellationToken.None);
+        }
+    }
+
+    [SkippableFact]
     public async Task GivenATenantWithAGenuinelyDestructiveDiffPending_WhenUpgradeIfNeededAsyncCalled_ThenThrowsAndDoesNotModifySchema()
     {
         // Arrange -- a real, empty, freshly-created database, deployed to the current dacpac's

@@ -21,8 +21,8 @@ public class RunAsyncDataLossTests
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException(
-                "TEST_SQL_CONNECTION_STRING must be set to run this test (see docker-compose.test.yml).");
+            throw new SkipException(
+                "TEST_SQL_CONNECTION_STRING is not set (see docker-compose.test.yml) -- skipping, not failing.");
         }
 
         return connectionString;
@@ -101,7 +101,7 @@ public class RunAsyncDataLossTests
             """);
     }
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenAGenuinelyDestructiveDiffWithARowPresent_WhenRunAsyncCalled_ThenAllowDataLossIsRequiredToApplyAndDropTheColumn()
     {
         var databaseName = $"SchemaUpgradeCliDataLossTest_{Guid.NewGuid():N}";
@@ -157,8 +157,9 @@ public class RunAsyncDataLossTests
             using (var input = new StringReader(string.Empty))
             using (var output = new StringWriter())
             {
+                var blockedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, ConfigPath: configPath);
                 await Should.ThrowAsync<Exception>(() =>
-                    Program.RunAsync(tenantId: 1, autoConfirm: true, allowDataLoss: false, configPath, input, output, CancellationToken.None));
+                    Program.RunAsync(blockedOptions, input, output, CancellationToken.None));
             }
 
             (await ColumnExistsAsync(connectionString, CancellationToken.None)).ShouldBeTrue();
@@ -169,7 +170,8 @@ public class RunAsyncDataLossTests
             using (var input = new StringReader(string.Empty))
             using (var output = new StringWriter())
             {
-                exitCode = await Program.RunAsync(tenantId: 1, autoConfirm: true, allowDataLoss: true, configPath, input, output, CancellationToken.None);
+                var allowedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: true, ConfigPath: configPath);
+                exitCode = await Program.RunAsync(allowedOptions, input, output, CancellationToken.None);
             }
 
             exitCode.ShouldBe(0);

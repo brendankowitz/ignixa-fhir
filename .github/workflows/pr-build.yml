@@ -120,6 +120,40 @@ jobs:
           name: schema-deploy-report
           path: ${{ runner.temp }}/deployreport.xml
 
+      # These carry the safety-critical assertions DeployReportClassifier/SchemaDeployer/the
+      # schema-upgrade CLI exist for (e.g. a genuinely destructive diff is refused, --allow-data-loss
+      # is load-bearing) -- previously [Fact(Skip = ...)]-marked and never run anywhere. They're
+      # [SkippableFact] now: each skips itself (not fails) when TEST_SQL_CONNECTION_STRING is unset,
+      # so the same test classes remain harmless no-ops in the SQL-Server-less unit-test job while
+      # actually running here, against the container already started above.
+      - name: Run SqlServer schema deploy/upgrade integration tests
+        run: |
+          docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
+            -Q "CREATE DATABASE [IgnixaSchemaUpgradeTests]" -b
+          dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=schema-deployer-integration-tests.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+          dotnet test test/Ignixa.SchemaUpgrade.Cli.Tests/Ignixa.SchemaUpgrade.Cli.Tests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=schema-upgrade-cli-tests.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=IgnixaSchemaUpgradeTests;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+
+      - name: Upload SqlServer schema test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-deployer-test-results
+          path: |
+            **/schema-deployer-integration-tests.trx
+            **/schema-upgrade-cli-tests.trx
+          retention-days: 30
+
       - name: Restore E2E test project
         run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
 

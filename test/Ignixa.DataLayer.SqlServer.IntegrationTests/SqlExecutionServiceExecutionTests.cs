@@ -40,8 +40,8 @@ public class SqlExecutionServiceExecutionTests
         var connectionString = Environment.GetEnvironmentVariable("TEST_SQL_CONNECTION_STRING");
         if (string.IsNullOrEmpty(connectionString))
         {
-            throw new InvalidOperationException(
-                "TEST_SQL_CONNECTION_STRING must be set to run this test (see docker-compose.test.yml).");
+            throw new SkipException(
+                "TEST_SQL_CONNECTION_STRING is not set (see docker-compose.test.yml) -- skipping, not failing.");
         }
 
         return connectionString;
@@ -50,7 +50,7 @@ public class SqlExecutionServiceExecutionTests
     private static SqlExecutionService CreateService()
         => new(new SingleTenantStore(GetConnectionString()), NullLogger<SqlExecutionService>.Instance);
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenASimpleSelectQuery_WhenExecutedViaExecuteReaderAsync_ThenReturnsTheExpectedRow()
     {
         // Arrange
@@ -70,7 +70,7 @@ public class SqlExecutionServiceExecutionTests
         results[0].Text.ShouldBe("hello");
     }
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenAQueryWithNoRows_WhenExecutedViaExecuteReaderAsync_ThenReturnsAnEmptyList()
     {
         // Arrange
@@ -88,7 +88,7 @@ public class SqlExecutionServiceExecutionTests
         results.ShouldBeEmpty();
     }
 
-    [Fact(Skip = "Manual integration test -- requires TEST_SQL_CONNECTION_STRING and a live SQL Server, not part of CI")]
+    [SkippableFact]
     public async Task GivenAParameterizedCreateAndInsert_WhenExecutedViaExecuteNonQueryAsync_ThenAffectsOneRowAndIsQueryable()
     {
         // Arrange

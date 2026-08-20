@@ -29,26 +29,26 @@ internal static class Program
 
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {
-            var tenantId = parseResult.GetValue(tenantIdOption);
-            var autoConfirm = parseResult.GetValue(confirmOption);
-            var allowDataLoss = parseResult.GetValue(allowDataLossOption);
-            var configPath = parseResult.GetValue(configOption) ?? "appsettings.json";
+            var options = new CliUpgradeOptions(
+                TenantId: parseResult.GetValue(tenantIdOption),
+                AutoConfirm: parseResult.GetValue(confirmOption),
+                AllowDataLoss: parseResult.GetValue(allowDataLossOption),
+                ConfigPath: parseResult.GetValue(configOption) ?? "appsettings.json");
 
-            return await RunAsync(tenantId, autoConfirm, allowDataLoss, configPath, Console.In, Console.Out, cancellationToken);
+            return await RunAsync(options, Console.In, Console.Out, cancellationToken);
         });
 
         return rootCommand;
     }
 
     internal static async Task<int> RunAsync(
-        int tenantId,
-        bool autoConfirm,
-        bool allowDataLoss,
-        string configPath,
+        CliUpgradeOptions options,
         TextReader input,
         TextWriter output,
         CancellationToken cancellationToken)
     {
+        var (tenantId, autoConfirm, allowDataLoss, configPath) = options;
+
         var configuration = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
             .AddJsonFile(configPath, optional: false)
@@ -94,22 +94,22 @@ internal static class Program
             return 1;
         }
 
+        // Deploy and stamp go through the same paired SchemaDeployer method its own automatic
+        // paths use, so this deploy can never be left unstamped by a call this method forgot to
+        // make. A stamp failure must NOT be reported the same way as "aborted, nothing applied"
+        // (exit 1) -- an operator who sees that after a destructive --allow-data-loss run would
+        // reasonably conclude their change didn't land and re-run it. Report the partial state
+        // explicitly with its own exit code.
         var deployOptions = new DacDeployOptions { BlockOnPossibleDataLoss = !allowDataLoss };
-        dacServices.Deploy(package, databaseName, upgradeExisting: true, options: deployOptions, cancellationToken: cancellationToken);
+        var result = await SchemaDeployer.DeployAndStampAsync(
+            dacServices, package, databaseName, connectionString, deployOptions,
+            SchemaVersionConstants.CurrentVersion, cancellationToken);
 
-        // The schema is applied from here on. A failure stamping dbo.SchemaVersion must NOT be
-        // reported the same way as "aborted, nothing applied" (exit 1) -- an operator who sees that
-        // after a destructive --allow-data-loss run would reasonably conclude their change didn't
-        // land and re-run it. Report the partial state explicitly with its own exit code.
-        try
-        {
-            await SchemaDeployer.StampSchemaVersionAsync(connectionString, SchemaVersionConstants.CurrentVersion, cancellationToken);
-        }
-        catch (Exception ex)
+        if (result.Outcome == SchemaDeployOutcome.AppliedButVersionStampFailed)
         {
             output.WriteLine(
                 $"WARNING: the schema WAS applied to tenant {tenantId}'s database, but recording schema version " +
-                $"{SchemaVersionConstants.CurrentVersion} in dbo.SchemaVersion failed: {ex.Message}");
+                $"{SchemaVersionConstants.CurrentVersion} in dbo.SchemaVersion failed: {result.StampException!.Message}");
             output.WriteLine(
                 "The database is up to date; only the version record is missing. Do NOT re-run this tool expecting " +
                 "the schema change to be re-applied -- instead re-run it once the underlying error is resolved, or " +
@@ -137,3 +137,10 @@ internal static class Program
         return string.Equals(response, "y", StringComparison.OrdinalIgnoreCase);
     }
 }
+
+/// <summary>
+/// Bundles <see cref="Program.RunAsync"/>'s two same-typed boolean flags into named fields so a
+/// positional argument transposition (swapping "skip the confirmation prompt" with "permit data
+/// loss") is a compile error instead of a silent, behavior-changing bug.
+/// </summary>
+internal sealed record CliUpgradeOptions(int TenantId, bool AutoConfirm, bool AllowDataLoss, string ConfigPath);

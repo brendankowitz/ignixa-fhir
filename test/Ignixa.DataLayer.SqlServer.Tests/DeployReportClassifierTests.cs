@@ -230,6 +230,41 @@ public class DeployReportClassifierTests
         Outcome(xml).ShouldBe(DeployClassification.AutoSafe);
     }
 
+    // A DataIssue Issue element missing its Id attribute is a report shape this classifier cannot
+    // reconcile against the inline Item markers -- it must not be silently dropped from
+    // consideration, which would make an otherwise-flagged report look like it has no alerts at all.
+    [Fact]
+    public void GivenADataIssueAlertIssueMissingIdAttribute_WhenClassified_ThenIsUnclassifiable()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts><Alert Name="DataIssue"><Issue Value="The column [dbo].[T].[Gone] is being dropped, data loss could occur." /></Alert></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.Unclassifiable);
+    }
+
+    // A DataIssue alert whose child is renamed/re-namespaced (e.g. a future DacFx emitting IssueV2
+    // instead of Issue) must fail closed the same way an unrecognized Operation/Item child does --
+    // not be silently ignored, leaving zero reconciled alert ids and a false AutoSafe.
+    [Fact]
+    public void GivenADataIssueAlertWithAnUnrecognizedChildElement_WhenClassified_ThenIsUnclassifiable()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts><Alert Name="DataIssue"><IssueV2 Id="1" /></Alert></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.Unclassifiable);
+    }
+
+    // An unrecognized element directly under <Alerts> (not an <Alert> at all) is the same class of
+    // shape drift Operations/Operation/Item already guard against.
+    [Fact]
+    public void GivenAnAlertsElementWithAnUnrecognizedChild_WhenClassified_ThenIsUnclassifiable()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts><Notice Value="something" /></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.Unclassifiable);
+    }
+
     // Input that isn't XML at all is a genuinely exceptional condition, distinct from a report
     // whose shape we can't read -- it stays an exception rather than becoming Unclassifiable.
     [Fact]

@@ -142,8 +142,48 @@ public static class DeployReportClassifier
         // alert and marks the corresponding Item with a child <Issue Id="N"/> cross-referencing it;
         // this class's premise is that those two signals agree. An existence-only check ("did I see
         // any Issue anywhere?") is not enough -- an unrelated marker elsewhere in the document
-        // would discharge a genuinely unaccounted-for data-loss alert.
-        var alertIssueIds = DataIssueAlertIds(root);
+        // would discharge a genuinely unaccounted-for data-loss alert. This block applies the same
+        // fail-closed shape validation as Operations/Operation/Item above: an unrecognized child
+        // under Alerts or a DataIssue Alert, or a DataIssue Issue missing its Id, is a report shape
+        // this classifier cannot reconcile -- Unclassifiable, not "no alert found so it must be safe".
+        // Only DataIssue alerts are reconciled this strictly; other alert kinds (e.g. DataMotion) are
+        // informational and never gate anything, so their shape is left unvalidated.
+        var alertsElement = root.Element(ReportNamespace + "Alerts");
+        var alertIssueIds = new List<string>();
+
+        if (alertsElement is not null)
+        {
+            var unrecognizedAlerts = UnrecognizedChildNames(alertsElement, ReportNamespace + "Alert");
+            if (unrecognizedAlerts.Count > 0)
+            {
+                return Unclassifiable(
+                    $"'{{{ReportNamespace}}}Alerts' contains unrecognized child element(s): {string.Join(", ", unrecognizedAlerts)}.");
+            }
+
+            foreach (var alert in alertsElement.Elements(ReportNamespace + "Alert")
+                .Where(a => string.Equals(a.Attribute("Name")?.Value, "DataIssue", StringComparison.Ordinal)))
+            {
+                var unrecognizedAlertChildren = UnrecognizedChildNames(alert, ReportNamespace + "Issue");
+                if (unrecognizedAlertChildren.Count > 0)
+                {
+                    return Unclassifiable(
+                        $"A DataIssue alert contains unrecognized child element(s): {string.Join(", ", unrecognizedAlertChildren)}.");
+                }
+
+                foreach (var issue in alert.Elements(ReportNamespace + "Issue"))
+                {
+                    if (issue.Attribute("Id")?.Value is not { } issueId)
+                    {
+                        return Unclassifiable("A DataIssue alert's Issue element is missing its required 'Id' attribute.");
+                    }
+
+                    alertIssueIds.Add(issueId);
+                }
+            }
+
+            alertIssueIds = alertIssueIds.Distinct(StringComparer.Ordinal).ToList();
+        }
+
         if (alertIssueIds.Count == 0)
         {
             return AutoSafeResult;
@@ -173,17 +213,6 @@ public static class DeployReportClassifier
             .Select(e => e.Name.ToString())
             .Distinct(StringComparer.Ordinal)
             .ToList();
-
-    private static List<string> DataIssueAlertIds(XElement root)
-        => root.Element(ReportNamespace + "Alerts")
-            ?.Elements(ReportNamespace + "Alert")
-            .Where(alert => string.Equals(alert.Attribute("Name")?.Value, "DataIssue", StringComparison.Ordinal))
-            .SelectMany(alert => alert.Elements(ReportNamespace + "Issue"))
-            .Select(issue => issue.Attribute("Id")?.Value)
-            .OfType<string>()
-            .Distinct(StringComparer.Ordinal)
-            .ToList()
-            ?? [];
 
     private static DeployReportClassification Unclassifiable(string reason)
         => DeployReportClassification.Unclassifiable([reason]);
