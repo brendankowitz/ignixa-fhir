@@ -48,10 +48,9 @@ public class SystemValueElementDeclarationTests
     /// whether it wraps a System value and why.
     /// </summary>
     /// <remarks>
-    /// The eight marked wrappers each carry the result of a FHIRPath function or literal, which the
-    /// specification defines in the System namespace. The unmarked four each state what they carry
-    /// instead, and for <c>QuantityElement</c> why its classification is a known divergence rather than
-    /// a settled answer.
+    /// The nine marked wrappers each carry the result of a FHIRPath function or literal, which the
+    /// specification defines in the System namespace. The unmarked three each state what they carry
+    /// instead.
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, (bool IsSystemValue, string Rationale)> Decisions =
         new Dictionary<string, (bool, string)>(StringComparer.Ordinal)
@@ -76,7 +75,7 @@ public class SystemValueElementDeclarationTests
             ["Ignixa.Serialization.SourceNodes.SchemaAwareElement"] =
                 (false, "Wraps a caller-supplied source node using schema metadata, so it carries the source's FHIR type rather than an engine-produced System value."),
             ["Ignixa.FhirPath.Evaluation.Functions.FunctionHelpers+QuantityElement"] =
-                (false, "Unmarked, and a known divergence rather than a settled classification. A FHIRPath quantity literal is a System.Quantity, so `1 'mg' is System.Quantity` and `1.toQuantity() is System.Quantity` returning false - measured on R4 and R5, with `1 'mg' is FHIR.Quantity` true - contradicts the specification's type model. The same divergence is already pinned from the other side in Parity/FirelyVersusIgnixaDifferentialTests, where Firely types `1 'mg'` as System.Quantity and Ignixa as Quantity. Deferred, not accepted: it reports InstanceType \"Quantity\", which is neither in SystemOnlyTypes nor in CanonicalSystemPrimitiveSpellings, so marking it would leave unqualified `is Quantity` and `ofType(Quantity)` alone while flipping `is System.Quantity` from false to true and `is FHIR.Quantity` from true to false. It would not change what type() reports: CollectionFunctions.Type() maps \"quantity\" to FHIR/Quantity inside its isSystemLiteral branch, which is exactly what the unmarked default already yields. Measured blast radius of marking it: one failing test in 5,831 - this entry."),
+                (true, "Carries FHIRPath quantity literals and engine-produced quantity results, which are System.Quantity values. Resource-backed FHIR Quantity values use SchemaAwareElement instead. The marker changes only qualified type tests; unqualified Quantity matching is shared by both namespaces, and type() deliberately continues to report FHIR/Quantity."),
             ["Ignixa.FhirPath.Evaluation.Functions.CollectionFunctions+TypeInfoElement"] =
                 (false, "Describes a type rather than holding a value: its own InstanceType is the FHIR complex type ClassInfo/SimpleTypeInfo that type() returns."),
             ["Ignixa.FhirMappingLanguage.Evaluation.MappingEvaluator+MappingContextElement"] =

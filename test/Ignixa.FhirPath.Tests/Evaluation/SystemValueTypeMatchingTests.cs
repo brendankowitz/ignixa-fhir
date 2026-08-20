@@ -60,6 +60,21 @@ public class SystemValueTypeMatchingTests
     }
     """;
 
+    private const string QuantityObservationJson = """
+    {
+      "resourceType": "Observation",
+      "id": "quantity-example",
+      "status": "final",
+      "code": { "text": "test" },
+      "valueQuantity": {
+        "value": 1,
+        "unit": "mg",
+        "system": "http://unitsofmeasure.org",
+        "code": "mg"
+      }
+    }
+    """;
+
     public static TheoryData<FhirVersion, string> SystemResultsAcrossPaths
     {
         get
@@ -315,6 +330,84 @@ public class SystemValueTypeMatchingTests
 
         // Assert
         isInteger.Select(i => i.Value).ShouldBe([true, true]);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.R4, "1 'mg'")]
+    [InlineData(FhirVersion.R4, "1.toQuantity()")]
+    [InlineData(FhirVersion.R5, "1 'mg'")]
+    [InlineData(FhirVersion.R5, "1.toQuantity()")]
+    public void GivenEngineProducedQuantity_WhenTypeTestedWithQualifiedNamespaces_ThenOnlySystemQuantityMatches(
+        FhirVersion version,
+        string quantityExpression)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act
+        var isSystemQuantity = Interpret(element, $"({quantityExpression}) is System.Quantity", schema);
+        var isFhirQuantity = Interpret(element, $"({quantityExpression}) is FHIR.Quantity", schema);
+
+        // Assert
+        isSystemQuantity.ShouldHaveSingleItem().Value.ShouldBe(true);
+        isFhirQuantity.ShouldHaveSingleItem().Value.ShouldBe(false);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R5)]
+    public void GivenResourceBackedQuantity_WhenTypeTestedWithQualifiedNamespaces_ThenOnlyFhirQuantityMatches(
+        FhirVersion version)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(QuantityObservationJson).ToElement(schema);
+
+        // Act
+        var isSystemQuantity = Interpret(element, "value is System.Quantity", schema);
+        var isFhirQuantity = Interpret(element, "value is FHIR.Quantity", schema);
+
+        // Assert
+        isSystemQuantity.ShouldHaveSingleItem().Value.ShouldBe(false);
+        isFhirQuantity.ShouldHaveSingleItem().Value.ShouldBe(true);
+    }
+
+    [Fact]
+    public void GivenSystemAndFhirQuantities_WhenSelectedWithoutNamespace_ThenBothMatchQuantity()
+    {
+        // Arrange
+        var schema = FhirVersion.R5.GetSchemaProvider();
+        var literalSubject = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+        var resourceSubject = ResourceJsonNode.Parse(QuantityObservationJson).ToElement(schema);
+
+        // Act
+        var literalIsQuantity = Interpret(literalSubject, "1 'mg' is Quantity", schema);
+        var literalOfType = Interpret(literalSubject, "(1 'mg').ofType(Quantity)", schema);
+        var resourceIsQuantity = Interpret(resourceSubject, "value is Quantity", schema);
+        var resourceOfType = Interpret(resourceSubject, "value.ofType(Quantity)", schema);
+
+        // Assert
+        literalIsQuantity.ShouldHaveSingleItem().Value.ShouldBe(true);
+        literalOfType.ShouldHaveSingleItem();
+        resourceIsQuantity.ShouldHaveSingleItem().Value.ShouldBe(true);
+        resourceOfType.ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void GivenQuantityLiteral_WhenItsTypeIsReported_ThenItRemainsFhirQuantity()
+    {
+        // Arrange
+        var schema = FhirVersion.R5.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act
+        var typeNamespace = Interpret(element, "(1 'mg').type().namespace", schema);
+        var typeName = Interpret(element, "(1 'mg').type().name", schema);
+
+        // Assert
+        typeNamespace.ShouldHaveSingleItem().Value.ShouldBe("FHIR");
+        typeName.ShouldHaveSingleItem().Value.ShouldBe("Quantity");
     }
 
     private static IReadOnlyList<FhirVersion> AllVersions =>

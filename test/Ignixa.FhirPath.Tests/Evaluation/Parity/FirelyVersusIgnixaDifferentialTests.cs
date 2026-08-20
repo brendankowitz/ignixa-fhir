@@ -59,15 +59,14 @@ public class FirelyVersusIgnixaDifferentialTests
     }
 
     /// <summary>
-    /// Pins the one divergence <see cref="ParityTypeName"/> normalises away, so normalising it does
-    /// not amount to hiding it.
+    /// Pins raw primitive-name divergences <see cref="ParityTypeName"/> normalises away, so
+    /// normalising them does not amount to hiding them.
     /// </summary>
     [Theory]
     [InlineData("active and true", "System.Boolean", "boolean")]
     [InlineData("'a' & 'b'", "System.String", "string")]
     [InlineData("1 + 1", "System.Integer", "integer")]
     [InlineData("birthDate + 1 year", "System.Date", "date")]
-    [InlineData("1 'mg'", "System.Quantity", "Quantity")]
     public void GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType(
         string expression,
         string firelyType,
