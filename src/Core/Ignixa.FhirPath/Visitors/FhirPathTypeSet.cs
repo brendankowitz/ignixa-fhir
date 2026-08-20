@@ -107,6 +107,19 @@ public sealed class FhirPathTypeSet
     }
 
     /// <summary>
+    /// Adds an indeterminate runtime type.
+    /// </summary>
+    public void AddUnknown(bool isCollection = false, string? path = null)
+    {
+        Types.Add(FhirPathType.Unknown(isCollection, path));
+    }
+
+    /// <summary>
+    /// Gets whether any possible runtime type is indeterminate.
+    /// </summary>
+    public bool HasUnknown => Types.Any(type => type.IsUnknown);
+
+    /// <summary>
     /// Gets comma-separated type names for display.
     /// </summary>
     public string TypeNames()

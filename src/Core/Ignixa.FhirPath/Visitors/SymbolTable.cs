@@ -137,6 +137,20 @@ internal sealed partial class SymbolTable
 #pragma warning restore CA1002
 
     /// <summary>
+    /// Return type delegate for functions whose runtime result shape cannot be inferred.
+    /// </summary>
+#pragma warning disable CA1002 // Do not expose generic lists
+    public static List<FhirPathType> ReturnsUnknown(
+        FunctionDefinition definition,
+        FhirPathTypeSet focus,
+        IEnumerable<FhirPathTypeSet> arguments,
+        ICollection<ValidationIssue> issues)
+    {
+        return [FhirPathType.Unknown(focus.IsCollection())];
+    }
+#pragma warning restore CA1002
+
+    /// <summary>
     /// Return type delegate that returns types from the first argument (used by select()).
     /// </summary>
 #pragma warning disable CA1002 // Do not expose generic lists
@@ -181,6 +195,11 @@ internal sealed partial class SymbolTable
                 var typeDefinition = _schema.GetTypeDefinition(typeName);
                 if (typeDefinition != null)
                 {
+                    if (typeDefinition.Info.IsAbstract)
+                    {
+                        return new List<FhirPathType> { FhirPathType.Unknown(isCollection) };
+                    }
+
                     return new List<FhirPathType> { new FhirPathType(typeDefinition, isCollection) };
                 }
             }

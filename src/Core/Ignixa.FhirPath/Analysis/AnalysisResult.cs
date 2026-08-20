@@ -32,9 +32,16 @@ public sealed class AnalysisResult
     public Collection<ValidationIssue> Issues { get; } = [];
 
     /// <summary>
-    /// Gets whether the analysis found no errors.
+    /// Gets whether the analysis found no errors and fully determined the expression's validity.
     /// </summary>
-    public bool IsValid => !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error);
+    public bool IsValid =>
+        !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error) &&
+        !IsIndeterminate;
+
+    /// <summary>
+    /// Gets whether static analysis could not determine the expression's validity.
+    /// </summary>
+    public bool IsIndeterminate => Issues.Any(issue => issue.IsIndeterminate);
 
     /// <summary>
     /// Gets whether the analysis found any warnings.

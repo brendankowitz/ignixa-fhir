@@ -273,7 +273,11 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
     {
         var returnType = func.ReturnType;
 
-        if (string.Equals(returnType, "context", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(returnType, "any", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.AppendLine("            .WithReturnType(ReturnsUnknown)");
+        }
+        else if (string.Equals(returnType, "context", StringComparison.OrdinalIgnoreCase))
         {
             sb.AppendLine("            .WithReturnType(ReturnsContext)");
         }
@@ -295,7 +299,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
                 sb.AppendLine("            .WithReturnType(ReturnsFromArgument)");
             }
         }
-        else if (!string.Equals(returnType, "any", StringComparison.OrdinalIgnoreCase))
+        else
         {
             // For complex types (non-primitive), use schema-aware type resolution
             // to ensure return types have proper IType definitions with children

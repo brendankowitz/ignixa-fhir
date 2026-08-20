@@ -21,6 +21,11 @@ public sealed record ValidationIssue
     public required string Message { get; init; }
 
     /// <summary>
+    /// Gets whether the issue means static analysis was unable to determine validity.
+    /// </summary>
+    public bool IsIndeterminate { get; init; }
+
+    /// <summary>
     /// Gets the location information (line, column, position).
     /// </summary>
     public string? Location { get; init; }
@@ -42,7 +47,7 @@ public enum ValidationIssueSeverity
     Information,
 
     /// <summary>
-    /// Warning that indicates potential issue but expression is valid.
+    /// Warning that indicates a potential issue or an expression that cannot be fully analysed.
     /// </summary>
     Warning,
 

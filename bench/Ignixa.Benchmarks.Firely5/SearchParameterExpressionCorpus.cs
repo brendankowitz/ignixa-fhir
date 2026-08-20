@@ -1,4 +1,5 @@
 using Hl7.FhirPath;
+using Ignixa.Abstractions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.Search.Generated;
 using Ignixa.Search.Models;
@@ -6,7 +7,7 @@ using Ignixa.Search.Models;
 namespace Ignixa.Benchmarks.Firely5;
 
 /// <summary>
-/// The real shipped R4 search parameter expression corpus, as used by the search indexer on every
+/// The real shipped search parameter expression corpus, as used by the search indexer on every
 /// write. Loaded from the generated definitions rather than hand-picked so the mix of expression
 /// shapes - plain paths, choice types, <c>where()</c> filters, <c>as()</c> casts, <c>resolve()</c>,
 /// unions across resource types - is the spec's mix and not a flattering selection.
@@ -14,12 +15,14 @@ namespace Ignixa.Benchmarks.Firely5;
 internal sealed class SearchParameterExpressionCorpus
 {
     private SearchParameterExpressionCorpus(
+        IReadOnlyList<SearchParameterInfo> parameters,
         IReadOnlyList<string> allExpressions,
         IReadOnlyList<string> commonExpressions,
         IReadOnlyDictionary<string, IReadOnlyList<string>> commonByResourceType,
         int ignixaCompileFailures,
         int firelyCompileFailures)
     {
+        Parameters = parameters;
         AllExpressions = allExpressions;
         CommonExpressions = commonExpressions;
         CommonByResourceType = commonByResourceType;
@@ -28,7 +31,12 @@ internal sealed class SearchParameterExpressionCorpus
     }
 
     /// <summary>
-    /// Every distinct non-empty expression in the R4 base search parameter set.
+    /// Every shipped base search parameter, including entries without expressions.
+    /// </summary>
+    public IReadOnlyList<SearchParameterInfo> Parameters { get; }
+
+    /// <summary>
+    /// Every distinct non-empty expression in the selected base search parameter set.
     /// </summary>
     public IReadOnlyList<string> AllExpressions { get; }
 
@@ -47,9 +55,11 @@ internal sealed class SearchParameterExpressionCorpus
 
     public int FirelyCompileFailures { get; }
 
-    public static SearchParameterExpressionCorpus Load()
+    public static SearchParameterExpressionCorpus Load() => Load(FhirVersion.R4);
+
+    public static SearchParameterExpressionCorpus Load(FhirVersion version)
     {
-        SearchParameterInfo[] parameters = R4SearchParameterDefinitions.GetBaseSearchParameters();
+        SearchParameterInfo[] parameters = GetBaseSearchParameters(version);
 
         var distinct = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -111,12 +121,24 @@ internal sealed class SearchParameterExpressionCorpus
             StringComparer.Ordinal);
 
         return new SearchParameterExpressionCorpus(
+            parameters,
             distinct,
             common,
             commonByResourceType,
             distinct.Count - compilesInIgnixa.Count,
             distinct.Count - compilesInFirely.Count);
     }
+
+    private static SearchParameterInfo[] GetBaseSearchParameters(FhirVersion version) =>
+        version switch
+        {
+            FhirVersion.Stu3 => STU3SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R4 => R4SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R4B => R4BSearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R5 => R5SearchParameterDefinitions.GetBaseSearchParameters(),
+            FhirVersion.R6 => R6SearchParameterDefinitions.GetBaseSearchParameters(),
+            _ => throw new ArgumentOutOfRangeException(nameof(version), version, "Unsupported FHIR version")
+        };
 
     public static bool TryCompileIgnixa(FhirPathParser parser, string expression)
     {

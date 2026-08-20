@@ -173,6 +173,21 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
+    /// Adds a warning that marks the analysis as indeterminate rather than invalid.
+    /// </summary>
+    public void AddIndeterminateWarning(string message, Expression? location = null)
+    {
+        _issues.Add(new ValidationIssue
+        {
+            Severity = ValidationIssueSeverity.Warning,
+            Message = message,
+            IsIndeterminate = true,
+            Location = location?.Location?.ToString(),
+            Expression = location?.ToString()
+        });
+    }
+
+    /// <summary>
     /// Adds an informational issue.
     /// </summary>
     public void AddInfo(string message, Expression? location = null)

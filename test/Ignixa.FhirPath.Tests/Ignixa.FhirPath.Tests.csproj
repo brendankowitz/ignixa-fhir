@@ -59,6 +59,8 @@
              Link="FirelySdkAdapter\FirelyPrimitiveValues.cs" />
     <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs"
              Link="FirelySdkAdapter\IgnixaElementAdapter.cs" />
+    <Compile Include="..\..\bench\Ignixa.Benchmarks.Firely5\SearchParameterExpressionCorpus.cs"
+             Link="Corpus\SearchParameterExpressionCorpus.cs" />
   </ItemGroup>
 
   <!--

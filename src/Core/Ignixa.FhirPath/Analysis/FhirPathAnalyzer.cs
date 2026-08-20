@@ -60,6 +60,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     private readonly IFhirSchemaProvider _schema;
     private readonly SymbolTable _symbolTable;
     private readonly FhirPathParser _parser;
+    private readonly Lazy<HashSet<string>> _rootPropertyNames;
     private IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet>? _childVisitor;
 
     /// <summary>
@@ -70,6 +71,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
         _symbolTable = new SymbolTable(schema);
         _parser = new FhirPathParser();
+        _rootPropertyNames = new Lazy<HashSet<string>>(
+            () => _schema.ResourceTypeNames
+                .Select(_schema.GetTypeDefinition)
+                .Where(type => type != null)
+                .SelectMany(type => type!.Children)
+                .Select(child => child.Info.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase),
+            isThreadSafe: true);
     }
 
     internal void SetChildVisitor(IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet> visitor)
@@ -217,8 +226,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var propertyFound = false;
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                result.Types.Add(focusType.WithPath(
+                    $"{focusType.Path}.{expression.PropertyName}"));
+                propertyFound = true;
+                continue;
+            }
+
             if (focusType.Type == null)
             {
+                if (TryAddReflectionMember(result, focusType, expression.PropertyName))
+                {
+                    propertyFound = true;
+                    continue;
+                }
+
                 if (_schema.ResourceTypeNames.Contains(expression.PropertyName))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.PropertyName);
@@ -259,9 +282,19 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (!propertyFound)
         {
-            context.AddError(
-                $"Property '{expression.PropertyName}' not found on type '{focusTypes.TypeNames()}'",
-                expression);
+            if (focusTypes.IsRoot && IsPropertyOnAnotherRootType(expression.PropertyName))
+            {
+                result.AddUnknown(path: expression.PropertyName);
+                context.AddIndeterminateWarning(
+                    $"Property '{expression.PropertyName}' is not present on root type '{context.RootType}', but is present on another resource type and cannot be analysed for this root.",
+                    expression);
+            }
+            else
+            {
+                context.AddError(
+                    $"Property '{expression.PropertyName}' not found on type '{focusTypes.TypeNames()}'",
+                    expression);
+            }
         }
 
         return result;
@@ -291,8 +324,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var propertyFound = false;
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                result.Types.Add(focusType.WithPath(
+                    $"{focusType.Path}.{expression.ChildName}"));
+                propertyFound = true;
+                continue;
+            }
+
             if (focusType.Type == null)
             {
+                if (TryAddReflectionMember(result, focusType, expression.ChildName))
+                {
+                    propertyFound = true;
+                    continue;
+                }
+
                 if (_schema.ResourceTypeNames.Contains(expression.ChildName))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.ChildName);
@@ -333,9 +380,19 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (!propertyFound)
         {
-            context.AddError(
-                $"Property '{expression.ChildName}' not found on type '{focusTypes.TypeNames()}'",
-                expression);
+            if (focusTypes.IsRoot && IsPropertyOnAnotherRootType(expression.ChildName))
+            {
+                result.AddUnknown(path: expression.ChildName);
+                context.AddIndeterminateWarning(
+                    $"Property '{expression.ChildName}' is not present on root type '{context.RootType}', but is present on another resource type and cannot be analysed for this root.",
+                    expression);
+            }
+            else
+            {
+                context.AddError(
+                    $"Property '{expression.ChildName}' not found on type '{focusTypes.TypeNames()}'",
+                    expression);
+            }
         }
 
         return result;
@@ -454,11 +511,20 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 {
                     result.CopyFrom(focusTypes);
                 }
+
+                if (result.HasUnknown && !focusTypes.HasUnknown)
+                {
+                    context.AddIndeterminateWarning(
+                        $"The return type of function '{functionName}()' cannot be analysed statically; downstream navigation is indeterminate.",
+                        expression);
+                }
             }
             catch (Exception ex)
             {
-                context.AddIssue(ValidationIssueSeverity.Warning, $"Return type calculation failed for function '{functionName}': {ex.Message}", expression);
-                result.CopyFrom(focusTypes); // Fallback to focus types
+                context.AddIndeterminateWarning(
+                    $"Return type calculation failed for function '{functionName}()' and cannot be analysed: {ex.Message}",
+                    expression);
+                result.AddUnknown(focusTypes.IsCollection());
             }
         }
         else
@@ -579,8 +645,19 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                result.Types.Add(focusType.WithPath($"{focusType.Path}.{expression.Name}"));
+                continue;
+            }
+
             if (focusType.Type == null)
             {
+                if (TryAddReflectionMember(result, focusType, expression.Name))
+                {
+                    continue;
+                }
+
                 if (_schema.ResourceTypeNames.Contains(expression.Name))
                 {
                     var resourceType = _schema.GetTypeDefinition(expression.Name);
@@ -617,7 +694,17 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (result.Types.Count == 0)
         {
-            context.AddError($"Property '{expression.Name}' not found on type '{focusTypes.TypeNames()}'", expression);
+            if (focusTypes.IsRoot && IsPropertyOnAnotherRootType(expression.Name))
+            {
+                result.AddUnknown(path: expression.Name);
+                context.AddIndeterminateWarning(
+                    $"Property '{expression.Name}' is not present on root type '{context.RootType}', but is present on another resource type and cannot be analysed for this root.",
+                    expression);
+            }
+            else
+            {
+                context.AddError($"Property '{expression.Name}' not found on type '{focusTypes.TypeNames()}'", expression);
+            }
         }
 
         return result;
@@ -980,6 +1067,17 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         var path = string.IsNullOrEmpty(focusType.Path) ? propertyName : $"{focusType.Path}.{propertyName}";
         var isCollection = focusType.IsCollection || child.IsCollection;
 
+        if (child is ITypeExtended { ContentReference: { Length: > 1 } contentReference })
+        {
+            var referencePath = contentReference[(contentReference.IndexOf("#", StringComparison.Ordinal) + 1)..];
+            var referencedType = _schema.GetTypeDefinition(referencePath);
+            if (referencedType != null)
+            {
+                result.AddType(referencedType, isCollection, path);
+                return;
+            }
+        }
+
         if (child is ITypeExtended extended && extended.Types?.Count > 0)
         {
             foreach (var typeRef in extended.Types)
@@ -1117,6 +1215,28 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         };
     }
 
+    private static bool TryAddReflectionMember(
+        FhirPathTypeSet result,
+        FhirPathType focusType,
+        string propertyName)
+    {
+        if ((focusType.TypeName.Equals("ClassInfo", StringComparison.OrdinalIgnoreCase) ||
+             focusType.TypeName.Equals("SimpleTypeInfo", StringComparison.OrdinalIgnoreCase)) &&
+            (propertyName.Equals("name", StringComparison.OrdinalIgnoreCase) ||
+             propertyName.Equals("namespace", StringComparison.OrdinalIgnoreCase)))
+        {
+            result.AddPrimitiveType("string", focusType.IsCollection);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsPropertyOnAnotherRootType(string propertyName)
+    {
+        return _rootPropertyNames.Value.Contains(propertyName);
+    }
+
     /// <summary>
     /// Validates that the focus type is supported by the function.
     /// Reports an error if the function doesn't support the given context type.
@@ -1137,6 +1257,11 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         // Check each focus type against supported contexts
         foreach (var focusType in focusTypes.Types)
         {
+            if (focusType.IsUnknown)
+            {
+                continue;
+            }
+
             var typeName = focusType.TypeName;
             if (string.IsNullOrEmpty(typeName))
             {
