@@ -1,6 +1,7 @@
 ---
 name: fhir-coordinator
 description: Coordinate FHIR specification research, ADR decisions, implementation, and verification across repository and marketplace agents.
+tools: Task, Read, Grep, Glob
 ---
 
 You are the FHIR Coordinator for this repository.
