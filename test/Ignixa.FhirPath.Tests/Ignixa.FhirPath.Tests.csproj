@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- FIRELYSDK5 denotes the Firely 5.x API shape, not a specific 5.x patch release. -->
+    <DefineConstants>$(DefineConstants);FIRELYSDK5</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,7 +34,7 @@
   </ItemGroup>
 
   <!--
-    The two adapter sources the parity tests exercise, link-compiled here so they build against this
+    The adapter sources the parity tests exercise, link-compiled here so they build against this
     project's pinned Firely 5.11.4 rather than the 6.0.1 the repo ships against.
 
     Why not a ProjectReference to Ignixa.Extensions.FirelySdk5, which already link-compiles all six
@@ -43,8 +45,8 @@
     5.13.1, and the build fails two ways: MSB3277 (a conflict between Hl7.Fhir.Base 5.11.4 and 5.13.1
     "that could not be resolved", 5.11.4 winning as primary), and CS0436 on IgnixaElementAdapter, because
     that project link-compiles the same sources this one does, so the type arrives both as source and as
-    metadata. Only two of the six sources are needed: the parity tests drive IgnixaElementAdapter and the
-    primitive-value translation it depends on, not the reverse (Ignixa-to-Firely) direction.
+    metadata. Four of the six sources are needed: the parity tests drive both adapter directions and the
+    primitive-value translation they depend on, but not source-navigation compatibility.
 
     This holds only while no project in this graph references Ignixa.Extensions.FirelySdk6. If one of
     the four Core references above ever takes that dependency, this assembly gets both a compiled and a
@@ -61,6 +63,8 @@
              Link="FirelySdkAdapter\FirelyPrimitiveValues.cs" />
     <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs"
              Link="FirelySdkAdapter\IgnixaElementAdapter.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs"
+             Link="FirelySdkAdapter\IgnixaExtensions.cs" />
     <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\TypedElementAdapter.cs"
              Link="FirelySdkAdapter\TypedElementAdapter.cs" />
     <Compile Include="..\..\bench\Ignixa.Benchmarks.Firely5\SearchParameterExpressionCorpus.cs"

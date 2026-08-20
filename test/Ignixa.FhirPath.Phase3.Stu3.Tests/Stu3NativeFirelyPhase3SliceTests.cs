@@ -50,8 +50,12 @@ public class Stu3NativeFirelyPhase3SliceTests
         var (firely, ignixa) = Evaluate(expression);
 
         // Assert
-        Render(firely).ShouldBe(Render(ignixa));
-        Index(firely).ShouldBe(Index(ignixa));
+        IReadOnlyList<string> firelyResults = Render(firely);
+        IReadOnlyList<string> firelyIndex = Index(firely);
+        firelyResults.ShouldBe(["string|parity"]);
+        firelyIndex.ShouldBe(["parity"]);
+        firelyResults.ShouldBe(Render(ignixa));
+        firelyIndex.ShouldBe(Index(ignixa));
     }
 
     [Fact]
