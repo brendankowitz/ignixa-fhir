@@ -34,7 +34,7 @@ Keep three suites with explicit ownership rather than treating one topology as u
 2. **Native-engine corpus.** Parse the same JSON independently with each engine and classify parser-attributable differences separately from evaluator differences.
 3. **Reverse-bridge contract suite in Ignixa.** Retain this corpus to cover JSON-to-Ignixa input and `TypedElementAdapter` consumption by Firely callers.
 
-The projects `Ignixa.FhirPath.Phase3.Stu3.Tests` and `Ignixa.FhirPath.Phase3.R5.Tests`, plus `R4NativeFirelyPhase3SliceTests` in `Ignixa.FhirPath.Tests`, implement only narrow slices of the first suite. They use native Firely POCO input and production Ignixa search-value converters, but they do not replace fhir-server's end-to-end gate. Separate compilations are required because the Firely version model assemblies export conflicting model and extension identities, including an ambiguous `ModelInfo`; process isolation is a consequence of the separate test assemblies rather than the underlying constraint.
+The projects `Ignixa.FhirPath.Phase3.Stu3.Tests`, `Ignixa.FhirPath.Phase3.R4B.Tests`, and `Ignixa.FhirPath.Phase3.R5.Tests`, plus `R4NativeFirelyPhase3SliceTests` in `Ignixa.FhirPath.Tests`, implement only narrow slices of the first suite. They use native Firely POCO input and production Ignixa search-value converters, but they do not replace fhir-server's end-to-end gate. Separate compilations are required because the Firely version model assemblies export conflicting model and extension identities, including an ambiguous `ModelInfo`; process isolation is a consequence of the separate test assemblies rather than the underlying constraint.
 
 ## Corpus Shape
 
@@ -104,7 +104,7 @@ The earlier `8 Select / 9 indexed` typed-choice count and `2 Select / 2 indexed`
 
 | Class | Phase 3 status | Evidence |
 |---|---|---|
-| STU3 capitalised casts | Confirmed production divergence: 9/9 evaluator, 8 final-index | Every shipped capitalised cast returns empty in Firely and its populated primitive in Ignixa. Eight non-composite parameters produce an Ignixa index entry and no Firely entry; the composite is the independent double-empty case below. |
+| STU3 capitalised casts | Confirmed production divergence: 11/11 evaluator, 10 final-index | Every shipped mis-cased primitive cast returns empty in Firely and its populated primitive in Ignixa. Ten non-composite parameters produce an Ignixa index entry and no Firely entry; the composite is the independently pinned double-empty case below. |
 | R4 `code-value-date` capitalised cast | Confirmed production evaluator and composite-index divergence | Native `Observation.valueDateTime` with `value.as(DateTime) \| value.as(Period)` returns empty in Firely and one `dateTime` in Ignixa. The real Ignixa indexer emits the composite entry shown below. |
 | R4B `code-value-date` capitalised cast | Confirmed production evaluator and composite-index divergence | The same native-POCO probe produces the same evaluator and composite outcome under R4B. |
 | Broader R4/R4B adapter-mediated choice cases | Harness artifacts; original counts remain invalid | Properly cased native choice casts agree. The reverse corpus's broader count came from presenting Ignixa choice metadata to Firely, not from native Firely input. |
@@ -113,11 +113,11 @@ The earlier `8 Select / 9 indexed` typed-choice count and `2 Select / 2 indexed`
 
 No aggregate Phase 3 divergence count is claimed from these slices. They characterize confirmed classes and controls, not the full fhir-server gate.
 
-Since `804e678e`, Ignixa matches type identifiers with exact ordinal casing on every version and enables only an explicit legacy alias set below R5, failing open when the version is unknown. The STU3/R4/R4B differences are therefore deliberate and bounded: they track the FHIR release text changing from R4/R4B's `as()` allowance to R5's narrower `ofType()` allowance. They are not unconditional case-insensitive matching. R5 and R6 ship no capitalised casts.
+Since `804e678e`, Ignixa matches type identifiers with exact ordinal casing on every version and enables only an explicit legacy alias set below R5, failing open when the version is unknown. The STU3/R4/R4B differences are therefore deliberate and bounded: they track the FHIR release text changing from R4/R4B's `as()` allowance to R5's narrower `ofType()` allowance. They are not unconditional case-insensitive matching. R5 and R6 ship no capitalised alias casts.
 
 ### STU3 Capitalised Casts
 
-Native Firely input confirmed every capitalised primitive cast shipped by STU3:
+The list below was derived by a case-sensitive scan of the generated STU3 definitions rather than copied from an earlier count. Native Firely input confirmed every shipped capitalised alias:
 
 | Search parameter | Relevant shipped expression |
 |---|---|
@@ -127,28 +127,35 @@ Native Firely input confirmed every capitalised primitive cast shipped by STU3:
 | `Observation-code-value-date` component | `value.as(DateTime) \| value.as(Period)` |
 | `Observation-value-date` | `Observation.value.as(DateTime) \| Observation.value.as(Period)` |
 | `Patient-death-date` | `Patient.deceased.as(DateTime)` |
+| `Goal-start-date` | `Goal.start.as(Date)` |
+| `Goal-target-date` | `Goal.target.due.as(Date)` |
 | `Observation-value-string` | `Observation.value.as(String)` |
 | `ConceptMap-source-uri` | `ConceptMap.source.as(Uri)` |
 | `ConceptMap-target-uri` | `ConceptMap.target.as(Uri)` |
 
-For all nine occurrences, Firely returns empty and Ignixa returns the populated primitive. Replacing only the cast target with the native lowercase FHIR spelling makes both providers return the same value. The committed STU3 slice pins both the uppercase `String` divergence and a non-empty lowercase control:
+The scan yields `DateTime` ×6, `Date` ×2, `String` ×1, and `Uri` ×2.
+For all 11 occurrences, Firely returns empty and Ignixa returns the populated primitive. Replacing only the cast target with the native lowercase FHIR spelling makes both providers return the same value. The committed STU3 slice pins the `String` and both `Date` divergences, their non-empty lowercase controls, and the two resulting date index entries:
 
 ```fhirpath
 Observation.value.as(String) // Firely empty; Ignixa "parity"
 Observation.value.as(string) // both return "parity"
+Goal.start.as(Date)           // Firely empty; Ignixa 2024-06-15
+Goal.start.as(date)           // both return 2024-06-15
 ```
 
 This is a deliberate pre-R5 compatibility rule, not general case-insensitive matching. Firely is spec-correct under the base identifier-resolution rule: `String` resolves to `System.String`, which is distinct from `FHIR.string`. Ignixa additionally applies version-gated aliases to track the pre-R5 FHIR release allowance and shipped artifacts. The System aliases follow the release text; the two STU3 `Uri` aliases are bounded artifact errata with no System-type basis. Strict parity still treats the resulting index change as blocking.
 
+A naive scan also finds `as(Quantity)` seven times in STU3 and 19 times in each of R4 and R4B. Those casts are intentionally excluded from the alias count: `Quantity` is the genuine PascalCase FHIR type and matches it directly, while FHIR's date primitive is lowercase `date`, making capitalised `Date` an alias for the distinct `System.Date`. The spelling `Quantity` is genuinely ambiguous between the FHIR and System models and is resolved by the normal FHIR-first rule; it is not a mis-cased FHIR primitive.
+
 ### Why `Select` Comparison Is Mandatory: STU3 Double-Empty
 
-The STU3 `Observation-code-value-date` composite is the concrete case where final index equality gives a false answer. Firely drops the composite because `value.as(DateTime)` returns empty. Ignixa selects the date successfully, but its production indexer independently drops the same composite because the referenced `Observation-code` component cannot be resolved. Both providers therefore finish with an empty `SearchIndexEntry` set for unrelated reasons.
+The STU3 `Observation-code-value-date` composite is the concrete case where final index equality gives a false answer. Firely drops the composite because `value.as(DateTime)` returns empty. Ignixa selects the date successfully, but its production indexer independently drops the same composite because the referenced `Observation-code` component cannot be resolved. Both providers therefore finish with an empty `SearchIndexEntry` set for unrelated reasons. `Stu3CompositeDoubleEmptyTests` pins all four links in that chain: Firely's empty date component, Ignixa's populated date component, the unresolved code component, and the absent production Ignixa composite entry.
 
 An index-only corpus would report agreement and conceal both failures. Comparing `Select` outcomes exposes the evaluator divergence before the independent component-resolution defect erases it. This is why empty, thrown, and value-returning evaluations must remain distinct even when their final index sets happen to match.
 
 ### R4/R4B `code-value-date`
 
-R4 and R4B each ship one capitalised cast, in the date component of `code-value-date`:
+R4 and R4B each ship one capitalised primitive alias, in the date component of `code-value-date`:
 
 ```fhirpath
 value.as(DateTime) | value.as(Period)
@@ -160,7 +167,7 @@ Against a native Firely `Observation` with `valueDateTime: "2024-06-15T08:00:00Z
 (http://loinc.org|29463-7) $ (2024-06-15T08:00:00+00:00)
 ```
 
-Firely's empty date component makes the composite incomplete, so it emits no corresponding entry. `R4NativeFirelyPhase3SliceTests` pins the shipped expression, the non-empty lowercase control, and the production Ignixa composite. The same topology and result were measured for R4B; Firely 5.11.4 model assemblies prevent adding R4 and R4B to the same compilation.
+Firely's empty date component makes the composite incomplete, so its missing final entry is inferred from the pinned evaluator outcome; this repository does not own Firely's final production index pipeline. `R4NativeFirelyPhase3SliceTests` pins the shipped expression, the non-empty lowercase control, and the production Ignixa composite. `Ignixa.FhirPath.Phase3.R4B.Tests` independently pins the same three outcomes against the native R4B model. Firely 5.11.4 model assemblies prevent adding R4 and R4B to the same compilation, which is why R4B has an isolated test host.
 
 ### R5 Instant Carrier
 

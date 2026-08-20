@@ -46,7 +46,8 @@
     "that could not be resolved", 5.11.4 winning as primary), and CS0436 on IgnixaElementAdapter, because
     that project link-compiles the same sources this one does, so the type arrives both as source and as
     metadata. Four of the six sources are needed: the parity tests drive both adapter directions and the
-    primitive-value translation they depend on, but not source-navigation compatibility.
+    primitive-value translation they depend on. They do not need SourceNavigatorAdapter.cs's
+    source-navigation compatibility or FirelySdkExtensions.cs's broader SDK extension entry points.
 
     This holds only while no project in this graph references Ignixa.Extensions.FirelySdk6. If one of
     the four Core references above ever takes that dependency, this assembly gets both a compiled and a

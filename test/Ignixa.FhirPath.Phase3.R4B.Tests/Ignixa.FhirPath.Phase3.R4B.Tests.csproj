@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- FIRELYSDK5 denotes the Firely 5.x API shape, not a specific 5.x patch release. -->
+    <DefineConstants>$(DefineConstants);FIRELYSDK5</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Shouldly" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Core\Ignixa.Abstractions\Ignixa.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs"
+             Link="FirelySdkAdapter\FirelyPrimitiveValues.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs"
+             Link="FirelySdkAdapter\IgnixaElementAdapter.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaExtensions.cs"
+             Link="FirelySdkAdapter\IgnixaExtensions.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\TypedElementAdapter.cs"
+             Link="FirelySdkAdapter\TypedElementAdapter.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Hl7.Fhir.Base" VersionOverride="5.11.4" />
+    <PackageReference Include="Hl7.Fhir.R4B" VersionOverride="5.11.4" />
+  </ItemGroup>
+
+</Project>

@@ -239,6 +239,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Phase3.Stu3
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Phase3.R5.Tests", "test\Ignixa.FhirPath.Phase3.R5.Tests\Ignixa.FhirPath.Phase3.R5.Tests.csproj", "{1CE0733B-16D8-4639-9BAF-420821A3D67E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.FhirPath.Phase3.R4B.Tests", "test\Ignixa.FhirPath.Phase3.R4B.Tests\Ignixa.FhirPath.Phase3.R4B.Tests.csproj", "{4B8D6631-355C-4377-B0DD-778D292E2AEC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1197,6 +1199,18 @@ Global
 		{1CE0733B-16D8-4639-9BAF-420821A3D67E}.Release|x64.Build.0 = Release|Any CPU
 		{1CE0733B-16D8-4639-9BAF-420821A3D67E}.Release|x86.ActiveCfg = Release|Any CPU
 		{1CE0733B-16D8-4639-9BAF-420821A3D67E}.Release|x86.Build.0 = Release|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Debug|x64.Build.0 = Debug|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Debug|x86.Build.0 = Debug|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Release|x64.ActiveCfg = Release|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Release|x64.Build.0 = Release|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Release|x86.ActiveCfg = Release|Any CPU
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1291,5 +1305,6 @@ Global
 		{58AB6B6C-D8B1-4C13-9568-5091657A180F} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{C9DEAAEF-A43C-40BF-B310-F20BCCD23BA2} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{1CE0733B-16D8-4639-9BAF-420821A3D67E} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
+		{4B8D6631-355C-4377-B0DD-778D292E2AEC} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal
