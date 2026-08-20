@@ -378,7 +378,7 @@ public class FirelyPrimitiveValueContractTests
     /// The <c>Kind</c> assertion above pins the mechanism; this pins the consequence. A value read
     /// through the adapter and re-wrapped as a FHIRPath constant is typed by
     /// <c>FhirPathEvaluator.GetFhirPathTypeName</c>, which is the only place <c>Kind</c> distinguishes
-    /// <c>Instant</c> from <c>DateTime</c>, and is also what stamps SQL-on-FHIR column types. Losing
+    /// <c>Instant</c> from <c>DateTime</c>, and types SQL-on-FHIR environment variables. Losing
     /// the kind at the adapter seam silently retypes such values as <c>dateTime</c>.
     /// </remarks>
     [Fact]

@@ -905,25 +905,22 @@ public class FhirPathInvariantCheckTests
         result.Issues[0].Code.ShouldBe("tim-9");
     }
 
-    /// <summary>
-    /// Pins the catch-all branch: an evaluation failure that is neither a known engine gap
-    /// (<see cref="NotSupportedException"/>) nor a correctly-signalled evaluation error
-    /// (<see cref="FhirPathEvaluationException"/>) is an unexpected engine defect and must fail
-    /// loudly - invalid, Error severity - rather than being masked as a benign warning.
-    /// <c>substring()</c> called with no arguments throws a plain <see cref="ArgumentException"/>
-    /// (<c>StringFunctions.Substring</c>: "substring() requires a start argument"), which is
-    /// exactly such an unclassified failure.
-    /// </summary>
-    [Fact]
-    public void GivenConstraintThrowingUnclassifiedException_WhenValidating_ThenInvalidWithError()
+    [Theory]
+    [InlineData("name.skip()", "skip()")]
+    [InlineData("name.take()", "take()")]
+    [InlineData("name.where()", "where()")]
+    [InlineData("name.first().family.substring()", "substring()")]
+    public void GivenConstraintWithMissingFunctionArgument_WhenValidating_ThenValidWithWarning(
+        string expression,
+        string function)
     {
         // Arrange
         var constraint = new Ignixa.Specification.ConstraintDefinition
         {
-            Key = "pin-unexpected",
+            Key = "pin-missing-argument",
             Severity = ConstraintSeverity.Error,
-            Human = "Malformed use of substring()",
-            Expression = "name.first().family.substring()",
+            Human = "Malformed function invocation",
+            Expression = expression,
             Xpath = null,
             AppliesTo = new[] { "Patient" }
         };
@@ -938,11 +935,12 @@ public class FhirPathInvariantCheckTests
         // Act
         var result = check.Validate(element, settings, state);
 
-        // Assert - an unexpected engine defect must be loud, not swallowed
-        result.IsValid.ShouldBeFalse();
+        // Assert
+        result.IsValid.ShouldBeTrue();
         result.Issues.Count.ShouldBe(1);
-        result.Issues[0].Severity.ShouldBe(IssueSeverity.Error);
-        result.Issues[0].Code.ShouldBe("pin-unexpected");
+        result.Issues[0].Severity.ShouldBe(IssueSeverity.Warning);
+        result.Issues[0].Code.ShouldBe("pin-missing-argument");
+        result.Issues[0].Message.ShouldContain(function);
     }
 
 

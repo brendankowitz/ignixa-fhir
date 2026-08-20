@@ -35,7 +35,7 @@ internal static class ConditionalFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         if (arguments.Count < 2)
-            throw new ArgumentException("iif() requires at least criterion and true-result arguments");
+            throw new FhirPathEvaluationException("iif() requires at least criterion and true-result arguments");
 
         var focusList = focus.ToList();
 

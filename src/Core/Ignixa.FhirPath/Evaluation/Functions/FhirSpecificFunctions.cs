@@ -40,7 +40,7 @@ internal static class FhirSpecificFunctions
         // Equivalent to: .extension.where(url = <urlValue>)
 
         if (arguments.Count == 0)
-            throw new ArgumentException("extension() requires a url argument");
+            throw new FhirPathEvaluationException("extension() requires a url argument");
 
         // Non-scoped function: evaluate argument in outer context (don't change $this)
         var urlArgument = arguments[0];
