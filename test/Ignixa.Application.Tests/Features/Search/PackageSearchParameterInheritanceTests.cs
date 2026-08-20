@@ -140,6 +140,35 @@ public class PackageSearchParameterInheritanceTests
             () => manager.GetSearchParameters("UnregisteredResource").ToList());
     }
 
+    [Fact]
+    public async Task GivenPackageParameterLoadedLazily_WhenHashRequestedBeforeAndAfterResourceTypeWarmup_ThenBothReflectThePackageParameter()
+    {
+        // Regression test for a stale-hash bug: GetSearchParameterHashForResourceType used to read a
+        // Lazy-cached hash map that was only populated as resource types were warmed up by
+        // GetSearchParameters. Calling it before any type had been warmed cached a base-only hash
+        // forever, so even a later warm-up of "Patient" (which GetSearchParameters triggers below)
+        // never changed what GetSearchParameterHashForResourceType("Patient") returned afterward. The
+        // fix resolves the hash from what GetSearchParameters would return instead of that cache, so the
+        // answer no longer depends on whether the warm-up happened before or after this call.
+        var baseManager = new SearchParameterDefinitionManager(
+            FhirVersion.R4.GetSchemaProvider(), NullLogger<SearchParameterDefinitionManager>.Instance);
+        using var state = new ConformanceState();
+        var store = Substitute.For<ISourceEventStore>();
+        store.ReadAllAsync(Arg.Any<CancellationToken>()).Returns(Events());
+        await state.InitializeFromEventsAsync(store, CancellationToken.None);
+        var manager = new CompositeSearchParameterDefinitionManager(
+            baseManager, state, null, NullLogger<CompositeSearchParameterDefinitionManager>.Instance,
+            new SearchParameterResolutionOptions { EagerLoadPackageSearchParameters = false });
+        await manager.InitializeAsync();
+
+        string hashBeforeWarmup = manager.GetSearchParameterHashForResourceType("Patient");
+        manager.GetSearchParameters("Patient");
+        string hashAfterWarmup = manager.GetSearchParameterHashForResourceType("Patient");
+
+        hashBeforeWarmup.ShouldBe(hashAfterWarmup);
+        hashBeforeWarmup.ShouldNotBe(baseManager.GetSearchParameterHashForResourceType("Patient"));
+    }
+
     private static async IAsyncEnumerable<SourceEvent> Events(string resourceType = "Patient", string? expression = null)
     {
         await Task.CompletedTask;

@@ -359,9 +359,24 @@ session's evidence-base repair and must not be lost.**
   hard-codes via `rsp.BaseUri IS NULL`. #430 owns this work; do not re-derive it here.
 - `:identifier` is likewise **not** a missing-converter problem:
   [PR #421](https://github.com/brendankowitz/ignixa-fhir/pull/421) solves it with a derived token
-  search parameter (`{url}#identifier`) plus `ReferenceToTokenSearchValueConverter`, compiling to a
-  single `TokenSearchParam` seek with no schema, TVP, or stored-procedure change. Treat
-  `IdentifierToStringSearchValueConverter` as superseded rather than missing.
+  search parameter (`{url}#identifier`) whose expression is narrowed to
+  `ofType(Reference).identifier` (plus a `ofType(CodeableReference).reference` union, defensive for
+  custom/IG parameters — no shipped R5/R6 reference parameter needs it), so the selected elements are
+  ordinary `Identifier`s indexed through the existing Identifier→token conversion. There is no
+  `Reference`-to-token converter: an earlier revision of #421 added one, and it was wrong — converters
+  are looked up by element type and search value type alone, so it also answered for every declared
+  token parameter or composite component that selects a `Reference`, silently breaking
+  `DocumentReference-relationship`'s reference component. It compiles to a single `TokenSearchParam`
+  seek with no schema, TVP, or stored-procedure change. Treat `IdentifierToStringSearchValueConverter`
+  as superseded rather than missing. A type-filtered source parameter's `resolve() is X` test
+  (e.g. `clinical-patient`'s `Encounter.subject.where(resolve() is Patient)`) is rewritten for the
+  derived `:identifier` expression only to also accept `type = 'X'` /
+  `type = 'http://hl7.org/fhir/StructureDefinition/X'`, because `resolve()` needs
+  `Reference.reference` and a logical reference has none — see
+  `ReferenceIdentifierSearchParameterFactory.HonorReferenceType` and
+  `docs/features/search/investigations/reference-identifier-search.md`
+  ("Honoring `Reference.type` in type-filtered derived expressions"). The engine, `resolve()`, and
+  every source (non-derived) parameter's own expression are unaffected.
 - **The parity harness is structurally incapable of detecting any of this on its own**: it hands one
   converter-manager instance to both indexers (E2's original defect), so the only axis that is ever
   doubly evaluated is `Select` — a missing *converter* looks identical to "both sides agreed on

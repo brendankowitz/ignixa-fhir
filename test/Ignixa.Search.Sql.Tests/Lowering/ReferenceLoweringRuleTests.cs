@@ -1,4 +1,5 @@
 using Ignixa.Search.Expressions;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.SearchValues;
 using Ignixa.Search.Models;
 using Ignixa.Search.Sql.Ast;
@@ -272,6 +273,65 @@ public class ReferenceLoweringRuleTests
         var and = cte.Predicate.ShouldBeOfType<Predicate.And>();
         and.Left.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceTypeId");
         ContainsTypeIsNull(cte.Predicate).ShouldBeFalse("single-target must not admit null-typed rows.");
+    }
+
+    [Fact]
+    public void GivenATypeModifier_WhenLowered_ThenLowersTheTypedReferenceWithoutChangingItsPredicateShape()
+    {
+        // Arrange — the binder has already folded the type into the reference value; the modifier is redundant here.
+        var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var value = new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Patient", resourceId: "123");
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(SearchModifierCode.Type, "Patient"), value);
+        var context = new LeafContext(new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 77 },
+            new Dictionary<string, short> { ["Patient"] = 103 }));
+
+        // Act
+        var cte = ReferenceLoweringRule.Lower(predicate, value, context, 104);
+
+        // Assert — the existing shape remains BaseUri IS NULL AND TypeId = @p0 AND Id = @p1.
+        var outerAnd = cte.Predicate.ShouldBeOfType<Predicate.And>();
+        var innerAnd = outerAnd.Left.ShouldBeOfType<Predicate.And>();
+        innerAnd.Left.ShouldBeOfType<Predicate.IsNull>().Column.Column.ShouldBe("BaseUri");
+        innerAnd.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceTypeId");
+        outerAnd.Right.ShouldBeOfType<Predicate.Equal>().Column.Column.ShouldBe("ReferenceResourceId");
+    }
+
+    public static TheoryData<SearchModifierCode> UnimplementedModifiers() => new()
+    {
+        SearchModifierCode.Missing,
+        SearchModifierCode.Exact,
+        SearchModifierCode.Contains,
+        SearchModifierCode.Text,
+        SearchModifierCode.Not,
+        SearchModifierCode.Above,
+        SearchModifierCode.Below,
+        SearchModifierCode.Identifier,
+        SearchModifierCode.OfType,
+        SearchModifierCode.In,
+        SearchModifierCode.NotIn,
+    };
+
+    [Theory]
+    [MemberData(nameof(UnimplementedModifiers))]
+    public void GivenAnUnimplementedModifier_WhenLowered_ThenThrowsNamingTheModifier(SearchModifierCode modifier)
+    {
+        // Arrange — only Type is redundant after binding; degrading any other direct-API IR modifier to equality returns wrong rows.
+        var parameter = new SearchParameterInfo("subject", "subject", SearchParamType.Reference, new Uri("http://hl7.org/fhir/SearchParameter/Observation-subject"));
+        var value = new ReferenceSearchValue(ReferenceKind.Internal, baseUri: null!, resourceType: "Patient", resourceId: "123");
+        var predicate = new SearchParameterPredicateExpression(
+            parameter, SearchComparator.Eq, new SearchModifier(modifier), value);
+        var context = new LeafContext(new SymbolTable(
+            new Dictionary<string, short> { [parameter.Url.ToString()] = 77 },
+            new Dictionary<string, short> { ["Patient"] = 103 }));
+
+        // Act
+        var exception = Should.Throw<NotSupportedException>(() =>
+            ReferenceLoweringRule.Lower(predicate, value, context, 104));
+
+        // Assert
+        exception.Message.ShouldContain($":{modifier}");
     }
 
     private static bool ContainsTypeIsNull(Predicate predicate) => predicate switch
