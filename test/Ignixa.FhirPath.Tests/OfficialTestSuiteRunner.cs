@@ -1,4 +1,6 @@
 using System.Collections.Frozen;
+using System.Reflection;
+using System.Security.Cryptography;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Analysis;
 using Ignixa.FhirPath.Evaluation;
@@ -143,6 +145,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4TestCases = new(() => LoadTestCases("r4"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r4bTestCases = new(() => LoadTestCases("r4b"));
     private static readonly Lazy<IReadOnlyList<FhirPathTestCase>> _r5TestCases = new(() => LoadTestCases("r5"));
+    private static readonly Lazy<bool> _fhirTestCasesProvenanceVerified = new(VerifyFhirTestCasesProvenance);
 
     /// <summary>
     /// Official <c>invalid</c>-marked cases the engine does not yet signal an error for, keyed by test name
@@ -209,6 +212,7 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
     private static IReadOnlyList<FhirPathTestCase> LoadTestCases(string version)
     {
+        _ = _fhirTestCasesProvenanceVerified.Value;
         var testSuiteFilePath = Path.Combine(_projectRoot, "TestData", "fhir-test-cases", version, "fhirpath", $"tests-fhir-{version}.xml");
 
         if (!File.Exists(testSuiteFilePath))
@@ -218,6 +222,49 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
 
         return FhirPathTestSuiteParser.ParseTestSuite(testSuiteFilePath);
     }
+
+    private static bool VerifyFhirTestCasesProvenance()
+    {
+        var expectedVersion = GetFhirTestCasesMetadata("FhirTestCasesVersion");
+        var expectedHash = GetFhirTestCasesMetadata("FhirTestCasesArchiveSha256");
+        var testDataDirectory = Path.Combine(_projectRoot, "TestData");
+        var markerPath = Path.Combine(testDataDirectory, "fhir-test-cases", ".downloaded");
+        string[] expectedMarker =
+        [
+            $"packageVersion={expectedVersion}",
+            $"archiveSha256={expectedHash}",
+        ];
+
+        if (!File.Exists(markerPath) || !File.ReadAllLines(markerPath).SequenceEqual(expectedMarker, StringComparer.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"FHIR test cases provenance marker is missing or mismatched: {markerPath}. Delete TestData and rebuild to download fhir-test-cases {expectedVersion}.");
+        }
+
+        var archivePath = Path.Combine(testDataDirectory, "testcases.zip");
+        if (!File.Exists(archivePath))
+        {
+            throw new FileNotFoundException(
+                $"FHIR test cases archive is missing: {archivePath}. Delete TestData and rebuild to download fhir-test-cases {expectedVersion}.",
+                archivePath);
+        }
+
+        using var archive = File.OpenRead(archivePath);
+        var actualHash = Convert.ToHexString(SHA256.HashData(archive));
+        if (!string.Equals(actualHash, expectedHash, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"FHIR test cases archive hash mismatch. Expected {expectedHash}, got {actualHash}. Delete TestData and rebuild.");
+        }
+
+        return true;
+    }
+
+    private static string GetFhirTestCasesMetadata(string key) =>
+        typeof(OfficialTestSuiteRunner).Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .SingleOrDefault(attribute => string.Equals(attribute.Key, key, StringComparison.Ordinal))?.Value
+        ?? throw new InvalidOperationException($"Missing {key} assembly metadata.");
 
     public static IEnumerable<object[]> GetR4TestCases() => GetTestCasesForVersion("r4", _r4TestCases);
     public static IEnumerable<object[]> GetR4BTestCases() => GetTestCasesForVersion("r4b", _r4bTestCases);

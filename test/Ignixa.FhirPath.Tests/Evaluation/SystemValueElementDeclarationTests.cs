@@ -7,15 +7,16 @@
  */
 
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using Ignixa.Abstractions;
-using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.FhirPath.Evaluation;
-using Ignixa.SqlOnFhir.Evaluation;
 
 namespace Ignixa.FhirPath.Tests.Evaluation;
 
 /// <summary>
-/// Requires every <see cref="IElement"/> implementor in the three evaluator assemblies to carry a
+/// Requires every <see cref="IElement"/> implementor in the production Ignixa assemblies copied beside the
+/// test host to carry a
 /// recorded decision about whether it wraps a System value, and requires its
 /// <see cref="ISystemValueElement"/> declaration to match that decision.
 /// </summary>
@@ -25,8 +26,8 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// <see cref="SystemValueTypeMatchingTests"/> pin the wrappers their expressions happen to reach;
 /// removing <see cref="ISystemValueElement"/> from a wrapper no expression in the suite reaches leaves
 /// the whole suite green. That was measured on <c>DateTimeFunctions.PrimitiveElement</c> - the entire
-/// suite passed with the marker removed - and it is how six of eight producers came to be marked while
-/// a comment asserted the set was closed.
+/// suite passed with the marker removed - and it is why all eight producers now need an explicit
+/// decision rather than a comment asserting the set is closed.
 /// </para>
 /// <para>
 /// What this test does and does not do: it fails when a new <see cref="IElement"/> implementor appears
@@ -35,10 +36,9 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// it down here; the test only refuses to let the question go unanswered.
 /// </para>
 /// <para>
-/// Scope is the three assemblies that construct values during evaluation. Wrappers over a caller's
-/// resource tree - <c>SchemaAwareElement</c> in Ignixa.Serialization, <c>IgnixaElementAdapter</c> in the
-/// Firely extensions - are out of scope by construction: they carry a FHIR type from the schema and
-/// never a System one, so there is no decision to record.
+/// Scope is every production <c>Ignixa.*</c> assembly copied beside the test host. This closes the omission gap for a
+/// producer added outside the evaluator projects. Wrappers over a caller's resource tree are recorded as
+/// non-System values when they implement <see cref="IElement"/>.
 /// </para>
 /// </remarks>
 public class SystemValueElementDeclarationTests
@@ -73,6 +73,8 @@ public class SystemValueElementDeclarationTests
             ["Ignixa.SqlOnFhir.Evaluation.SqlOnFhirEvaluationVisitor+PrimitiveValueElement"] =
                 (true, "Carries the System values a ViewDefinition's column expressions produce."),
 
+            ["Ignixa.Serialization.SourceNodes.SchemaAwareElement"] =
+                (false, "Wraps a caller-supplied source node using schema metadata, so it carries the source's FHIR type rather than an engine-produced System value."),
             ["Ignixa.FhirPath.Evaluation.Functions.FunctionHelpers+QuantityElement"] =
                 (false, "Unmarked, and a known divergence rather than a settled classification. A FHIRPath quantity literal is a System.Quantity, so `1 'mg' is System.Quantity` and `1.toQuantity() is System.Quantity` returning false - measured on R4 and R5, with `1 'mg' is FHIR.Quantity` true - contradicts the specification's type model. The same divergence is already pinned from the other side in Parity/FirelyVersusIgnixaDifferentialTests, where Firely types `1 'mg'` as System.Quantity and Ignixa as Quantity. Deferred, not accepted: it reports InstanceType \"Quantity\", which is neither in SystemOnlyTypes nor in CanonicalSystemPrimitiveSpellings, so marking it would leave unqualified `is Quantity` and `ofType(Quantity)` alone while flipping `is System.Quantity` from false to true and `is FHIR.Quantity` from true to false. It would not change what type() reports: CollectionFunctions.Type() maps \"quantity\" to FHIR/Quantity inside its isSystemLiteral branch, which is exactly what the unmarked default already yields. Measured blast radius of marking it: one failing test in 5,831 - this entry."),
             ["Ignixa.FhirPath.Evaluation.Functions.CollectionFunctions+TypeInfoElement"] =
@@ -84,32 +86,31 @@ public class SystemValueElementDeclarationTests
         };
 
     /// <summary>
-    /// The assemblies that construct elements during evaluation, resolved through a type each one owns
-    /// so the reference cannot be dropped without a compile error.
+    /// The referenced or loaded production Ignixa assemblies. Metadata scanning lets the census inspect
+    /// assemblies copied beside the test host without requiring all of their dependencies to load.
     /// </summary>
-    private static IReadOnlyList<Assembly> ProducerAssemblies =>
-    [
-        typeof(FhirPathEvaluator).Assembly,
-        typeof(MappingEvaluator).Assembly,
-        typeof(SqlOnFhirEvaluator).Assembly,
-    ];
+    private static IReadOnlyList<string> ProducerAssemblyPaths =>
+        Directory.EnumerateFiles(AppContext.BaseDirectory, "Ignixa.*.dll")
+            .Where(path => !Path.GetFileNameWithoutExtension(path).EndsWith(".Tests", StringComparison.Ordinal))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToList();
 
     [Fact]
-    public void GivenTheEvaluatorAssemblies_WhenElementImplementorsAreReflected_ThenEachHasARecordedDecision()
+    public void GivenIgnixaAssemblies_WhenElementImplementorsAreReflected_ThenEachHasARecordedDecision()
     {
         // Arrange
         var recorded = Decisions.Keys.OrderBy(name => name, StringComparer.Ordinal).ToList();
 
         // Act
         var implemented = ElementImplementors()
-            .Select(type => type.FullName!)
+            .Select(element => element.FullName)
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToList();
 
         // Assert
         implemented.ShouldBe(
             recorded,
-            "every IElement implementor in these assemblies needs a recorded decision about whether it wraps a "
+            "every IElement implementor in the production Ignixa assemblies copied beside the test host needs a recorded decision about whether it wraps a "
             + "System value. Add the new type to SystemValueElementDeclarationTests.Decisions with a rationale, "
             + "and declare ISystemValueElement on it if the answer is yes. This is the check that catches the "
             + "producer nobody remembered, which is the failure that shipped twice.");
@@ -119,12 +120,12 @@ public class SystemValueElementDeclarationTests
     public void GivenARecordedDecision_WhenTheImplementorIsInspected_ThenItsDeclarationMatches()
     {
         // Arrange
-        var implementors = ElementImplementors().ToDictionary(type => type.FullName!, StringComparer.Ordinal);
+        var implementors = ElementImplementors().ToDictionary(element => element.FullName, StringComparer.Ordinal);
 
         // Act
         var mismatches = Decisions
-            .Where(entry => implementors.TryGetValue(entry.Key, out var type)
-                && typeof(ISystemValueElement).IsAssignableFrom(type) != entry.Value.IsSystemValue)
+            .Where(entry => implementors.TryGetValue(entry.Key, out var implementor)
+                && implementor.DeclaresSystemValue != entry.Value.IsSystemValue)
             .Select(entry => entry.Value.IsSystemValue
                 ? $"{entry.Key} is recorded as a System value but does not declare ISystemValueElement: {entry.Value.Rationale}"
                 : $"{entry.Key} declares ISystemValueElement but is recorded as not a System value: {entry.Value.Rationale}")
@@ -136,10 +137,70 @@ public class SystemValueElementDeclarationTests
             + "decision recorded here, one of the two is wrong and the System/FHIR namespace split is unreliable.");
     }
 
-    private static IEnumerable<Type> ElementImplementors() =>
-        ProducerAssemblies
-            .SelectMany(assembly => assembly.GetTypes())
-            .Where(type => type is { IsClass: true, IsAbstract: false }
-                && typeof(IElement).IsAssignableFrom(type)
-                && !type.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), inherit: false));
+    private static IEnumerable<(string FullName, bool DeclaresSystemValue)> ElementImplementors() =>
+        ProducerAssemblyPaths
+            .SelectMany(GetElementImplementors);
+
+    private static IEnumerable<(string FullName, bool DeclaresSystemValue)> GetElementImplementors(string assemblyPath)
+    {
+        using var stream = File.OpenRead(assemblyPath);
+        using var peReader = new PEReader(stream);
+        var metadata = peReader.GetMetadataReader();
+
+        foreach (var handle in metadata.TypeDefinitions)
+        {
+            var type = metadata.GetTypeDefinition(handle);
+            if ((type.Attributes & (TypeAttributes.Interface | TypeAttributes.Abstract)) != 0
+                || !ImplementsInterface(metadata, type, "IElement"))
+            {
+                continue;
+            }
+
+            yield return (
+                GetTypeFullName(metadata, handle),
+                ImplementsInterface(metadata, type, "ISystemValueElement"));
+        }
+    }
+
+    private static bool ImplementsInterface(MetadataReader metadata, TypeDefinition type, string interfaceName) =>
+        type.GetInterfaceImplementations()
+            .Select(handle => metadata.GetInterfaceImplementation(handle).Interface)
+            .Any(handle => InterfaceHasName(metadata, handle, interfaceName));
+
+    private static bool InterfaceHasName(MetadataReader metadata, EntityHandle handle, string interfaceName)
+    {
+        var (namespaceName, typeName) = GetTypeName(metadata, handle);
+        if (namespaceName == "Ignixa.Abstractions" && typeName == interfaceName)
+        {
+            return true;
+        }
+
+        return handle.Kind == HandleKind.TypeDefinition
+            && ImplementsInterface(metadata, metadata.GetTypeDefinition((TypeDefinitionHandle)handle), interfaceName);
+    }
+
+    private static (string NamespaceName, string TypeName) GetTypeName(MetadataReader metadata, EntityHandle handle) =>
+        handle.Kind switch
+        {
+            HandleKind.TypeDefinition => GetTypeName(metadata, metadata.GetTypeDefinition((TypeDefinitionHandle)handle)),
+            HandleKind.TypeReference => GetTypeName(metadata, metadata.GetTypeReference((TypeReferenceHandle)handle)),
+            _ => (string.Empty, string.Empty),
+        };
+
+    private static (string NamespaceName, string TypeName) GetTypeName(MetadataReader metadata, TypeDefinition type) =>
+        (metadata.GetString(type.Namespace), metadata.GetString(type.Name));
+
+    private static (string NamespaceName, string TypeName) GetTypeName(MetadataReader metadata, TypeReference type) =>
+        (metadata.GetString(type.Namespace), metadata.GetString(type.Name));
+
+    private static string GetTypeFullName(MetadataReader metadata, TypeDefinitionHandle handle)
+    {
+        var type = metadata.GetTypeDefinition(handle);
+        var declaringType = type.GetDeclaringType();
+        var typeName = metadata.GetString(type.Name);
+
+        return declaringType.IsNil
+            ? $"{metadata.GetString(type.Namespace)}.{typeName}"
+            : $"{GetTypeFullName(metadata, declaringType)}+{typeName}";
+    }
 }

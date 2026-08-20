@@ -106,6 +106,12 @@ Write focused, self-documenting methods. Avoid deep nesting, high cyclomatic com
 - Test behavior through public contracts rather than implementation details.
 - Add coverage for handlers, endpoints, edge cases, and version-specific behavior changed by the work.
 - Place tests in the matching `test/Ignixa.*.Tests` project.
+- Call a test a regression only when it fails at the base commit; an unchanged-behavior pin is a guard.
+- Verify regressions at the base commit, normally in a temporary worktree with the new test copied in.
+- Mutation-test guards: break the behavior they pin, observe the failure, then revert the mutation.
+- Run `git submodule update --init --recursive` before suites that use vendored fixtures; `Ignixa.SqlOnFhir.Tests` requires `sql-on-fhir-tests`.
+- `SystemValueElementDeclarationTests.Decisions` is a reflection census: every new production `IElement` producer needs a recorded classification and rationale.
+- Keep `MustCompile` tripwires for corpus rows expected to compile, so an un-compilable row cannot pass merely by being skipped.
 
 ## Documentation and Decisions
 

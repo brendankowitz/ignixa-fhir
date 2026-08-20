@@ -6,8 +6,6 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- FIRELYSDK5 denotes the Firely 5.x API shape, not a specific 5.x patch release. -->
-    <DefineConstants>$(DefineConstants);FIRELYSDK5</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

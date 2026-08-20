@@ -5,8 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <!-- FIRELYSDK5 denotes the Firely 5.x API shape, not a specific 5.x patch release. -->
-    <DefineConstants>$(DefineConstants);FIRELYSDK5</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -32,15 +30,14 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
 
-    <!--
-      Referenced only so SystemValueElementDeclarationTests can reflect over them. These are the two
-      other assemblies that define IElement wrappers around engine-produced values, and a marker
-      applied to six of eight producers is what this guard exists to prevent. Neither takes a
-      dependency on Hl7.Fhir or on Ignixa.Extensions.FirelySdk6, so neither disturbs the pinned
-      Firely 5.11.4 link-compile described below.
-    -->
+    <!-- Referenced only so the Decisions census can scan every current production assembly that may
+         introduce an IElement wrapper. The census itself scans all available Ignixa.* metadata. -->
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.TestScript\Ignixa.TestScript.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.DeId\Ignixa.DeId.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.NarrativeGenerator\Ignixa.NarrativeGenerator.csproj" />
   </ItemGroup>
 
   <!--
@@ -100,6 +97,7 @@
 
   <PropertyGroup>
     <FhirTestCasesVersion>1.7.46</FhirTestCasesVersion>
+    <FhirTestCasesArchiveSha256>D89CEC2BD3A22D9968AE91EFCB460B7FAA0802802840E7AC99A0A9D65B091302</FhirTestCasesArchiveSha256>
     <FhirTestCasesUrl>https://github.com/FHIR/fhir-test-cases/releases/download/$(FhirTestCasesVersion)/testcases.zip</FhirTestCasesUrl>
     <FhirTestCasesZip>$(MSBuildProjectDirectory)\TestData\testcases.zip</FhirTestCasesZip>
     <FhirTestCasesDir>$(MSBuildProjectDirectory)\TestData\fhir-test-cases</FhirTestCasesDir>
@@ -107,12 +105,22 @@
     <FhirTestCasesMarker>$(FhirTestCasesDir)\.downloaded</FhirTestCasesMarker>
   </PropertyGroup>
 
+  <ItemGroup>
+    <AssemblyMetadata Include="FhirTestCasesVersion" Value="$(FhirTestCasesVersion)" />
+    <AssemblyMetadata Include="FhirTestCasesArchiveSha256" Value="$(FhirTestCasesArchiveSha256)" />
+  </ItemGroup>
+
   <!-- Runs once in the outer (multi-targeting) build via DispatchToInnerBuilds so the parallel
        per-TFM inner builds don't race on the shared testcases.zip; BeforeBuild covers single-TFM builds. -->
   <Target Name="DownloadFhirTestCases" BeforeTargets="DispatchToInnerBuilds;BeforeBuild" Condition="!Exists('$(FhirTestCasesMarker)')">
     <Message Text="Downloading FHIR test cases from $(FhirTestCasesUrl)..." Importance="high" />
     <MakeDir Directories="$(MSBuildProjectDirectory)\TestData" />
     <DownloadFile SourceUrl="$(FhirTestCasesUrl)" DestinationFolder="$(MSBuildProjectDirectory)\TestData" DestinationFileName="testcases.zip" SkipUnchangedFiles="true" />
+    <GetFileHash Files="$(FhirTestCasesZip)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="FhirTestCasesArchiveHash" />
+    </GetFileHash>
+    <Error Condition="'%(FhirTestCasesArchiveHash.FileHash)' != '$(FhirTestCasesArchiveSha256)'"
+           Text="FHIR test cases archive hash mismatch. Expected $(FhirTestCasesArchiveSha256), got %(FhirTestCasesArchiveHash.FileHash)." />
 
     <Message Text="Extracting FHIR test cases to temporary location..." Importance="high" />
     <RemoveDir Directories="$(FhirTestCasesTempDir)" Condition="Exists('$(FhirTestCasesTempDir)')" />
@@ -127,7 +135,9 @@
     <Move SourceFiles="@(ExtractedFiles)" DestinationFolder="$(FhirTestCasesDir)\%(RecursiveDir)" />
 
     <RemoveDir Directories="$(FhirTestCasesTempDir)" />
-    <Touch Files="$(FhirTestCasesMarker)" AlwaysCreate="true" />
+    <WriteLinesToFile File="$(FhirTestCasesMarker)"
+                      Lines="packageVersion=$(FhirTestCasesVersion);archiveSha256=$(FhirTestCasesArchiveSha256)"
+                      Overwrite="true" />
     <Message Text="FHIR test cases downloaded and extracted successfully." Importance="high" />
   </Target>
 
