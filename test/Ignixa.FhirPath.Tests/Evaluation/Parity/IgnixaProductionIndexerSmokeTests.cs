@@ -7,10 +7,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
-public class IgnixaProductionIndexerTests
+public class IgnixaProductionIndexerSmokeTests
 {
     [Fact]
-    public void GivenAGeneratedObservation_WhenIndexed_ThenProductionIndexerProducesEntries()
+    public void GivenAGeneratedObservation_WhenSmokeIndexed_ThenProductionIndexerProducesEntries()
     {
         // Arrange
         var schema = new R4CoreSchemaProvider();

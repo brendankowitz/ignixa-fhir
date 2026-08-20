@@ -1181,6 +1181,7 @@ public class SchemaBasedFhirResourceFaker
             // Create the actual JSON element name (e.g., "deceased" + "Boolean" = "deceasedBoolean")
             var actualElementName = elementName + typeSuffix;
 
+            // A selected choice comes from this provider's own schema, so absence means inconsistent metadata.
             var actualElement = _schemaProvider.GetTypeDefinition(selectedType.Code)
                 ?? throw new InvalidOperationException(
                     $"FHIR choice type '{selectedType.Code}' has no schema definition.");

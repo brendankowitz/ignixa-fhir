@@ -17,6 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The parity reference projection reuses production converter construction and min/max behavior. -->
     <InternalsVisibleTo Include="Ignixa.FhirPath.Tests" />
     <ProjectReference Include="..\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
     <ProjectReference Include="..\Ignixa.Specification\Ignixa.Specification.csproj" />
