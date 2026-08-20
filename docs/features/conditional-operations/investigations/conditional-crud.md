@@ -1625,7 +1625,7 @@ curl -X DELETE "http://localhost:5000/Patient?_tag=http://example.org/tags|test&
 3. **⚠️ ID Conflict Confusion**
    - Client-provided IDs silently ignored in conditional create/update
    - May surprise developers unfamiliar with FHIR spec
-   - Mitigation: Log warnings, document behavior in CLAUDE.md
+   - Mitigation: Log warnings, document behavior in AGENTS.md
 
 4. **⚠️ Search Parameter Dependency**
    - Conditional operations only as good as search implementation
@@ -1659,7 +1659,7 @@ curl -X DELETE "http://localhost:5000/Patient?_tag=http://example.org/tags|test&
 | **Phase 4** | Conditional Patch | 4-6h | ✅ Query string routing, 0=404, 1=patch, multiple=error, tests |
 | **Phase 5** | Conditional Read | 4-6h | ✅ If-None-Match/If-Modified-Since headers, 304 responses, tests |
 | **Phase 6** | Bundle Integration | 8-12h | ✅ Transaction bundles support conditional ops, tests |
-| **Documentation** | CLAUDE.md, capability statement | 4h | ✅ Updated documentation, examples |
+| **Documentation** | AGENTS.md, capability statement | 4h | ✅ Updated documentation, examples |
 
 ### Phase 1: Conditional Create (8-12 hours) - PRIORITY 1
 
@@ -1758,7 +1758,7 @@ curl -X DELETE "http://localhost:5000/Patient?_tag=http://example.org/tags|test&
 ### Documentation Tasks (4 hours)
 
 **Tasks**:
-1. ✅ Update `CLAUDE.md` with conditional operations section
+1. ✅ Update `AGENTS.md` with conditional operations section
 2. ✅ Add examples to capability statement
 3. ✅ Create developer guide for conditional operations
 4. ✅ Add troubleshooting section (common errors)
@@ -1790,7 +1790,7 @@ curl -X DELETE "http://localhost:5000/Patient?_tag=http://example.org/tags|test&
    - [ADR-2523: Multi-Tenancy Architecture](../adr/adr-2523-phase20-multi-tenancy-data-partitioning.md)
 
 2. **Project Documentation**
-   - [CLAUDE.md](../../CLAUDE.md) - Project overview and coding standards
+   - [AGENTS.md](../../../../AGENTS.md) - Project overview and coding standards
    - [Bundle Processing Investigation](../investigations/bundle-processing-with-channels.md)
    - [Dynamic FHIR Routing](../investigations/dynamic-fhir-routing.md)
 

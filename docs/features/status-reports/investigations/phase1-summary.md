@@ -717,7 +717,7 @@ EXEC sp_spaceused 'dbo.PackageResource';
 ⏳ **Terminology Operations**: Database ready, handlers pending
 ❌ **Phase 2 Specialized Tables**: Not implemented (future)
 
-### CLAUDE.md Compliance
+### AGENTS.md Compliance
 ✅ **Layer Dependency Rules**: Domain → DataLayer (no violations)
 ✅ **One Type Per File**: All entities, models, interfaces in separate files
 ✅ **Async with CancellationToken**: All async methods include `cancellationToken` parameter

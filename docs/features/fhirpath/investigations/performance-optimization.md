@@ -1226,7 +1226,7 @@ public IEnumerable<ITypedElement> Children(string? name = null)
 **Cons**:
 - Uses Sprache parser (slower than Superpower used in `Ignixa.FhirPath`)
 - Requires `PocoNode` (POCO-based), incompatible with `ISourceNode` approach
-- **Known limitation** (CLAUDE.md:85): `PocoNode.ToPocoNode()` doesn't accept custom `IStructureDefinitionSummaryProvider`
+- **Known limitation**: `PocoNode.ToPocoNode()` doesn't accept custom `IStructureDefinitionSummaryProvider`
 - Would require rewriting entire serialization layer
 
 **Decision**: ❌ **Not viable** due to SDK architectural limitations and incompatibility with current ISourceNode-based design.

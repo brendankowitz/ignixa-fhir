@@ -790,7 +790,7 @@ The prototype phase (ADR-2501) is now **COMPLETE** with all critical and high-pr
 - **ADR-2500**: Master implementation roadmap (112 weeks, 26 investigations)
 - **ADR-2501**: Prototype phase details (Weeks 1-8, file-based storage, Medino)
 - **ADR-2502+**: Multi-tenancy, data partitioning investigations
-- **CLAUDE.md**: Project overview and architecture guide
+- **AGENTS.md**: Project overview and architecture guide
 - **docs/investigations/two-tier-validation-architecture.md**: Validation design
 - **docs/investigations/legacy-feature-analysis.md**: Feature migration plan
 

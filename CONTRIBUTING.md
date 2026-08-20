@@ -4,9 +4,7 @@ Thank you for your interest in contributing to the Ignixa FHIR Server! We welcom
 
 ## Getting Started
 
-1.  **Read the Docs**: specific development guides are available in:
-    *   [`CLAUDE.md`](CLAUDE.md): Detailed development guide, architectural rules, and checklists.
-    *   [`GEMINI.md`](GEMINI.md): Comprehensive guide for understanding, building, and developing the project.
+1.  **Read the Docs**: [`AGENTS.md`](AGENTS.md) is the development guide for architecture, coding standards, and validation.
 2.  **Fork and Clone**: Fork the repository and clone it locally.
 3.  **Branching**: Create a new branch for your feature or bug fix (e.g., `feature/awesome-thing` or `fix/annoying-bug`).
 

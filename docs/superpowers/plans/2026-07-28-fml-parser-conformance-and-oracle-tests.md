@@ -84,7 +84,7 @@ Defects 1-5 are in scope. Defect 6 is deferred (it is an `ImportResolver` concer
 
 ## Conventions you must follow
 
-From `AGENTS.md` / `CLAUDE.md` in this repo:
+From `AGENTS.md` in this repo:
 
 - One type per file. No `#region`.
 - Test naming: `GivenContext_WhenAction_ThenResult`. AAA layout. xUnit + Shouldly.
