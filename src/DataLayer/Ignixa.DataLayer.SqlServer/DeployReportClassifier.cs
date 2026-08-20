@@ -17,9 +17,17 @@ namespace Ignixa.DataLayer.SqlServer;
 /// through F") that needed a new entry every time a migration touched a not-yet-seen table --
 /// the DataIssue-alert signal is general and needs no future entries.
 /// <para>
-/// Fail-closed on anything it cannot read: an unrecognized element shape, or a DataIssue alert it
-/// cannot reconcile against the inline markers, yields <see cref="DeployClassification.Unclassifiable"/>
-/// rather than a silent "safe". That verdict is returned as data rather than thrown, so
+/// Fail-closed on report shapes it cannot read. Every element level is whitelisted -- the root's
+/// own children (and a repeat of any of them, since only the first would be inspected), the
+/// children of Operations, Operation and Item, the children of Alerts, the alert Name values
+/// themselves, and the children of a DataIssue alert -- as is a DataIssue alert that carries no
+/// Issue children, or one this classifier cannot reconcile against the inline markers. Each yields
+/// <see cref="DeployClassification.Unclassifiable"/> rather than a silent "safe". Known remaining
+/// gap: attribute names on Operation and Item are not validated, so a renamed <c>Name</c> or
+/// <c>Value</c> degrades the wording of a verdict without changing the verdict itself.
+/// </para>
+/// <para>
+/// That verdict is returned as data rather than thrown, so
 /// Ignixa.SchemaUpgrade.Cli -- whose entire purpose is letting an operator review and apply what
 /// the automatic path refused -- can still print the diff and prompt instead of dying on a stack trace.
 /// </para>
@@ -29,6 +37,28 @@ public static class DeployReportClassifier
     private static readonly XNamespace ReportNamespace = "http://schemas.microsoft.com/sqlserver/dac/DeployReport/2012/02";
 
     private static readonly string[] NeverDestructiveOperations = ["Create", "Refresh"];
+
+    // The alert kinds this classifier knows how to interpret. Anything else -- including an Alert
+    // with no Name attribute at all -- is Unclassifiable rather than ignored: filtering unknown
+    // kinds out silently is what let a renamed data-loss alert (or one carrying no Issue children)
+    // fall through to AutoSafe.
+    //
+    // This list is the COMPLETE set of DacFx's own highlight kinds, not a guess: it mirrors
+    // Microsoft.Data.Tools.Schema.Sql.Deployment.Reporting.PlanReportBuilder+HighlightAction, whose
+    // four members DacFx writes verbatim into Alert@Name. Only DataIssue gates the reconciliation
+    // below; the other three are informational highlights that DacFx emits during ordinary,
+    // non-destructive work (a real report captured from this project's own schema contains
+    // CreateClusteredIndex alongside DataMotion), so rejecting them would block safe deploys.
+    // If a future DacFx adds a member, this list must grow with it -- failing closed on the unknown
+    // name is the intended behaviour until someone classifies it.
+    private static readonly string[] KnownAlertNames =
+        ["DataIssue", "DataMotion", "DropClusteredIndex", "CreateClusteredIndex"];
+
+    // Alerts and Operations are the blocks this classifier reads. Warnings and Errors are the other
+    // root-level blocks DacFx emits; they are named here so an ordinary report carrying them is not
+    // mistaken for unrecognized shape drift, but Errors is then handled explicitly below rather
+    // than merely tolerated.
+    private static readonly string[] KnownRootChildren = ["Operations", "Alerts", "Warnings", "Errors"];
 
     private static readonly DeployReportClassification AutoSafeResult = DeployReportClassification.AutoSafe();
 
@@ -48,6 +78,46 @@ public static class DeployReportClassifier
         {
             return Unclassifiable(
                 $"Expected root element '{{{ReportNamespace}}}DeploymentReport', got '{root?.Name.ToString() ?? "<none>"}'.");
+        }
+
+        // Validate the ROOT's children too. Every level below this one is whitelisted, but the root
+        // was not, and that is where the guard mattered most: Element(name) returns null for a
+        // renamed or relocated block and only the FIRST match when a name repeats. So a future
+        // DacFx that renames <Alerts>, nests it under a wrapper, or emits a second <Operations>
+        // block made the data-loss cross-check silently vacuous -- and a report whose text says
+        // "the table is being dropped, data loss could occur" classified as AutoSafe.
+        var unrecognizedRootChildren = root.Elements()
+            .Where(e => !KnownRootChildren.Any(known => e.Name == ReportNamespace + known))
+            .Select(e => e.Name.ToString())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (unrecognizedRootChildren.Count > 0)
+        {
+            return Unclassifiable(
+                $"'{{{ReportNamespace}}}DeploymentReport' contains unrecognized child element(s): {string.Join(", ", unrecognizedRootChildren)}. " +
+                "A renamed or relocated block could carry a data-loss signal this classifier never inspected.");
+        }
+
+        foreach (var rootChildName in KnownRootChildren)
+        {
+            if (root.Elements(ReportNamespace + rootChildName).Count() > 1)
+            {
+                return Unclassifiable(
+                    $"'{{{ReportNamespace}}}DeploymentReport' contains more than one '{{{ReportNamespace}}}{rootChildName}' element; " +
+                    "only the first would be inspected, so the rest could hide a data-loss signal.");
+            }
+        }
+
+        // An errored report describes a deployment DacFx has already decided it cannot carry out.
+        // Recognizing the element (above) keeps it from reading as unknown shape drift, but this
+        // classifier must not then pronounce the diff safe to apply unattended -- the operator needs
+        // to see the error, which is exactly what Unclassifiable routes them to.
+        var errorsElement = root.Element(ReportNamespace + "Errors");
+        if (errorsElement is not null && errorsElement.HasElements)
+        {
+            return Unclassifiable(
+                $"The report contains a '{{{ReportNamespace}}}Errors' block, so DacFx already found the deployment " +
+                "cannot be carried out as described; it must be reviewed rather than applied unattended.");
         }
 
         var operationsElement = root.Element(ReportNamespace + "Operations");
@@ -160,6 +230,23 @@ public static class DeployReportClassifier
                     $"'{{{ReportNamespace}}}Alerts' contains unrecognized child element(s): {string.Join(", ", unrecognizedAlerts)}.");
             }
 
+            // Fail closed on alert KINDS, not just alert element shapes. The previous exact-match
+            // filter for "DataIssue" silently discarded every other Name -- including a missing one
+            // and including a future DacFx renaming the data-loss alert -- which put the whole
+            // reconciliation back on an unmaintained allow-list of exactly one string.
+            var unknownAlertKinds = alertsElement.Elements(ReportNamespace + "Alert")
+                .Select(a => a.Attribute("Name")?.Value)
+                .Where(name => name is null || !KnownAlertNames.Contains(name, StringComparer.Ordinal))
+                .Select(name => name ?? "<no Name attribute>")
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (unknownAlertKinds.Count > 0)
+            {
+                return Unclassifiable(
+                    $"'{{{ReportNamespace}}}Alerts' contains alert kind(s) this classifier cannot interpret: {string.Join(", ", unknownAlertKinds)}. " +
+                    "An unrecognized alert kind may carry a data-loss signal that was never reconciled.");
+            }
+
             foreach (var alert in alertsElement.Elements(ReportNamespace + "Alert")
                 .Where(a => string.Equals(a.Attribute("Name")?.Value, "DataIssue", StringComparison.Ordinal)))
             {
@@ -168,6 +255,16 @@ public static class DeployReportClassifier
                 {
                     return Unclassifiable(
                         $"A DataIssue alert contains unrecognized child element(s): {string.Join(", ", unrecognizedAlertChildren)}.");
+                }
+
+                // A DataIssue alert with no Issue children carries a data-loss signal with nothing
+                // to reconcile against. Contributing zero ids and falling through to the AutoSafe
+                // return below would be the same silent "safe" this whole block exists to prevent.
+                if (!alert.Elements(ReportNamespace + "Issue").Any())
+                {
+                    return Unclassifiable(
+                        "A DataIssue alert contains no 'Issue' child elements, so the data-loss signal it reports " +
+                        "could not be reconciled against any item.");
                 }
 
                 foreach (var issue in alert.Elements(ReportNamespace + "Issue"))

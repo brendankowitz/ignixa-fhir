@@ -60,15 +60,46 @@ COPY src/DataLayer/Ignixa.DataLayer.SqlServer/Ignixa.DataLayer.SqlServer.csproj 
 # to it only enforces build order (ReferenceOutputAssembly=false). It must be present in the restore
 # layer so `dotnet restore` can walk the graph and `dotnet publish --no-restore` can build it.
 COPY src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj src/DataLayer/Ignixa.DataLayer.SqlServer.Database/
+# Operator tooling. SchemaDeployer's own exception messages tell an operator to run this CLI when
+# automatic schema deployment is disabled or the pending diff isn't auto-safe, so the image has to
+# contain it or that instruction is unactionable for anyone running the container.
+COPY tools/Ignixa.SchemaUpgrade.Cli/Ignixa.SchemaUpgrade.Cli.csproj tools/Ignixa.SchemaUpgrade.Cli/
 
 # Restore dependencies for Web project only (excludes test/bench projects)
 # DisableGitVersion=true because .git folder is not available in Docker build context
 WORKDIR /src/src/Application/Ignixa.Web
 RUN dotnet restore Ignixa.Web.csproj /p:DisableGitVersion=true
 
+# The CLI's project graph (Ignixa.Application, Ignixa.DataLayer.SqlServer) is a strict subset of
+# Ignixa.Web's, so this restores only its one additional package (System.CommandLine).
+WORKDIR /src/tools/Ignixa.SchemaUpgrade.Cli
+RUN dotnet restore Ignixa.SchemaUpgrade.Cli.csproj /p:DisableGitVersion=true
+
 # Copy remaining source files
 WORKDIR /src
 COPY src/ src/
+COPY tools/Ignixa.SchemaUpgrade.Cli/ tools/Ignixa.SchemaUpgrade.Cli/
+
+# Publish the schema-upgrade CLI into the SAME output directory as the server, before the server
+# itself. Sharing the directory rather than nesting the CLI in its own is deliberate: the two
+# projects publish from one source tree in one build stage, and every package resolves through
+# Directory.Packages.props with CentralPackageTransitivePinningEnabled, so every assembly they share
+# is the identical file. Giving the CLI its own directory would duplicate ~170 MB of shared
+# dependencies (DacFx, Ignixa.Specification) to gain nothing. The CLI publishes first so the
+# server's own content files are written last and remain authoritative. Each app keeps its own
+# .deps.json/.runtimeconfig.json keyed by assembly name, so `dotnet Ignixa.SchemaUpgrade.Cli.dll`
+# resolves through the CLI's own dependency graph.
+WORKDIR /src/tools/Ignixa.SchemaUpgrade.Cli
+RUN dotnet publish Ignixa.SchemaUpgrade.Cli.csproj \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish \
+    /p:UseAppHost=false \
+    /p:DisableGitVersion=true \
+    /p:Version=${VERSION} \
+    /p:AssemblyVersion=${ASSEMBLY_VERSION} \
+    /p:FileVersion=${ASSEMBLY_VERSION} \
+    /p:InformationalVersion=${INFORMATIONAL_VERSION}
 
 # Build and publish with version information
 # DisableGitVersion=true because .git folder is not available in Docker build context
@@ -129,5 +160,7 @@ ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
 USER nonroot
 EXPOSE 8080
 
-# Entry point
+# Entry point. The schema-upgrade CLI is published alongside the server in the same directory and is
+# run on demand instead of this default:
+#   docker exec -w /app <container> dotnet Ignixa.SchemaUpgrade.Cli.dll --tenant-id <id>
 ENTRYPOINT ["dotnet", "Ignixa.Web.dll"]

@@ -289,4 +289,118 @@ public class DeployReportClassifierTests
         result.IsAutoSafe.ShouldBeTrue();
         result.Reasons.ShouldBeEmpty();
     }
+
+    // ---------------------------------------------------------------------------------------
+    // Root-level and alert-kind shape drift. Each case below was DEMONSTRATED to classify as
+    // AutoSafe -- with no reasons -- before these guards existed, while carrying an explicit
+    // data-loss signal. They are the exact fail-opens the earlier per-level guards missed by
+    // stopping one level short of the root and by filtering alert kinds on a single string.
+    // ---------------------------------------------------------------------------------------
+
+    // A future DacFx renaming or relocating <Alerts>: Element("Alerts") returns null, the whole
+    // reconciliation block is skipped, and the report used to come back AutoSafe.
+    [Fact]
+    public void GivenAnUnrecognizedRootChildElement_WhenClassified_ThenIsUnclassifiable()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><AlertsV2><Alert Name="DataIssue"><Issue Value="The table [dbo].[Resource] is being dropped, data loss could occur." Id="1" /></Alert></AlertsV2><Operations><Operation Name="Alter"><Item Value="[dbo].[Resource]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        var result = DeployReportClassifier.Classify(xml);
+
+        result.Outcome.ShouldBe(DeployClassification.Unclassifiable);
+        result.ReasonSummary.ShouldContain("AlertsV2");
+    }
+
+    // XContainer.Element returns only the FIRST match, so a second block is never inspected.
+    [Theory]
+    [InlineData("Alerts")]
+    [InlineData("Operations")]
+    public void GivenADuplicatedRootChildElement_WhenClassified_ThenIsUnclassifiable(string duplicatedName)
+    {
+        var extra = duplicatedName == "Alerts"
+            ? """<Alerts><Alert Name="DataIssue"><Issue Value="data loss could occur" Id="9" /></Alert></Alerts>"""
+            : """<Operations><Operation Name="Drop"><Item Value="[dbo].[Resource]" Type="SqlTable"><Issue Id="9" /></Item></Operation></Operations>""";
+
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts /><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations>{extra}</DeploymentReport>
+            """;
+
+        var result = DeployReportClassifier.Classify(xml);
+
+        result.Outcome.ShouldBe(DeployClassification.Unclassifiable);
+        result.ReasonSummary.ShouldContain(duplicatedName);
+    }
+
+    // A DataIssue alert carrying no Issue children contributes no ids to reconcile, which used to
+    // fall straight through to the AutoSafe return.
+    [Fact]
+    public void GivenADataIssueAlertWithNoIssueChildren_WhenClassified_ThenIsUnclassifiable()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts><Alert Name="DataIssue" /></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.Unclassifiable);
+    }
+
+    // An alert kind the classifier does not know -- a renamed data-loss alert, or one with no Name
+    // attribute at all -- must not be silently filtered out of the reconciliation.
+    [Theory]
+    [InlineData("""<Alert Name="PossibleDataLoss"><Issue Value="data loss could occur" Id="1" /></Alert>""")]
+    [InlineData("""<Alert Name="dataissue"><Issue Value="data loss could occur" Id="1" /></Alert>""")]
+    [InlineData("""<Alert><Issue Value="data loss could occur" Id="1" /></Alert>""")]
+    public void GivenAnUnrecognizedAlertKind_WhenClassified_ThenIsUnclassifiable(string alertXml)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts>{alertXml}</Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.Unclassifiable);
+    }
+
+    // The safe path must still be reachable. These are the OTHER three members of DacFx's
+    // HighlightAction enum -- informational highlights it emits during ordinary, non-destructive
+    // work. A real report captured from this project's schema contains CreateClusteredIndex, so
+    // rejecting these would block routine deploys rather than protect anything.
+    [Theory]
+    [InlineData("DataMotion")]
+    [InlineData("CreateClusteredIndex")]
+    [InlineData("DropClusteredIndex")]
+    public void GivenOnlyKnownInformationalAlertKinds_WhenClassified_ThenIsStillAutoSafe(string alertName)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Alerts><Alert Name="{alertName}"><Issue Value="informational" Id="1" /></Alert></Alerts><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.AutoSafe);
+    }
+
+    // A root-level <Warnings> block is ordinary DacFx output and must not read as shape drift.
+    [Fact]
+    public void GivenARootWarningsBlock_WhenClassified_ThenIsStillAutoSafe()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Warnings><Warning Value="something informational" /></Warnings><Operations><Operation Name="Alter"><Item Value="[dbo].[T]" Type="SqlTable" /></Operation></Operations></DeploymentReport>
+            """;
+        Outcome(xml).ShouldBe(DeployClassification.AutoSafe);
+    }
+
+    // An <Errors> block means DacFx already decided the deployment cannot proceed as described.
+    // Recognizing the element must not amount to pronouncing the diff safe.
+    [Fact]
+    public void GivenARootErrorsBlock_WhenClassified_ThenIsUnclassifiable()
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="utf-8"?><DeploymentReport xmlns="{ReportNs}"><Errors><Error Value="deployment blocked" /></Errors><Operations /></DeploymentReport>
+            """;
+        var result = DeployReportClassifier.Classify(xml);
+
+        result.Outcome.ShouldBe(DeployClassification.Unclassifiable);
+        result.ReasonSummary.ShouldContain("Errors");
+    }
+
+    // The enum's default value must never be the safe one: default(DeployClassification) is what a
+    // zero-initialised field or an uninitialised switch lands on.
+    [Fact]
+    public void GivenTheDefaultClassificationValue_ThenItIsNotAutoSafe()
+    {
+        default(DeployClassification).ShouldNotBe(DeployClassification.AutoSafe);
+    }
 }

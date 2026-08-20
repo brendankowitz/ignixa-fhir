@@ -128,7 +128,7 @@ public class SchemaDeployerDeploymentTests
         => new(
             new SingleTenantStore(connectionString),
             new FakeHostEnvironment { EnvironmentName = "Production" },
-            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled }),
+            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled, AllowIncompatiblePlatform = true }),
             new ThrowingSchemaVersionResolver(),
             NullLogger<SchemaDeployer>.Instance);
 

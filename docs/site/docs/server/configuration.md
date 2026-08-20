@@ -153,6 +153,80 @@ For local development with Windows Auth:
 }
 ```
 
+## SQL Server Schema Deployment
+
+The SQL Server data layer ships its schema as an embedded dacpac built from the
+`Ignixa.DataLayer.SqlServer.Database` SQL Database Project. The `SqlServer` section controls whether
+the server is allowed to apply that schema itself.
+
+```json
+{
+  "SqlServer": {
+    "AutomaticSchemaDeploymentEnabled": false
+  }
+}
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `AutomaticSchemaDeploymentEnabled` | `false` | Whether the app may apply schema changes itself. A deployment opts in rather than out |
+
+### When `AutomaticSchemaDeploymentEnabled` is `true`
+
+- **Brand-new tenant databases** are provisioned from the embedded dacpac and stamped with the
+  current schema version.
+- **Tenants behind the current schema version** are upgraded — but only when the pending diff
+  classifies as auto-safe.
+
+Both paths run with `BlockOnPossibleDataLoss` set explicitly, and every upgrade is gated by the
+deploy-report classifier described below. This setting grants permission to apply a change that has
+already been judged safe; it never bypasses that judgement.
+
+:::note
+This is **not** a startup action. The schema check runs on **first repository access for a given
+tenant**, inside the per-tenant factory the data layer caches. A tenant that is never addressed is
+never touched, and a schema failure surfaces as a failure of the first request against that tenant
+rather than as a failed startup.
+:::
+
+### When `AutomaticSchemaDeploymentEnabled` is `false` (default)
+
+Both cases throw instead, and the exception names the remedy:
+
+- An **uninitialized** tenant database reports that it is not initialized and directs you to publish
+  the dacpac (`sqlpackage /Action:Publish`) before starting the app, or to enable automatic
+  deployment.
+- A tenant **behind the current version** reports that it is behind and directs you to the
+  [schema-upgrade CLI](/docs/server/schema-upgrade-cli), or to enable automatic deployment.
+
+A tenant that is already at the current schema version is unaffected either way — the version check
+returns before the setting is consulted.
+
+### The auto-safe gate
+
+Before applying any upgrade, the server generates a DacFx deploy report for the pending diff and
+classifies it. Only a diff classified **auto-safe** is applied automatically. A diff DacFx flags as a
+data issue is classified **unsafe**; a report whose shape the classifier cannot read is classified
+**unclassifiable**. Both refuse, and both fail closed — an unreadable report is never treated as
+safe.
+
+Purely additive changes (a new nullable column, a canonicalization-only default rewrite) carry no
+data-issue marker and classify as auto-safe. Anything DacFx flags — a dropped column, a table
+rebuild that could lose rows — does not, and requires an operator to review and apply it explicitly
+with the CLI.
+
+### Database creation
+
+Automatic deployment applies *schema*; it does not create the database except in `Development`,
+where the server creates an empty database if it cannot connect to one. In every other environment
+the tenant database must already exist before the first request for that tenant arrives.
+
+### Environment variable override
+
+```bash
+export SqlServer__AutomaticSchemaDeploymentEnabled=true
+```
+
 ## Blob Storage
 
 Configure blob storage for bulk import/export operations:
@@ -459,6 +533,9 @@ export BlobStorage__StorageAccountUri="https://account.blob.core.windows.net"
 
 # DurableTask
 export DurableTask__Provider=SqlServer
+
+# Automatic SQL Server schema deployment (see "SQL Server Schema Deployment")
+export SqlServer__AutomaticSchemaDeploymentEnabled=false
 ```
 
 ## Docker/Container Deployment
@@ -509,6 +586,9 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
       "TaskHubName": "ignixa"
     }
   },
+  "SqlServer": {
+    "AutomaticSchemaDeploymentEnabled": false
+  },
   "Tenants": {
     "Mode": "Isolated",
     "Configurations": [
@@ -544,5 +624,6 @@ Set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` when behind a reverse proxy (App 
 ## Next Steps
 
 - [Server Architecture](/docs/server/architecture) - Understand the internal design
+- [Schema Upgrade CLI](/docs/server/schema-upgrade-cli) - Apply schema changes the server refuses to auto-apply
 - [Security Configuration](/docs/server/security/authentication) - Set up authentication
 - [Multi-Tenancy](/docs/server/multi-tenancy) - Configure tenant isolation

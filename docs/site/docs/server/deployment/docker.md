@@ -121,8 +121,42 @@ volumes:
 | `BlobStorage__Provider` | `Azure` or `Local` |
 | `AzureBlobStorage__ConnectionString` | Azure Storage connection string |
 | `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | Set `true` behind reverse proxy |
+| `SqlServer__AutomaticSchemaDeploymentEnabled` | Allow the server to deploy and upgrade tenant schema itself (default `false`). See the note in [Database Schema](#database-schema) about box SQL Server targets |
 
 See [Configuration](/docs/server/configuration) for all options.
+
+## Database Schema
+
+The tenant database must contain the Ignixa schema before the first request for that tenant is
+served. By default the server will not create it — `SqlServer__AutomaticSchemaDeploymentEnabled` is
+`false`, so an uninitialized or out-of-date tenant database fails the request with an error naming
+the remedy. See
+[SQL Server Schema Deployment](/docs/server/configuration#sql-server-schema-deployment).
+
+:::note Target platform
+The schema is built for **Azure SQL Database**, which is a distinct DacFx target platform from a
+box SQL Server (including the `mcr.microsoft.com/mssql/server` image in the compose file above).
+When the server runs as `Production` against a box SQL Server, automatic deployment is refused on
+platform grounds even with `SqlServer__AutomaticSchemaDeploymentEnabled` set to `true` — this is
+deliberate, and there is no configuration setting that overrides it. Apply the schema with the
+[Schema Upgrade CLI](/docs/server/schema-upgrade-cli) using `--allow-incompatible-platform`
+instead. Non-production hosts (for example `ASPNETCORE_ENVIRONMENT=Development`) allow it
+automatically, which is what local development and the test containers rely on.
+:::
+
+The schema-upgrade CLI is published into this image alongside the server, so you can act on that
+error from inside the running container:
+
+```bash
+docker exec -w /app ignixa dotnet Ignixa.SchemaUpgrade.Cli.dll --tenant-id 1
+```
+
+The container's environment variables — including the connection string you passed with `-e` — are
+inherited by `docker exec`, so the tool resolves the same tenant configuration the server is using.
+Against a box SQL Server (the `mssql/server` image above, or local development) add
+`--allow-incompatible-platform`: the schema targets Azure SQL Database.
+
+See [Schema Upgrade CLI](/docs/server/schema-upgrade-cli) for every option and its exit codes.
 
 ## Health Check
 
@@ -134,4 +168,5 @@ curl http://localhost:8080/health/check
 ## Related
 
 - [Configuration](/docs/server/configuration)
+- [Schema Upgrade CLI](/docs/server/schema-upgrade-cli)
 - [Azure Deployment](/docs/server/deployment/azure)

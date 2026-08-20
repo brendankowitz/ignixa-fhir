@@ -128,11 +128,18 @@ public class SchemaDeployerUpgradeTests
         return (int)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
+    /// <summary>
+    /// The schema targets Azure SQL Database (see the .sqlproj's DSP), so publishing it to the
+    /// box SQL Server container these tests run against is a platform mismatch DacFx blocks by
+    /// default. Production never needs this -- it deploys Azure-to-Azure.
+    /// </summary>
+    private static DacDeployOptions TestDeployOptions() => new() { AllowIncompatiblePlatform = true };
+
     private static SchemaDeployer CreateDeployer(string connectionString, bool automaticSchemaDeploymentEnabled = true)
         => new(
             new SingleTenantStore(connectionString),
             new FakeHostEnvironment { EnvironmentName = "Production" },
-            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled }),
+            Options.Create(new SqlServerOptions { AutomaticSchemaDeploymentEnabled = automaticSchemaDeploymentEnabled, AllowIncompatiblePlatform = true }),
             new SchemaVersionResolver(new SingleTenantStore(connectionString), NullLogger<SchemaVersionResolver>.Instance),
             NullLogger<SchemaDeployer>.Instance);
 
@@ -177,10 +184,17 @@ public class SchemaDeployerUpgradeTests
     // itself -- a real schema gap, not a synthetic fixture, used to prove the upgrade *mechanism*
     // works, not a genuine version-1-to-version-2 transition (none exists yet).
     //
-    // To regenerate: delete the terminology .sql files and Tables/SchemaVersion.sql from a scratch
-    // copy of Ignixa.DataLayer.SqlServer.Database, build it --configuration Release, and copy the
-    // resulting .dacpac here. (Deliberately described by content rather than by a commit hash: this
-    // branch has been rebased, so any hash cited here would not survive.)
+    // To regenerate: delete Tables/Term*.sql and Tables/SchemaVersion.sql from a scratch copy of
+    // Ignixa.DataLayer.SqlServer.Database, build it --configuration Release, and copy the resulting
+    // .dacpac here. (Deliberately described by content rather than by a commit hash: this branch
+    // has been rebased, so any hash cited here would not survive.)
+    //
+    // The scratch copy MUST keep the real project's <DSP>. The dacpac records its target platform,
+    // and DacFx refuses to publish across a platform mismatch unless explicitly allowed -- a
+    // fixture built against a different target than the project fails at deploy time with
+    // DeploymentCompatibilityException rather than testing anything. Verify after regenerating:
+    // the DspName in the dacpac's model.xml must match the .sqlproj's DSP
+    // (Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider).
     private const string OldDacpacFixtureFileName = "phase-b-pre-task9-schema.dacpac";
 
     [SkippableFact]
@@ -202,7 +216,7 @@ public class SchemaDeployerUpgradeTests
             using (var oldPackage = DacPackage.Load(oldDacpacStream))
             {
                 var oldDacServices = new DacServices(connectionString);
-                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, cancellationToken: CancellationToken.None);
+                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, options: TestDeployOptions(), cancellationToken: CancellationToken.None);
             }
 
             var tableNamesAfterOldDeploy = await GetTableNamesAsync(connectionString, CancellationToken.None);
@@ -258,7 +272,7 @@ public class SchemaDeployerUpgradeTests
             using (var oldPackage = DacPackage.Load(oldDacpacStream))
             {
                 var oldDacServices = new DacServices(connectionString);
-                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, cancellationToken: CancellationToken.None);
+                oldDacServices.Deploy(oldPackage, databaseName, upgradeExisting: true, options: TestDeployOptions(), cancellationToken: CancellationToken.None);
             }
 
             var deployer = CreateDeployer(connectionString, automaticSchemaDeploymentEnabled: false);

@@ -19,12 +19,14 @@ internal static class Program
         var tenantIdOption = new Option<int>("--tenant-id") { Required = true, Description = "The tenant ID to upgrade." };
         var confirmOption = new Option<bool>("--confirm") { Description = "Apply the upgrade without an interactive prompt (for scripted/CI use)." };
         var allowDataLossOption = new Option<bool>("--allow-data-loss") { Description = "Permit the deploy to proceed even when SqlPackage/DacFx would otherwise block it as possibly data-lossy. Required to apply diffs flagged unsafe by DeployReportClassifier." };
+        var allowIncompatiblePlatformOption = new Option<bool>("--allow-incompatible-platform") { Description = "Permit the deploy to proceed when the target server's platform differs from the dacpac's target platform. The schema targets Azure SQL Database, so this is required when deploying to a box SQL Server (local development, on-premises, or a test container)." };
         var configOption = new Option<string>("--config") { Description = "Path to a JSON configuration file with tenant connection settings. Defaults to appsettings.json in the current working directory.", DefaultValueFactory = _ => "appsettings.json" };
 
         var rootCommand = new RootCommand("Reviews and applies a pending schema upgrade for a tenant database that SchemaDeployer's automatic path refused.");
         rootCommand.Options.Add(tenantIdOption);
         rootCommand.Options.Add(confirmOption);
         rootCommand.Options.Add(allowDataLossOption);
+        rootCommand.Options.Add(allowIncompatiblePlatformOption);
         rootCommand.Options.Add(configOption);
 
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -33,6 +35,7 @@ internal static class Program
                 TenantId: parseResult.GetValue(tenantIdOption),
                 AutoConfirm: parseResult.GetValue(confirmOption),
                 AllowDataLoss: parseResult.GetValue(allowDataLossOption),
+                AllowIncompatiblePlatform: parseResult.GetValue(allowIncompatiblePlatformOption),
                 ConfigPath: parseResult.GetValue(configOption) ?? "appsettings.json");
 
             return await RunAsync(options, Console.In, Console.Out, cancellationToken);
@@ -47,7 +50,7 @@ internal static class Program
         TextWriter output,
         CancellationToken cancellationToken)
     {
-        var (tenantId, autoConfirm, allowDataLoss, configPath) = options;
+        var (tenantId, autoConfirm, allowDataLoss, allowIncompatiblePlatform, configPath) = options;
 
         var configuration = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
@@ -67,7 +70,16 @@ internal static class Program
         var databaseName = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
         var dacServices = new DacServices(connectionString);
 
-        var deployReportXml = dacServices.GenerateDeployReport(package, databaseName, cancellationToken: cancellationToken);
+        // One options object for both the report and the deploy: a report generated under
+        // different options describes a different operation than the one that will actually run.
+        var deployOptions = new DacDeployOptions
+        {
+            BlockOnPossibleDataLoss = !allowDataLoss,
+            AllowIncompatiblePlatform = allowIncompatiblePlatform,
+        };
+
+        var deployReportXml = dacServices.GenerateDeployReport(
+            package, databaseName, options: deployOptions, cancellationToken: cancellationToken);
         output.WriteLine($"Pending schema diff for tenant {tenantId} ({databaseName}):");
         output.WriteLine(deployReportXml);
         output.WriteLine();
@@ -100,7 +112,6 @@ internal static class Program
         // (exit 1) -- an operator who sees that after a destructive --allow-data-loss run would
         // reasonably conclude their change didn't land and re-run it. Report the partial state
         // explicitly with its own exit code.
-        var deployOptions = new DacDeployOptions { BlockOnPossibleDataLoss = !allowDataLoss };
         var result = await SchemaDeployer.DeployAndStampAsync(
             dacServices, package, databaseName, connectionString, deployOptions,
             SchemaVersionConstants.CurrentVersion, cancellationToken);
@@ -143,4 +154,4 @@ internal static class Program
 /// positional argument transposition (swapping "skip the confirmation prompt" with "permit data
 /// loss") is a compile error instead of a silent, behavior-changing bug.
 /// </summary>
-internal sealed record CliUpgradeOptions(int TenantId, bool AutoConfirm, bool AllowDataLoss, string ConfigPath);
+internal sealed record CliUpgradeOptions(int TenantId, bool AutoConfirm, bool AllowDataLoss, bool AllowIncompatiblePlatform, string ConfigPath);

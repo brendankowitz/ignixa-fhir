@@ -4,6 +4,8 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
@@ -37,6 +39,8 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly ISchemaDeployer _schemaDeployer;
     private readonly string _environment;
     private readonly ConcurrentDictionary<int, Lazy<TenantServiceFactory>> _factoryCache;
+    private readonly ConcurrentDictionary<int, (DateTimeOffset Until, ExceptionDispatchInfo Error)> _failureCooldowns;
+    private readonly TimeSpan _failureCooldown;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
     /// <summary>
@@ -61,13 +65,18 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// <param name="multiTenantCache">Singleton multi-tenant cache for search index reference data.</param>
     /// <param name="schemaDeployer">Deploys the SSDT-built schema to brand-new, empty tenant databases.</param>
     /// <param name="environment">The environment name (e.g., Development, Production).</param>
+    /// <param name="failureCooldown">
+    /// How long a failed factory construction short-circuits subsequent attempts for the same
+    /// tenant. Defaults to 5 seconds. Pass <see cref="TimeSpan.Zero"/> to retry immediately.
+    /// </param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
         ILoggerFactory loggerFactory,
         RecyclableMemoryStreamManager memoryStreamManager,
         MultiTenantSearchIndexCache multiTenantCache,
         ISchemaDeployer schemaDeployer,
-        string environment = "Production")
+        string environment = "Production",
+        TimeSpan? failureCooldown = null)
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
@@ -75,7 +84,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
         _schemaDeployer = schemaDeployer ?? throw new ArgumentNullException(nameof(schemaDeployer));
         _environment = environment;
+        _failureCooldown = failureCooldown ?? TimeSpan.FromSeconds(5);
         _factoryCache = new ConcurrentDictionary<int, Lazy<TenantServiceFactory>>();
+        _failureCooldowns = new ConcurrentDictionary<int, (DateTimeOffset, ExceptionDispatchInfo)>();
         _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
 
@@ -136,6 +147,19 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
             return MaterializeOrEvict(tenantId, cachedFactory);
         }
 
+        // A failed construction is evicted so it can be retried -- but the dominant failure here is
+        // NOT transient: UpgradeIfNeededAsync throws whenever the pending schema diff is Unsafe or
+        // Unclassifiable, which persists until an operator runs the CLI. Without a cooldown, every
+        // request against such a tenant re-resolves the connection string, re-probes emptiness,
+        // re-reads the schema version, and regenerates a full DacFx deploy report (a model
+        // comparison of ~48 tables and ~78 procedures) before throwing the same error again --
+        // turning a mis-provisioned tenant into a self-inflicted load problem on both the app and
+        // the SQL instance. Fail fast for a short window instead, then allow a genuine retry.
+        if (TryGetFailureCooldown(tenantId, out var recentFailure))
+        {
+            recentFailure.Throw();
+        }
+
         // Get tenant configuration
         var tenantConfig = await _tenantStore.GetTenantConfigurationAsync(tenantId, ct);
 
@@ -192,8 +216,13 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // start under load) cannot race CreateServiceFactory's schema-provisioning section --
         // ConcurrentDictionary.GetOrAdd's value-factory delegate is NOT guaranteed to run only
         // once per key under concurrent callers, and CreateServiceFactory's DeployIfEmptyAsync
-        // issues a non-idempotent CREATE DATABASE. Lazy<T> guarantees the factory body itself
-        // executes exactly once even if multiple threads call .Value before the first completes.
+        // issues a non-idempotent CREATE DATABASE.
+        //
+        // Precisely: Lazy<T> guarantees the factory body executes at most once PER LAZY INSTANCE.
+        // That is not the same as once per tenant for all time -- MaterializeOrEvict below
+        // replaces the instance after a failed attempt, so a later caller legitimately starts a
+        // fresh attempt. The guarantee that protects the non-idempotent deploy is therefore
+        // "no two constructions for a tenant ever overlap", not "only ever one construction".
         var lazyFactory = _factoryCache.GetOrAdd(
             tenantId,
             _ => new Lazy<TenantServiceFactory>(
@@ -214,16 +243,49 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     {
         try
         {
-            return lazyFactory.Value;
+            var factory = lazyFactory.Value;
+
+            // A success clears any cooldown left by an earlier attempt, so a tenant that recovers
+            // is not held back by a stale record.
+            _failureCooldowns.TryRemove(tenantId, out _);
+            return factory;
         }
-        catch
+        catch (Exception ex)
         {
             // TryRemove's KeyValuePair overload removes only if the cached value is still this
             // exact Lazy instance (Lazy<T> doesn't override Equals, so this is reference equality),
             // so a newer successful entry from a concurrent retry is never discarded.
             _factoryCache.TryRemove(new KeyValuePair<int, Lazy<TenantServiceFactory>>(tenantId, lazyFactory));
+
+            if (_failureCooldown > TimeSpan.Zero)
+            {
+                _failureCooldowns[tenantId] = (DateTimeOffset.UtcNow + _failureCooldown, ExceptionDispatchInfo.Capture(ex));
+            }
+
             throw;
         }
+    }
+
+    /// <summary>
+    /// Returns the recorded failure for <paramref name="tenantId"/> when its cooldown has not yet
+    /// elapsed. An expired record is removed so the next caller performs a real attempt.
+    /// </summary>
+    private bool TryGetFailureCooldown(int tenantId, [NotNullWhen(true)] out ExceptionDispatchInfo? error)
+    {
+        error = null;
+        if (!_failureCooldowns.TryGetValue(tenantId, out var recorded))
+        {
+            return false;
+        }
+
+        if (DateTimeOffset.UtcNow >= recorded.Until)
+        {
+            _failureCooldowns.TryRemove(tenantId, out _);
+            return false;
+        }
+
+        error = recorded.Error;
+        return true;
     }
 
     /// <summary>
@@ -327,6 +389,14 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         {
             logger.LogInformation("Ensuring database schema is deployed for tenant {TenantId}...", tenantId);
 
+            // CancellationToken.None is deliberate here, not an oversight. This runs inside the
+            // shared Lazy<TenantServiceFactory> above, whose body is observed by EVERY concurrent
+            // caller for this tenant. Threading the calling request's token in would mean one
+            // client disconnecting cancels the shared construction and faults every other caller
+            // waiting on the same Lazy -- turning a single abandoned request into a burst of
+            // failures for unrelated ones. A shutdown-scoped token (IHostApplicationLifetime's
+            // ApplicationStopping) would be the correct thing to honour here; wiring one in is a
+            // constructor/DI change tracked separately.
             _schemaDeployer.DeployIfEmptyAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
             logger.LogInformation("Database schema deployment completed for tenant {TenantId}", tenantId);
 

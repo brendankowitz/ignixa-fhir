@@ -83,11 +83,10 @@ public sealed class SchemaDeployer : ISchemaDeployer
         // pre-provisioned by ops), so upgradeExisting: false would throw
         // DacServicesException unconditionally, even against an empty target. The actual
         // safety gate is the IsDatabaseEmptyAsync check above, which returns before this
-        // line runs if the database already has schema -- matching the old
-        // DatabaseInitializer's historical safety model (a single emptiness check
-        // immediately before acting, with no deeper DacFx-level backstop).
+        // line runs if the database already has schema, backed by the explicit
+        // BlockOnPossibleDataLoss in CreateDeployOptions.
         var result = await DeployAndStampAsync(
-            dacServices, package, databaseName, connectionString, deployOptions: null,
+            dacServices, package, databaseName, connectionString, CreateDeployOptions(),
             SchemaVersionConstants.CurrentVersion, cancellationToken);
         if (result.Outcome == SchemaDeployOutcome.AppliedButVersionStampFailed)
         {
@@ -139,7 +138,10 @@ public sealed class SchemaDeployer : ISchemaDeployer
         var databaseName = new SqlConnectionStringBuilder(connectionString).InitialCatalog;
         var dacServices = new DacServices(connectionString);
 
-        var deployReportXml = dacServices.GenerateDeployReport(package, databaseName, cancellationToken: cancellationToken);
+        var deployOptions = CreateDeployOptions();
+
+        var deployReportXml = dacServices.GenerateDeployReport(
+            package, databaseName, options: deployOptions, cancellationToken: cancellationToken);
 
         var classification = DeployReportClassifier.Classify(deployReportXml);
         if (!classification.IsAutoSafe)
@@ -152,7 +154,7 @@ public sealed class SchemaDeployer : ISchemaDeployer
         }
 
         var result = await DeployAndStampAsync(
-            dacServices, package, databaseName, connectionString, deployOptions: null,
+            dacServices, package, databaseName, connectionString, deployOptions,
             SchemaVersionConstants.CurrentVersion, cancellationToken);
         if (result.Outcome == SchemaDeployOutcome.AppliedButVersionStampFailed)
         {
@@ -163,6 +165,40 @@ public sealed class SchemaDeployer : ISchemaDeployer
             "Upgraded tenant {TenantId}'s database from schema version {OldVersion} to {NewVersion}.",
             tenantId, currentVersion, SchemaVersionConstants.CurrentVersion);
     }
+
+    /// <summary>
+    /// The deploy options both automatic paths use, for the deploy itself and for the report
+    /// generated to classify it -- the report must be produced under the same options it will be
+    /// applied under, or it describes a different operation than the one that runs.
+    /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
+    /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
+    /// meant any later change that started passing options here would have dropped it silently.
+    /// </summary>
+    /// <summary>
+    /// The deploy options both automatic paths use, for the deploy itself and for the report
+    /// generated to classify it -- the report must be produced under the same options it will be
+    /// applied under, or it describes a different operation than the one that runs.
+    /// <c>BlockOnPossibleDataLoss</c> is set explicitly rather than left to DacFx's default: it is
+    /// the last backstop behind <see cref="DeployReportClassifier"/>, and inheriting it implicitly
+    /// meant any later change that started passing options here would have dropped it silently.
+    /// <para>
+    /// Internal rather than private so the environment predicate can be tested directly. It is
+    /// easy to get subtly wrong -- an earlier revision keyed on <c>IsDevelopment()</c>, which
+    /// silently excluded the E2E host (environment "Test") and would have failed every E2E run.
+    /// </para>
+    /// </summary>
+    internal DacDeployOptions CreateDeployOptions() => new()
+    {
+        BlockOnPossibleDataLoss = true,
+        // The dacpac targets Azure SQL Database, so a box SQL Server is the incompatible side.
+        // Permissive for every non-Production host because they all run box SQL Server: local
+        // development and docker-compose use mssql/server:2022, and the E2E test host runs as
+        // environment "Test" against that same container. Production stays strict -- a production
+        // deploy is Azure-to-Azure and does not need this, so if it ever did, the target is not a
+        // platform this schema is built for and the deploy should fail loudly rather than be
+        // forced through.
+        AllowIncompatiblePlatform = !_environment.IsProduction() || _options.Value.AllowIncompatiblePlatform,
+    };
 
     private static async Task<bool> CanConnectAsync(string connectionString, CancellationToken cancellationToken)
     {
@@ -247,7 +283,9 @@ public sealed class SchemaDeployer : ISchemaDeployer
     /// auto-apply -- specifically so a deploy is never left unstamped by a caller forgetting a
     /// separate second call. <paramref name="deployOptions"/> is passed through to
     /// <see cref="DacServices.Deploy"/> when non-null (e.g. the CLI's <c>--allow-data-loss</c>);
-    /// null uses DacFx's own defaults, matching this class's two automatic paths. A stamp failure
+    /// null uses DacFx's own defaults. Both automatic paths in this class pass explicit options
+    /// from <c>CreateDeployOptions</c> rather than null, so their data-loss backstop is stated
+    /// rather than inherited. A stamp failure
     /// does not roll back the deploy -- the schema change already committed -- so it is reported
     /// via the returned result's <see cref="SchemaDeployOutcome.AppliedButVersionStampFailed"/>
     /// rather than thrown, letting each caller decide how loudly to surface a database that is
@@ -276,8 +314,13 @@ public sealed class SchemaDeployer : ISchemaDeployer
             await StampSchemaVersionAsync(connectionString, version, cancellationToken);
             return new SchemaDeployResult(SchemaDeployOutcome.Applied);
         }
-        catch (Exception ex)
+        catch (SqlException ex)
         {
+            // Deliberately narrow. An unfiltered catch here also swallowed
+            // OperationCanceledException -- reporting a cancelled stamp as a *failed* one -- along
+            // with any programmer error, both of which must surface rather than be relabelled as a
+            // recognised, recoverable outcome the CLI then reports as "only the version record is
+            // missing".
             return new SchemaDeployResult(SchemaDeployOutcome.AppliedButVersionStampFailed, ex);
         }
     }

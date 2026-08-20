@@ -104,12 +104,17 @@ jobs:
       # sqlpackage can generate a report against it), not a change-detection signal -- it cannot
       # demonstrate DeployReportClassifier catching anything. A "diff against base branch's
       # deployed schema" version is a deliberate, tracked follow-up, not an oversight.
+      # AllowIncompatiblePlatform: the .sqlproj targets Azure SQL Database
+      # (SqlAzureV12DatabaseSchemaProvider) because that is the production deployment target, while
+      # this container is a box SQL Server 2022. DacFx builds a deployment plan for DeployReport
+      # just as it does for a real publish, so without this it refuses on platform mismatch.
       - name: Generate schema DeployReport
         run: |
           sqlpackage /Action:DeployReport \
             /SourceFile:src/DataLayer/Ignixa.DataLayer.SqlServer.Database/bin/Release/Ignixa.DataLayer.SqlServer.Database.dacpac \
             /TargetConnectionString:"Server=localhost,1433;Database=FhirSchemaReview;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false" \
-            /OutputPath:${{ runner.temp }}/deployreport.xml
+            /OutputPath:${{ runner.temp }}/deployreport.xml \
+            /p:AllowIncompatiblePlatform=True
         env:
           SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
 

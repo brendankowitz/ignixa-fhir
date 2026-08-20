@@ -119,7 +119,14 @@ public class RunAsyncDataLossTests
             using (var package = DacPackage.Load(dacpacStream))
             {
                 var dacServices = new DacServices(connectionString);
-                dacServices.Deploy(package, databaseName, upgradeExisting: true, cancellationToken: CancellationToken.None);
+                // The schema targets Azure SQL Database; this baseline deploy goes to the box SQL
+                // Server container the CLI tests run against, which is the incompatible side.
+                dacServices.Deploy(
+                    package,
+                    databaseName,
+                    upgradeExisting: true,
+                    options: new DacDeployOptions { AllowIncompatiblePlatform = true },
+                    cancellationToken: CancellationToken.None);
             }
 
             // Diverge: add a column the dacpac's model does not know about, comparing the embedded
@@ -157,7 +164,7 @@ public class RunAsyncDataLossTests
             using (var input = new StringReader(string.Empty))
             using (var output = new StringWriter())
             {
-                var blockedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, ConfigPath: configPath);
+                var blockedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: configPath);
                 await Should.ThrowAsync<Exception>(() =>
                     Program.RunAsync(blockedOptions, input, output, CancellationToken.None));
             }
@@ -170,7 +177,7 @@ public class RunAsyncDataLossTests
             using (var input = new StringReader(string.Empty))
             using (var output = new StringWriter())
             {
-                var allowedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: true, ConfigPath: configPath);
+                var allowedOptions = new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: true, AllowIncompatiblePlatform: true, ConfigPath: configPath);
                 exitCode = await Program.RunAsync(allowedOptions, input, output, CancellationToken.None);
             }
 
