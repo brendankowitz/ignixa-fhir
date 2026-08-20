@@ -30,9 +30,13 @@ internal static class BoundaryFunctions
     /// For decimals: Returns value - 0.5 * 10^(-precision), truncated to precision decimal places.
     /// For dates/times: Returns the start of the period at the given precision with UTC+14:00 offset.
     /// </summary>
+    /// <remarks>
+    /// Declared as returning the focus type: FHIRPath defines the boundary of a value to be a value of that
+    /// same kind, so static analysis keeps the focus type rather than reporting the result as unanalysable.
+    /// </remarks>
     [FhirPathFunction("lowBoundary",
         SupportedContexts = "any-any",
-        ReturnType = "any",
+        ReturnType = "context",
         MinArguments = 0,
         MaxArguments = 1,
         TakesExpressionArguments = true,
@@ -94,9 +98,12 @@ internal static class BoundaryFunctions
     /// For decimals: Returns value + 0.5 * 10^(-precision), truncated to precision decimal places.
     /// For dates/times: Returns the end of the period at the given precision with UTC-12:00 offset.
     /// </summary>
+    /// <remarks>
+    /// Declared as returning the focus type, for the same reason as <see cref="LowBoundary"/>.
+    /// </remarks>
     [FhirPathFunction("highBoundary",
         SupportedContexts = "any-any",
-        ReturnType = "any",
+        ReturnType = "context",
         MinArguments = 0,
         MaxArguments = 1,
         TakesExpressionArguments = true,

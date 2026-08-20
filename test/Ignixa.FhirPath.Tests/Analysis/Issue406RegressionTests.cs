@@ -6,12 +6,15 @@ namespace Ignixa.FhirPath.Tests.Analysis;
 
 public class Issue406RegressionTests
 {
-    [Fact]
-    public void GivenTypeReflectionMember_WhenAnalyzed_ThenInfersString()
+    [Theory]
+    [InlineData("Patient.birthDate.type().name")]
+    [InlineData("Patient.birthDate.type().namespace")]
+    [InlineData("Patient.birthDate.type().baseType")]
+    public void GivenTypeReflectionMember_WhenAnalyzed_ThenInfersString(string expression)
     {
         var analyzer = new FhirPathAnalyzer(FhirVersion.R5.GetSchemaProvider());
 
-        var result = analyzer.Analyze("Patient.birthDate.type().name", "Patient");
+        var result = analyzer.Analyze(expression, "Patient");
 
         result.Errors.ShouldBeEmpty();
         result.InferredTypes.Types.ShouldHaveSingleItem().TypeName.ShouldBe("string");

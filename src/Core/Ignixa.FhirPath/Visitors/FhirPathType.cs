@@ -21,6 +21,16 @@ namespace Ignixa.FhirPath.Visitors;
 public readonly struct FhirPathType : IEquatable<FhirPathType>
 {
     /// <summary>
+    /// The display name of a type whose runtime shape cannot be determined statically.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a legal FHIR type name and deliberately not <c>"unknown"</c>: that is the string
+    /// <see cref="TypeName"/> falls back to for <c>default(FhirPathType)</c>, and any collision with it lets
+    /// type-name matching mistake a default-valued struct for a genuine indeterminate type.
+    /// </remarks>
+    public const string IndeterminateTypeName = "?";
+
+    /// <summary>
     /// Creates a new FhirPathType from an IType definition.
     /// </summary>
     /// <param name="type">The FHIR type definition from schema</param>
@@ -141,7 +151,7 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// Creates a type whose runtime shape cannot be determined statically.
     /// </summary>
     public static FhirPathType Unknown(bool isCollection = false, string? path = null) =>
-        new("unknown", isCollection, path, isUnknown: true);
+        new(IndeterminateTypeName, isCollection, path, isUnknown: true);
 
     public static bool IsPrimitiveTypeName(string typeName)
     {

@@ -34,9 +34,28 @@ public sealed class AnalysisResult
     /// <summary>
     /// Gets whether the analysis found no errors and fully determined the expression's validity.
     /// </summary>
+    /// <remarks>
+    /// This is deliberately stricter than "no errors were reported": an expression the analyzer could not
+    /// fully reason about is not certified valid. Callers writing a rejection gate should choose between
+    /// this and <see cref="IsValidOrIndeterminate"/> explicitly. Against the shipped search-parameter
+    /// corpus, <c>Severity == Error</c> is empty for all five FHIR versions, while <c>IsValid</c> is false
+    /// for up to 5.5% of parameter/base-resource pairs, all of them indeterminate rather than invalid.
+    /// </remarks>
     public bool IsValid =>
         !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error) &&
         !IsIndeterminate;
+
+    /// <summary>
+    /// Gets whether the analysis found no errors, treating what it could not determine as acceptable.
+    /// </summary>
+    /// <remarks>
+    /// The permissive counterpart to <see cref="IsValid"/>, for callers that would rather admit an
+    /// expression static analysis cannot decide than reject a conformant one. Inspect
+    /// <see cref="IsIndeterminate"/> to tell the two admitted outcomes apart.
+    /// </remarks>
+    public bool IsValidOrIndeterminate =>
+        !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error);
+
 
     /// <summary>
     /// Gets whether static analysis could not determine the expression's validity.

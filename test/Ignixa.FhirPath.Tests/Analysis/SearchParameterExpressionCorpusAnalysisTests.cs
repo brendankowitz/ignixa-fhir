@@ -19,65 +19,70 @@ public class SearchParameterExpressionCorpusAnalysisTests
 
     [Theory]
     [MemberData(nameof(Versions))]
-    public void GivenShippedCorpus_WhenAnalyzed_ThenNoFailuresAppearBeyondPinnedBaseline(
+    public void GivenShippedCorpus_WhenAnalyzed_ThenErrorDiagnosticsMatchKnownUpstreamSpecDefects(
         FhirVersion version,
         int expectedParameterCount)
     {
         var corpus = SearchParameterExpressionCorpus.Load(version);
         var analyzer = new FhirPathAnalyzer(version.GetSchemaProvider());
 
-        var failures = corpus.Parameters
-            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Expression))
-            .SelectMany(parameter => parameter.BaseResourceTypes.Select(resourceType => new
-            {
-                ParameterUrl = parameter.Url,
-                ResourceType = resourceType,
-                Result = analyzer.Analyze(parameter.Expression!, resourceType)
-            }))
+        var failures = Analyze(corpus, analyzer)
             .Where(item => item.Result.Issues.Any(issue => issue.Severity == ValidationIssueSeverity.Error))
             .Select(item => $"{item.ParameterUrl}|{item.ResourceType}")
             .ToArray();
 
         corpus.Parameters.Count.ShouldBe(expectedParameterCount);
-        failures.Except(PinnedBaselineFailures[version], StringComparer.Ordinal).ShouldBeEmpty();
+        failures.ShouldBe(KnownUpstreamSpecDefects[version], ignoreOrder: true);
     }
 
     [Theory]
     [MemberData(nameof(Versions))]
-    public void GivenShippedCorpus_WhenAnalyzed_ThenNoExpressionsHaveErrorDiagnostics(
+    public void GivenShippedCorpus_WhenAnalyzed_ThenEveryConformantExpressionIsValidOrIndeterminate(
         FhirVersion version,
         int _)
     {
         var corpus = SearchParameterExpressionCorpus.Load(version);
         var analyzer = new FhirPathAnalyzer(version.GetSchemaProvider());
 
-        var failures = corpus.Parameters
-            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Expression))
-            .SelectMany(parameter => parameter.BaseResourceTypes.Select(resourceType => new
-            {
-                Parameter = parameter,
-                ResourceType = resourceType,
-                Result = analyzer.Analyze(parameter.Expression!, resourceType)
-            }))
-            .Where(item => item.Result.Issues.Any(issue => issue.Severity == ValidationIssueSeverity.Error))
-            .Select(item =>
-                $"{item.Parameter.Url}|{item.ResourceType}: {string.Join(" | ", item.Result.Errors)}")
+        var rejected = Analyze(corpus, analyzer)
+            .Where(item => !KnownUpstreamSpecDefects[version].Contains($"{item.ParameterUrl}|{item.ResourceType}"))
+            .Where(item => !item.Result.IsValidOrIndeterminate)
+            .Select(item => $"{item.ParameterUrl}|{item.ResourceType}: {string.Join(" | ", item.Result.Errors)}")
             .ToArray();
 
-        failures.ShouldBeEmpty();
+        rejected.ShouldBeEmpty();
     }
 
-    private static IReadOnlyDictionary<FhirVersion, IReadOnlySet<string>> PinnedBaselineFailures { get; } =
+    private static IEnumerable<(string ParameterUrl, string ResourceType, AnalysisResult Result)> Analyze(
+        SearchParameterExpressionCorpus corpus,
+        FhirPathAnalyzer analyzer)
+    {
+        return corpus.Parameters
+            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Expression))
+            .SelectMany(parameter => parameter.BaseResourceTypes.Select(resourceType =>
+                (ParameterUrl: parameter.Url.ToString(),
+                 ResourceType: resourceType,
+                 Result: analyzer.Analyze(parameter.Expression!, resourceType))));
+    }
+
+    /// <summary>
+    /// Parameter/base-resource pairs the analyzer reports as errors because the shipped expression is itself
+    /// defective, not because analysis is imprecise.
+    /// </summary>
+    /// <remarks>
+    /// The R5 and R6 <c>clinical-date</c> expression is missing the <c>Appointment.</c> prefix on one clause:
+    /// <c>AllergyIntolerance.recordedDate | (start | requestedPeriod.start).first() | AuditEvent.recorded | ...</c>.
+    /// For every base resource other than Appointment, <c>start</c> and <c>requestedPeriod</c> are decidably
+    /// absent, so the clause can only ever be empty. This set asserts that the defect is still detected; it is
+    /// not a suppression list.
+    /// </remarks>
+    private static IReadOnlyDictionary<FhirVersion, IReadOnlySet<string>> KnownUpstreamSpecDefects { get; } =
         new Dictionary<FhirVersion, IReadOnlySet<string>>
         {
-            [FhirVersion.Stu3] = CreateFailures(
-                ("http://hl7.org/fhir/SearchParameter/ConceptMap-product", ["ConceptMap"])),
-            [FhirVersion.R4] = CreateFailures(
-                ("http://hl7.org/fhir/SearchParameter/ConceptMap-product", ["ConceptMap"])),
-            [FhirVersion.R4B] = CreateFailures(
-                ("http://hl7.org/fhir/SearchParameter/ConceptMap-product", ["ConceptMap"])),
+            [FhirVersion.Stu3] = CreateFailures(),
+            [FhirVersion.R4] = CreateFailures(),
+            [FhirVersion.R4B] = CreateFailures(),
             [FhirVersion.R5] = CreateFailures(
-                ("http://hl7.org/fhir/SearchParameter/BodyStructure-excludedstructure", ["BodyStructure"]),
                 ("http://hl7.org/fhir/SearchParameter/clinical-date",
                 [
                     "AdverseEvent", "AllergyIntolerance", "AuditEvent", "CarePlan", "CareTeam",
@@ -86,10 +91,8 @@ public class SearchParameterExpressionCorpusAnalysisTests
                     "ImmunizationEvaluation", "ImmunizationRecommendation", "Invoice", "List", "MeasureReport",
                     "NutritionIntake", "Observation", "Procedure", "ResearchSubject", "RiskAssessment",
                     "SupplyRequest"
-                ]),
-                ("http://hl7.org/fhir/SearchParameter/Composition-section-text", ["Composition"])),
+                ])),
             [FhirVersion.R6] = CreateFailures(
-                ("http://hl7.org/fhir/SearchParameter/BodyStructure-excludedstructure", ["BodyStructure"]),
                 ("http://hl7.org/fhir/SearchParameter/clinical-date",
                 [
                     "AllergyIntolerance", "AuditEvent", "CarePlan", "CareTeam", "ClinicalImpression",
@@ -97,10 +100,7 @@ public class SearchParameterExpressionCorpusAnalysisTests
                     "EpisodeOfCare", "FamilyMemberHistory", "Flag", "Immunization", "ImmunizationEvaluation",
                     "ImmunizationRecommendation", "Invoice", "List", "MeasureReport", "NutritionIntake",
                     "Observation", "Procedure", "ResearchSubject", "RiskAssessment", "SupplyRequest"
-                ]),
-                ("http://hl7.org/fhir/SearchParameter/Composition-section-text", ["Composition"]),
-                ("http://hl7.org/fhir/SearchParameter/Specimen-container-location", ["Specimen"]),
-                ("http://hl7.org/fhir/SearchParameter/Specimen-organization", ["Specimen"]))
+                ]))
         };
 
     private static IReadOnlySet<string> CreateFailures(

@@ -282,19 +282,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (!propertyFound)
         {
-            if (focusTypes.IsRoot && IsPropertyOnAnotherRootType(expression.PropertyName))
-            {
-                result.AddUnknown(path: expression.PropertyName);
-                context.AddIndeterminateWarning(
-                    $"Property '{expression.PropertyName}' is not present on root type '{context.RootType}', but is present on another resource type and cannot be analysed for this root.",
-                    expression);
-            }
-            else
-            {
-                context.AddError(
-                    $"Property '{expression.PropertyName}' not found on type '{focusTypes.TypeNames()}'",
-                    expression);
-            }
+            ReportUnresolvedProperty(expression.PropertyName, focusTypes, result, expression, context);
         }
 
         return result;
@@ -380,19 +368,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (!propertyFound)
         {
-            if (focusTypes.IsRoot && IsPropertyOnAnotherRootType(expression.ChildName))
-            {
-                result.AddUnknown(path: expression.ChildName);
-                context.AddIndeterminateWarning(
-                    $"Property '{expression.ChildName}' is not present on root type '{context.RootType}', but is present on another resource type and cannot be analysed for this root.",
-                    expression);
-            }
-            else
-            {
-                context.AddError(
-                    $"Property '{expression.ChildName}' not found on type '{focusTypes.TypeNames()}'",
-                    expression);
-            }
+            ReportUnresolvedProperty(expression.ChildName, focusTypes, result, expression, context);
         }
 
         return result;
@@ -569,15 +545,16 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     result.Types.Add(t);
                 foreach (var t in rightResult.Types)
                 {
-                    var existing = result.Types.FirstOrDefault(x => x.TypeName == t.TypeName);
-                    if (existing.TypeName != null && !existing.IsCollection)
-                    {
-                        result.Types.Remove(existing);
-                        result.Types.Add(existing.AsCollection());
-                    }
-                    else if (existing.TypeName == null)
+                    // Matching on TypeName alone cannot tell "absent" from "present but default-valued":
+                    // TypeName never returns null, so the index has to carry the answer.
+                    var existingIndex = IndexOfTypeName(result.Types, t.TypeName);
+                    if (existingIndex < 0)
                     {
                         result.Types.Add(t);
+                    }
+                    else if (!result.Types[existingIndex].IsCollection)
+                    {
+                        result.Types[existingIndex] = result.Types[existingIndex].AsCollection();
                     }
                 }
                 break;
@@ -694,17 +671,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
         if (result.Types.Count == 0)
         {
-            if (focusTypes.IsRoot && IsPropertyOnAnotherRootType(expression.Name))
-            {
-                result.AddUnknown(path: expression.Name);
-                context.AddIndeterminateWarning(
-                    $"Property '{expression.Name}' is not present on root type '{context.RootType}', but is present on another resource type and cannot be analysed for this root.",
-                    expression);
-            }
-            else
-            {
-                context.AddError($"Property '{expression.Name}' not found on type '{focusTypes.TypeNames()}'", expression);
-            }
+            ReportUnresolvedProperty(expression.Name, focusTypes, result, expression, context);
         }
 
         return result;
@@ -859,8 +826,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             {
                 context.AddError($"Type '{typeName}' is not a valid FHIR type", expression);
             }
-            else if (!focusTypes.CanBeOfType(typeName))
+            else if (!focusTypes.HasUnknown && !focusTypes.CanBeOfType(typeName))
             {
+                // An indeterminate focus can hold anything at runtime, so "always empty" is not decidable.
                 context.AddWarning(
                     $"Type filter '{typeName}' will always be empty. Focus types: {focusTypes.TypeNames()}",
                     expression);
@@ -944,8 +912,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
 
         var typeName = ExtractTypeName(expression.Arguments[0]);
-        if (typeName != null && !focusTypes.CanBeOfType(typeName))
+        if (typeName != null && !focusTypes.HasUnknown && !focusTypes.CanBeOfType(typeName))
         {
+            // An indeterminate focus can hold anything at runtime, so "always false" is not decidable.
             context.AddWarning(
                 $"Type check 'is({typeName})' will always be false. Possible types: {focusTypes.TypeNames()}",
                 expression);
@@ -964,8 +933,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         if (expression.Right is ConstantExpression typeExpr)
         {
             var typeName = typeExpr.Value?.ToString();
-            if (typeName != null && !leftResult.CanBeOfType(typeName))
+            if (typeName != null && !leftResult.HasUnknown && !leftResult.CanBeOfType(typeName))
             {
+                // An indeterminate operand can hold anything at runtime, so "always false" is not decidable.
                 context.AddWarning(
                     $"Type check 'is {typeName}' will always be false. Possible types: {leftResult.TypeNames()}",
                     expression);
@@ -1223,7 +1193,8 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         if ((focusType.TypeName.Equals("ClassInfo", StringComparison.OrdinalIgnoreCase) ||
              focusType.TypeName.Equals("SimpleTypeInfo", StringComparison.OrdinalIgnoreCase)) &&
             (propertyName.Equals("name", StringComparison.OrdinalIgnoreCase) ||
-             propertyName.Equals("namespace", StringComparison.OrdinalIgnoreCase)))
+             propertyName.Equals("namespace", StringComparison.OrdinalIgnoreCase) ||
+             propertyName.Equals("baseType", StringComparison.OrdinalIgnoreCase)))
         {
             result.AddPrimitiveType("string", focusType.IsCollection);
             return true;
@@ -1235,6 +1206,61 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     private bool IsPropertyOnAnotherRootType(string propertyName)
     {
         return _rootPropertyNames.Value.Contains(propertyName);
+    }
+
+    private static int IndexOfTypeName(IList<FhirPathType> types, string typeName)
+    {
+        for (var i = 0; i < types.Count; i++)
+        {
+            if (string.Equals(types[i].TypeName, typeName, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Reports a property that no focus type declares, choosing between the three answers static analysis
+    /// can actually give: always empty, indeterminate, or invalid.
+    /// </summary>
+    /// <remarks>
+    /// A root-relative name that some other resource declares is <em>decidable</em> when the root type is
+    /// concrete: the analyzer knows the root type and knows it has no such element, so the navigation is
+    /// always empty rather than unanalysable. Reporting it as indeterminate would be factually wrong and
+    /// would silently downgrade any typo landing in the union of top-level element names across the whole
+    /// specification (<c>status</c>, <c>date</c>, <c>code</c>, <c>subject</c>, ...). Only an abstract root
+    /// (<c>Resource</c>, <c>DomainResource</c>) leaves the runtime type genuinely unknown, so only that case
+    /// propagates an indeterminate type.
+    /// </remarks>
+    private void ReportUnresolvedProperty(
+        string propertyName,
+        FhirPathTypeSet focusTypes,
+        FhirPathTypeSet result,
+        Expression expression,
+        AnalysisContext context)
+    {
+        if (!focusTypes.IsRoot || !IsPropertyOnAnotherRootType(propertyName))
+        {
+            context.AddError(
+                $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
+                expression);
+            return;
+        }
+
+        if (focusTypes.Types.Any(focusType => focusType.Type?.Info.IsAbstract == true))
+        {
+            result.AddUnknown(path: propertyName);
+            context.AddIndeterminateWarning(
+                $"Property '{propertyName}' is not present on abstract root type '{context.RootType}', so the runtime type cannot be analysed for this root.",
+                expression);
+            return;
+        }
+
+        context.AddWarning(
+            $"Property '{propertyName}' will always be empty on root type '{context.RootType}'. It is declared by another resource type, but not by this one.",
+            expression);
     }
 
     /// <summary>

@@ -12,8 +12,6 @@ public class IndeterminateTypeAnalysisTests
     [Theory]
     [InlineData("Patient.children().notKnownStatically", "children")]
     [InlineData("Patient.descendants().notKnownStatically", "descendants")]
-    [InlineData("Patient.birthDate.lowBoundary().notKnownStatically", "lowBoundary")]
-    [InlineData("Patient.birthDate.highBoundary().notKnownStatically", "highBoundary")]
     public void GivenAnyReturnType_WhenNavigated_ThenPropagatesIndeterminateType(
         string expression,
         string functionName)
@@ -31,6 +29,41 @@ public class IndeterminateTypeAnalysisTests
             issue.Message.Contains("cannot be analysed", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("Patient.birthDate.lowBoundary()")]
+    [InlineData("Patient.birthDate.highBoundary()")]
+    public void GivenBoundaryFunction_WhenAnalyzed_ThenKeepsFocusTypeRatherThanBecomingIndeterminate(
+        string expression)
+    {
+        var result = _analyzer.Analyze(expression, "Patient");
+
+        result.Errors.ShouldBeEmpty();
+        result.IsIndeterminate.ShouldBeFalse();
+        result.IsValid.ShouldBeTrue();
+        result.InferredTypes.Types.ShouldHaveSingleItem().TypeName.ShouldBe("date");
+    }
+
+    [Fact]
+    public void GivenIndeterminateTypeInUnion_WhenNavigated_ThenStaysIndeterminateInsteadOfErroring()
+    {
+        var result = _analyzer.Analyze(
+            "(Patient.name | Patient.descendants()).notKnownStatically",
+            "Patient");
+
+        result.Errors.ShouldBeEmpty();
+        result.IsIndeterminate.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenDistinctTypesInUnion_WhenAnalyzed_ThenRetainsEveryBranchType()
+    {
+        var result = _analyzer.Analyze("Patient.name | Patient.telecom", "Patient");
+
+        result.Errors.ShouldBeEmpty();
+        result.InferredTypes.Types.Select(type => type.TypeName)
+            .ShouldBe(["HumanName", "ContactPoint"], ignoreOrder: true);
+    }
+
     [Fact]
     public void GivenInvalidPropertyAfterIndeterminateType_WhenAnalyzed_ThenDoesNotCertifyExpressionAsValid()
     {
@@ -43,4 +76,31 @@ public class IndeterminateTypeAnalysisTests
         result.IsIndeterminate.ShouldBeTrue();
     }
 
+    [Fact]
+    public void GivenIndeterminateExpression_WhenCheckingValidity_ThenIsValidOrIndeterminateAdmitsIt()
+    {
+        var result = _analyzer.Analyze("Patient.descendants().definitelyNotAProperty", "Patient");
+
+        result.IsValid.ShouldBeFalse();
+        result.IsValidOrIndeterminate.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void GivenInvalidExpression_WhenCheckingValidity_ThenIsValidOrIndeterminateRejectsIt()
+    {
+        var result = _analyzer.Analyze("Patient.definitelyNotAProperty", "Patient");
+
+        result.IsValid.ShouldBeFalse();
+        result.IsValidOrIndeterminate.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void GivenTypeFilterOnIndeterminateFocus_WhenAnalyzed_ThenDoesNotClaimTheFilterIsAlwaysEmpty()
+    {
+        var result = _analyzer.Analyze("Patient.descendants().ofType(Quantity)", "Patient");
+
+        result.Errors.ShouldBeEmpty();
+        result.Warnings.ShouldNotContain(warning =>
+            warning.Contains("Type filter 'Quantity' will always be empty", StringComparison.Ordinal));
+    }
 }
