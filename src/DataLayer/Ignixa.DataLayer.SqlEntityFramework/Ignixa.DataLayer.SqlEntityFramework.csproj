@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
     <ProjectReference Include="..\..\Application\Ignixa.Application\Ignixa.Application.csproj" />
     <ProjectReference Include="..\..\Core\Ignixa.Validation\Ignixa.Validation.csproj" />
+    <ProjectReference Include="..\Ignixa.DataLayer.SqlServer\Ignixa.DataLayer.SqlServer.csproj" />
   </ItemGroup>
 
   <ItemGroup>

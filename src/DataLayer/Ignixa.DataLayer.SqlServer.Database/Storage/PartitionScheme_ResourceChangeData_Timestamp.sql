@@ -1,0 +1,3 @@
+CREATE PARTITION SCHEME PartitionScheme_ResourceChangeData_Timestamp
+    AS PARTITION PartitionFunction_ResourceChangeData_Timestamp
+    ALL TO ([PRIMARY]);

@@ -92,6 +92,73 @@ jobs:
             -Q "SELECT @@VERSION" -b
         timeout-minutes: 2
 
+      - name: Install SqlPackage
+        run: dotnet tool install -g Microsoft.SqlPackage
+
+      - name: Build Ignixa.DataLayer.SqlServer.Database
+        run: dotnet build src/DataLayer/Ignixa.DataLayer.SqlServer.Database/Ignixa.DataLayer.SqlServer.Database.sqlproj --configuration Release
+
+      # NOTE: FhirSchemaReview is never created/seeded above, so DacFx will always report
+      # "everything gets created" here rather than an incremental diff against a real prior
+      # schema. This step is a build-verification signal (proves the dacpac is well-formed and
+      # sqlpackage can generate a report against it), not a change-detection signal -- it cannot
+      # demonstrate DeployReportClassifier catching anything. A "diff against base branch's
+      # deployed schema" version is a deliberate, tracked follow-up, not an oversight.
+      # AllowIncompatiblePlatform: the .sqlproj targets Azure SQL Database
+      # (SqlAzureV12DatabaseSchemaProvider) because that is the production deployment target, while
+      # this container is a box SQL Server 2022. DacFx builds a deployment plan for DeployReport
+      # just as it does for a real publish, so without this it refuses on platform mismatch.
+      - name: Generate schema DeployReport
+        run: |
+          sqlpackage /Action:DeployReport \
+            /SourceFile:src/DataLayer/Ignixa.DataLayer.SqlServer.Database/bin/Release/Ignixa.DataLayer.SqlServer.Database.dacpac \
+            /TargetConnectionString:"Server=localhost,1433;Database=FhirSchemaReview;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false" \
+            /OutputPath:${{ runner.temp }}/deployreport.xml \
+            /p:AllowIncompatiblePlatform=True
+        env:
+          SQL_SA_PASSWORD: ${{ env.SQL_SA_PASSWORD }}
+
+      - name: Upload schema DeployReport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-deploy-report
+          path: ${{ runner.temp }}/deployreport.xml
+
+      # These carry the safety-critical assertions DeployReportClassifier/SchemaDeployer/the
+      # schema-upgrade CLI exist for (e.g. a genuinely destructive diff is refused, --allow-data-loss
+      # is load-bearing) -- previously [Fact(Skip = ...)]-marked and never run anywhere. They're
+      # [SkippableFact] now: each skips itself (not fails) when TEST_SQL_CONNECTION_STRING is unset,
+      # so the same test classes remain harmless no-ops in the SQL-Server-less unit-test job while
+      # actually running here, against the container already started above.
+      - name: Run SqlServer schema deploy/upgrade integration tests
+        run: |
+          docker exec ignixa-test-sql /opt/mssql-tools18/bin/sqlcmd \
+            -S localhost -C -U sa -P "${{ env.SQL_SA_PASSWORD }}" \
+            -Q "CREATE DATABASE [IgnixaSchemaUpgradeTests]" -b
+          dotnet test test/Ignixa.DataLayer.SqlServer.IntegrationTests/Ignixa.DataLayer.SqlServer.IntegrationTests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=schema-deployer-integration-tests.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+          dotnet test test/Ignixa.SchemaUpgrade.Cli.Tests/Ignixa.SchemaUpgrade.Cli.Tests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=schema-upgrade-cli-tests.trx;verbosity=minimal" \
+            --logger "console;verbosity=minimal" \
+            --verbosity minimal
+        env:
+          TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=IgnixaSchemaUpgradeTests;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+
+      - name: Upload SqlServer schema test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-deployer-test-results
+          path: |
+            **/schema-deployer-integration-tests.trx
+            **/schema-upgrade-cli-tests.trx
+          retention-days: 30
+
       - name: Restore E2E test project
         run: dotnet restore test/Ignixa.Api.E2ETests/Ignixa.Api.E2ETests.csproj
 
@@ -108,6 +175,12 @@ jobs:
             --verbosity minimal
         env:
           TEST_SQL_CONNECTION_STRING: "Server=localhost,1433;Database=FhirTest;User Id=sa;Password=${{ env.SQL_SA_PASSWORD }};TrustServerCertificate=true;Encrypt=false"
+          # The E2E host runs as Production, where AutomaticSchemaDeploymentEnabled defaults to
+          # false. FhirTest is a throwaway, empty database in a disposable container -- precisely
+          # the brand-new-tenant scenario auto-deploy exists for -- so enable it here. Without
+          # this, SchemaDeployer refuses to provision the schema and every E2E test fails at
+          # startup with "Tenant 1's database is not initialized".
+          SqlServer__AutomaticSchemaDeploymentEnabled: "true"
           IGNIXA_RUN_CONFORMANCE: "true"
           IGNIXA_CONFORMANCE_REPORT_PATH: ${{ runner.temp }}/ignixa-conformance/latest.json
           # Reduce log output in test host

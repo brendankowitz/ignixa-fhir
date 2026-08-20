@@ -11,6 +11,7 @@ using Ignixa.DataLayer.InMemoryIndex;
 using Ignixa.DataLayer.SqlEntityFramework;
 using Ignixa.DataLayer.SqlEntityFramework.Features.PackageManagement;
 using Ignixa.DataLayer.SqlEntityFramework.Features.Terminology;
+using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Models;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +37,9 @@ public static class DataLayerRegistration
 
         // MultiTenantSearchIndexCache (per-tenant cache for search index reference data)
         services.AddSingleton<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>();
+
+        // SchemaDeployer (DacFx-based schema deployment for brand-new, empty tenant databases)
+        services.AddIgnixaSqlServerSchemaDeployment(configuration);
 
         // Configure blob storage options
         services.Configure<Ignixa.DataLayer.BlobStorage.Infrastructure.LocalFileBlobStorageOptions>(
@@ -163,6 +167,7 @@ public static class DataLayerRegistration
                 c.Resolve<ILoggerFactory>(),
                 c.Resolve<RecyclableMemoryStreamManager>(),
                 c.Resolve<Ignixa.DataLayer.SqlEntityFramework.Indexing.MultiTenantSearchIndexCache>(),
+                c.Resolve<ISchemaDeployer>(),
                 environmentName))
             .Named<IFhirRepositoryFactory>("SqlEf")
             .Named<ISearchServiceFactory>("SqlEf")

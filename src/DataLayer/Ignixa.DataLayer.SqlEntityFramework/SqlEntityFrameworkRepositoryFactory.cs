@@ -4,12 +4,15 @@
 // -------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Ignixa.Abstractions;
 using Ignixa.DataLayer.SqlEntityFramework.Compression;
 using Ignixa.DataLayer.SqlEntityFramework.Indexing;
+using Ignixa.DataLayer.SqlServer;
 using Ignixa.Domain;
 using Ignixa.Domain.Abstractions;
 using Ignixa.Domain.Constants;
@@ -33,8 +36,11 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     private readonly ILoggerFactory _loggerFactory;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly MultiTenantSearchIndexCache _multiTenantCache;
+    private readonly ISchemaDeployer _schemaDeployer;
     private readonly string _environment;
-    private readonly ConcurrentDictionary<int, TenantServiceFactory> _factoryCache;
+    private readonly ConcurrentDictionary<int, Lazy<TenantServiceFactory>> _factoryCache;
+    private readonly ConcurrentDictionary<int, (DateTimeOffset Until, ExceptionDispatchInfo Error)> _failureCooldowns;
+    private readonly TimeSpan _failureCooldown;
     private readonly ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager CompartmentManager, SearchParameterDefinitionManager ParameterManager)> _definitionManagersCache;
 
     /// <summary>
@@ -57,20 +63,30 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     /// <param name="loggerFactory">The logger factory.</param>
     /// <param name="memoryStreamManager">The recyclable memory stream manager for efficient memory management.</param>
     /// <param name="multiTenantCache">Singleton multi-tenant cache for search index reference data.</param>
+    /// <param name="schemaDeployer">Deploys the SSDT-built schema to brand-new, empty tenant databases.</param>
     /// <param name="environment">The environment name (e.g., Development, Production).</param>
+    /// <param name="failureCooldown">
+    /// How long a failed factory construction short-circuits subsequent attempts for the same
+    /// tenant. Defaults to 5 seconds. Pass <see cref="TimeSpan.Zero"/> to retry immediately.
+    /// </param>
     public SqlEntityFrameworkRepositoryFactory(
         ITenantConfigurationStore tenantStore,
         ILoggerFactory loggerFactory,
         RecyclableMemoryStreamManager memoryStreamManager,
         MultiTenantSearchIndexCache multiTenantCache,
-        string environment = "Production")
+        ISchemaDeployer schemaDeployer,
+        string environment = "Production",
+        TimeSpan? failureCooldown = null)
     {
         _tenantStore = tenantStore ?? throw new ArgumentNullException(nameof(tenantStore));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _multiTenantCache = multiTenantCache ?? throw new ArgumentNullException(nameof(multiTenantCache));
+        _schemaDeployer = schemaDeployer ?? throw new ArgumentNullException(nameof(schemaDeployer));
         _environment = environment;
-        _factoryCache = new ConcurrentDictionary<int, TenantServiceFactory>();
+        _failureCooldown = failureCooldown ?? TimeSpan.FromSeconds(5);
+        _factoryCache = new ConcurrentDictionary<int, Lazy<TenantServiceFactory>>();
+        _failureCooldowns = new ConcurrentDictionary<int, (DateTimeOffset, ExceptionDispatchInfo)>();
         _definitionManagersCache = new ConcurrentDictionary<FhirVersion, (CompartmentDefinitionManager, SearchParameterDefinitionManager)>();
     }
 
@@ -128,7 +144,20 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // Check cache first
         if (_factoryCache.TryGetValue(tenantId, out var cachedFactory))
         {
-            return cachedFactory;
+            return MaterializeOrEvict(tenantId, cachedFactory);
+        }
+
+        // A failed construction is evicted so it can be retried -- but the dominant failure here is
+        // NOT transient: UpgradeIfNeededAsync throws whenever the pending schema diff is Unsafe or
+        // Unclassifiable, which persists until an operator runs the CLI. Without a cooldown, every
+        // request against such a tenant re-resolves the connection string, re-probes emptiness,
+        // re-reads the schema version, and regenerates a full DacFx deploy report (a model
+        // comparison of ~48 tables and ~78 procedures) before throwing the same error again --
+        // turning a mis-provisioned tenant into a self-inflicted load problem on both the app and
+        // the SQL instance. Fail fast for a short window instead, then allow a genuine retry.
+        if (TryGetFailureCooldown(tenantId, out var recentFailure))
+        {
+            recentFailure.Throw();
         }
 
         // Get tenant configuration
@@ -182,10 +211,81 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
         // SECURITY: Validate that connection string uses Managed Identity (Azure AD) authentication
         ValidateManagedIdentityAuthentication(connectionString, tenantId);
 
-        // Create factory and cache it
-        var factory = _factoryCache.GetOrAdd(tenantId, _ => CreateServiceFactory(tenantId, tenantConfig, connectionString));
+        // Create factory and cache it. Wrapped in Lazy<T> with ExecutionAndPublication so that
+        // concurrent first-access for the same not-yet-provisioned tenant (realistic on cold
+        // start under load) cannot race CreateServiceFactory's schema-provisioning section --
+        // ConcurrentDictionary.GetOrAdd's value-factory delegate is NOT guaranteed to run only
+        // once per key under concurrent callers, and CreateServiceFactory's DeployIfEmptyAsync
+        // issues a non-idempotent CREATE DATABASE.
+        //
+        // Precisely: Lazy<T> guarantees the factory body executes at most once PER LAZY INSTANCE.
+        // That is not the same as once per tenant for all time -- MaterializeOrEvict below
+        // replaces the instance after a failed attempt, so a later caller legitimately starts a
+        // fresh attempt. The guarantee that protects the non-idempotent deploy is therefore
+        // "no two constructions for a tenant ever overlap", not "only ever one construction".
+        var lazyFactory = _factoryCache.GetOrAdd(
+            tenantId,
+            _ => new Lazy<TenantServiceFactory>(
+                () => CreateServiceFactory(tenantId, tenantConfig, connectionString),
+                LazyThreadSafetyMode.ExecutionAndPublication));
 
-        return factory;
+        return MaterializeOrEvict(tenantId, lazyFactory);
+    }
+
+    /// <summary>
+    /// Materializes a cached <see cref="Lazy{T}"/> factory, evicting it if construction failed so a
+    /// transient failure (e.g. a schema deploy hiccup) doesn't permanently poison the tenant --
+    /// <see cref="Lazy{T}"/> caches and rethrows the identical exception on every subsequent
+    /// <c>.Value</c> access. Shared by both cache access paths so the eviction invariant can't be
+    /// silently lost if they're ever reordered.
+    /// </summary>
+    private TenantServiceFactory MaterializeOrEvict(int tenantId, Lazy<TenantServiceFactory> lazyFactory)
+    {
+        try
+        {
+            var factory = lazyFactory.Value;
+
+            // A success clears any cooldown left by an earlier attempt, so a tenant that recovers
+            // is not held back by a stale record.
+            _failureCooldowns.TryRemove(tenantId, out _);
+            return factory;
+        }
+        catch (Exception ex)
+        {
+            // TryRemove's KeyValuePair overload removes only if the cached value is still this
+            // exact Lazy instance (Lazy<T> doesn't override Equals, so this is reference equality),
+            // so a newer successful entry from a concurrent retry is never discarded.
+            _factoryCache.TryRemove(new KeyValuePair<int, Lazy<TenantServiceFactory>>(tenantId, lazyFactory));
+
+            if (_failureCooldown > TimeSpan.Zero)
+            {
+                _failureCooldowns[tenantId] = (DateTimeOffset.UtcNow + _failureCooldown, ExceptionDispatchInfo.Capture(ex));
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Returns the recorded failure for <paramref name="tenantId"/> when its cooldown has not yet
+    /// elapsed. An expired record is removed so the next caller performs a real attempt.
+    /// </summary>
+    private bool TryGetFailureCooldown(int tenantId, [NotNullWhen(true)] out ExceptionDispatchInfo? error)
+    {
+        error = null;
+        if (!_failureCooldowns.TryGetValue(tenantId, out var recorded))
+        {
+            return false;
+        }
+
+        if (DateTimeOffset.UtcNow >= recorded.Until)
+        {
+            _failureCooldowns.TryRemove(tenantId, out _);
+            return false;
+        }
+
+        error = recorded.Error;
+        return true;
     }
 
     /// <summary>
@@ -278,44 +378,39 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
 
         var dbContextOptions = optionsBuilder.Options;
 
-        // Create a TEMPORARY DbContext just for initialization (will be disposed)
-        var initDbContext = new FhirDbContext(dbContextOptions);
+        // Attempt to extract Managed Identity name from connection string (User ID parameter)
+        // If specified in connection string, use that for MI setup
+        // Otherwise, the running process identity is used (Managed Identity of App Service)
+        var managedIdentityName = ExtractManagedIdentityNameFromConnectionString(connectionString);
 
-        // CRITICAL: Apply pending migrations automatically on first access
-        // This ensures TVP types and stored procedures are created
-        // Also sets up Managed Identity database user (extracted from environment or configuration)
-        string? managedIdentityName = null;
+        // CRITICAL: Deploy the SSDT-built schema (.dacpac) on first access, but only if the tenant's
+        // database is currently empty -- never touches an existing/populated database.
         try
         {
-            logger.LogInformation("Ensuring database migrations are applied for tenant {TenantId}...", tenantId);
+            logger.LogInformation("Ensuring database schema is deployed for tenant {TenantId}...", tenantId);
 
-            // Attempt to extract Managed Identity name from connection string (User ID parameter)
-            // If specified in connection string, use that for MI setup
-            // Otherwise, the running process identity is used (Managed Identity of App Service)
-            managedIdentityName = ExtractManagedIdentityNameFromConnectionString(connectionString);
+            // CancellationToken.None is deliberate here, not an oversight. This runs inside the
+            // shared Lazy<TenantServiceFactory> above, whose body is observed by EVERY concurrent
+            // caller for this tenant. Threading the calling request's token in would mean one
+            // client disconnecting cancels the shared construction and faults every other caller
+            // waiting on the same Lazy -- turning a single abandoned request into a burst of
+            // failures for unrelated ones. A shutdown-scoped token (IHostApplicationLifetime's
+            // ApplicationStopping) would be the correct thing to honour here; wiring one in is a
+            // constructor/DI change tracked separately.
+            _schemaDeployer.DeployIfEmptyAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
+            logger.LogInformation("Database schema deployment completed for tenant {TenantId}", tenantId);
 
-            var initializer = new DatabaseInitializer(
-                initDbContext,
-                _loggerFactory.CreateLogger<DatabaseInitializer>(),
-                _environment);
-
-            // Initialize with optional MI setup (idempotent - safe to run multiple times)
-            initializer.InitializeAsync(managedIdentityName).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
-            logger.LogInformation("Database initialization completed for tenant {TenantId}", tenantId);
+            _schemaDeployer.UpgradeIfNeededAsync(tenantId, CancellationToken.None).GetAwaiter().GetResult(); // Synchronous wait (factory is not async)
+            logger.LogInformation("Database schema upgrade check completed for tenant {TenantId}", tenantId);
         }
         catch (Exception ex)
         {
             logger.LogError(
                 ex,
-                "Failed to initialize database for tenant {TenantId}. Error: {Message}",
+                "Failed to deploy database schema for tenant {TenantId}. Error: {Message}",
                 tenantId,
                 ex.Message);
             throw;
-        }
-        finally
-        {
-            // Dispose the temporary initialization DbContext
-            initDbContext.Dispose();
         }
 
         // Convert FhirVersion string to FhirVersion enum using extension method
@@ -529,7 +624,9 @@ public class SqlEntityFrameworkRepositoryFactory : IFhirRepositoryFactory, ISear
     }
 
     /// <summary>
-    /// Gets the current number of cached tenant service factories.
+    /// Gets the current number of tenants with a cached or in-flight service factory. Entries are
+    /// added before their <see cref="Lazy{T}"/> value is materialized, so this counts tenants whose
+    /// factory construction is still running as well as completed ones.
     /// </summary>
     public int CachedServicesCount => _factoryCache.Count;
 }
