@@ -119,6 +119,61 @@ public class FirelySdkInteropTests
     }
 
     [Fact]
+    public void GivenNonChoiceElement_WhenAccessingType_ThenPreservesDeclaredType()
+    {
+        // Arrange
+        var definition = new MockElementDefinitionSummary
+        {
+            ElementName = "status",
+            Type = [new MockStructureDefinitionReference("code")]
+        };
+        var firelyElement = new MockTypedElement
+        {
+            Name = "status",
+            InstanceType = "code",
+            Definition = definition
+        };
+        var adapter = new IgnixaElementAdapter(firelyElement);
+
+        // Act
+        var result = adapter.Type;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("code", result.Info.Name);
+    }
+
+    [Fact]
+    public void GivenChoiceElementWithUndeclaredInstanceType_WhenAccessingType_ThenPreservesFirstDeclaredTypeFallback()
+    {
+        // Arrange
+        var definition = new MockElementDefinitionSummary
+        {
+            ElementName = "value",
+            IsChoiceElement = true,
+            Type =
+            [
+                new MockStructureDefinitionReference("Quantity"),
+                new MockStructureDefinitionReference("string")
+            ]
+        };
+        var firelyElement = new MockTypedElement
+        {
+            Name = "value",
+            InstanceType = "CustomQuantity",
+            Definition = definition
+        };
+        var adapter = new IgnixaElementAdapter(firelyElement);
+
+        // Act
+        var result = adapter.Type;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("Quantity", result.Info.Name);
+    }
+
+    [Fact]
     public void GivenFirelyElementWithoutDefinition_WhenAccessingType_ThenReturnsNull()
     {
         // Arrange
@@ -720,6 +775,16 @@ public class FirelySdkInteropTests
         public string? NonDefaultNamespace { get; init; }
         public XmlRepresentation Representation { get; init; }
         public int Order { get; init; }
+    }
+
+    private sealed class MockStructureDefinitionReference : IStructureDefinitionReference, ITypeSerializationInfo
+    {
+        public MockStructureDefinitionReference(string referredType)
+        {
+            ReferredType = referredType;
+        }
+
+        public string ReferredType { get; }
     }
 
     /// <summary>

@@ -187,7 +187,7 @@ This difference survives native Firely input and the Phase 3 output adapter.
 
 ### Choice Metadata Round Trip
 
-The STU3 slice also records a seam-reachable output defect. The three-stage trace below records the investigation; the committed test pins the final `TypedElementAdapter` output, not each intermediate representation:
+The STU3 slice records the corrected seam-reachable output shape. The committed test pins the final `TypedElementAdapter` output, not each intermediate representation:
 
 ```text
 Native Firely:
@@ -197,15 +197,15 @@ Native Firely:
 
 Firely -> Ignixa:
   InstanceType=string
-  Type.Info.Name=Quantity
+  Type.Info.Name=string
 
 TypedElementAdapter output:
-  Name=Quantity
+  Name=string
   InstanceType=string
-  Definition.Type=[Quantity]
+  Definition.Type=[string]
 ```
 
-The loss begins in `IgnixaElementAdapter.TypeAdapter`, which selects the first declared choice type. `TypedElementAdapter.Name` then exposes the collapsed type name. The tested string index converter dispatches on `InstanceType`, so this is not index-blocking for that case. It remains Phase 3 seam-reachable and can block callers that inspect `Name` or `Definition.Type`, or convert returned results to POCOs.
+`IgnixaElementAdapter.TypeAdapter` selects the declared choice type matching `InstanceType`; selecting the first declaration produced `Quantity` for this string value. The tested string index converter already dispatched correctly on `InstanceType`, but preserving the concrete type also makes `Name`, `Definition.Type`, and downstream POCO conversion consistent.
 
 ### Reverse-Corpus Language Findings
 

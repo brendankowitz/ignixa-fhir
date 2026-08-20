@@ -59,7 +59,7 @@ public class Stu3NativeFirelyPhase3SliceTests
     }
 
     [Fact]
-    public void GivenNativeFirelyChoice_WhenIgnixaResultReturnsThroughAdapter_ThenChoiceMetadataLossIsVisible()
+    public void GivenNativeFirelyChoice_WhenIgnixaResultReturnsThroughAdapter_ThenConcreteChoiceTypeIsPreserved()
     {
         // Arrange
         const string expression = "Observation.value.as(String)";
@@ -69,19 +69,17 @@ public class Stu3NativeFirelyPhase3SliceTests
         ITypedElement result = ignixa.ShouldHaveSingleItem();
 
         // Assert
-        result.Name.ShouldBe("Quantity");
+        result.Name.ShouldBe("string");
         result.InstanceType.ShouldBe("string");
         result.Definition.ShouldNotBeNull();
-        result.Definition.Type.ShouldHaveSingleItem().GetTypeName().ShouldBe("Quantity");
+        result.Definition.Type.ShouldHaveSingleItem().GetTypeName().ShouldBe("string");
     }
 
     private static (
         IReadOnlyList<ITypedElement> Firely,
         IReadOnlyList<ITypedElement> Ignixa) Evaluate(string expression)
     {
-        ITypedElement input = new FhirJsonParser()
-            .Parse<Resource>(ObservationJson)
-            .ToTypedElement();
+        ITypedElement input = ParseNativeInput();
         var firely = input.Select(expression, new Hl7.Fhir.FhirPath.FhirEvaluationContext()).ToList();
         IElement ignixaInput = input.ToIgnixaElement();
         var context = new Ignixa.FhirPath.Evaluation.FhirEvaluationContext
@@ -96,6 +94,11 @@ public class Stu3NativeFirelyPhase3SliceTests
 
         return (firely, ignixa);
     }
+
+    private static ITypedElement ParseNativeInput() =>
+        new FhirJsonParser()
+            .Parse<Resource>(ObservationJson)
+            .ToTypedElement();
 
     private static IReadOnlyList<string> Render(IEnumerable<ITypedElement> results) =>
         results.Select(result => $"{result.InstanceType}|{result.Value}").ToArray();
