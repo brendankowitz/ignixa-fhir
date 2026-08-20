@@ -305,8 +305,9 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
             // to ensure return types have proper IType definitions with children
             if (IsPrimitiveReturnType(returnType))
             {
-                // Primitives don't need schema resolution
-                sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\", focus.IsCollection()) }})");
+                // Primitives don't need schema resolution. A declared primitive return is a value the
+                // function constructs, so it carries the System namespace: see FhirPathType.IsSystemValue.
+                sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\", focus.IsCollection(), path: null, isSystemValue: true) }})");
             }
             else
             {

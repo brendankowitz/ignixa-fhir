@@ -594,17 +594,21 @@ internal static class TypeMatcher
     /// Checks a statically known FHIR type name against a cast target using the evaluator's matching rule.
     /// </summary>
     /// <remarks>
-    /// Static analysis has no runtime element from which to determine the System/FHIR namespace, so the
-    /// known type is treated as a FHIR value. This is the same path used by runtime cast matching after
-    /// namespace parsing, including exact matching, the pre-R5 aliases, and fail-open version handling.
+    /// This is the same path used by runtime cast matching after namespace parsing, including exact
+    /// matching, the pre-R5 aliases, and fail-open version handling. Callers must say whether the known
+    /// type describes a System-namespace value, because the System spelling exception in
+    /// <see cref="TypeNamesMatch"/> sits above the R5 version gate: passing <see langword="false"/> for a
+    /// value the expression constructed reports it as always empty on R5 and later even though the
+    /// evaluator returns it.
     /// </remarks>
     public static bool MatchesCastTypeName(
         string instanceTypeName,
         string requestedTypeName,
-        ISchema? schema)
+        ISchema? schema,
+        bool instanceIsSystemValue)
     {
         var (baseTypeName, _, _) = ParseTypeName(requestedTypeName);
-        return TypeNamesMatch(instanceTypeName, baseTypeName, TypeMatchMode.Cast, schema, elementIsSystemType: false);
+        return TypeNamesMatch(instanceTypeName, baseTypeName, TypeMatchMode.Cast, schema, instanceIsSystemValue);
     }
 
     private static bool TryGetBaseType(string typeName, TypeMatchMode mode, out string? baseType)

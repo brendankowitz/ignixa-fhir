@@ -107,6 +107,18 @@ public sealed class FhirPathTypeSet
     }
 
     /// <summary>
+    /// Adds a primitive type by name for a value the expression constructs rather than navigates to.
+    /// </summary>
+    /// <remarks>
+    /// Use this for literals, operator results, and function returns declared to produce a primitive.
+    /// See <see cref="FhirPathType.IsSystemValue"/> for why the distinction changes cast matching.
+    /// </remarks>
+    public void AddSystemPrimitiveType(string typeName, bool forceCollection = false)
+    {
+        Types.Add(new FhirPathType(typeName, forceCollection, path: null, isSystemValue: true));
+    }
+
+    /// <summary>
     /// Adds an indeterminate runtime type.
     /// </summary>
     public void AddUnknown(bool isCollection = false, string? path = null)

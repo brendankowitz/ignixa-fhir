@@ -3,6 +3,13 @@
  *
  * These tests previously pinned the analyzer/evaluator type-casing divergence. They now pin the aligned
  * behaviour over the same 24-case coverage matrix.
+ *
+ * The earlier header instructed moving these cases into the analyzer's own always-empty coverage once
+ * alignment landed. That coverage is AlwaysEmptyRootPropertyAnalysisTests, which is analyzer-only,
+ * single-version, and about root-relative property names. These cases evaluate and analyse the same
+ * expression across five versions to pin the two components against each other, so relocating them would
+ * mix two subjects and pull an evaluator dependency into an analyzer-only class. The class was renamed
+ * instead, so its name states what it pins.
  */
 
 using Ignixa.Abstractions;
@@ -41,8 +48,13 @@ namespace Ignixa.FhirPath.Tests.Analysis;
 /// Every case carries a correctly-cased control asserted non-empty, so "the evaluator returned empty"
 /// cannot be satisfied by a fixture that never held the data or a path that never resolved.
 /// </para>
+/// <para>
+/// Every focus here is a FHIR element, so none of these cases reach the System-namespace exception
+/// pinned by <see cref="AnalyzerSystemValueCastAlignmentTests"/>: <c>Observation.value</c> is navigated
+/// to, not constructed, so <c>value.as(String)</c> stays always-empty from R5 onward.
+/// </para>
 /// </remarks>
-public class AnalyzerEvaluatorTypeCasingDivergenceTests
+public class AnalyzerEvaluatorTypeCasingAlignmentTests
 {
     private const string ObservationJson = """
         {

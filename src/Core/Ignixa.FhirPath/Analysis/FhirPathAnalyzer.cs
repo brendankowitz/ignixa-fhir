@@ -533,7 +533,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         switch (expression.Operator)
         {
             case "is":
-                result.AddPrimitiveType("boolean");
+                result.AddSystemPrimitiveType("boolean");
                 ValidateIsOperator(expression, leftResult, context);
                 break;
 
@@ -562,7 +562,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
             case "=" or "!=" or "~" or "!~" or "<" or ">" or "<=" or ">=" or
                  "and" or "or" or "xor" or "implies" or "in" or "contains":
-                result.AddPrimitiveType("boolean");
+                result.AddSystemPrimitiveType("boolean");
                 ValidateComparisonOperators(expression, leftResult, rightResult, context);
                 break;
 
@@ -572,7 +572,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 break;
 
             case "&":
-                result.AddPrimitiveType("string");
+                result.AddSystemPrimitiveType("string");
                 break;
 
             default:
@@ -612,7 +612,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             _ => "string"
         };
 
-        result.AddPrimitiveType(typeName);
+        result.AddSystemPrimitiveType(typeName);
         return result;
     }
 
@@ -750,7 +750,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     public override FhirPathTypeSet VisitQuantity(QuantityExpression expression, AnalysisContext context)
     {
         var result = new FhirPathTypeSet();
-        result.AddPrimitiveType("Quantity");
+        result.AddSystemPrimitiveType("Quantity");
         return result;
     }
 
@@ -809,7 +809,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
 
         var matchingTypes = focusTypes.Types
-            .Where(type => TypeMatcher.MatchesCastTypeName(type.TypeName, typeName, _schema))
+            .Where(type => TypeMatcher.MatchesCastTypeName(type.TypeName, typeName, _schema, type.IsSystemValue))
             .ToList();
 
         if (matchingTypes.Count > 0)
@@ -821,12 +821,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
-            var resolvedType = _schema.GetTypeDefinition(typeName);
-            var targetType = resolvedType is not null
-                && TypeMatcher.MatchesCastTypeName(resolvedType.Info.Name, typeName, _schema)
-                    ? resolvedType
-                    : null;
-            var isPrimitive = resolvedType is null && FhirPathType.IsPrimitiveTypeName(typeName);
+            var (baseTypeName, resolvedType, targetType, isPrimitive) = ResolveCastTarget(typeName);
 
             if (resolvedType is not null && targetType is null)
             {
@@ -841,7 +836,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             {
                 context.AddError($"Type '{typeName}' is not a valid FHIR type", expression);
             }
-            else if (!focusTypes.HasUnknown && !focusTypes.CanBeOfType(typeName))
+            else if (!focusTypes.HasUnknown && !focusTypes.CanBeOfType(baseTypeName))
             {
                 // An indeterminate focus can hold anything at runtime, so "always empty" is not decidable.
                 context.AddAlwaysEmptyWarning(
@@ -855,11 +850,35 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             }
             else if (isPrimitive)
             {
-                result.AddPrimitiveType(typeName, focusTypes.IsCollection());
+                result.AddPrimitiveType(baseTypeName, focusTypes.IsCollection());
             }
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Resolves a cast target name to the schema type the evaluator would match a value against.
+    /// </summary>
+    /// <remarks>
+    /// The <c>System.</c> and <c>FHIR.</c> prefixes are FHIRPath type syntax rather than part of the type
+    /// name, and <see cref="TypeMatcher.ParseTypeName"/> strips them before matching. The schema lookup has
+    /// to strip them too: leaving them on makes a qualified target unresolvable, so it is reported as an
+    /// invalid FHIR type instead of reaching the always-empty contract an unqualified target of the same
+    /// type gets. <paramref name="typeName"/> keeps its prefix for matching, because the prefix is part of
+    /// what the evaluator was asked for.
+    /// </remarks>
+    private (string BaseTypeName, IType? ResolvedType, IType? TargetType, bool IsPrimitive) ResolveCastTarget(string typeName)
+    {
+        var (baseTypeName, _, _) = TypeMatcher.ParseTypeName(typeName);
+        var resolvedType = _schema.GetTypeDefinition(baseTypeName);
+        var targetType = resolvedType is not null
+            && TypeMatcher.MatchesCastTypeName(resolvedType.Info.Name, typeName, _schema, instanceIsSystemValue: false)
+                ? resolvedType
+                : null;
+        var isPrimitive = resolvedType is null && FhirPathType.IsPrimitiveTypeName(baseTypeName);
+
+        return (baseTypeName, resolvedType, targetType, isPrimitive);
     }
 
     /// <summary>
@@ -918,7 +937,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         AnalysisContext context,
         FhirPathTypeSet result)
     {
-        result.AddPrimitiveType("boolean");
+        result.AddSystemPrimitiveType("boolean");
 
         if (expression.Arguments.Count == 0)
         {
@@ -974,7 +993,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             var typeName = typeExpr.Value?.ToString();
             if (typeName != null)
             {
-                if (!leftResult.CanBeOfType(typeName))
+                var (baseTypeName, resolvedType, targetType, isPrimitive) = ResolveCastTarget(typeName);
+
+                if (!leftResult.CanBeOfType(baseTypeName))
                 {
                     context.AddWarning(
                         $"Cast 'as {typeName}' may return empty. Possible types: {leftResult.TypeNames()}",
@@ -982,7 +1003,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 }
 
                 var matchingTypes = leftResult.Types
-                    .Where(type => TypeMatcher.MatchesCastTypeName(type.TypeName, typeName, _schema))
+                    .Where(type => TypeMatcher.MatchesCastTypeName(type.TypeName, typeName, _schema, type.IsSystemValue))
                     .ToList();
 
                 foreach (var t in matchingTypes)
@@ -992,12 +1013,6 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
                 if (matchingTypes.Count == 0)
                 {
-                    var resolvedType = _schema.GetTypeDefinition(typeName);
-                    var targetType = resolvedType is not null
-                        && TypeMatcher.MatchesCastTypeName(resolvedType.Info.Name, typeName, _schema)
-                            ? resolvedType
-                            : null;
-
                     if (resolvedType is not null && targetType is null)
                     {
                         if (!leftResult.HasUnknown)
@@ -1011,9 +1026,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                     {
                         result.AddType(targetType);
                     }
-                    else if (FhirPathType.IsPrimitiveTypeName(typeName))
+                    else if (isPrimitive)
                     {
-                        result.AddPrimitiveType(typeName);
+                        result.AddPrimitiveType(baseTypeName);
                     }
                 }
             }
@@ -1226,7 +1241,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
              propertyName.Equals("namespace", StringComparison.OrdinalIgnoreCase) ||
              propertyName.Equals("baseType", StringComparison.OrdinalIgnoreCase)))
         {
-            result.AddPrimitiveType("string", focusType.IsCollection);
+            result.AddSystemPrimitiveType("string", focusType.IsCollection);
             return true;
         }
 
@@ -1391,7 +1406,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     private static FhirPathTypeSet CreateBooleanTypeSet()
     {
         var result = new FhirPathTypeSet();
-        result.AddPrimitiveType("boolean");
+        result.AddSystemPrimitiveType("boolean");
         return result;
     }
 
