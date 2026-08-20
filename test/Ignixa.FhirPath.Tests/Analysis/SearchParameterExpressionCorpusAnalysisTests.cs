@@ -17,6 +17,22 @@ public class SearchParameterExpressionCorpusAnalysisTests
         { FhirVersion.R6, 1288 }
     };
 
+    public static TheoryData<FhirVersion, int, int> AnalysisFigures => new()
+    {
+        { FhirVersion.Stu3, 0, 0 },
+        { FhirVersion.R4, 0, 59 },
+        { FhirVersion.R4B, 0, 72 },
+        { FhirVersion.R5, 26, 109 },
+        { FhirVersion.R6, 25, 110 }
+    };
+
+    public static TheoryData<FhirVersion, int> LegacyCapitalizedCastVersions => new()
+    {
+        { FhirVersion.Stu3, 11 },
+        { FhirVersion.R4, 1 },
+        { FhirVersion.R4B, 1 }
+    };
+
     [Theory]
     [MemberData(nameof(Versions))]
     public void GivenShippedCorpus_WhenAnalyzed_ThenAlwaysEmptyDiagnosticsMatchKnownUpstreamSpecDefects(
@@ -75,6 +91,50 @@ public class SearchParameterExpressionCorpusAnalysisTests
         rejected.ShouldBeEmpty();
     }
 
+    [Theory]
+    [MemberData(nameof(AnalysisFigures))]
+    public void GivenShippedCorpus_WhenAnalyzed_ThenErrorAndInvalidFiguresDoNotRegress(
+        FhirVersion version,
+        int expectedErrorResults,
+        int expectedInvalidResults)
+    {
+        // Arrange
+        var corpus = SearchParameterExpressionCorpus.Load(version);
+        var analyzer = new FhirPathAnalyzer(version.GetSchemaProvider());
+
+        // Act
+        var analyzed = Analyze(corpus, analyzer).Select(item => item.Result).ToArray();
+
+        // Assert
+        analyzed.Count(result => result.Errors.Any()).ShouldBe(expectedErrorResults);
+        analyzed.Count(result => !result.IsValid).ShouldBe(expectedInvalidResults);
+    }
+
+    [Theory]
+    [MemberData(nameof(LegacyCapitalizedCastVersions))]
+    public void GivenShippedPreR5CapitalizedCasts_WhenAnalyzed_ThenEveryAliasRemainsValid(
+        FhirVersion version,
+        int expectedCastCount)
+    {
+        // Arrange
+        var corpus = SearchParameterExpressionCorpus.Load(version);
+        var analyzer = new FhirPathAnalyzer(version.GetSchemaProvider());
+
+        // Act
+        var analyzed = corpus.Parameters
+            .SelectMany(parameter => EnumerateExpressions(parameter)
+                .Where(ContainsLegacyCapitalizedCast)
+                .SelectMany(expression => parameter.BaseResourceTypes.Select(rootType =>
+                    (parameter.Url, Expression: expression, RootType: rootType, Result: analyzer.Analyze(expression, rootType)))))
+            .ToArray();
+
+        // Assert
+        analyzed.Select(item => (item.Url, item.Expression)).Distinct().Count().ShouldBe(expectedCastCount);
+        analyzed.ShouldAllBe(item => item.Result.IsValid);
+        analyzed.ShouldAllBe(item => !item.Result.HasAlwaysEmptySubexpression);
+        analyzed.ShouldAllBe(item => item.Result.InferredTypes.Types.Count > 0);
+    }
+
     private static IEnumerable<(string ParameterUrl, string ResourceType, AnalysisResult Result)> Analyze(
         SearchParameterExpressionCorpus corpus,
         FhirPathAnalyzer analyzer)
@@ -86,6 +146,29 @@ public class SearchParameterExpressionCorpusAnalysisTests
                  ResourceType: resourceType,
                  Result: analyzer.Analyze(parameter.Expression!, resourceType))));
     }
+
+    private static IEnumerable<string> EnumerateExpressions(
+        Ignixa.Search.Models.SearchParameterInfo parameter)
+    {
+        if (!string.IsNullOrWhiteSpace(parameter.Expression))
+        {
+            yield return parameter.Expression;
+        }
+
+        foreach (var component in parameter.Component)
+        {
+            if (!string.IsNullOrWhiteSpace(component.Expression))
+            {
+                yield return component.Expression;
+            }
+        }
+    }
+
+    private static bool ContainsLegacyCapitalizedCast(string expression) =>
+        expression.Contains(".as(DateTime)", StringComparison.Ordinal)
+        || expression.Contains(".as(Date)", StringComparison.Ordinal)
+        || expression.Contains(".as(String)", StringComparison.Ordinal)
+        || expression.Contains(".as(Uri)", StringComparison.Ordinal);
 
     /// <summary>
     /// Parameter/base-resource pairs the analyzer reports on because the shipped expression is itself

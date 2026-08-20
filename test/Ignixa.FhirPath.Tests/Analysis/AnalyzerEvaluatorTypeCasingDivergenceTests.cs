@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * These tests pin a KNOWN GAP, not desired behaviour. Every assertion below describes an outcome the
- * project considers wrong and has deferred fixing. Read the class remarks before changing any of it.
+ * These tests previously pinned the analyzer/evaluator type-casing divergence. They now pin the aligned
+ * behaviour over the same 24-case coverage matrix.
  */
 
 using Ignixa.Abstractions;
@@ -16,30 +16,26 @@ using Ignixa.Specification.Extensions;
 namespace Ignixa.FhirPath.Tests.Analysis;
 
 /// <summary>
-/// Pins the divergence between the analyzer's case-insensitive type resolution and the evaluator's
-/// <c>Ordinal</c>-exact matching, so it cannot widen or disappear unnoticed.
+/// Pins alignment between analyzer type resolution and the evaluator's <c>Ordinal</c>-exact matching.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is a guard over a defect, not over intended behaviour. From R5 the evaluator matches type
-/// names <c>Ordinal</c>-exact and carries a cast alias set only for the pre-R5 versions, while the
-/// analyzer resolves them case-insensitively. A mis-cased cast therefore analyses clean and then
-/// evaluates empty - precisely the failure class <see cref="AnalysisResult.HasAlwaysEmptySubexpression"/>
-/// exists to surface, and it is blind to it here.
+/// These 24 cases are a straight inversion of the matrix that previously pinned the known gap. The
+/// evaluator matches type names <c>Ordinal</c>-exact and carries a cast alias set only for pre-R5
+/// versions; the analyzer must make the same decision and surface a provably empty cast through
+/// <see cref="AnalysisResult.HasAlwaysEmptySubexpression"/>.
 /// </para>
 /// <para>
-/// Where the case-insensitivity actually lives, measured rather than assumed: the analyzer resolves a
-/// cast target twice over. It first matches the focus's own types with an <c>OrdinalIgnoreCase</c>
-/// comparison, and only when that finds nothing does it fall back to the schema's type lookup, which
-/// is itself backed by an <c>OrdinalIgnoreCase</c> dictionary. Closing either path alone changes
-/// nothing, because the other still resolves the mis-cased name; both must be version-gated together.
-/// That is the work this pass deferred.
+/// Each case exercises both analyzer resolution paths. The analyzer first compares the target with the
+/// focus's own types. Once that rejects the spelling, it reaches the schema fallback; because generated
+/// providers resolve case-insensitively, the analyzer must validate the canonical name returned by the
+/// provider with the same matcher before accepting it. Leaving either path case-insensitive makes all
+/// 24 cases infer the control type and fail.
 /// </para>
 /// <para>
-/// The load-bearing assertion is <see cref="AnalysisResult.InferredTypes"/>: the analyzer resolves the
-/// mis-cased spelling to the same concrete type as the correct one. Closing both resolution paths was
-/// measured to fail all cases here on that assertion. When the analyzer is aligned, delete this class
-/// and move the cases into the analyzer's own always-empty coverage.
+/// The load-bearing assertions are the empty inferred type set and the always-empty diagnostic. Together
+/// they prevent either the focus match or the case-insensitive schema fallback from reintroducing the
+/// divergence.
 /// </para>
 /// <para>
 /// Every case carries a correctly-cased control asserted non-empty, so "the evaluator returned empty"
@@ -63,6 +59,16 @@ public class AnalyzerEvaluatorTypeCasingDivergenceTests
           "resourceType": "Patient",
           "id": "pat1",
           "name": [ { "family": "Doe", "given": [ "Jane" ] } ]
+        }
+        """;
+
+    private const string DateTimeObservationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs-date",
+          "status": "final",
+          "code": { "text": "test" },
+          "valueDateTime": "2024-06-15T08:00:00Z"
         }
         """;
 
@@ -104,7 +110,7 @@ public class AnalyzerEvaluatorTypeCasingDivergenceTests
 
     [Theory]
     [MemberData(nameof(MisCasedCasts))]
-    public void GivenAMisCasedTypeName_WhenAnalysedAndEvaluated_ThenTheAnalyzerResolvesWhatTheEvaluatorEmpties(
+    public void GivenAMisCasedTypeName_WhenAnalysedAndEvaluated_ThenBothReportAnEmptyCast(
         FhirVersion version,
         string rootType,
         string misCased,
@@ -125,16 +131,141 @@ public class AnalyzerEvaluatorTypeCasingDivergenceTests
         control.ShouldNotBeEmpty($"'{correctlyCased}' must resolve, or the empty result below proves nothing.");
         evaluated.ShouldBeEmpty($"The evaluator matches type names Ordinal-exact, so '{misCased}' must be empty on {version}.");
 
-        analysedMisCased.InferredTypes.Types.Select(t => t.TypeName).ShouldBe(
-            analysedControl.InferredTypes.Types.Select(t => t.TypeName),
-            $"KNOWN GAP: the analyzer resolves '{misCased}' to the same type as '{correctlyCased}'. Version-gating both of the analyzer's type-resolution paths must fail here.");
-        analysedMisCased.InferredTypes.Types.ShouldNotBeEmpty(
-            $"KNOWN GAP: '{misCased}' resolves to a concrete type rather than to nothing.");
+        analysedControl.InferredTypes.Types.ShouldNotBeEmpty(
+            $"'{correctlyCased}' must infer a type, or the empty inference below proves nothing.");
+        analysedMisCased.InferredTypes.Types.ShouldBeEmpty(
+            $"The analyzer must not accept '{misCased}' through either its focus match or schema fallback.");
+        analysedMisCased.IsValid.ShouldBeTrue();
+        analysedMisCased.HasAlwaysEmptySubexpression.ShouldBeTrue(
+            $"The analyzer must surface the same provably empty cast as the evaluator for '{misCased}'.");
+    }
 
-        analysedMisCased.IsValid.ShouldBeTrue(
-            $"KNOWN GAP: the analyzer certifies '{misCased}', which the evaluator empties.");
-        analysedMisCased.HasAlwaysEmptySubexpression.ShouldBeFalse(
-            $"KNOWN GAP: the always-empty signal does not see '{misCased}'.");
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    public void GivenPreR5_WhenUsingTheCanonicalSystemStringAlias_ThenAnalysisAndEvaluationKeepTheValue(
+        FhirVersion version)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+        var analyzer = new FhirPathAnalyzer(schema);
+
+        // Act
+        var evaluated = Evaluate(element, "value.as(String)", schema);
+        var analysed = analyzer.Analyze("value.as(String)", "Observation");
+
+        // Assert
+        evaluated.ShouldHaveSingleItem().InstanceType.ShouldBe("string");
+        analysed.InferredTypes.Types.Select(type => type.TypeName).ShouldBe(["string"]);
+        analysed.IsValid.ShouldBeTrue();
+        analysed.HasAlwaysEmptySubexpression.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3, "DATETIME")]
+    [InlineData(FhirVersion.Stu3, "dAtEtImE")]
+    [InlineData(FhirVersion.R4, "DATETIME")]
+    [InlineData(FhirVersion.R4, "dAtEtImE")]
+    [InlineData(FhirVersion.R4B, "DATETIME")]
+    [InlineData(FhirVersion.R4B, "dAtEtImE")]
+    [InlineData(FhirVersion.R5, "DATETIME")]
+    [InlineData(FhirVersion.R5, "dAtEtImE")]
+    [InlineData(FhirVersion.R6, "DATETIME")]
+    [InlineData(FhirVersion.R6, "dAtEtImE")]
+    public void GivenArbitraryTypeCasing_WhenAnalysedAndEvaluated_ThenBothReportAnEmptyCast(
+        FhirVersion version,
+        string typeName)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(DateTimeObservationJson).ToElement(schema);
+        var analyzer = new FhirPathAnalyzer(schema);
+        string expression = $"value.as({typeName})";
+
+        // Act
+        var evaluated = Evaluate(element, expression, schema);
+        var analysed = analyzer.Analyze(expression, "Observation");
+
+        // Assert
+        evaluated.ShouldBeEmpty();
+        analysed.InferredTypes.Types.ShouldBeEmpty();
+        analysed.IsValid.ShouldBeTrue();
+        analysed.HasAlwaysEmptySubexpression.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenAMisCasedBinaryAsTarget_WhenAnalysedAndEvaluated_ThenBothReportAnEmptyCast(
+        FhirVersion version)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+        var analyzer = new FhirPathAnalyzer(schema);
+        const string expression = "code as codeableconcept";
+
+        // Act
+        var evaluated = Evaluate(element, expression, schema);
+        var analysed = analyzer.Analyze(expression, "Observation");
+
+        // Assert
+        evaluated.ShouldBeEmpty();
+        analysed.InferredTypes.Types.ShouldBeEmpty();
+        analysed.IsValid.ShouldBeTrue();
+        analysed.HasAlwaysEmptySubexpression.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3, true)]
+    [InlineData(FhirVersion.R4, true)]
+    [InlineData(FhirVersion.R4B, true)]
+    [InlineData(FhirVersion.R5, false)]
+    [InlineData(FhirVersion.R6, false)]
+    public void GivenAnIndeterminateFocus_WhenSchemaFallbackReturnsString_ThenItsCanonicalNameIsValidated(
+        FhirVersion version,
+        bool expectsString)
+    {
+        // descendants() is statically indeterminate, so the analyzer cannot match String against a known
+        // focus type and must use the case-insensitive schema fallback. The provider returns canonical
+        // string; the shared matcher accepts that alias below R5 and rejects it from R5 onward.
+
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(PatientJson).ToElement(schema);
+        var analyzer = new FhirPathAnalyzer(schema);
+        const string expression = "descendants().ofType(String)";
+
+        // Act
+        var evaluated = Evaluate(element, expression, schema);
+        var analysed = analyzer.Analyze(expression, "Patient");
+
+        // Assert
+        evaluated.Any().ShouldBe(expectsString);
+        analysed.InferredTypes.Types.Any(type => type.TypeName == "string").ShouldBe(expectsString);
+    }
+
+    [Fact]
+    public void GivenAnUnspecifiedSchemaVersion_WhenUsingTheCanonicalSystemStringAlias_ThenMatchingFailsOpen()
+    {
+        // Arrange
+        var schema = new UnspecifiedSchemaProvider(FhirVersion.R5.GetSchemaProvider());
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+        var analyzer = new FhirPathAnalyzer(schema);
+
+        // Act
+        var evaluated = Evaluate(element, "value.as(String)", schema);
+        var analysed = analyzer.Analyze("value.as(String)", "Observation");
+
+        // Assert
+        evaluated.ShouldHaveSingleItem().InstanceType.ShouldBe("string");
+        analysed.InferredTypes.Types.Select(type => type.TypeName).ShouldBe(["string"]);
+        analysed.HasAlwaysEmptySubexpression.ShouldBeFalse();
     }
 
     private IReadOnlyList<IElement> Evaluate(IElement element, string expression, ISchema schema) =>
@@ -144,4 +275,21 @@ public class AnalyzerEvaluatorTypeCasingDivergenceTests
                 _parser.Parse(expression),
                 new EvaluationContext { Resource = element, RootResource = element, Schema = schema })
             .ToList();
+
+    private sealed class UnspecifiedSchemaProvider(IFhirSchemaProvider inner) : IFhirSchemaProvider
+    {
+        public FhirVersion Version => FhirVersion.Unspecified;
+
+        public IReadOnlySet<string> ResourceTypeNames => inner.ResourceTypeNames;
+
+        public string FullVersion => inner.FullVersion;
+
+        public IReferenceMetadataProvider ReferenceMetadataProvider => inner.ReferenceMetadataProvider;
+
+        public IValueSetProvider ValueSetProvider => inner.ValueSetProvider;
+
+        public IType? GetTypeDefinition(string typeName) => inner.GetTypeDefinition(typeName);
+
+        public bool IsKnownType(string typeName) => inner.IsKnownType(typeName);
+    }
 }

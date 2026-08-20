@@ -2,7 +2,7 @@
  * Copyright (c) 2025, Ignixa Contributors
  *
  * Centralized type matching logic for FhirPath type operations.
- * Used by: the is and as operators, and the is(), as() and ofType() functions.
+ * Used by runtime type operators/functions and static cast analysis.
  */
 
 using System.Collections.Frozen;
@@ -12,8 +12,7 @@ using Ignixa.FhirPath.Expressions;
 namespace Ignixa.FhirPath.Evaluation;
 
 /// <summary>
-/// The single type-matching implementation behind <c>is</c>, <c>is()</c>, <c>as</c>, <c>as()</c> and
-/// <c>ofType()</c>.
+/// The single type-matching implementation behind runtime type operations and their static analysis.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -589,6 +588,23 @@ internal static class TypeMatcher
         bool MatchesAlias(FrozenDictionary<string, string> aliases) =>
             aliases.TryGetValue(requestedTypeName, out var fhirTypeName)
             && instanceTypeName.Equals(fhirTypeName, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Checks a statically known FHIR type name against a cast target using the evaluator's matching rule.
+    /// </summary>
+    /// <remarks>
+    /// Static analysis has no runtime element from which to determine the System/FHIR namespace, so the
+    /// known type is treated as a FHIR value. This is the same path used by runtime cast matching after
+    /// namespace parsing, including exact matching, the pre-R5 aliases, and fail-open version handling.
+    /// </remarks>
+    public static bool MatchesCastTypeName(
+        string instanceTypeName,
+        string requestedTypeName,
+        ISchema? schema)
+    {
+        var (baseTypeName, _, _) = ParseTypeName(requestedTypeName);
+        return TypeNamesMatch(instanceTypeName, baseTypeName, TypeMatchMode.Cast, schema, elementIsSystemType: false);
     }
 
     private static bool TryGetBaseType(string typeName, TypeMatchMode mode, out string? baseType)

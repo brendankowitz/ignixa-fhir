@@ -4,6 +4,7 @@
 // -------------------------------------------------------------------------------------------------
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.FhirPath.Parser;
 using Ignixa.FhirPath.Visitors;
@@ -807,8 +808,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             return result;
         }
 
-        var matchingTypes = focusTypes.Types.Where(t =>
-            t.TypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase)).ToList();
+        var matchingTypes = focusTypes.Types
+            .Where(type => TypeMatcher.MatchesCastTypeName(type.TypeName, typeName, _schema))
+            .ToList();
 
         if (matchingTypes.Count > 0)
         {
@@ -819,10 +821,23 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         }
         else
         {
-            var targetType = _schema.GetTypeDefinition(typeName);
-            var isPrimitive = FhirPathType.IsPrimitiveTypeName(typeName);
+            var resolvedType = _schema.GetTypeDefinition(typeName);
+            var targetType = resolvedType is not null
+                && TypeMatcher.MatchesCastTypeName(resolvedType.Info.Name, typeName, _schema)
+                    ? resolvedType
+                    : null;
+            var isPrimitive = resolvedType is null && FhirPathType.IsPrimitiveTypeName(typeName);
 
-            if (targetType == null && !isPrimitive)
+            if (resolvedType is not null && targetType is null)
+            {
+                if (!focusTypes.HasUnknown)
+                {
+                    context.AddAlwaysEmptyWarning(
+                        $"Type filter '{typeName}' will always be empty. Focus types: {focusTypes.TypeNames()}",
+                        expression);
+                }
+            }
+            else if (targetType == null && !isPrimitive)
             {
                 context.AddError($"Type '{typeName}' is not a valid FHIR type", expression);
             }
@@ -966,8 +981,9 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                         expression);
                 }
 
-                var matchingTypes = leftResult.Types.Where(t =>
-                    t.TypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase)).ToList();
+                var matchingTypes = leftResult.Types
+                    .Where(type => TypeMatcher.MatchesCastTypeName(type.TypeName, typeName, _schema))
+                    .ToList();
 
                 foreach (var t in matchingTypes)
                 {
@@ -976,8 +992,22 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
 
                 if (matchingTypes.Count == 0)
                 {
-                    var targetType = _schema.GetTypeDefinition(typeName);
-                    if (targetType != null)
+                    var resolvedType = _schema.GetTypeDefinition(typeName);
+                    var targetType = resolvedType is not null
+                        && TypeMatcher.MatchesCastTypeName(resolvedType.Info.Name, typeName, _schema)
+                            ? resolvedType
+                            : null;
+
+                    if (resolvedType is not null && targetType is null)
+                    {
+                        if (!leftResult.HasUnknown)
+                        {
+                            context.AddAlwaysEmptyWarning(
+                                $"Cast 'as {typeName}' will always be empty. Possible types: {leftResult.TypeNames()}",
+                                expression);
+                        }
+                    }
+                    else if (targetType != null)
                     {
                         result.AddType(targetType);
                     }

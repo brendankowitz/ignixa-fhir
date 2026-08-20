@@ -13,19 +13,12 @@ namespace Ignixa.FhirPath.Analysis;
 /// Represents the result of FhirPath expression analysis.
 /// </summary>
 /// <remarks>
-/// Known limitation — type-name casing. The analyzer resolves type names case-insensitively, while
-/// from R5 the evaluator matches them <c>Ordinal</c>-exact and carries an alias set only for the
-/// pre-R5 versions. The two therefore disagree on a mis-cased cast:
-/// <c>Observation.value.as(String)</c> analyses clean on R5 and R6 and evaluates empty, and
-/// <c>as(codeableconcept)</c> or <c>as(humanname)</c> do so on every version. In those cases
-/// <see cref="IsValid"/> is <see langword="true"/>, <see cref="HasAlwaysEmptySubexpression"/> is
-/// <see langword="false"/>, and <see cref="InferredTypes"/> names the correctly-cased type, for an
-/// expression the evaluator provably empties — so no member of this type can be used to detect that
-/// class of typo. The analyzer resolves a cast target twice over, first against the focus's own types
-/// and then through the schema's type lookup, and both are case-insensitive; closing either alone was
-/// measured to change nothing, so aligning the two engines means version-gating both paths as the
-/// evaluator already does. Until then the divergence is pinned by
-/// <c>AnalyzerEvaluatorTypeCasingDivergenceTests</c>, which fails when it changes in either direction.
+/// Cast type-name resolution uses the evaluator's exact matching and pre-R5 alias rules. Because schema
+/// providers resolve type names case-insensitively for general and BackboneElement lookups, the analyzer
+/// validates the canonical type name returned by the provider before accepting a cast target. A
+/// mis-cased target therefore infers no type and sets <see cref="HasAlwaysEmptySubexpression"/> when the
+/// focus is statically known, matching the evaluator's empty result without narrowing schema lookup for
+/// unrelated callers.
 /// </remarks>
 public sealed class AnalysisResult
 {
@@ -99,8 +92,7 @@ public sealed class AnalysisResult
     /// outcome: <c>Patient.status</c> provably yields empty and returns <see langword="false"/> here,
     /// as do <c>$this.status</c>, <c>%resource.status</c> and <c>Patient.where(status = 'active')</c>,
     /// all of which are reported as an unresolved-property error instead. A <see langword="false"/>
-    /// result therefore means "not classified as always-empty", not "not always empty" — see also the
-    /// class-level note on type-name casing, which is a second source of the same asymmetry.
+    /// result therefore means "not classified as always-empty", not "not always empty".
     /// </para>
     /// </remarks>
     public bool HasAlwaysEmptySubexpression => Issues.Any(issue => issue.IsAlwaysEmpty);
