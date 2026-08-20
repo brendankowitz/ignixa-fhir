@@ -402,9 +402,83 @@ internal static class DifferentialFixture
         "true or ((1 | 2).single().exists() and true)",
     };
 
-    public static EvaluationContext CreateContext(IElement subject)
+    /// <summary>
+    /// Type-operator expressions swept across every published version rather than fixed at
+    /// <see cref="DefaultVersion"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The main corpus fixes the version, which is fine for the rules that do not read it - but the
+    /// FHIRPath type operators do. <c>as</c> accepts a set of capitalised aliases below R5 and rejects
+    /// them from R5 on, and the branch that exempts engine-produced System values from that gate is
+    /// only reachable when a schema is present. A single-version corpus cannot see a divergence that
+    /// exists on one side of that gate and not the other, and did not: the compiled path returned empty
+    /// for <c>value.count().ofType(Integer)</c> on R5 and R6 while the interpreter returned the
+    /// integer, and every differential suite passed.
+    /// </para>
+    /// <para>
+    /// The System-spelling rows are the ones that carry that regression. The rest are here because the
+    /// version gate sits in the same method and a change to it should be visible on all five versions
+    /// at once, not discovered one artifact at a time.
+    /// </para>
+    /// </remarks>
+    public static TheoryData<string> TypeOperatorCorpus => new()
     {
-        return new EvaluationContext() with { Resource = subject, RootResource = subject };
+        "birthDate.count().ofType(Integer)",
+        "birthDate.count().ofType(integer)",
+        "birthDate.exists().ofType(Boolean)",
+        "birthDate.exists().ofType(boolean)",
+        "name.count() > 0",
+        "birthDate.count() is Integer",
+        "birthDate.exists() is Boolean",
+        "birthDate.count().as(Integer)",
+        "birthDate is date",
+        "birthDate is dateTime",
+        "birthDate is Date",
+        "birthDate as date",
+        "birthDate as Date",
+        "birthDate.ofType(date)",
+        "birthDate.ofType(Date)",
+        "meta.lastUpdated is instant",
+        "active is boolean",
+        "active is Boolean",
+        "multipleBirthInteger is integer",
+        "multipleBirthInteger is Integer",
+        "name is HumanName",
+        "name is humanname",
+        "name.as(HumanName).family",
+        "name.as(humanname).family",
+        "name.first().family is string",
+        "name.first().family is String",
+        "name.ofType(HumanName).family",
+        "birthDate.type().name",
+        "birthDate.type().namespace",
+    };
+
+    /// <summary>
+    /// Builds the evaluation context for a differential run, over the same FHIR version the subject was
+    /// parsed against.
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="EvaluationContext.Schema"/> is not optional here even though the type says it is.
+    /// Several evaluation rules are version-gated - the pre-R5 cast aliases, the R5 singleton-input rule
+    /// for <c>as</c>, type-identifier resolution - and every one of them reads the version off this
+    /// schema. A context without one silently pins the whole suite to the unversioned branch of each of
+    /// those rules, which is how a compiled-versus-interpreted divergence that only existed on R5 and R6
+    /// passed a suite whose entire purpose is to catch compiled-versus-interpreted divergence.
+    /// </remarks>
+    public static EvaluationContext CreateContext(IElement subject) =>
+        CreateContext(subject, DefaultVersion);
+
+    /// <inheritdoc cref="CreateContext(IElement)"/>
+    public static EvaluationContext CreateContext(IElement subject, FhirVersion version)
+    {
+        return new EvaluationContext()
+        {
+            Resource = subject,
+            RootResource = subject,
+            Schema = version.GetSchemaProvider(),
+        };
     }
 
     /// <summary>
@@ -581,12 +655,29 @@ internal static class DifferentialFixture
     /// <c>contact.extension.value</c> (valueDecimal) for <c>decimal</c>.
     /// </para>
     /// </remarks>
-    public static IElement CreateSubject()
+    public static IElement CreateSubject() => CreateSubject(DefaultVersion);
+
+    /// <inheritdoc cref="CreateSubject()"/>
+    public static IElement CreateSubject(FhirVersion version)
     {
-        return ResourceJsonNode.Parse(SubjectJson).ToElement(Schema);
+        return ResourceJsonNode.Parse(SubjectJson).ToElement(version.GetSchemaProvider());
     }
 
-    private static readonly IFhirSchemaProvider Schema = FhirVersion.R5.GetSchemaProvider();
+    /// <summary>
+    /// Every published version the corpus is expected to behave identically across, for suites that
+    /// sweep the version axis rather than fixing it at <see cref="DefaultVersion"/>.
+    /// </summary>
+    public static readonly FhirVersion[] PublishedVersions =
+    [
+        FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6
+    ];
+
+    /// <summary>
+    /// The version the single-version suites run at. R5 rather than the oldest, so the default run
+    /// exercises the post-R5 branch of the version-gated type rules.
+    /// </summary>
+    public const FhirVersion DefaultVersion = FhirVersion.R5;
+
 
     private const string SubjectJson = """
     {

@@ -902,10 +902,10 @@ internal static class CollectionFunctions
             string ns = "FHIR";
             string name = typeName;
 
-            // Distinguish between System literals (PrimitiveElement) and FHIR elements (e.g. ElementNode, PocoElement)
-            // This is a heuristic based on the implementing class name.
-            var implType = element.GetType().Name;
-            bool isSystemLiteral = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+            // System literals and engine-produced values declare themselves; FHIR elements (ElementNode,
+            // SchemaAwareElement, PocoElement) do not. See ISystemValueElement for why this is declared
+            // rather than inferred from the implementing class name.
+            bool isSystemLiteral = element is ISystemValueElement;
 
             if (isSystemLiteral)
             {

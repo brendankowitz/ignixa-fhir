@@ -58,11 +58,34 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <c>dAtEtImE</c> remain invalid matches; FHIRPath is not a case-insensitive language.
 /// </para>
 /// <para>
-/// HL7's artifacts corroborate the same boundary. The shipped definitions contain 9 capitalized casts
-/// in STU3 (<c>DateTime</c> x6, <c>String</c> x1, <c>Uri</c> x2), 1 in R4, 1 in R4B and none in R5 or
-/// R6. The R4/R4B occurrence is the <c>code-value-date</c> composite's
+/// HL7's artifacts corroborate the same boundary. The shipped definitions contain 11 capitalized casts
+/// in STU3 (<c>DateTime</c> x6, <c>Date</c> x2, <c>String</c> x1, <c>Uri</c> x2), 1 in R4, 1 in R4B and
+/// none in R5 or R6. The R4/R4B occurrence is the <c>code-value-date</c> composite's
 /// <c>value.as(DateTime) | value.as(Period)</c>; removing the legacy crossing would drop its date
-/// component and therefore the whole composite index entry.
+/// component and therefore the whole composite index entry. The STU3 <c>Date</c> pair is
+/// <c>Goal-start-date</c> (<c>Goal.start.as(Date)</c>) and <c>Goal-target-date</c>
+/// (<c>Goal.target.due.as(Date)</c>). <c>Date</c> is in the alias table for those two artifacts as much
+/// as for the System spelling, so an audit that reconciles the table against the System story alone
+/// will find it unaccounted for and delete it, silently emptying both parameters.
+/// <c>AsOperatorSearchParameterCardinalityTests</c> pins all three artifacts.
+/// </para>
+/// <para>
+/// What is <em>absent</em> from the alias tables carries as much weight. The same scan also finds
+/// <c>Quantity</c> x7 in STU3 and x19 in R4/R4B, plus <c>CodeableConcept</c>, <c>Period</c>,
+/// <c>Range</c>, <c>Age</c>, <c>Identifier</c> and <c>Reference</c>. None of those is mis-cased: FHIR
+/// spells its complex types in PascalCase, so <c>as(Quantity)</c> already matches exactly and needs no
+/// alias on any version. Only the primitives, whose FHIR spelling is lower camel case, can be mis-cased
+/// at all. Counting capitalized casts is therefore not the same as counting casts that need an alias.
+/// </para>
+/// <para>
+/// <em>The narrowing is not confined to primitives.</em> Ordinal matching applies to every type name, so
+/// <c>as(humanname)</c> selects nothing and <c>is resource</c>, <c>is domainresource</c> and
+/// <c>as(resource)</c> are false or empty; the resource checks in
+/// <see cref="MatchesTypeWithInheritance"/> compare Ordinal against <c>Resource</c> and
+/// <c>DomainResource</c> for the same reason. The published spellings are <c>HumanName</c>,
+/// <c>Resource</c> and <c>DomainResource</c>, so this is the spec-correct answer - but it is stated here
+/// because the primitive argument above does not reach it and would not on its own justify it.
+/// <c>TypeNameCaseSensitivityTests</c> pins it.
 /// </para>
 /// <para>
 /// <c>Uri</c> is deliberately separate from the System aliases because <c>System.Uri</c> is not a
@@ -89,10 +112,21 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </remarks>
 internal static class TypeMatcher
 {
-    // System-only types that must match FHIRPath literals (capitalized).
-    // Date and Quantity exist in both models, so unqualified type tests resolve them against FHIR first
-    // and they are intentionally absent. The pre-R5 Date cast crossing is handled separately below;
-    // Quantity has identical spelling in both models and needs no alias.
+    // System-only types, which an unqualified type TEST must not satisfy from a FHIR value: Patient.active
+    // is a FHIR boolean, so `active is Boolean` is false while `exists() is Boolean` is true.
+    //
+    // Quantity's absence is load-bearing: it exists in both models with identical spelling, so adding it
+    // here would make `is Quantity` false on a real FHIR Quantity. Date's absence is inert: FHIR spells
+    // it `date`, never `Date`, so `birthDate is Date` already fails the Ordinal comparison in
+    // TypeNamesMatch before this set is ever consulted. Adding Date would change no result; removing
+    // Quantity would change many.
+    //
+    // This gate is TEST-only, and `is` is strict on every version while the casts are gated (see
+    // UsesR5TypeRules). That asymmetry is the spec's, not ours: the System/FHIR namespace distinction is
+    // stated as an explicit exception for the test operators and predates R5 - FHIR's own documentation
+    // demonstrates it with `Patient.name.given.is(System.string).not()` - whereas R5 2.1.9.1.2 withdrew
+    // from `as` a latitude R4 had granted it. Nothing was ever withdrawn from `is`, so there is nothing
+    // for a version gate here to switch on.
     private static readonly FrozenSet<string> SystemOnlyTypes = new[]
     {
         "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
@@ -114,8 +148,10 @@ internal static class TypeMatcher
             ["Time"] = "time"
         }.ToFrozenDictionary(StringComparer.Ordinal);
 
-    // Pure STU3 artifact errata, with no System/FHIR namespace basis. These exact spellings occur only
-    // in ConceptMap-source-uri and ConceptMap-target-uri and exist solely to preserve their indexing.
+    // Pure STU3 artifact errata, with no System/FHIR namespace basis. Only ConceptMap-source-uri and
+    // ConceptMap-target-uri need the entry, but the gate below is the FHIR version rather than the
+    // artifact, so as(Uri) also crosses on R4 and R4B where no shipped artifact requires it. That extra
+    // breadth is accepted, not intended; it is not licence to add spellings no artifact needs.
     private static readonly FrozenDictionary<string, string> PreR5ArtifactErratumCastAliases =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -182,6 +218,9 @@ internal static class TypeMatcher
     // them and asking the schema about them would wrongly report them as unresolvable. Ordinal is
     // deliberate: the model owns the spelling of its own identifiers, and System names are canonical.
     // Case-insensitive lookup here previously disagreed with SystemOnlyTypes and accepted arbitrary case.
+    // One consequence is worth naming: `Long` resolves but `long` does not, and no published model
+    // declares a `long` either (R5 and R6 spell the 64-bit integer `integer64`), so `1 is long` throws
+    // rather than returning false. See EnsureTypeIdentifierResolves.
     private static readonly FrozenSet<string> SystemTypeNames = new[]
     {
         "Boolean", "String", "Integer", "Long", "Decimal", "Date", "DateTime", "Time", "Quantity"
@@ -206,6 +245,31 @@ internal static class TypeMatcher
     /// states the failure mode, and the reference engines disagree (HAPI errors, Firely returns empty).
     /// Matching <c>as()</c> keeps one answer to one question inside this engine, and is not claimed as
     /// conformance.
+    /// </para>
+    /// <para>
+    /// <strong>Resolution is deliberately more lenient than matching.</strong> Matching is <c>Ordinal</c>
+    /// throughout, but the fall-through to <see cref="ISchema.IsKnownType"/> is backed by the generated
+    /// providers' <c>OrdinalIgnoreCase</c> lookup. The two therefore disagree: <c>as(DATETIME)</c>
+    /// resolves and then matches nothing, returning empty, while <c>as(long)</c> does not resolve at all
+    /// and throws. Read strictly, "if the identifier cannot be resolved ... throw" would make the first
+    /// throw as well - <c>DATETIME</c> is not a valid identifier in any FHIR model.
+    /// </para>
+    /// <para>
+    /// Returning empty for a mis-cased identifier that names a real type is a deliberate engine choice,
+    /// pinned by <c>TypeNameCaseSensitivityTests</c>, not an accident of the comparer. Tightening
+    /// resolution to <c>Ordinal</c> would be the spec-literal answer, but <see cref="ISchema.IsKnownType"/>
+    /// is the schema providers' general-purpose type lookup with callers well beyond the type operators,
+    /// so narrowing it for this rule alone would change unrelated behaviour across five generated
+    /// providers. Casing is also the error this engine can most safely be lenient about: it costs the
+    /// caller an empty result rather than a wrong one. Revisiting it is a schema-provider decision, not
+    /// one to take here.
+    /// </para>
+    /// <para>
+    /// A name that is neither a System type nor declared by the model throws, and <c>long</c> is the case
+    /// most likely to surprise. FHIRPath spells its 64-bit integer <c>Long</c>; no published FHIR model
+    /// declares a <c>long</c>, because R5 and R6 spell theirs <c>integer64</c>. So <c>1 is long</c> throws
+    /// on every version rather than returning false, which is what the quoted rule requires.
+    /// <c>1 is Long</c> resolves and is false against a FHIR value.
     /// </para>
     /// </remarks>
     public static void EnsureTypeIdentifierResolves(string typeName, ISchema? schema, string operatorDescription)
@@ -334,6 +398,25 @@ internal static class TypeMatcher
 
     private static bool EnforcesSingletonCast(ISchema? schema) => UsesR5TypeRules(schema);
 
+    /// <summary>
+    /// Whether R5's type-operator rules apply: the withdrawal of the System spellings from the casts, and
+    /// the singleton-input rule for <c>as</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two rules share this predicate because they share one cause - both arrived in R5 2.1.9.1.2 - not
+    /// because either implies the other. The moment one of them moves independently of the other, this
+    /// should become two predicates.
+    /// </para>
+    /// <para>
+    /// An absent schema fails open to the pre-R5 behaviour, and so does
+    /// <see cref="FhirVersion.Unspecified"/>. That direction is the safe one for both rules: pre-R5
+    /// accepts strictly more, so an unknown version can never make a previously valid expression start
+    /// returning empty or throwing. <see cref="FhirVersion.Unspecified"/> needs its own test because its
+    /// value sorts above <see cref="FhirVersion.R5"/> and its own documentation says it defaults to the
+    /// latest version for comparisons - the opposite of what is wanted here.
+    /// </para>
+    /// </remarks>
     private static bool UsesR5TypeRules(ISchema? schema) =>
         schema is not null
         && schema.Version != FhirVersion.Unspecified
@@ -490,14 +573,18 @@ internal static class TypeMatcher
         if (instanceTypeName.Equals(requestedTypeName, StringComparison.Ordinal))
             return true;
 
-        if (elementIsSystemType && MatchesAlias(CanonicalSystemPrimitiveSpellings))
+        bool matchesSystemSpelling = MatchesAlias(CanonicalSystemPrimitiveSpellings);
+
+        // A System value carries FHIR's lower camel case spelling in InstanceType, so System.Integer has
+        // to reach an integer instance type on every version. This is the System namespace working as
+        // specified, not a pre-R5 concession, so it is deliberately above the version gate.
+        if (elementIsSystemType && matchesSystemSpelling)
             return true;
 
         if (mode != TypeMatchMode.Cast || UsesR5TypeRules(schema))
             return false;
 
-        return MatchesAlias(CanonicalSystemPrimitiveSpellings)
-            || MatchesAlias(PreR5ArtifactErratumCastAliases);
+        return matchesSystemSpelling || MatchesAlias(PreR5ArtifactErratumCastAliases);
 
         bool MatchesAlias(FrozenDictionary<string, string> aliases) =>
             aliases.TryGetValue(requestedTypeName, out var fhirTypeName)
@@ -522,7 +609,7 @@ internal static class TypeMatcher
     /// <remarks>
     /// <paramref name="mode"/> selects the operator family, while <paramref name="schema"/> supplies the
     /// version boundary for the pre-R5 cast aliases. See <see cref="TypeMatcher"/> for why both are
-    /// required and why an unknown version fails open.
+    /// required, and <c>UsesR5TypeRules</c> for why an unknown version fails open.
     /// </remarks>
     public static bool IsTypeMatch(
         IElement element,
@@ -558,8 +645,18 @@ internal static class TypeMatcher
         return !SystemOnlyTypes.Contains(baseTypeName) || elementIsSystemType;
     }
 
-    private static bool IsSystemElement(IElement element) =>
-        element.GetType().Name.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// Whether the element carries a FHIRPath <c>System</c> value rather than a FHIR one.
+    /// </summary>
+    /// <remarks>
+    /// The element declares this by implementing <see cref="ISystemValueElement"/>; it is never inferred.
+    /// This used to test whether the implementing class name contained "Primitive", which silently made
+    /// the answer depend on which evaluation path produced the value: the interpreter's wrapper is called
+    /// <c>PrimitiveElement</c>, the compiler's <c>LiteralElement</c>, so on R5 and later
+    /// <c>value.count().ofType(Integer)</c> selected the integer when interpreted and dropped it when
+    /// compiled. Reintroducing a name-based guess here reintroduces that divergence.
+    /// </remarks>
+    private static bool IsSystemElement(IElement element) => element is ISystemValueElement;
 
     /// <summary>
     /// Filters a collection to the elements matching the specified type, for <c>as</c>, <c>as()</c> and

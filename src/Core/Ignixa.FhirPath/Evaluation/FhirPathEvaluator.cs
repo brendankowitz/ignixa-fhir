@@ -2449,9 +2449,10 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         UnorderedCollectionDetection.GetUnorderedNavigationSource(focus);
 
     /// <summary>
-    /// Simple implementation of IElement for primitive values.
+    /// Simple implementation of IElement for primitive values produced by the evaluator.
     /// </summary>
-    private class PrimitiveElement : IElement
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveElement : ISystemValueElement
     {
         public PrimitiveElement(object value, string type)
         {

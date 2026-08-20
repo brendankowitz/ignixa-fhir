@@ -86,6 +86,57 @@ public class AsOperatorSearchParameterCardinalityTests
     }
     """;
 
+    private const string Stu3GoalJson = """
+    {
+      "resourceType": "Goal",
+      "id": "stop-smoking",
+      "status": "in-progress",
+      "description": { "text": "Stop smoking" },
+      "startDate": "2024-01-01",
+      "target": { "dueDate": "2024-12-31" }
+    }
+    """;
+
+    /// <summary>
+    /// The two STU3 SearchParameters that depend on <c>Date</c> being in the pre-R5 alias set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// STU3 ships eleven casts spelled in PascalCase where the model declares lowercase -
+    /// <c>DateTime</c> x6, <c>Date</c> x2, <c>String</c> x1, <c>Uri</c> x2 - and <c>Date</c>'s two
+    /// sites are exactly these: <c>Goal.start.as(Date)</c> and <c>Goal.target.due.as(Date)</c>.
+    /// </para>
+    /// <para>
+    /// They are pinned because the alias set's justification is written in terms of System spellings,
+    /// and <c>Date</c> is the one entry whose shipped dependants are not otherwise visible anywhere in
+    /// the suite. An auditor reconciling the alias list against the model could delete it as
+    /// unnecessary and silently empty both of these parameters with no test objecting.
+    /// </para>
+    /// <para>
+    /// <c>Quantity</c> is deliberately absent from that alias set for the opposite reason: STU3 spells
+    /// seven casts <c>as(Quantity)</c> and R4/R4B nineteen, but <c>FHIR.Quantity</c> is genuinely
+    /// PascalCase, so those resolve by ordinal match and need no alias.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("start-date")]
+    [InlineData("target-date")]
+    public void GivenStu3AndAGoal_WhenIndexing_ThenTheCapitalisedDateCastsStillProduceEntries(
+        string searchParameterCode)
+    {
+        // Arrange
+        var schema = FhirVersion.Stu3.GetSchemaProvider();
+
+        // Act
+        var entries = Index(schema, Stu3GoalJson)
+            .Where(entry => entry.SearchParameter.Code == searchParameterCode)
+            .ToList();
+
+        // Assert
+        entries.ShouldNotBeEmpty(
+            $"STU3 '{searchParameterCode}' spells its cast as(Date); removing Date from the pre-R5 alias set empties it");
+    }
+
     [Theory]
     [InlineData(FhirVersion.R4)]
     [InlineData(FhirVersion.R4B)]

@@ -382,9 +382,14 @@ internal static class FunctionHelpers
     #region PrimitiveElement Implementation
 
     /// <summary>
-    /// Simple implementation of IElement for primitive values.
+    /// Simple implementation of IElement for primitive values produced by the evaluator.
     /// </summary>
-    public class PrimitiveElement : IElement
+    /// <remarks>
+    /// Declares <see cref="ISystemValueElement"/>: everything built here is a System-namespace value
+    /// (the <c>System.Integer</c> from <c>count()</c>, the <c>System.Boolean</c> from <c>exists()</c>,
+    /// and so on), never a value read from a resource.
+    /// </remarks>
+    public class PrimitiveElement : ISystemValueElement
     {
         public PrimitiveElement(object value, string type, string name = "")
         {

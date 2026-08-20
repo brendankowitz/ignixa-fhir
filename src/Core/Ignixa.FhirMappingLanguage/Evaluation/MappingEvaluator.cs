@@ -1304,9 +1304,10 @@ public class MappingEvaluator
     }
 
     /// <summary>
-    /// Simple implementation of IElement for primitive values.
+    /// Simple implementation of IElement for primitive values produced by the mapping evaluator.
     /// </summary>
-    private class PrimitiveElement : IElement
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
+    private class PrimitiveElement : ISystemValueElement
     {
         public PrimitiveElement(object value, string type)
         {

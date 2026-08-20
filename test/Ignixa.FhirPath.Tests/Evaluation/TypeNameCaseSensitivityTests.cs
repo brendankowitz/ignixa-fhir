@@ -83,23 +83,56 @@ public class TypeNameCaseSensitivityTests
         result.ShouldHaveSingleItem().InstanceType.ShouldBe("string");
     }
 
+    /// <summary>
+    /// A mis-cased type identifier yields empty rather than an error, on every published version.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is a deliberate engine choice, not an accident of the comparers, and the empty result is
+    /// knowingly more lenient than the specification. FHIRPath says an identifier that cannot be
+    /// resolved is an error, and <c>DATETIME</c> is not a valid identifier in any FHIR model - so a
+    /// strictly conformant engine would throw here, exactly as <c>as(long)</c> already does.
+    /// </para>
+    /// <para>
+    /// It does not, because resolution and matching use different comparers by design. Matching is
+    /// <see cref="StringComparer.Ordinal"/>, so no amount of casing will make <c>DATETIME</c> select a
+    /// <c>dateTime</c>; resolution runs through <c>ISchema.IsKnownType</c>, which the generated schema
+    /// providers back with <see cref="StringComparer.OrdinalIgnoreCase"/>, so the identifier resolves
+    /// and the cast simply selects nothing. Making the two agree means tightening the generated
+    /// providers' lookup, which is a schema-wide decision affecting every caller of
+    /// <c>IsKnownType</c> - not a FHIRPath one - and is out of scope for the type-alias work this file
+    /// pins. Until that decision is taken, empty is the contract.
+    /// </para>
+    /// <para>
+    /// If a later change tightens those providers to ordinal, this test will start throwing. That is
+    /// the conformant answer and the expectation should be updated to it deliberately, not worked
+    /// around.
+    /// </para>
+    /// </remarks>
     [Theory]
-    [InlineData("DATETIME")]
-    [InlineData("dAtEtImE")]
-    public void GivenAnyPublishedVersion_WhenCastingWithArbitraryCasing_ThenItDoesNotMatch(string typeName)
+    [InlineData(FhirVersion.Stu3, "DATETIME")]
+    [InlineData(FhirVersion.Stu3, "dAtEtImE")]
+    [InlineData(FhirVersion.R4, "DATETIME")]
+    [InlineData(FhirVersion.R4, "dAtEtImE")]
+    [InlineData(FhirVersion.R4B, "DATETIME")]
+    [InlineData(FhirVersion.R4B, "dAtEtImE")]
+    [InlineData(FhirVersion.R5, "DATETIME")]
+    [InlineData(FhirVersion.R5, "dAtEtImE")]
+    [InlineData(FhirVersion.R6, "DATETIME")]
+    [InlineData(FhirVersion.R6, "dAtEtImE")]
+    public void GivenAnyPublishedVersion_WhenCastingWithArbitraryCasing_ThenItDoesNotMatch(
+        FhirVersion version,
+        string typeName)
     {
-        foreach (FhirVersion version in PublishedVersions)
-        {
-            // Arrange
-            var schema = version.GetSchemaProvider();
-            var element = ResourceJsonNode.Parse(DateTimeObservationJson).ToElement(schema);
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(DateTimeObservationJson).ToElement(schema);
 
-            // Act
-            var result = Evaluate(element, $"value.as({typeName})", schema);
+        // Act
+        var result = Evaluate(element, $"value.as({typeName})", schema);
 
-            // Assert
-            result.ShouldBeEmpty($"FHIRPath identifiers are case-sensitive in {version}; only explicit pre-R5 aliases are permitted");
-        }
+        // Assert
+        result.ShouldBeEmpty($"FHIRPath identifiers are case-sensitive in {version}; only explicit pre-R5 aliases are permitted");
     }
 
     [Fact]
@@ -152,9 +185,6 @@ public class TypeNameCaseSensitivityTests
         // Assert
         result.ShouldHaveSingleItem().Value.ShouldBe(expected);
     }
-
-    private static IReadOnlyList<FhirVersion> PublishedVersions =>
-        [FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6];
 
     private IReadOnlyList<IElement> Evaluate(IElement element, string expression, ISchema? schema) =>
         _evaluator.Evaluate(
