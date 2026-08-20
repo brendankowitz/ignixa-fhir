@@ -9,7 +9,7 @@ namespace Ignixa.DataLayer.SqlServer;
 public static class SchemaVersionConstants
 {
     /// <summary>The schema version this build's dacpac represents.</summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     /// <summary>
     /// The oldest tenant schema version this build still tolerates reading an
@@ -38,4 +38,12 @@ public static class SchemaVersionConstants
     // columns in PackageResource, TermValueSet and TermConceptMap, and TermCodeSystem.Version, use CS_AS
     // identity comparisons and indexes. Existing procedure callers may omit the new optional ContentHash
     // parameter. No core resource tables or TVPs change.
+    // Version 4 (expand) -- INCLUDE (ResourceId) on IX_Resource_ResourceTypeId_ResourceSurrgateId --
+    // removes a clustered-index key lookup from chained search and _include. DacFx applies this as a
+    // drop-and-recreate of that nonclustered index; no column or table is dropped and no data is
+    // discarded. The rebuild has no ONLINE = ON option in the DDL, so UpgradeIfNeededAsync's automatic
+    // upgrade path rebuilds the index OFFLINE, holding a schema-modification (Sch-M) lock on
+    // dbo.Resource -- the largest table in the schema -- for the rebuild's entire duration, blocking
+    // all reads and writes against it for every tenant sharing that database. Schedule the automatic
+    // upgrade of large tenants accordingly (e.g. during a maintenance window).
 }
