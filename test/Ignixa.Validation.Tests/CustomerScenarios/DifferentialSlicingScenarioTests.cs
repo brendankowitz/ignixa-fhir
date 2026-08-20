@@ -112,7 +112,7 @@ public sealed class DifferentialSlicingScenarioTests(ITestOutputHelper output)
         ]
         """);
 
-        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(patient));
 
         Dump(result, "conformant");
         SlicingIssues(result).ShouldBeEmpty();
@@ -129,7 +129,7 @@ public sealed class DifferentialSlicingScenarioTests(ITestOutputHelper output)
         ]
         """);
 
-        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(patient));
 
         Dump(result, "duplicate race");
         var issue = SlicingIssues(result).ShouldHaveSingleItem();
@@ -149,7 +149,7 @@ public sealed class DifferentialSlicingScenarioTests(ITestOutputHelper output)
         ]
         """);
 
-        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Full }, new ValidationState());
+        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Full }, ValidationState.ForRoot(patient));
 
         Dump(result, "closed unknown");
         SlicingIssues(result).ShouldContain(i => i.Code == "slicing-unmatched" && i.Severity == IssueSeverity.Error);
@@ -166,7 +166,7 @@ public sealed class DifferentialSlicingScenarioTests(ITestOutputHelper output)
         ]
         """);
 
-        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Spec }, new ValidationState());
+        var result = schema.Validate(patient, new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(patient));
 
         SlicingIssues(result).ShouldBeEmpty("slicing is a Full-tier check and must not run at Spec depth");
     }

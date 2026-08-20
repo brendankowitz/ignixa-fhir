@@ -12,6 +12,12 @@ internal static class QueryPlanValidator
         }
 
         RequireIndex(plan.Match.Index, plan.Ctes.Count, ReferenceBound.Defined, "QueryPlan.Match");
+
+        // Must precede every TrimmedPageSize read below (the MatchSeed guards further down): that member
+        // reports null for an incoherent probe spec rather than a negative row count, so an unguarded read
+        // would take the "does not over-fetch" branch and let the wrapper guards fall quiet on a spec that
+        // is simply invalid. Rejecting it here is what makes null mean what the later reads assume.
+        RequireCoherentProbeRow(plan.MatchSpec);
         var matchPageCount = 0;
         var matchPageIndex = -1;
         var matchSeedCount = 0;
@@ -98,8 +104,39 @@ internal static class QueryPlanValidator
             }
         }
 
+        // Last, and inside this method rather than beside it at the call sites: a plan is validated through
+        // exactly one entry point, so no caller can apply the structural guards without the shape guards.
+        PlanShapeValidator.Validate(plan);
+
         static void RequireChild(CteRef reference, int ordinal, string member, int part = -1)
             => RequireIndex(reference.Index, ordinal, ReferenceBound.EarlierCte, "Ctes", ordinal, member, part);
+    }
+
+    /// <summary>
+    /// Rejects a keyset probe flag that has no cap to be part of, or a cap too small to contain both a page
+    /// and its probe row. <see cref="MatchPageSpec.TrimmedPageSize"/> reports null for both, so this must run
+    /// before any read of that member or the incoherent spec reads as "does not over-fetch". Predicates are
+    /// shared with <see cref="Lowering.Lower"/> through <see cref="KeysetPageInvariants"/>; only the wording
+    /// differs, because this layer's caller wrote a <see cref="MatchPageSpec"/> rather than a
+    /// <see cref="SearchPaging.Keyset"/>.
+    /// </summary>
+    private static void RequireCoherentProbeRow(MatchPageSpec spec)
+    {
+        if (KeysetPageInvariants.ProbeRowNeedsCap(spec.Top, spec.TopIncludesProbeRow))
+        {
+            throw new NotSupportedException(
+                "MatchPageSpec.TopIncludesProbeRow requires a Top cap: it states that the cap is the page " +
+                "size plus one lookahead row, which says nothing about an uncapped page. Set Top, or clear " +
+                "TopIncludesProbeRow.");
+        }
+
+        if (KeysetPageInvariants.ProbeRowCapTooSmall(spec.Top, spec.TopIncludesProbeRow))
+        {
+            throw new NotSupportedException(
+                $"MatchPageSpec.Top must be at least 1 when TopIncludesProbeRow is set; got {spec.Top}. The " +
+                "cap covers the page and its probe row, so the include seed trims to Top - 1: a cap of 1 is a " +
+                "legal empty page, but anything below it is a negative row count.");
+        }
     }
 
     private static CteRef RequireCanonicalWrapperTail(
@@ -129,6 +166,24 @@ internal static class QueryPlanValidator
                     "MatchPage must be the final CTE in the canonical wrapper tail when MatchSeed is absent.");
             }
 
+            // The symmetric half of the MatchSeed guard below, and the one that matters for correctness: a
+            // page that over-fetches has a probe row the caller will discard, so any stage seeding from the
+            // match set must seed from the trimmed MatchSeed. Without this, a plan that simply omits the
+            // wrapper emits include rows for a resource that is not on the returned page -- the exact defect
+            // the wrapper exists to prevent, and reachable through the documented `plan with { … }` rewrite.
+            // The SeedFromMatch test is always true for a valid plan -- stage 0 has no earlier stage to seed
+            // from, and RejectDanglingIncludeReferences (run above) requires every stage to set SeedFromMatch
+            // or name an earlier one, with RequireIndex's EarlierStage bound rejecting every SeedStages entry
+            // at stage 0. Kept to mirror the guard below and to stay correct if that ever changes.
+            if (plan.MatchSpec.TrimmedPageSize is not null && plan.Includes!.Any(stage => stage.SeedFromMatch))
+            {
+                throw new NotSupportedException(
+                    "A page that over-fetches a has-more probe row requires a MatchSeed wrapper CTE when any " +
+                    "include stage seeds from the match set: the stages must seed from the trimmed page, or " +
+                    "they resolve includes for the probe row the caller discards. Add the MatchSeed after " +
+                    "MatchPage and point IncludeSeed at it, or clear the probe flag.");
+            }
+
             return new CteRef(matchPageIndex);
         }
 
@@ -138,10 +193,11 @@ internal static class QueryPlanValidator
                 "MatchPage and MatchSeed must form the final canonical wrapper tail in that order.");
         }
 
-        if (plan.MatchSpec.OffsetPage is not { ProbeExtraRow: true })
+        if (plan.MatchSpec.TrimmedPageSize is null)
         {
             throw new NotSupportedException(
-                "MatchSeed requires an OffsetPage with ProbeExtraRow enabled.");
+                "MatchSeed requires a page that over-fetches a has-more probe row: either an OffsetPage with " +
+                "ProbeExtraRow enabled, or a Top cap with TopIncludesProbeRow enabled.");
         }
 
         if (!plan.Includes!.Any(stage => stage.SeedFromMatch))

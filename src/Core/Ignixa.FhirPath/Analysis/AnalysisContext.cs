@@ -42,7 +42,7 @@ public sealed record AnalysisContext
         RootType = rootType;
         _issues = issues;
         Variables = variables;
-        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.OrdinalIgnoreCase);
+        DefinedVariables = definedVariables ?? new Dictionary<string, FhirPathTypeSet>(StringComparer.Ordinal);
         TypeStack = typeStack;
         ExpressionContextStack = expressionContextStack;
         AggregateTotalStack = aggregateTotalStack;
@@ -122,7 +122,7 @@ public sealed record AnalysisContext
         }
 
         var variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty
-            .WithComparers(StringComparer.OrdinalIgnoreCase)
+            .WithComparers(StringComparer.Ordinal)
             .Add("resource", rootProps)
             .Add("rootResource", rootProps)
             .Add("context", rootProps)
@@ -315,24 +315,31 @@ public sealed record AnalysisContext
     }
 
     /// <summary>
-    /// Creates a forked context for analyzing a branch expression (e.g., union operands).
-    /// The forked context has its own copy of DefinedVariables so that variables defined
-    /// in one branch don't leak to sibling branches during static analysis.
+    /// Creates a context that analyses a nested <c>defineVariable</c> scope: it sees the variables defined
+    /// so far, and anything defined inside it is invisible once the nested expression is done.
     /// </summary>
     /// <remarks>
-    /// Per FHIRPath spec, defineVariable affects "subsequent expressions on the output collection".
-    /// Union branches are NOT subsequent - they're parallel evaluations from the same input.
+    /// Used for the operands of <c>|</c> and for the arguments of the functions that evaluate per item, which
+    /// are the two scope boundaries <see cref="EvaluationContext.ForkVariableScope"/> and
+    /// <see cref="EvaluationContext.PushThis"/> enforce at runtime. Analysis has to draw them in the same
+    /// places or it stays silent about an expression the evaluator will refuse.
     /// </remarks>
-    public AnalysisContext ForkForBranch()
+    public AnalysisContext ForkVariableScope()
     {
         return new AnalysisContext(Schema, RootType, _issues, Variables,
-            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, FhirPathTypeSet>(DefinedVariables, StringComparer.Ordinal),
             TypeStack, ExpressionContextStack, AggregateTotalStack, CurrentFocus);
     }
 
     /// <summary>
     /// Resolves a variable by name.
     /// </summary>
+    /// <remarks>
+    /// The <c>%vs-…</c> and <c>%ext-…</c> families are recognised by shape rather than enumerated, matching
+    /// <see cref="EvaluationContext.GetEnvironmentVariable"/>: the FHIR profile of FHIRPath defines one for
+    /// every ValueSet and extension in the specification, and reporting the rest as undefined would make the
+    /// analyzer stricter than the engine instead of agreeing with it.
+    /// </remarks>
     public FhirPathTypeSet? ResolveVariable(string name)
     {
         if (DefinedVariables.TryGetValue(name, out var definedProps))
@@ -343,6 +350,11 @@ public sealed record AnalysisContext
         if (Variables.TryGetValue(name, out var props))
         {
             return props;
+        }
+
+        if (name.StartsWith("vs-", StringComparison.Ordinal) || name.StartsWith("ext-", StringComparison.Ordinal))
+        {
+            return CreateStringTypeSet();
         }
 
         return null;

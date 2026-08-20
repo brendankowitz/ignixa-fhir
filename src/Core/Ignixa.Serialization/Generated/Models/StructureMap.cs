@@ -39,9 +39,6 @@ public partial class StructureMap : DomainResourceJsonNode
     public MutableJsonList<ContactDetail> Contact => GetListProperty<ContactDetail>("contact");
 
     [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
-    [JsonIgnore]
     public PrimitiveElement<string> CopyrightElement => new(MutableNode, "copyright");
 
     [JsonIgnore]
@@ -79,32 +76,16 @@ public partial class StructureMap : DomainResourceJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
     public MutableJsonList<StructureMapGroup> Group => GetListProperty<StructureMapGroup>("group");
 
     [JsonIgnore]
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
 
     [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutablePrimitiveList<string> Import => GetPrimitiveListProperty<string>("import");
 
     [JsonIgnore]
     public MutableJsonList<CodeableConcept> Jurisdiction => GetListProperty<CodeableConcept>("jurisdiction");
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     [JsonIgnore]
     public PrimitiveElement<string> NameElement => new(MutableNode, "name");
@@ -145,13 +126,6 @@ public partial class StructureMap : DomainResourceJsonNode
 
     [JsonIgnore]
     public MutableJsonList<StructureMapStructure> Structure => GetListProperty<StructureMapStructure>("structure");
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
-    }
 
     [JsonIgnore]
     public PrimitiveElement<string> TitleElement => new(MutableNode, "title");

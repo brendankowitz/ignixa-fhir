@@ -45,9 +45,6 @@ public partial class Composition : DomainResourceJsonNode
     public MutableJsonList<CodeableConcept> Category => GetListProperty<CodeableConcept>("category");
 
     [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
-    [JsonIgnore]
     public Reference? Custodian
     {
         get => GetComplexProperty<Reference>("custodian");
@@ -75,30 +72,7 @@ public partial class Composition : DomainResourceJsonNode
     public MutableJsonList<CompositionEvent> Event => GetListProperty<CompositionEvent>("event");
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
-
-    [JsonIgnore]
     public MutableJsonList<CompositionSection> Section => GetListProperty<CompositionSection>("section");
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
-    }
 
     [JsonIgnore]
     public PrimitiveElement<string> TitleElement => new(MutableNode, "title");

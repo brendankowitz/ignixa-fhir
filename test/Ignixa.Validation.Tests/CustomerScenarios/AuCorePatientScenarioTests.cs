@@ -91,7 +91,7 @@ public class AuCorePatientScenarioTests
         schema.ShouldNotBeNull();
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var result = schema!.Validate(element, settings, new ValidationState());
+        var result = schema!.Validate(element, settings, ValidationState.ForRoot(element));
 
         DumpIssues(result, "valid AU Core Patient @ Spec");
         result.Issues.Where(i => i.Severity == IssueSeverity.Error).ShouldBeEmpty(
@@ -110,7 +110,7 @@ public class AuCorePatientScenarioTests
         schema.ShouldNotBeNull();
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var result = schema!.Validate(element, settings, new ValidationState());
+        var result = schema!.Validate(element, settings, ValidationState.ForRoot(element));
 
         DumpIssues(result, "missing-required AU Core Patient @ Spec");
 

@@ -369,5 +369,5 @@ var trumanScenario = new ScenarioBuilder(schemaProvider)
 ## Next Steps
 
 1. ✅ Keep Direct Builder Pattern for ChainingSearchTests
-2. Document this pattern in CLAUDE.md under "Multi-Patient Test Scenarios"
+2. Document this pattern in AGENTS.md under "Multi-Patient Test Scenarios"
 3. Consider `ScenarioMerger` utility if this pattern becomes common

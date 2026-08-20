@@ -307,7 +307,7 @@ public class InstanceSelectorTests
         // Act & Assert - a creator is wired so this cannot pass via the no-creator throw,
         // and the message is asserted so the singleton-input rule is what is actually covered.
         var context = InstanceCreationTestContext.For(CreateIntegerElement(1)) with { Focus = multiItemCollection };
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        var ex = Assert.Throws<FhirPathEvaluationException>(() =>
             ast.AcceptVisitor(_evaluator, context).ToList());
         Assert.Contains("single input item", ex.Message, StringComparison.Ordinal);
     }

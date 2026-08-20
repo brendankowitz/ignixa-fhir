@@ -21,6 +21,12 @@ internal sealed record LowerOptions
     /// <summary>Cap the number of returned rows (a SQL <c>TOP</c>); null means no cap.</summary>
     public int? Top { get; init; }
 
+    /// <summary>
+    /// Declares that <see cref="Top"/> is the caller's page size plus a has-more probe row, so include
+    /// stages seed from the trimmed page rather than the probe row. Requires <see cref="Top"/>.
+    /// </summary>
+    public bool TopIncludesProbeRow { get; init; }
+
     /// <summary>The reference instant a <c>:ap</c> (approximate) comparator widens around; null when unused.</summary>
     public DateTimeOffset? ApproximationReferenceTime { get; init; }
 

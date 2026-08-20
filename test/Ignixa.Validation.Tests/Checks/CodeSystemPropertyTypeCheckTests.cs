@@ -18,7 +18,7 @@ public sealed class CodeSystemPropertyTypeCheckTests
     private static ValidationResult Validate(string json)
     {
         var element = JsonNodeSourceNode.Create(JsonNode.Parse(json)!).ToElement(TestSchemaProvider.GetR4Schema());
-        return new CodeSystemPropertyTypeCheck().Validate(element, new ValidationSettings(), new ValidationState());
+        return new CodeSystemPropertyTypeCheck().Validate(element, new ValidationSettings(), ValidationState.ForRoot(element));
     }
 
     [Fact]

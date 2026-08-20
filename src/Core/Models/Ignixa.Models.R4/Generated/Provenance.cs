@@ -37,15 +37,5 @@ public sealed partial class Provenance : Ignixa.Models.Provenance
     }
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutableJsonList<CodeableConcept> Reason => GetListProperty<CodeableConcept>("reason");
 }

@@ -1,48 +1,38 @@
+using Ignixa.Search.Expressions;
 using Ignixa.Search.Indexing.SearchValues;
 
 namespace Ignixa.Search.Sql.Lowering;
 
 /// <summary>
-/// Widens a date value's [Start, End] for the :ap comparator, mirroring the numeric formula in
-/// <see cref="NumericRangeComparison"/>: <c>max(precision_modifier, distance × 0.10)</c> (distance is
-/// midpoint-to-reference, modifier the value's own width). Flooring at that width stops <c>date=ap&lt;now&gt;</c>
-/// collapsing to exact equality (distance is zero at "now"). Pure — reference time is a parameter, not the clock.
+/// Enforces the SQL compiler's own precondition for the <c>:ap</c> comparator — that a reference instant was
+/// supplied — and defers the widening arithmetic itself to
+/// <see cref="DateRangeComparisonSemantics.Widen"/>.
 /// </summary>
+/// <remarks>
+/// The split is deliberate. The formula belongs to the prefix table, which every backend shares; the
+/// precondition belongs here, because only this compiler can say where the instant was meant to come from.
+/// Keeping the message in this layer is what lets it name <c>SearchSqlCompiler</c> and point at the actual
+/// mistake rather than at arithmetic.
+/// </remarks>
 internal static class ApproximateDateRange
 {
     /// <summary>
-    /// Computes the widened [Start, End] endpoints for a date :ap comparison. Throws when
-    /// <paramref name="referenceTime"/> is null (which <see cref="SearchSqlCompiler"/> never allows).
-    /// Out-of-range endpoints saturate at <see cref="DateTimeOffset.MinValue"/>/<see cref="DateTimeOffset.MaxValue"/>,
-    /// like numeric :ap, so <c>date=ap0001-01-01</c> compiles rather than throwing.
+    /// Returns the reference instant, or throws explaining which component failed to supply it.
     /// </summary>
+    /// <param name="referenceTime">The instant supplied by the lowering context, if any.</param>
+    /// <returns>The reference instant.</returns>
+    public static DateTimeOffset RequireReferenceTime(DateTimeOffset? referenceTime)
+        => referenceTime ?? throw new InvalidOperationException(
+            "The date ':ap' (approximately) comparator requires an explicit reference instant, but the " +
+            "lowering context was constructed without one. SearchSqlCompiler supplies that instant from " +
+            "its TimeProvider on every path, so reaching this state means the compiler was bypassed.");
+
+    /// <summary>
+    /// Computes the widened <c>:ap</c> endpoints, requiring a reference instant.
+    /// </summary>
+    /// <param name="value">The search value to widen.</param>
+    /// <param name="referenceTime">The instant supplied by the lowering context, if any.</param>
+    /// <returns>The widened endpoints.</returns>
     public static (DateTimeOffset Start, DateTimeOffset End) Widen(DateTimeSearchValue value, DateTimeOffset? referenceTime)
-    {
-        if (referenceTime is not { } reference)
-        {
-            throw new InvalidOperationException(
-                "The date ':ap' (approximately) comparator requires an explicit reference instant, but the " +
-                "lowering context was constructed without one. SearchSqlCompiler supplies that instant from " +
-                "its TimeProvider on every path, so reaching this state means the compiler was bypassed.");
-        }
-
-        var precisionTicks = value.End.UtcTicks - value.Start.UtcTicks;
-        var midpointTicks = value.Start.UtcTicks + (precisionTicks / 2);
-        var proportionalTicks = Math.Abs(reference.UtcTicks - midpointTicks) / 10;
-        var toleranceTicks = Math.Max(precisionTicks, proportionalTicks);
-
-        return (
-            SubtractSaturating(value.Start, toleranceTicks),
-            AddSaturating(value.End, toleranceTicks));
-    }
-
-    private static DateTimeOffset SubtractSaturating(DateTimeOffset value, long toleranceTicks)
-        => value.UtcTicks - DateTimeOffset.MinValue.UtcTicks < toleranceTicks
-            ? DateTimeOffset.MinValue
-            : new DateTimeOffset(value.UtcTicks - toleranceTicks, TimeSpan.Zero);
-
-    private static DateTimeOffset AddSaturating(DateTimeOffset value, long toleranceTicks)
-        => DateTimeOffset.MaxValue.UtcTicks - value.UtcTicks < toleranceTicks
-            ? DateTimeOffset.MaxValue
-            : new DateTimeOffset(value.UtcTicks + toleranceTicks, TimeSpan.Zero);
+        => DateRangeComparisonSemantics.Widen(value, RequireReferenceTime(referenceTime));
 }

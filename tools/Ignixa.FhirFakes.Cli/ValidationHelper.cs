@@ -55,9 +55,8 @@ internal static class ValidationHelper
 
             // Perform validation
             var validationSettings = settings ?? new ValidationSettings { Depth = ValidationDepth.Spec };
-            var state = new ValidationState();
             var element = resource.ToElement(schemaProvider);
-            var result = schema.Validate(element, validationSettings, state);
+            var result = schema.Validate(element, validationSettings);
 
             return result;
         }

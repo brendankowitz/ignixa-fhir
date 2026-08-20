@@ -6,6 +6,7 @@
  */
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.SqlOnFhir.Expressions;
 using Ignixa.SqlOnFhir.Parsing;
 
@@ -69,6 +70,14 @@ public class SqlOnFhirEvaluator
             }
 
             return _visitor.EvaluateBatch(viewExpr, resources, variables);
+        }
+        catch (FhirPathEvaluationException ex)
+        {
+            // Same message and inner exception as the general case, but the type stays distinguishable
+            // so callers can tell an ill-formed ViewDefinition expression from an engine defect.
+            throw new FhirPathEvaluationException(
+                $"Failed to evaluate ViewDefinition for resource type '{resourceType}'",
+                ex);
         }
         catch (Exception ex)
         {

@@ -124,8 +124,8 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
 
         var referenceParams = manager.AllSearchParameters
             .Where(sp => sp.IsSupported && sp.Type == SearchParamType.Reference)
-            .OrderBy(sp => sp.Code)
-            .ThenBy(sp => string.Join(",", sp.BaseResourceTypes ?? Array.Empty<string>()))
+            .OrderBy(sp => sp.Code, StringComparer.Ordinal)
+            .ThenBy(sp => string.Join(",", sp.BaseResourceTypes ?? Array.Empty<string>()), StringComparer.Ordinal)
             .Select(sp => $"{sp.Code}:{string.Join(",", sp.BaseResourceTypes ?? Array.Empty<string>())}:{string.Join(",", sp.TargetResourceTypes ?? Array.Empty<string>())}")
             .ToList();
 
@@ -149,7 +149,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
         // Add specific reference parameters
         var referenceParams = searchParams
             .Where(sp => sp.IsSupported && sp.Type == SearchParamType.Reference)
-            .OrderBy(sp => sp.Code)
+            .OrderBy(sp => sp.Code, StringComparer.Ordinal)
             .ToList();
 
         foreach (var refParam in referenceParams)
@@ -193,7 +193,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
                            (sp.TargetResourceTypes == null ||
                             sp.TargetResourceTypes.Count == 0 ||
                             sp.TargetResourceTypes.Contains(targetResourceType)))
-                .OrderBy(sp => sp.Code)
+                .OrderBy(sp => sp.Code, StringComparer.Ordinal)
                 .ToList();
 
             foreach (var refParam in referenceParams)
@@ -202,7 +202,7 @@ public class IncludeRevIncludeCapabilitySegment : ICapabilitySegment
             }
         }
 
-        return revIncludes.Distinct().OrderBy(x => x).ToList();
+        return revIncludes.Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
     }
 }
 

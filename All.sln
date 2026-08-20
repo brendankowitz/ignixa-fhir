@@ -233,6 +233,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SchemaUpgrade.Cli.Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.SchemaUpgrade.Cli", "tools\Ignixa.SchemaUpgrade.Cli\Ignixa.SchemaUpgrade.Cli.csproj", "{2C1B6B57-A15F-4516-88AC-AF4679859D45}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ignixa.Abstractions.Tests", "test\Ignixa.Abstractions.Tests\Ignixa.Abstractions.Tests.csproj", "{58AB6B6C-D8B1-4C13-9568-5091657A180F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -1155,6 +1157,18 @@ Global
 		{2C1B6B57-A15F-4516-88AC-AF4679859D45}.Release|x64.Build.0 = Release|Any CPU
 		{2C1B6B57-A15F-4516-88AC-AF4679859D45}.Release|x86.ActiveCfg = Release|Any CPU
 		{2C1B6B57-A15F-4516-88AC-AF4679859D45}.Release|x86.Build.0 = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x64.Build.0 = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Debug|x86.Build.0 = Debug|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x64.ActiveCfg = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x64.Build.0 = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x86.ActiveCfg = Release|Any CPU
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -1246,5 +1260,6 @@ Global
 		{0D46D298-89F4-43E1-B6B6-4F560D86D637} = {3AB9C3B3-CB6C-414B-87A7-CAFB3AC9FAAA}
 		{1867BA75-643D-4048-927F-BB1C11106A24} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{2C1B6B57-A15F-4516-88AC-AF4679859D45} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{58AB6B6C-D8B1-4C13-9568-5091657A180F} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 	EndGlobalSection
 EndGlobal

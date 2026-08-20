@@ -25,7 +25,7 @@ public class BundleLinkRelationCheckTests
         var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
         var check = new BundleLinkRelationCheck();
 
-        return check.Validate(element, new ValidationSettings(), new ValidationState());
+        return check.Validate(element, new ValidationSettings(), ValidationState.ForRoot(element));
     }
 
     [Fact]

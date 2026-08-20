@@ -150,11 +150,11 @@ public static class ExperimentalAutofacRegistration
             .AsSelf()
             .SingleInstance();
 
-        // FHIRPath evaluator with timeout protection
+        // FHIRPath evaluator used by mapping transformations. Despite the class name it enforces no
+        // execution-time timeout - see the remarks on FhirPathEvaluatorWithTimeout.
         builder.Register(c => new FhirPathEvaluatorWithTimeout(
                 c.Resolve<FhirPathExpressionCache>(),
                 c.Resolve<FhirPathEvaluator>(),
-                TimeSpan.FromSeconds(5),
                 c.Resolve<ILogger<FhirPathEvaluatorWithTimeout>>()))
             .AsSelf()
             .SingleInstance();

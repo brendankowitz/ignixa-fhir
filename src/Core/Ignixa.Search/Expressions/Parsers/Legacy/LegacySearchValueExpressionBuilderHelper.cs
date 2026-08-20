@@ -19,7 +19,6 @@ namespace Ignixa.Search.Expressions.Parsers.Legacy;
 /// <summary>The pre-rewrite value-to-expression flattener, frozen alongside <see cref="LegacyExpressionParser"/> as a rollback lever and parity-test oracle.</summary>
 internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVisitor
 {
-    private const decimal ApproximateMultiplier = .1M;
     private SearchComparator _comparator;
     private int? _componentIndex;
     private SearchModifier _modifier;
@@ -39,53 +38,18 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
 
         if (_modifier != null) ThrowModifierNotSupported();
 
-        switch (_comparator)
+        // Shares DateRangeComparisonSemantics with SearchValueExpressionBuilderHelper rather than mirroring
+        // its date lowering by hand. The parity tests compare the two trees, and a hand-mirrored copy is
+        // exactly what let eq and ap drift here in the first place.
+        if (!Enum.IsDefined(typeof(SearchComparator), _comparator))
         {
-            case SearchComparator.Eq:
-                _outputExpression = Expression.And(
-                    Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End),
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start));
-                break;
-            case SearchComparator.Ne:
-                _outputExpression = Expression.Or(
-                    Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start),
-                    Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End));
-                break;
-            case SearchComparator.Lt:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeStart, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Gt:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeEnd, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Le:
-                _outputExpression = Expression.LessThanOrEqual(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Ge:
-                _outputExpression = Expression.GreaterThanOrEqual(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Sa:
-                _outputExpression = Expression.GreaterThan(FieldName.DateTimeStart, _componentIndex, dateTime.End);
-                break;
-            case SearchComparator.Eb:
-                _outputExpression = Expression.LessThan(FieldName.DateTimeEnd, _componentIndex, dateTime.Start);
-                break;
-            case SearchComparator.Ap:
-                long startTicks = dateTime.Start.UtcTicks;
-                long endTicks = dateTime.End.UtcTicks;
-
-                long differenceTicks = (long)((DateTimeOffset.UtcNow.Ticks - Math.Max(startTicks, endTicks)) * ApproximateMultiplier);
-
-                DateTimeOffset approximateStart = dateTime.Start.AddTicks(-differenceTicks);
-                DateTimeOffset approximateEnd = dateTime.End.AddTicks(differenceTicks);
-
-                _outputExpression = Expression.And(
-                    Expression.GreaterThanOrEqual(FieldName.DateTimeStart, _componentIndex, approximateStart),
-                    Expression.LessThanOrEqual(FieldName.DateTimeEnd, _componentIndex, approximateEnd));
-                break;
-            default:
-                ThrowComparatorNotSupported();
-                break;
+            ThrowComparatorNotSupported();
+            return;
         }
+
+        _outputExpression = DateRangePredicateExpressionRenderer.Render(
+            DateRangeComparisonSemantics.Build(_comparator, dateTime, DateTimeOffset.UtcNow),
+            _componentIndex);
     }
 
     void ISearchValueVisitor.Visit(NumberSearchValue number)
@@ -306,53 +270,23 @@ internal sealed class LegacySearchValueExpressionBuilderHelper : ISearchValueVis
     }
 
     /// <summary>
-    /// Mirrors <see cref="SearchValueExpressionBuilderHelper"/>'s ranged-comparator lowering exactly — the
-    /// parity tests compare the two trees, so any divergence here is a bug in the rollback lever, not a
-    /// difference of opinion. See that method for the FHIR prefix table this implements.
+    /// Shares <see cref="NumericRangeComparisonSemantics"/> with
+    /// <see cref="SearchValueExpressionBuilderHelper"/> rather than mirroring its ranged-comparator lowering
+    /// by hand. The parity tests compare the two trees, and a hand-mirrored copy is exactly what let
+    /// <c>ap</c> drift here in the first place.
     /// </summary>
     private Expression GenerateNumberExpression(FieldName lowField, FieldName highField, decimal number)
     {
-        decimal precision = number.GetPrescisionModifier();
-
-        switch (_comparator)
+        if (!Enum.IsDefined(typeof(SearchComparator), _comparator))
         {
-            case SearchComparator.Eq:
-                return BuildContainedWithin(lowField, highField, number, precision);
-            case SearchComparator.Ne:
-                return BuildNotContainedWithin(lowField, highField, number, precision);
-            case SearchComparator.Ap:
-                return BuildContainedWithin(
-                    lowField,
-                    highField,
-                    number,
-                    Math.Max(precision, Math.Abs(number) * ApproximateMultiplier));
-            case SearchComparator.Gt:
-                return Expression.GreaterThan(highField, _componentIndex, number);
-            case SearchComparator.Ge:
-                return Expression.GreaterThanOrEqual(highField, _componentIndex, number);
-            case SearchComparator.Lt:
-                return Expression.LessThan(lowField, _componentIndex, number);
-            case SearchComparator.Le:
-                return Expression.LessThanOrEqual(lowField, _componentIndex, number);
-            case SearchComparator.Sa:
-                return Expression.GreaterThan(lowField, _componentIndex, number);
-            case SearchComparator.Eb:
-                return Expression.LessThan(highField, _componentIndex, number);
-            default:
-                ThrowComparatorNotSupported();
-                break;
+            ThrowComparatorNotSupported();
+            return null;
         }
 
-        return null;
+        return NumericRangePredicateExpressionRenderer.Render(
+            NumericRangeComparisonSemantics.Build(_comparator, number),
+            lowField,
+            highField,
+            _componentIndex);
     }
-
-    private Expression BuildContainedWithin(FieldName lowField, FieldName highField, decimal number, decimal tolerance)
-        => Expression.And(
-            Expression.GreaterThanOrEqual(lowField, _componentIndex, number - tolerance),
-            Expression.LessThanOrEqual(highField, _componentIndex, number + tolerance));
-
-    private Expression BuildNotContainedWithin(FieldName lowField, FieldName highField, decimal number, decimal tolerance)
-        => Expression.Or(
-            Expression.LessThan(lowField, _componentIndex, number - tolerance),
-            Expression.GreaterThan(highField, _componentIndex, number + tolerance));
 }

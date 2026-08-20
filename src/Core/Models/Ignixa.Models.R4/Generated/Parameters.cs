@@ -35,14 +35,4 @@ public sealed partial class Parameters : Ignixa.Models.Parameters
         : base(jsonObject, fhirVersion)
     {
     }
-
-    [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
 }

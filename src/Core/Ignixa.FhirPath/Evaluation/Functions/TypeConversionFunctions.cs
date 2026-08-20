@@ -6,6 +6,7 @@
  * and their corresponding convertsTo* validation functions.
  */
 
+using System.Collections.Frozen;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Attributes;
 using Ignixa.FhirPath.Expressions;
@@ -16,9 +17,63 @@ namespace Ignixa.FhirPath.Evaluation.Functions;
 /// <summary>
 /// Type conversion function implementations for FhirPath expressions.
 /// </summary>
-internal static class TypeConversionFunctions
+internal static partial class TypeConversionFunctions
 {
     #region Conversion Functions
+
+    /// <summary>
+    /// Applies the arity rule shared by every function in FHIRPath's Conversion section, returning the
+    /// sole item, or <see langword="null"/> when the input is empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// §Conversion preamble: "The functions in this section operate on collections with a single item. If
+    /// there is more than one item, the evaluation of the expression will end and signal an error to the
+    /// calling environment." All eighteen <c>toX()</c>/<c>convertsToX()</c> sections repeat it in the more
+    /// specific form, so there is no function here it does not apply to.
+    /// </para>
+    /// <para>
+    /// Every one of them previously answered <c>list.Count != 1 ? [] : …</c>, collapsing the two arms the
+    /// spec keeps apart: empty in, empty out (a value) versus multi-item in, error (not a value). That is
+    /// the same clause <c>not()</c> already enforces, so <c>(1|2).not()</c> errored while
+    /// <c>(1|2).toInteger()</c> quietly answered empty. Firely errors on the multi-item case for all of
+    /// these, so signalling here also removes a divergence rather than creating one.
+    /// </para>
+    /// </remarks>
+    private static IElement? SingleOrEmpty(List<IElement> list, string functionName)
+    {
+        if (list.Count > 1)
+        {
+            throw new FhirPathEvaluationException(
+                $"{functionName}() requires a single item, but was given a collection of {list.Count} items.");
+        }
+
+        return list.Count == 1 ? list[0] : null;
+    }
+
+    /// <summary>
+    /// Shared body of the <c>convertsToX()</c> family: empty in, empty out; otherwise whether the paired
+    /// <c>toX()</c> produced a value.
+    /// </summary>
+    /// <remarks>
+    /// All nine <c>convertsToX()</c> sections say "If the input collection is empty, the result is empty",
+    /// and <c>convertsToString()</c> spells it out as <c>{}.convertsToString() // empty</c>. Each of these
+    /// was written as <c>ReturnBoolean(ToX(focus).Any())</c>, which turns that empty into <c>false</c> -
+    /// an answer the spec never gives, and one that reads as "this value cannot be converted" when there
+    /// is no value at all. Firely returns empty here too. Non-empty but unconvertible input stays
+    /// <c>false</c>, which is what <c>2.convertsToBoolean()</c> and <c>(-1).convertsToBoolean()</c> assert.
+    /// </remarks>
+    private static IEnumerable<IElement> ReturnConvertibility(
+        IEnumerable<IElement> focus,
+        string functionName,
+        Func<List<IElement>, IEnumerable<IElement>> convert)
+    {
+        var list = focus.ToList();
+        if (SingleOrEmpty(list, functionName) is null)
+            return [];
+
+        return FunctionHelpers.ReturnBoolean(convert(list).Any());
+    }
 
     /// <summary>
     /// toInteger() - Converts a value to an integer.
@@ -32,13 +87,15 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to an integer")]
     public static IEnumerable<IElement> ToInteger(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toInteger")?.Value;
 
-        var value = list[0].Value;
         if (value is int i)
             return [FunctionHelpers.CreateInteger(i)];
+
+        // "the item is an Integer or Long", with the worked example 42L.toInteger() // 42. A Long outside
+        // Integer's range has no Integer to return, so it falls through to empty rather than wrapping.
+        if (value is long l && l >= int.MinValue && l <= int.MaxValue)
+            return [FunctionHelpers.CreateInteger((int)l)];
 
         if (value is string s)
         {
@@ -73,11 +130,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a 64-bit integer (Long)")]
     public static IEnumerable<IElement> ToLong(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toLong")?.Value;
 
-        var value = list[0].Value;
         if (value is long l)
             return [FunctionHelpers.CreateLong(l)];
 
@@ -109,11 +163,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a decimal")]
     public static IEnumerable<IElement> ToDecimal(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toDecimal")?.Value;
 
-        var value = list[0].Value;
         if (value is decimal d)
             return [FunctionHelpers.CreateDecimal(d)];
 
@@ -129,12 +180,29 @@ internal static class TypeConversionFunctions
         if (value is string s)
         {
             s = s.Trim();
-            if (decimal.TryParse(s, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            if (DecimalLiteral().IsMatch(s) &&
+                decimal.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            {
                 return [FunctionHelpers.CreateDecimal(parsed)];
+            }
         }
 
         return [];
     }
+
+    /// <summary>
+    /// The exact string form <c>toDecimal()</c>/<c>convertsToDecimal()</c> accept, quoted from the spec:
+    /// "using the regex format <c>(\+|-)?\d+(\.\d+)?</c>".
+    /// </summary>
+    /// <remarks>
+    /// Parsing under <c>NumberStyles.Number</c> instead admitted group separators and trailing sign, so
+    /// <c>'1,000'.toDecimal()</c> answered <c>1000</c> where the spec - and Firely - give empty. The regex
+    /// is the gate and <c>TryParse</c> only converts what it admits, which keeps the accepted grammar
+    /// where the spec states it rather than spread across a <see cref="System.Globalization.NumberStyles"/>
+    /// flag combination that has to be read backwards to recover it.
+    /// </remarks>
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(\+|-)?\d+(\.\d+)?$")]
+    private static partial System.Text.RegularExpressions.Regex DecimalLiteral();
 
     /// <summary>
     /// toString() - Converts a value to a string.
@@ -148,11 +216,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a string")]
     public static IEnumerable<IElement> ToString(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toString")?.Value;
 
-        var value = list[0].Value;
         if (value == null)
             return [];
 
@@ -180,11 +245,8 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a boolean")]
     public static IEnumerable<IElement> ToBoolean(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toBoolean")?.Value;
 
-        var value = list[0].Value;
         if (value is bool b)
             return [FunctionHelpers.CreateBoolean(b)];
 
@@ -196,14 +258,34 @@ internal static class TypeConversionFunctions
 
         if (value is string s)
         {
-            if (s.Equals("true", StringComparison.OrdinalIgnoreCase))
+            if (TrueStrings.Contains(s))
                 return [FunctionHelpers.CreateBoolean(true)];
-            if (s.Equals("false", StringComparison.OrdinalIgnoreCase))
+            if (FalseStrings.Contains(s))
                 return [FunctionHelpers.CreateBoolean(false)];
         }
 
         return [];
     }
+
+    /// <summary>
+    /// The String representations <c>toBoolean()</c> maps to <see langword="true"/>, verbatim from the
+    /// spec's type-representation table.
+    /// </summary>
+    /// <remarks>
+    /// Only <c>'true'</c> and <c>'false'</c> were recognised, so <c>'yes'.toBoolean()</c> and
+    /// <c>'1'.toBoolean()</c> answered empty. The table is unchanged between FHIRPath 2.0.0 and 3.0.0 and
+    /// Firely implements all of it. Case is ignored per the note under the table ("so that both 'T' and
+    /// 't' are considered true"), which is what the ordinal-ignore-case comparer supplies.
+    /// </remarks>
+    private static readonly FrozenSet<string> TrueStrings =
+        new[] { "true", "t", "yes", "y", "1", "1.0" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The String representations <c>toBoolean()</c> maps to <see langword="false"/>. See
+    /// <see cref="TrueStrings"/>.
+    /// </summary>
+    private static readonly FrozenSet<string> FalseStrings =
+        new[] { "false", "f", "no", "n", "0", "0.0" }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// toDate() - Converts a value to a date.
@@ -215,22 +297,34 @@ internal static class TypeConversionFunctions
         MaxArguments = 0,
         Category = "TypeConversion",
         Description = "Converts a value to a date")]
+    /// <remarks>
+    /// The DateTime arm is the spec's second bullet: "the item is a DateTime, in which case the year,
+    /// month, and day components are extracted directly without timezone conversion/normalization", worked
+    /// as <c>@2024-01-15T23:30:00-05:00.toDate() // returns @2024-01-15</c> - the local calendar date, not
+    /// the UTC one. Extraction is deliberately gated on the item being a DateTime rather than on the
+    /// lexical form containing a <c>T</c>, because for a <i>String</i> the spec requires the whole value to
+    /// match <c>yyyy-MM-DD</c>, so <c>'2024-01-15T23:30:00'.toDate()</c> is empty, not truncated.
+    /// </remarks>
     public static IEnumerable<IElement> ToDate(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
+        var element = SingleOrEmpty(focus.ToList(), "toDate");
+        if (element is null || WireValue.AsWireString(element.Value) is not { } s)
             return [];
 
-        var value = list[0].Value;
-        if (value is string s)
+        s = s.Trim();
+
+        if (IsDateTimeElement(element))
         {
-            s = s.Trim();
-            if (IsValidFhirDate(s))
-                return [FunctionHelpers.CreateDate(s)];
+            var datePart = s.Split('T')[0];
+            return IsValidFhirDate(datePart) ? [FunctionHelpers.CreateDate(datePart)] : [];
         }
 
-        return [];
+        return IsValidFhirDate(s) ? [FunctionHelpers.CreateDate(s)] : [];
     }
+
+    private static bool IsDateTimeElement(IElement element)
+        => element.InstanceType is "dateTime" or "instant"
+           || element.Value is FhirTemporal { Kind: FhirPrimitive.DateTime or FhirPrimitive.Instant };
 
     private static bool IsValidFhirDate(string value)
     {
@@ -280,12 +374,9 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a dateTime")]
     public static IEnumerable<IElement> ToDateTime(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toDateTime")?.Value;
 
-        var value = list[0].Value;
-        if (value is string s)
+        if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
             if (IsValidFhirDateTime(s))
@@ -368,20 +459,33 @@ internal static class TypeConversionFunctions
         Description = "Converts a value to a time")]
     public static IEnumerable<IElement> ToTime(IEnumerable<IElement> focus)
     {
-        var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
+        var value = SingleOrEmpty(focus.ToList(), "toTime")?.Value;
 
-        var value = list[0].Value;
-        if (value is string s)
+        if (WireValue.AsWireString(value) is { } s)
         {
             s = s.Trim();
-            if (TimeSpan.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out _))
+            if (TimeLiteral().IsMatch(s))
                 return [FunctionHelpers.CreateTime(s)];
         }
 
         return [];
     }
+
+    /// <summary>
+    /// The string form <c>toTime()</c>/<c>convertsToTime()</c> accept: the spec's
+    /// <c>hh:mm:ss.fff(+|-)hh:mm</c>, with the minute, second and fraction components optional because
+    /// "If the item contains a partial time (e.g. '10:00'), the result is a partial time".
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TimeSpan"/> parsing is a duration grammar, not a time-of-day one: it accepted
+    /// <c>'25:00'</c> (25 hours) and <c>'1.02:03'</c> (a day-prefixed span), neither of which is a Time.
+    /// Firely gives empty for <c>'25:00'</c>. The hour bound is <c>23</c>; seconds allow <c>60</c> for a
+    /// leap second, matching what FHIR permits on the wire. Official <c>testStringHourConvertsToTime</c>
+    /// (<c>'14'</c>) is why the hour may stand alone.
+    /// </remarks>
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^([01]\d|2[0-3])(:[0-5]\d(:([0-5]\d|60)(\.\d+)?)?)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)?$")]
+    private static partial System.Text.RegularExpressions.Regex TimeLiteral();
 
     /// <summary>
     /// toQuantity([unit]) - Converts a value to a quantity, optionally converting to specified unit.
@@ -402,14 +506,11 @@ internal static class TypeConversionFunctions
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
         var list = focus.ToList();
-        if (list.Count != 1)
-            return [];
-
-        var value = list[0].Value;
-        Quantity? quantity = null;
+        var value = SingleOrEmpty(list, "toQuantity")?.Value;
+        FhirQuantity? quantity = null;
 
         // If already a quantity, use it
-        if (value is Quantity q)
+        if (value is FhirQuantity q)
         {
             quantity = q;
         }
@@ -421,16 +522,16 @@ internal static class TypeConversionFunctions
         // Convert numeric to dimensionless quantity with unit "1"
         else if (value is int i)
         {
-            quantity = new Quantity(i, "1");
+            quantity = new FhirQuantity(i, "1");
         }
         else if (value is decimal d)
         {
-            quantity = new Quantity(d, "1");
+            quantity = new FhirQuantity(d, "1");
         }
         // Convert boolean to dimensionless quantity (true=1, false=0)
         else if (value is bool b)
         {
-            quantity = new Quantity(b ? 1 : 0, "1");
+            quantity = new FhirQuantity(b ? 1 : 0, "1");
         }
 
         if (quantity == null)
@@ -457,7 +558,7 @@ internal static class TypeConversionFunctions
     /// Converts a quantity to the specified target unit.
     /// Supports calendar duration conversions (year/month/day/hour/minute/second).
     /// </summary>
-    private static Quantity? ConvertQuantityToUnit(Quantity source, string targetUnit)
+    private static FhirQuantity? ConvertQuantityToUnit(FhirQuantity source, string targetUnit)
     {
         // Normalize target unit (handle calendar keywords like 'year' → 'a')
         var normalizedTarget = CalendarDuration.GetUcumUnit(targetUnit) ?? targetUnit;
@@ -465,21 +566,21 @@ internal static class TypeConversionFunctions
 
         // Same unit - no conversion needed
         if (string.Equals(normalizedSource, normalizedTarget, StringComparison.Ordinal))
-            return new Quantity(source.Value, targetUnit);
+            return new FhirQuantity(source.Value, targetUnit);
 
         // Try calendar duration conversion
         var converted = TryCalendarDurationConversion(source.Value, normalizedSource, normalizedTarget);
         if (converted.HasValue)
         {
             // Use the target unit as specified (preserve keyword form if given)
-            return new Quantity(converted.Value, targetUnit);
+            return new FhirQuantity(converted.Value, targetUnit);
         }
 
         // Try UCUM conversion via the unit converter
         var converter = QuantityUnitConverter.Instance;
         var convertedValue = converter.Convert(source.Value, normalizedSource, normalizedTarget);
         if (convertedValue.HasValue)
-            return new Quantity(convertedValue.Value, targetUnit);
+            return new FhirQuantity(convertedValue.Value, targetUnit);
 
         return null;
     }
@@ -545,7 +646,7 @@ internal static class TypeConversionFunctions
     /// - Calendar keywords (year, month, week, etc.) can be unquoted
     /// - UCUM units MUST be quoted (e.g., '5 \'kg\'' not '5 kg')
     /// </summary>
-    private static Quantity? TryParseQuantity(string input)
+    private static FhirQuantity? TryParseQuantity(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
             return null;
@@ -558,7 +659,7 @@ internal static class TypeConversionFunctions
         {
             // No space - might be just a number (dimensionless)
             if (decimal.TryParse(trimmed, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var val))
-                return new Quantity(val, "1");
+                return new FhirQuantity(val, "1");
             return null;
         }
 
@@ -578,14 +679,14 @@ internal static class TypeConversionFunctions
             // Remove quotes and use the UCUM unit directly
             var ucumUnit = unitStr.Substring(1, unitStr.Length - 2);
             if (!string.IsNullOrEmpty(ucumUnit))
-                return new Quantity(value, ucumUnit);
+                return new FhirQuantity(value, ucumUnit);
             return null;
         }
 
         // Check if this is a calendar duration keyword (year, month, week, day, etc.)
         var ucumFromKeyword = CalendarDuration.GetUcumUnit(unitStr);
         if (ucumFromKeyword != null)
-            return new Quantity(value, ucumFromKeyword);
+            return new FhirQuantity(value, ucumFromKeyword);
 
         // Unquoted non-keyword unit is not valid per FHIRPath spec
         // (e.g., "1 wk" without quotes is not valid, "1 'wk'" is)
@@ -606,147 +707,32 @@ internal static class TypeConversionFunctions
         MaxArguments = 1,
         Category = "TypeConversion",
         Description = "Returns true if the value is of the specified type")]
-    public static IEnumerable<IElement> Is(IEnumerable<IElement> focus, IReadOnlyList<Expression> arguments)
+    public static IEnumerable<IElement> Is(
+        IEnumerable<IElement> focus,
+        IReadOnlyList<Expression> arguments,
+        EvaluationContext context)
     {
         var list = focus.ToList();
 
-        // Empty collection returns empty
+        // Get the type name from the argument
+        if (arguments.Count != 1)
+            throw new FhirPathEvaluationException("is() function requires exactly one argument");
+
+        string? targetTypeName = TypeMatcher.ExtractTypeName(arguments[0]);
+
+        if (string.IsNullOrEmpty(targetTypeName))
+            throw new FhirPathEvaluationException("is() function requires a type identifier as argument");
+
+        // "Just as with the is keyword", so the keyword's two mandated errors apply here unchanged.
+        TypeMatcher.EnsureTypeIdentifierResolves(targetTypeName, context.Schema, "is()");
+        TypeMatcher.EnsureSingletonTypeTestInput(list.Count, "is()");
+
+        // Empty in, empty out - see FhirPathEvaluator.EvaluateTypeIs for why this is not false.
         if (list.Count == 0)
             return [];
 
-        // Multiple items signals an error
-        if (list.Count > 1)
-            throw new InvalidOperationException("is() function requires input collection to contain at most one item");
-
-        // Get the type name from the argument
-        if (arguments.Count != 1)
-            throw new InvalidOperationException("is() function requires exactly one argument");
-
-        var typeArgument = arguments[0];
-        string? targetTypeName = ExtractTypeName(typeArgument);
-
-        if (string.IsNullOrEmpty(targetTypeName))
-            throw new InvalidOperationException("is() function requires a type identifier as argument");
-
-        var element = list[0];
-
-        // Check if the element's type matches the target type
-        var matches = IsTypeMatchWithNamespace(element, targetTypeName);
-        return FunctionHelpers.ReturnBoolean(matches);
-    }
-
-    /// <summary>
-    /// Extracts the full type name from a type expression, including namespace prefixes.
-    /// Handles: System.Boolean, FHIR.Patient, Boolean, Patient, `Patient`
-    /// </summary>
-    private static string? ExtractTypeName(Expression expr)
-    {
-        return expr switch
-        {
-            // Simple identifier: Boolean, Patient, boolean
-            Expressions.IdentifierExpression idExpr => idExpr.Name,
-
-            // Property access: System.Boolean, FHIR.Patient
-            Expressions.PropertyAccessExpression propExpr => ExtractPropertyAccessTypeName(propExpr),
-
-            // Function call (used for backtick escaping): `Patient`
-            Expressions.FunctionCallExpression funcExpr => funcExpr.FunctionName,
-
-            // Constant (string literal type name)
-            Expressions.ConstantExpression constExpr => constExpr.Value?.ToString(),
-
-            _ => null
-        };
-    }
-
-    private static string ExtractPropertyAccessTypeName(Expressions.PropertyAccessExpression propExpr)
-    {
-        // Build the full qualified name: System.Boolean, FHIR.Patient
-        var parts = new List<string>();
-
-        Expression? current = propExpr;
-        while (current is Expressions.PropertyAccessExpression prop)
-        {
-            parts.Insert(0, prop.PropertyName);
-            current = prop.Focus;
-        }
-
-        // Add the root identifier
-        if (current is Expressions.IdentifierExpression id)
-        {
-            parts.Insert(0, id.Name);
-        }
-
-        return string.Join(".", parts);
-    }
-
-    // System types that are ONLY FHIRPath primitive types (not FHIR types)
-    // These types exist only in FHIRPath, not as FHIR element types
-    // Note: Date and Quantity exist as both System types and FHIR types, so they're NOT in this list.
-    // IMPORTANT: Use case-SENSITIVE comparison because FHIRPath spec distinguishes:
-    //   - Boolean (capitalized) = System type (FHIRPath literal)
-    //   - boolean (lowercase) = FHIR type (element type)
-    private static readonly HashSet<string> SystemOnlyTypes = new(StringComparer.Ordinal)
-    {
-        "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
-    };
-
-    private static bool IsTypeMatchWithNamespace(IElement element, string targetTypeName)
-    {
-        // Parse the target type to determine namespace and base type name
-        // System types: System.Boolean, System.Integer, System.Decimal, System.String, System.Date, System.DateTime, System.Time, System.Quantity
-        // FHIR types: FHIR.boolean, FHIR.Patient, FHIR.Quantity, etc.
-        bool explicitSystemNamespace = false;
-        bool explicitFhirNamespace = false;
-        string typeName = targetTypeName;
-
-        if (typeName.StartsWith("System.", StringComparison.OrdinalIgnoreCase))
-        {
-            explicitSystemNamespace = true;
-            typeName = typeName.Substring(7); // Remove "System." prefix
-        }
-        else if (typeName.StartsWith("FHIR.", StringComparison.OrdinalIgnoreCase))
-        {
-            explicitFhirNamespace = true;
-            typeName = typeName.Substring(5); // Remove "FHIR." prefix
-        }
-
-        var elementType = element.InstanceType ?? string.Empty;
-
-        // Check if element is a FHIRPath literal (System type) based on class name
-        var implType = element.GetType().Name;
-        bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
-
-        // With explicit namespace, enforce strict matching
-        if (explicitSystemNamespace)
-        {
-            // System.X requires element to be a FHIRPath literal
-            if (!elementIsSystemType)
-                return false;
-        }
-        else if (explicitFhirNamespace)
-        {
-            // FHIR.X requires element to NOT be a FHIRPath literal
-            if (elementIsSystemType)
-                return false;
-        }
-        else if (SystemOnlyTypes.Contains(typeName))
-        {
-            // Unqualified system-only types (Boolean, Integer, etc.) must match FHIRPath literals
-            if (!elementIsSystemType)
-                return false;
-        }
-        // For unqualified types that are NOT system-only (Patient, Quantity, code, boolean, etc.):
-        // - Match FHIR element types directly by instance type
-        // - This allows Observation.value.is(Quantity) to match FHIR Quantity elements
-
-        return TypeMatcher.MatchesTypeWithInheritance(element, typeName);
-    }
-
-    private static bool IsTypeMatch(IElement element, string targetTypeName)
-    {
-        // Legacy method for backward compatibility
-        return IsTypeMatchWithNamespace(element, targetTypeName);
+        return FunctionHelpers.ReturnBoolean(
+            TypeMatcher.IsTypeMatch(list[0], targetTypeName, TypeMatchMode.TypeTest));
     }
 
     #endregion
@@ -764,10 +750,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to integer")]
     public static IEnumerable<IElement> ConvertsToInteger(IEnumerable<IElement> focus)
-    {
-        var result = ToInteger(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToInteger", ToInteger);
 
     /// <summary>
     /// convertsToLong() - Returns true if value can be converted to Long.
@@ -784,10 +767,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to Long")]
     public static IEnumerable<IElement> ConvertsToLong(IEnumerable<IElement> focus)
-    {
-        var result = ToLong(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToLong", ToLong);
 
     /// <summary>
     /// convertsToDecimal() - Returns true if value can be converted to decimal.
@@ -800,10 +780,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to decimal")]
     public static IEnumerable<IElement> ConvertsToDecimal(IEnumerable<IElement> focus)
-    {
-        var result = ToDecimal(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToDecimal", ToDecimal);
 
     /// <summary>
     /// convertsToString() - Returns true if value can be converted to string.
@@ -816,10 +793,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to string")]
     public static IEnumerable<IElement> ConvertsToString(IEnumerable<IElement> focus)
-    {
-        var result = ToString(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToString", ToString);
 
     /// <summary>
     /// convertsToBoolean() - Returns true if value can be converted to boolean.
@@ -832,10 +806,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to boolean")]
     public static IEnumerable<IElement> ConvertsToBoolean(IEnumerable<IElement> focus)
-    {
-        var result = ToBoolean(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToBoolean", ToBoolean);
 
     /// <summary>
     /// convertsToDate() - Returns true if value can be converted to date.
@@ -848,10 +819,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to date")]
     public static IEnumerable<IElement> ConvertsToDate(IEnumerable<IElement> focus)
-    {
-        var result = ToDate(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToDate", ToDate);
 
     /// <summary>
     /// convertsToDateTime() - Returns true if value can be converted to dateTime.
@@ -864,10 +832,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to dateTime")]
     public static IEnumerable<IElement> ConvertsToDateTime(IEnumerable<IElement> focus)
-    {
-        var result = ToDateTime(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToDateTime", ToDateTime);
 
     /// <summary>
     /// convertsToTime() - Returns true if value can be converted to time.
@@ -880,10 +845,7 @@ internal static class TypeConversionFunctions
         Category = "TypeConversion",
         Description = "Returns true if value can be converted to time")]
     public static IEnumerable<IElement> ConvertsToTime(IEnumerable<IElement> focus)
-    {
-        var result = ToTime(focus);
-        return FunctionHelpers.ReturnBoolean(result.Any());
-    }
+        => ReturnConvertibility(focus, "convertsToTime", ToTime);
 
     /// <summary>
     /// convertsToQuantity() - Returns true if value can be converted to quantity.
@@ -901,8 +863,11 @@ internal static class TypeConversionFunctions
         EvaluationContext context,
         Func<IEnumerable<IElement>, Expression, EvaluationContext, IEnumerable<IElement>> evaluateExpression)
     {
-        var result = ToQuantity(focus, arguments, context, evaluateExpression);
-        return FunctionHelpers.ReturnBoolean(result.Any());
+        var list = focus.ToList();
+        if (SingleOrEmpty(list, "convertsToQuantity") is null)
+            return [];
+
+        return FunctionHelpers.ReturnBoolean(ToQuantity(list, arguments, context, evaluateExpression).Any());
     }
 
     #endregion

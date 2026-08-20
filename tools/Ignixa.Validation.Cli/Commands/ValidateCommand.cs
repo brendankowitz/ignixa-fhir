@@ -226,8 +226,7 @@ internal static class ValidateCommand
 
             // Perform validation
             var settings = new ValidationSettings { Depth = depth };
-            var state = new ValidationState();
-            var validationResult = schema.Validate(element, settings, state);
+            var validationResult = schema.Validate(element, settings);
 
             // Output results
             if (consoleOutput)

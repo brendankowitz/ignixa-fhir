@@ -104,7 +104,7 @@ public class DefineVariableFunctionTests
         var expr = _parser.Parse("defineVariable()");
         var root = CreateIntegerElement(0);
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList()
         );
 
@@ -112,7 +112,7 @@ public class DefineVariableFunctionTests
 
         // Test with 3 arguments - should also throw
         var expr3 = _parser.Parse("defineVariable('x', 1, 2)");
-        var exception3 = Assert.Throws<InvalidOperationException>(() =>
+        var exception3 = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr3).ToList()
         );
 
@@ -125,7 +125,7 @@ public class DefineVariableFunctionTests
         var expr = _parser.Parse("defineVariable(5, 10)");
         var root = CreateIntegerElement(0);
 
-        var exception = Assert.Throws<InvalidOperationException>(() =>
+        var exception = Assert.Throws<FhirPathEvaluationException>(() =>
             _evaluator.Evaluate(root, expr).ToList()
         );
 
@@ -191,17 +191,15 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenRedefinedInChain_ThenLaterValueUsed()
+    public void GivenDefineVariable_WhenRedefinedInChain_ThenSignalsError()
     {
-        // Later defineVariable in chain overwrites earlier value
+        // Official test dvRedefiningVariableThrowsError (defineVariable('v1').defineVariable('v1').select(%v1)):
+        // redefining a name already defined earlier in the same chain is an error, not an overwrite.
         var expr = _parser.Parse("1.defineVariable('x', 10).defineVariable('x', 20).select(%x)");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
-
-        // Second defineVariable overwrites x to 20
-        Assert.Single(result);
-        Assert.Equal(20, result[0].Value);
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
+        Assert.Contains("%x", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -263,14 +261,17 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenReferencingUndefinedVariable_ThenReturnsEmpty()
+    public void GivenDefineVariable_WhenReferencingUndefinedVariable_ThenSignalsError()
     {
+        // Official test defineVariable10 (select(%fam.given)): a reference to a name nothing defines is an
+        // error. Returning empty instead would make an undefined variable indistinguishable from one that
+        // is defined and holds nothing.
         var expr = _parser.Parse("%undefined");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
 
-        Assert.Empty(result);
+        Assert.Contains("undefined", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -316,17 +317,15 @@ public class DefineVariableFunctionTests
     [Fact]
     public void GivenDefineVariable_WhenDefinedInUnionBranch_ThenNotVisibleInOtherBranch()
     {
-        // Per FHIRPath spec: Variables are only visible in direct chains, not sibling union branches
-        // Each union branch gets isolated variable scope
+        // Per FHIRPath spec: Variables are only visible in direct chains, not sibling union branches.
+        // Official test dvUsageOutsideScopeThrows: the sibling branch does not merely see empty, it sees a
+        // name nothing has defined, which is an error.
         var expr = _parser.Parse("defineVariable('x', 5) | %x + 10");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
 
-        // First branch: defineVariable returns focus (0)
-        // Second branch: %x is NOT visible (returns empty), so %x + 10 = empty
-        Assert.Single(result);
-        Assert.Equal(0, result[0].Value);
+        Assert.Contains("x", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -346,20 +345,16 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenNotYetDefined_ThenReturnsEmptyBeforeDefinition()
+    public void GivenDefineVariable_WhenNotYetDefined_ThenSignalsErrorBeforeDefinition()
     {
-        // If we try to use a variable before it's defined, it returns empty
-        // Each union branch is isolated, so the middle branch's define doesn't affect others
+        // Each union branch is isolated, so the middle branch's define never reaches the outer ones - and a
+        // reference to a name that is not in scope is an error rather than an empty collection.
         var expr = _parser.Parse("%notYetDefined | defineVariable('notYetDefined', 42) | %notYetDefined");
         var root = CreateIntegerElement(0);
 
-        var result = _evaluator.Evaluate(root, expr).ToList();
+        var exception = Assert.Throws<FhirPathEvaluationException>(() => _evaluator.Evaluate(root, expr).ToList());
 
-        // First %notYetDefined: empty (not defined)
-        // defineVariable: returns focus (0)
-        // Third %notYetDefined: empty (isolated scope)
-        Assert.Single(result);
-        Assert.Equal(0, result[0].Value);
+        Assert.Contains("notYetDefined", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -378,17 +373,18 @@ public class DefineVariableFunctionTests
     }
 
     [Fact]
-    public void GivenDefineVariable_WhenMultipleDefinitions_ThenLaterOverwritesEarlier()
+    public void GivenDefineVariable_WhenSameNameDefinedInSiblingArguments_ThenBothResolveLocally()
     {
-        // Later definitions in chain overwrite earlier ones
-        var expr = _parser.Parse("1.defineVariable('x', 10).defineVariable('x', 20).select(%x)");
+        // The redefinition rule is scoped to the invocation chain, so sibling arguments of one call may each
+        // define the same name - official test dvParametersDontColide, which this replaces the removed
+        // overwrite-in-chain duplicate with (that case is now GivenDefineVariable_WhenRedefinedInChain_ThenSignalsError).
+        var expr = _parser.Parse("'aaa'.replace(defineVariable('param', 'aaa').select(%param), defineVariable('param', 'bbb').select(%param))");
         var root = CreateIntegerElement(0);
 
         var result = _evaluator.Evaluate(root, expr).ToList();
 
-        // %x was overwritten from 10 to 20
         Assert.Single(result);
-        Assert.Equal(20, result[0].Value);
+        Assert.Equal("bbb", result[0].Value);
     }
 
     [Fact]

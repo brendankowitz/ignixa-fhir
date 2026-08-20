@@ -13,6 +13,8 @@
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- Gives the official-suite deferrals a real skip result; xunit 2.9.3 has no working dynamic skip. -->
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,8 +24,23 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Core\Ignixa.FhirPath\Ignixa.FhirPath.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+  </ItemGroup>
+
+  <!--
+    The Firely-parity harness compares Ignixa against the engine the migration actually targets.
+    ADR 2608 (microsoft/fhir-server) pins the seam to Firely 5.11.4, whose semantics differ from the
+    6.0.1 this repo ships against - Scalar() with two results throws in 5.11.4 and returns null in 6.
+    Comparing against 6.0.1 and calling the result "Firely parity" would measure the wrong engine, so
+    the reference is overridden here and nowhere else. Only Hl7.Fhir.R4 is referenced: the FHIRPath
+    engine itself lives in Hl7.Fhir.Base, and adding a second model assembly would make
+    Hl7.Fhir.Model.ModelInfo ambiguous between releases.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Hl7.Fhir.Base" VersionOverride="5.11.4" />
+    <PackageReference Include="Hl7.Fhir.R4" VersionOverride="5.11.4" />
   </ItemGroup>
 
   <PropertyGroup>

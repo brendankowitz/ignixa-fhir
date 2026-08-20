@@ -39,9 +39,6 @@ public partial class ConceptMap : DomainResourceJsonNode
     public MutableJsonList<ContactDetail> Contact => GetListProperty<ContactDetail>("contact");
 
     [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
-    [JsonIgnore]
     public PrimitiveElement<string> CopyrightElement => new(MutableNode, "copyright");
 
     [JsonIgnore]
@@ -79,26 +76,10 @@ public partial class ConceptMap : DomainResourceJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
     public MutableJsonList<ConceptMapGroup> Group => GetListProperty<ConceptMapGroup>("group");
 
     [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
-
-    [JsonIgnore]
     public MutableJsonList<CodeableConcept> Jurisdiction => GetListProperty<CodeableConcept>("jurisdiction");
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     [JsonIgnore]
     public PrimitiveElement<string> NameElement => new(MutableNode, "name");
@@ -135,13 +116,6 @@ public partial class ConceptMap : DomainResourceJsonNode
     {
         get => EnumUtility.ParseLiteral<PublicationStatus>(GetProperty<string>("status"));
         set => SetProperty("status", value?.GetLiteral());
-    }
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
     }
 
     [JsonIgnore]

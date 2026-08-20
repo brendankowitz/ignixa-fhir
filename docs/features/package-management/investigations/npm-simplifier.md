@@ -1438,7 +1438,7 @@ public async Task LoadUSCore_LoadsDependencies()
 
 ## Alignment with Existing Architecture
 
-### Layer Dependency Rules (CLAUDE.md Compliance)
+### Layer Dependency Rules (AGENTS.md Compliance)
 
 ✅ **No Hl7.Fhir.* dependencies in Application/DataLayer**
 - `Ignixa.Specification.Packages` is Domain layer

@@ -37,16 +37,6 @@ public sealed partial class Bundle : Ignixa.Models.Bundle
     }
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public BundleType? Type
     {
         get => EnumUtility.ParseLiteral<BundleType>(GetProperty<string>("type"));

@@ -41,7 +41,7 @@ internal static class ConditionalFunctions
 
         if (focusList.Count > 1)
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"iif() cannot be invoked on a collection with {focusList.Count} items - it requires empty or single item focus");
         }
 
@@ -68,12 +68,12 @@ internal static class ConditionalFunctions
         }
         else if (criterion.Count == 1)
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"iif() condition must evaluate to a Boolean, but got a single {criterion[0].InstanceType ?? "unknown"} value");
         }
         else
         {
-            throw new InvalidOperationException(
+            throw new FhirPathEvaluationException(
                 $"iif() condition must evaluate to a single Boolean, but got a collection with {criterion.Count} items");
         }
 

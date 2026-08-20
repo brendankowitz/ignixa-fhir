@@ -66,8 +66,8 @@ internal sealed record FhirPathVisitorContext
     /// </summary>
     public FhirPathVisitorContext()
     {
-        Variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
-        DefinedVariables = ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase);
+        Variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.Ordinal);
+        DefinedVariables = ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.Ordinal);
         PropertyContextStack = ImmutableStack<FhirPathTypeSet>.Empty;
         ExpressionContextStack = ImmutableStack<FhirPathTypeSet>.Empty;
         AggregateTotalStack = ImmutableStack<FhirPathTypeSet>.Empty;
@@ -193,7 +193,7 @@ internal sealed record FhirPathVisitorContext
             : new FhirPathTypeSet();
 
         var variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty
-            .WithComparers(StringComparer.OrdinalIgnoreCase)
+            .WithComparers(StringComparer.Ordinal)
             .Add("resource", rootProps)
             .Add("rootResource", rootProps)
             .Add("context", rootProps);
@@ -201,7 +201,7 @@ internal sealed record FhirPathVisitorContext
         return new FhirPathVisitorContext(
             schema,
             variables,
-            ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase),
+            ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.Ordinal),
             ImmutableStack<FhirPathTypeSet>.Empty,
             ImmutableStack<FhirPathTypeSet>.Empty,
             ImmutableStack<FhirPathTypeSet>.Empty,
@@ -250,7 +250,7 @@ internal sealed record FhirPathVisitorContext
         var currentProps = NavigateToPath(schema, rootType, remainingPath);
 
         var variables = ImmutableDictionary<string, FhirPathTypeSet>.Empty
-            .WithComparers(StringComparer.OrdinalIgnoreCase)
+            .WithComparers(StringComparer.Ordinal)
             .Add("resource", rootProps)
             .Add("rootResource", rootProps)
             .Add("context", currentProps);
@@ -258,7 +258,7 @@ internal sealed record FhirPathVisitorContext
         return new FhirPathVisitorContext(
             schema,
             variables,
-            ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase),
+            ImmutableDictionary<string, FhirPathTypeSet>.Empty.WithComparers(StringComparer.Ordinal),
             ImmutableStack<FhirPathTypeSet>.Empty,
             ImmutableStack<FhirPathTypeSet>.Empty,
             ImmutableStack<FhirPathTypeSet>.Empty,

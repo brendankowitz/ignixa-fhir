@@ -5,7 +5,6 @@
  * Provides API compatibility with Firely SDK FhirPath implementation.
  */
 
-using System.Collections.Concurrent;
 using Ignixa.FhirPath.Evaluation.Functions;
 using Ignixa.FhirPath.Expressions;
 using Ignixa.Abstractions;
@@ -20,13 +19,25 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </summary>
 public static class TypedElementExtensions
 {
+    /// <summary>
+    /// Entries retained per generation by each expression cache, so twice this in the worst case.
+    /// </summary>
+    /// <remarks>
+    /// Sized from the shipped corpus rather than guessed: the generated SearchParameter definitions for
+    /// STU3, R4, R4B, R5 and R6 carry 2,396 distinct expressions between them, so this holds every
+    /// version's parameters at once - a host serving one version uses a fraction of it - with headroom
+    /// for the hand-written expressions in Search, IPS, DeId and TestScript. Custom SearchParameters
+    /// push past it, which is the point: past it the cache evicts instead of growing.
+    /// </remarks>
+    private const int ExpressionCacheCapacity = 4096;
+
     // Thread-safe cache for compiled expressions (string -> Expression AST)
-    private static readonly ConcurrentDictionary<string, Expression> _astCache = new();
+    private static readonly BoundedExpressionCache<Expression> _astCache = new(ExpressionCacheCapacity);
 
     // Thread-safe cache for compiled delegates (Expression -> compiled delegate)
     // Key: Expression object hash code and expression string combined
     // Value: Compiled delegate or null if compilation not supported
-    private static readonly ConcurrentDictionary<string, Func<IElement, EvaluationContext, IEnumerable<IElement>>?> _delegateCache = new();
+    private static readonly BoundedExpressionCache<Func<IElement, EvaluationContext, IEnumerable<IElement>>?> _delegateCache = new(ExpressionCacheCapacity);
 
     // Shared compiler instances
     private static readonly FhirPathParser AstParser = new FhirPathParser(preserveTrivia: false);
@@ -61,6 +72,37 @@ public static class TypedElementExtensions
     /// <param name="expression">FhirPath expression string</param>
     /// <param name="context">Optional evaluation context</param>
     /// <returns>Collection of elements that match the expression</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This defaults <c>%resource</c> to <paramref name="input"/>; <see cref="FhirPathEvaluator.Evaluate"/>
+    /// deliberately does not.</b> The difference is the contract, not an oversight, and the two must not be
+    /// aligned by making the engine default as well.
+    /// </para>
+    /// <para>
+    /// This overload documents <paramref name="input"/> as "the root element", so treating it as the resource
+    /// is a defensible reading of its own contract - and FHIR blesses the equality explicitly: "The resource is
+    /// very often the context, such that %resource = %context". <see cref="FhirPathEvaluator.Evaluate"/> makes
+    /// no such promise: its input is "the node handed to the engine", and its callers routinely hand it a
+    /// sub-element (invariants are attached to elements, SQL-on-FHIR evaluates columns against
+    /// <c>forEach</c> items, narrative templates re-enter with an extracted node). Defaulting there would bind
+    /// <c>%resource</c> to a non-resource, which FHIR defines it never to be - "the resource that contains the
+    /// original node that is in %context" - and would replace an honest empty with a confidently wrong node.
+    /// For invariant evaluation that is a strict downgrade: an unevaluable constraint currently degrades to a
+    /// non-failing warning, whereas a wrong <c>%resource</c> produces a wrong verdict.
+    /// </para>
+    /// <para>
+    /// The engine cannot infer its way out of this. Unlike Firely's <c>ScopedNode</c>, <see cref="IElement"/>
+    /// carries no parent link, so there is no containing resource to walk up to - the host is the only party
+    /// that knows, and unbound therefore resolves to empty (FHIRPath 1.9: a defined variable with no value
+    /// specified is empty, only an *undefined* name is an error).
+    /// </para>
+    /// <para>
+    /// Narrowing this default to fire only when <paramref name="input"/> is genuinely a resource is the correct
+    /// end state - the <c>getResourceKey()</c> justification below is stale, since SQL-on-FHIR binds
+    /// <c>RootResource</c> itself and never reaches this method - but its only remaining coverage lives in the
+    /// SQL-on-FHIR conformance suite, so it is left for a change that can run those tests.
+    /// </para>
+    /// </remarks>
     public static IEnumerable<IElement> Select(this IElement input, string expression, EvaluationContext? context = null)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -138,10 +180,24 @@ public static class TypedElementExtensions
     /// var hasAddress = element.Select("address.exists()").AsString(); // "false", not "False"
     /// </code>
     /// </example>
+    /// <remarks>
+    /// The arity check is made here rather than delegated to
+    /// <see cref="TypeConversionFunctions.ToString"/>, which signals an error on a multi-item collection
+    /// as FHIRPath's Conversion section requires. That rule governs the <c>toString()</c> <i>function</i>,
+    /// reached by evaluating an expression; this is a host-side accessor whose whole contract is "the
+    /// string, or nothing", and whose callers - TestScript variable extraction - hand it expressions over
+    /// repeating elements precisely because a miss is an ordinary outcome. Letting the spec's error escape
+    /// through here would turn a documented <see langword="null"/> into a throw at four call sites that
+    /// have no way to act on it.
+    /// </remarks>
     public static string? AsString(this IEnumerable<IElement> elements)
     {
         ArgumentNullException.ThrowIfNull(elements);
-        return TypeConversionFunctions.ToString(elements).SingleOrDefault()?.Value as string;
+
+        var list = elements.ToList();
+        return list.Count == 1
+            ? TypeConversionFunctions.ToString(list).SingleOrDefault()?.Value as string
+            : null;
     }
 
     /// <summary>

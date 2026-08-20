@@ -100,6 +100,44 @@ public sealed record ValidationIssue
     }
 
     /// <summary>
+    /// Creates the issue reported when traversal stops at
+    /// <see cref="ValidationState.MaxNestingDepth"/>. A Warning, not an Error: the instance has not
+    /// been shown to be invalid, only left partly unexamined — but the gap is stated rather than
+    /// passed off as a clean result.
+    /// </summary>
+    /// <param name="location">FHIRPath location of the element whose subtree was not descended into.</param>
+    /// <param name="elementName">The element whose subtree was left unvalidated.</param>
+    /// <returns>A non-failing validation issue describing the truncated traversal.</returns>
+    public static ValidationIssue NestingLimitExceeded(string location, string elementName)
+    {
+        return new ValidationIssue(
+            severity: IssueSeverity.Warning,
+            code: "validation-nesting-limit",
+            path: string.IsNullOrEmpty(location) ? elementName : $"{location}.{elementName}",
+            message: $"'{elementName}' was not validated: nesting depth limit of {ValidationState.MaxNestingDepth} reached");
+    }
+
+    /// <summary>
+    /// Creates the issue synthesized when a nested validation result is invalid but carries none of
+    /// its own issues, so an invalid outcome is never propagated without a reason. Always an Error:
+    /// the nested result has already declared itself invalid, this only supplies the missing
+    /// explanation - it does not change, or upgrade a Warning into, the verdict.
+    /// </summary>
+    /// <param name="location">FHIRPath location of the nested subtree that failed.</param>
+    /// <param name="subject">Human-readable description of what was being validated (element, choice
+    /// variant, or contained resource), so the message names what failed rather than saying only that
+    /// something did.</param>
+    /// <returns>A failing validation issue explaining an otherwise-unexplained nested rejection.</returns>
+    public static ValidationIssue UnexplainedNestedFailure(string location, string subject)
+    {
+        return new ValidationIssue(
+            severity: IssueSeverity.Error,
+            code: "validation-nested-unexplained",
+            path: location,
+            message: $"{subject} failed validation but reported no issues explaining why");
+    }
+
+    /// <summary>
     /// Creates a terminology validation failure issue with HAPI-compatible coding.
     /// </summary>
     /// <param name="code">The code that failed validation.</param>

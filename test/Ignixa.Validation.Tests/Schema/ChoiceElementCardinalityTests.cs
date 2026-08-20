@@ -73,7 +73,7 @@ public class ChoiceElementCardinalityTests
             { "resourceType": "Observation", "status": "final", "valueString": "present" }
             """);
 
-        var result = schema.Validate(element, new ValidationSettings { Depth = depth }, new ValidationState());
+        var result = schema.Validate(element, new ValidationSettings { Depth = depth }, ValidationState.ForRoot(element));
 
         result.Issues
             .Where(i => i.Severity == IssueSeverity.Error)
@@ -90,7 +90,7 @@ public class ChoiceElementCardinalityTests
             { "resourceType": "Observation", "status": "final" }
             """);
 
-        var result = schema.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec }, new ValidationState());
+        var result = schema.Validate(element, new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(element));
 
         result.Issues
             .Where(i => i.Severity == IssueSeverity.Error)

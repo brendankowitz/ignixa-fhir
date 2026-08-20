@@ -22,6 +22,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
 using Ignixa.Serialization.TestSupport;
+using FhirPathEvaluatorWithTimeout = Ignixa.Application.Features.Experimental.Transform.FhirPathEvaluatorWithTimeout;
+using FhirPathExpressionCache = Ignixa.Application.Features.Experimental.Transform.FhirPathExpressionCache;
 
 namespace Ignixa.Application.Tests.Features.Transform;
 
@@ -83,7 +85,6 @@ public class TransformResourceHandlerTests
         var fhirPathEvaluatorWithTimeout = new FhirPathEvaluatorWithTimeout(
             expressionCache,
             fhirPathEvaluator,
-            TimeSpan.FromSeconds(5),
             NullLogger<FhirPathEvaluatorWithTimeout>.Instance);
 
         _handler = new TransformResourceHandler(

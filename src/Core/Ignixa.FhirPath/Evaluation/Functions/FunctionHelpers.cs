@@ -91,12 +91,20 @@ internal static class FunctionHelpers
     /// Compares two values for equality.
     /// Handles date/time literals with @ prefix normalization and numeric type coercion.
     /// </summary>
-    public static bool AreEqual(object? left, object? right)
+    /// <remarks>
+    /// Private because it cannot see an operand's instance type, and a FHIRPath temporal literal is a
+    /// plain <see cref="string"/> until the instance type says otherwise. Callers must go through
+    /// <see cref="AreElementsEqual"/>, which has the types and can route temporals to
+    /// <see cref="TemporalOperand"/>; reaching this method directly is what made <c>distinct()</c>,
+    /// <c>in</c>, <c>contains</c>, <c>intersect</c>, <c>exclude</c> and <c>|</c> compare temporals as
+    /// text while the <c>=</c> operator compared them as instants.
+    /// </remarks>
+    private static bool AreEqual(object? left, object? right)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
 
-        if (left is string leftStr && right is string rightStr)
+        if (WireValue.AsWireString(left) is { } leftStr && WireValue.AsWireString(right) is { } rightStr)
         {
             var leftNormalized = NormalizeDateString(leftStr);
             var rightNormalized = NormalizeDateString(rightStr);
@@ -114,10 +122,41 @@ internal static class FunctionHelpers
     /// <summary>
     /// Compares two IElements for equality (deep comparison for complex types).
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The single equality entry point for every collection operation - <c>distinct()</c>,
+    /// <c>isDistinct()</c>, <c>|</c>, <c>in</c>, <c>contains</c>, <c>intersect</c>, <c>exclude</c> and
+    /// <c>repeat()</c> - and it deliberately answers the same question the <c>=</c> operator does.
+    /// </para>
+    /// <para>
+    /// Both typed branches collapse the operators' third state to "not the same item", because these
+    /// callers have no third state to return and membership asserts that an equal item is present.
+    /// Quantities reach <see cref="ValueOrdering"/> for the same reason temporals reach
+    /// <see cref="TemporalOperand"/>: without it a quantity fell through to
+    /// <see cref="object.Equals(object)"/> on the carrier, which compares units as text, so
+    /// <c>1 'm' = 100 'cm'</c> was <see langword="true"/> as an operator and <see langword="false"/> as
+    /// membership. An undecided quantity comparison falls through to the untyped paths below rather than
+    /// being reported unequal here, so the branch only ever adds a decision.
+    /// </para>
+    /// </remarks>
     public static bool AreElementsEqual(IElement? left, IElement? right)
     {
         if (left == null && right == null) return true;
         if (left == null || right == null) return false;
+
+        if (TemporalOperand.IsTemporal(left.Value, left.InstanceType)
+            && TemporalOperand.IsTemporal(right.Value, right.InstanceType)
+            && TemporalOperand.AsTemporal(left.Value, left.InstanceType) is { } leftTemporal
+            && TemporalOperand.AsTemporal(right.Value, right.InstanceType) is { } rightTemporal)
+        {
+            return TemporalOperand.AreSameItem(leftTemporal, rightTemporal);
+        }
+
+        if ((ValueOrdering.IsQuantity(left) || ValueOrdering.IsQuantity(right))
+            && ValueOrdering.AreQuantitiesEqual(left, right) is { } quantitiesEqual)
+        {
+            return quantitiesEqual;
+        }
 
         // Both have primitive values - compare values
         if (left.Value != null && right.Value != null)
@@ -172,13 +211,13 @@ internal static class FunctionHelpers
     #region Type Validation Helpers
 
     /// <summary>
-    /// Validates that the focus collection contains a single string value.
+    /// Validates that the focus collection contains a single value with a string representation.
     /// </summary>
     /// <param name="focus">The input collection</param>
     /// <param name="functionName">The function name for error messages</param>
     /// <param name="str">The extracted string value if valid</param>
     /// <returns>True if valid, false if empty collection</returns>
-    /// <exception cref="InvalidOperationException">If collection has multiple items or non-string value</exception>
+    /// <exception cref="FhirPathEvaluationException">If collection has multiple items or a value with no string representation</exception>
     public static bool TryGetSingleString(IEnumerable<IElement> focus, string functionName, out string str)
     {
         str = string.Empty;
@@ -188,16 +227,16 @@ internal static class FunctionHelpers
             return false;
 
         if (list.Count > 1)
-            throw new InvalidOperationException($"{functionName}() requires a single input value");
+            throw new FhirPathEvaluationException($"{functionName}() requires a single input value");
 
-        if (list[0].Value is string s)
+        if (WireValue.AsWireString(list[0].Value) is { } s)
         {
             str = s;
             return true;
         }
 
         var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
-        throw new InvalidOperationException($"Function '{functionName}' is not supported on context type '{typeName}'");
+        throw new FhirPathEvaluationException($"Function '{functionName}' is not supported on context type '{typeName}'");
     }
 
     /// <summary>
@@ -207,7 +246,13 @@ internal static class FunctionHelpers
     /// <param name="functionName">The function name for error messages</param>
     /// <param name="value">The extracted decimal value if valid</param>
     /// <returns>True if valid, false if empty collection</returns>
-    /// <exception cref="InvalidOperationException">If collection has multiple items or non-numeric value</exception>
+    /// <exception cref="FhirPathEvaluationException">If collection has multiple items or non-numeric value</exception>
+    /// <remarks>
+    /// Overflow is reported as "no value" rather than as a type error. §Math requires an operation that
+    /// overflows to yield empty, and a number too large for <see cref="decimal"/> is still a number - so
+    /// letting it fall into the type-error path below would tell the caller its Decimal input was of an
+    /// unsupported type.
+    /// </remarks>
     public static bool TryGetSingleNumber(IEnumerable<IElement> focus, string functionName, out decimal value)
     {
         value = 0;
@@ -217,13 +262,20 @@ internal static class FunctionHelpers
             return false;
 
         if (list.Count > 1)
-            throw new InvalidOperationException($"{functionName}() requires a single input value");
+            throw new FhirPathEvaluationException($"{functionName}() requires a single input value");
 
-        if (TryConvertToDecimal(list[0].Value, out value))
-            return true;
+        try
+        {
+            if (TryConvertToDecimal(list[0].Value, out value))
+                return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
 
         var typeName = list[0].InstanceType ?? list[0].Value?.GetType().Name ?? "unknown";
-        throw new InvalidOperationException($"Function '{functionName}' is not supported on context type '{typeName}'");
+        throw new FhirPathEvaluationException($"Function '{functionName}' is not supported on context type '{typeName}'");
     }
 
     #endregion
@@ -231,79 +283,56 @@ internal static class FunctionHelpers
     #region Type Conversion Helpers
 
     /// <summary>
-    /// Attempts to convert a value to decimal (handles Integer -> Decimal implicit conversion).
+    /// Converts a value to <see cref="decimal"/> when, and only when, it already is a number.
     /// </summary>
+    /// <param name="value">The value to convert.</param>
+    /// <param name="result">The converted value, or zero when the value is not a number.</param>
+    /// <returns><see langword="true"/> when the value is a number.</returns>
+    /// <exception cref="OverflowException">
+    /// The value is a number but falls outside <see cref="decimal"/>'s range.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// The type list is exhaustive on purpose. This used to fall through to
+    /// <c>Convert.ToDecimal(IConvertible)</c>, which both <see cref="string"/> and <see cref="bool"/>
+    /// implement, so every arithmetic operator and every math function silently accepted them:
+    /// <c>'5' + 1</c> answered <c>6</c>, <c>'5' - '1'</c> answered <c>4</c> and <c>1 + true</c> answered
+    /// <c>2</c> where FHIRPath requires an error. String-to-Decimal and Boolean-to-Decimal are
+    /// <i>explicit</i> conversions in the conversion table, reserved for <c>toDecimal()</c>; this PR made
+    /// exactly that argument for <c>&amp;</c> and it applies unchanged to the six math operators.
+    /// The string case gave no coverage from official <c>testMinus4</c> (<c>'a' - 'b'</c>) because
+    /// <c>'a'</c> fails to parse whatever the rule is.
+    /// </para>
+    /// <para>
+    /// The string case was also locale-dependent, which is the worse half. <c>Convert.ToDecimal</c> takes
+    /// no <see cref="IFormatProvider"/>, so it parsed under <c>CurrentCulture</c>: <c>'1,5' + 1</c>
+    /// answered <c>2.5</c> on a de-DE host and <c>16</c> on an en-US one, and <c>'1 234' + 1</c> answered
+    /// <c>1235</c> on fr-FR and errored elsewhere. Same expression, same data, a different number per
+    /// server locale, with nothing logged.
+    /// </para>
+    /// <para>
+    /// Overflow is raised rather than reported as <see langword="false"/>. The old bare <c>catch</c>
+    /// folded <see cref="OverflowException"/> into "not a number", which made
+    /// <see cref="TryGetSingleNumber"/> report an out-of-range number as "not supported on context type" -
+    /// a false diagnosis. §Math requires overflow to yield empty, and both callers route it there.
+    /// </para>
+    /// </remarks>
     public static bool TryConvertToDecimal(object? value, out decimal result)
     {
-        result = 0;
-
-        if (value is decimal d)
+        switch (value)
         {
-            result = d;
-            return true;
-        }
-
-        if (value is int i)
-        {
-            result = i;
-            return true;
-        }
-
-        if (value is IConvertible convertible)
-        {
-            try
-            {
-                result = Convert.ToDecimal(convertible);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    #endregion
-
-    #region Equality Comparers
-
-    /// <summary>
-    /// Equality comparer for object values.
-    /// </summary>
-    public class ObjectEqualityComparer : IEqualityComparer<object?>
-    {
-        public new bool Equals(object? x, object? y)
-        {
-            if (x == null && y == null) return true;
-            if (x == null || y == null) return false;
-            return x.Equals(y);
-        }
-
-        public int GetHashCode(object? obj)
-        {
-            return obj?.GetHashCode() ?? 0;
-        }
-    }
-
-    /// <summary>
-    /// Equality comparer for IElement instances based on their values.
-    /// </summary>
-    public class ElementEqualityComparer : IEqualityComparer<IElement>
-    {
-        public bool Equals(IElement? x, IElement? y)
-        {
-            if (x == null && y == null) return true;
-            if (x == null || y == null) return false;
-            if (x.Value == null && y.Value == null) return true;
-            if (x.Value == null || y.Value == null) return false;
-            return x.Value.Equals(y.Value);
-        }
-
-        public int GetHashCode(IElement obj)
-        {
-            return obj.Value?.GetHashCode() ?? 0;
+            case decimal d: result = d; return true;
+            case int i: result = i; return true;
+            case long l: result = l; return true;
+            case short s: result = s; return true;
+            case sbyte sb: result = sb; return true;
+            case byte b: result = b; return true;
+            case ushort us: result = us; return true;
+            case uint ui: result = ui; return true;
+            case ulong ul: result = ul; return true;
+            case float f: result = (decimal)f; return true;
+            case double dbl: result = (decimal)dbl; return true;
+            default: result = 0; return false;
         }
     }
 
@@ -312,31 +341,40 @@ internal static class FunctionHelpers
     #region Collection Helpers
 
     /// <summary>
-    /// Union operator: Merge collections, eliminate duplicates.
+    /// Returns the distinct elements of a collection under FHIRPath equality, preserving order.
     /// </summary>
-    public static IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
+    /// <remarks>
+    /// A linear scan rather than <c>Enumerable.Distinct</c> with a comparer, because FHIRPath equality has
+    /// no hash consistent with it: <c>@2012-01-01T10:00:00Z</c> and <c>@2012-01-01T20:00:00+10:00</c> are
+    /// the same value with different literals, and <c>1</c> and <c>1.0</c> are the same value with
+    /// different CLR types. The comparer this replaced hashed <c>Value.GetHashCode()</c> and compared with
+    /// <c>Value.Equals</c>, so it could not see either equality and never even called the comparison for
+    /// the first. FHIRPath collections are small enough that the quadratic scan is the right trade.
+    /// </remarks>
+    public static List<IElement> Distinct(IEnumerable<IElement> elements)
     {
         var result = new List<IElement>();
 
-        // Add all left elements
-        foreach (var leftItem in left)
+        foreach (var element in elements)
         {
-            if (!result.Any(r => AreElementsEqual(r, leftItem)))
+            if (!result.Any(existing => AreElementsEqual(existing, element)))
             {
-                result.Add(leftItem);
-            }
-        }
-
-        // Add right elements that aren't duplicates
-        foreach (var rightItem in right)
-        {
-            if (!result.Any(r => AreElementsEqual(r, rightItem)))
-            {
-                result.Add(rightItem);
+                result.Add(element);
             }
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Union operator: Merge collections, eliminate duplicates.
+    /// </summary>
+    public static IEnumerable<IElement> EvaluateUnion(List<IElement> left, List<IElement> right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        return Distinct(left.Concat(right));
     }
 
     #endregion
@@ -377,9 +415,9 @@ internal static class FunctionHelpers
     /// </summary>
     public sealed class QuantityElement : IElement
     {
-        private readonly Types.Quantity _quantity;
+        private readonly FhirQuantity _quantity;
 
-        public QuantityElement(Types.Quantity quantity)
+        public QuantityElement(FhirQuantity quantity)
         {
             ArgumentNullException.ThrowIfNull(quantity);
             _quantity = quantity;
@@ -420,7 +458,7 @@ internal static class FunctionHelpers
     /// <summary>
     /// Creates an IElement wrapping a Quantity value.
     /// </summary>
-    public static IElement CreateQuantity(Types.Quantity quantity) => new QuantityElement(quantity);
+    public static IElement CreateQuantity(FhirQuantity quantity) => new QuantityElement(quantity);
 
     #endregion
 }

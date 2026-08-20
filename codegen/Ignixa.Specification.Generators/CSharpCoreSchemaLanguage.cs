@@ -258,6 +258,15 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             {
                 TrackElementStrings(element, definitions);
             }
+
+            // The children walk excludes the root row, but the type node now emits that row's
+            // constraints - so its keys/expressions/human text must be tracked too, or they miss the
+            // shared-constant pass and get inlined as duplicate literals.
+            var rootRow = GetRootElementRow(sd, backbonePath);
+            if (rootRow != null)
+            {
+                TrackElementStrings(rootRow, definitions);
+            }
         }
     }
 
@@ -355,7 +364,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
             sb.AppendLine($"            childrenFactory: () => {GetSafeMethodName(name)}_Children(),");
             sb.AppendLine($"            min: 0,");
             sb.AppendLine($"            max: \"1\",");
-            sb.AppendLine($"            constraints: null,");
+            sb.AppendLine($"            constraints: {BuildConstraintsLiteral(GetRootElementRow(sd, backbonePath), name)},");
             sb.AppendLine($"            binding: null,");
             sb.AppendLine($"            fixedValue: null,");
             sb.AppendLine($"            patternValue: null,");
@@ -455,6 +464,76 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         sb.AppendLine($"            ),");
     }
 
+    /// <summary>
+    /// Renders an element's <c>Constraint</c> collection as a C# array literal, or "null" when the
+    /// element declares none. Shared by the child-element emit and the type-node emit so a constraint
+    /// is serialized identically wherever it is declared.
+    /// </summary>
+    private string BuildConstraintsLiteral(ElementDefinition? element, string elementTypeName)
+    {
+        if (element?.Constraint == null || !element.Constraint.Any())
+        {
+            return "null";
+        }
+
+        // Track the AppliesTo element type name for constant generation
+        _constantTracker?.Track(elementTypeName);
+
+        var constraintList = element.Constraint
+            .Select(c =>
+            {
+                // Use constant reference for constraint key if available
+                string keyValue = c.Key ?? "";
+                string key = _constantTracker?.GetConstantReference(keyValue) ?? $"\"{EscapeString(keyValue)}\"";
+
+                string severityValue = c.Severity?.ToString()?.ToLowerInvariant() ?? "error";
+                string severity = $"\"{EscapeString(severityValue)}\"";
+
+                // Use constants for human and expression if available
+                string humanValue = c.Human ?? "";
+                string human = _constantTracker?.GetConstantReference(humanValue) ?? $"\"{EscapeString(humanValue)}\"";
+
+                string expressionValue = c.Expression ?? "";
+                string expression = _constantTracker?.GetConstantReference(expressionValue) ?? $"\"{EscapeString(expressionValue)}\"";
+
+                string xpath = c.Xpath != null ? $"\"{EscapeString(c.Xpath)}\"" : "null";
+
+                return $"new Ignixa.Abstractions.ConstraintDefinition {{ Key = {key}, Severity = {severity}, Human = {human}, Expression = {expression}, Xpath = {xpath} }}";
+            })
+            .ToList();
+
+        return constraintList.Count > 0
+            ? $"new[] {{ {string.Join(", ", constraintList)} }}"
+            : "null";
+    }
+
+    /// <summary>
+    /// Resolves the root <c>ElementDefinition</c> row for a type - the row whose path is the bare type
+    /// name (e.g. "Patient", "Quantity"). This is where FHIR declares a type's own invariants: dom-*
+    /// on every DomainResource, bdl-1..bdl-12 on Bundle, qty-3 on Quantity, per-1 on Period. The
+    /// children walk deliberately passes <c>includeRoot: false</c>, so without this the row is read by
+    /// nobody and every constraint on it is dropped.
+    /// <para>
+    /// Returns null for BackboneElement types. A backbone's constraints live on the row that declares
+    /// it (e.g. tim-* on <c>Timing.repeat</c>), which is already emitted as a child of the parent type
+    /// and evaluated at the backbone's own altitude by the schema builder. Emitting them again on the
+    /// synthesized <c>Timing.Repeat</c> type node would evaluate every one of them twice.
+    /// </para>
+    /// </summary>
+    private static ElementDefinition? GetRootElementRow(StructureDefinition sd, string? backbonePath)
+    {
+        if (backbonePath != null)
+        {
+            return null;
+        }
+
+        // Read the snapshot directly rather than via cgElements: its topLevelOnly filter keeps only
+        // elements with exactly one dot more than the backbone path, which discards the zero-dot root
+        // row even when includeRoot is true. The root is the row whose path carries no dot.
+        return sd.Snapshot?.Element
+            .FirstOrDefault(e => !string.IsNullOrEmpty(e.Path) && !e.Path.Contains('.', StringComparison.Ordinal));
+    }
+
     private (string min, string max, string constraints, string binding, string fixedValue, string patternValue, string typeArray, string defaultTypeName, string referenceTargets, string contentReference, string slicing)
         ExtractExtendedMetadata(ElementDefinition element, DefinitionCollection definitions, string elementTypeName)
     {
@@ -463,40 +542,7 @@ public sealed class CSharpCoreSchemaLanguage : ILanguage
         string max = !string.IsNullOrEmpty(element.Max) ? $"\"{EscapeString(element.Max)}\"" : "null";
 
         // 2. Constraints
-        string constraints = "null";
-        if (element.Constraint != null && element.Constraint.Any())
-        {
-            // Track the AppliesTo element type name for constant generation
-            _constantTracker?.Track(elementTypeName);
-
-            var constraintList = element.Constraint
-                .Select(c =>
-                {
-                    // Use constant reference for constraint key if available
-                    string keyValue = c.Key ?? "";
-                    string key = _constantTracker?.GetConstantReference(keyValue) ?? $"\"{EscapeString(keyValue)}\"";
-
-                    string severityValue = c.Severity?.ToString()?.ToLowerInvariant() ?? "error";
-                    string severity = $"\"{EscapeString(severityValue)}\"";
-
-                    // Use constants for human and expression if available
-                    string humanValue = c.Human ?? "";
-                    string human = _constantTracker?.GetConstantReference(humanValue) ?? $"\"{EscapeString(humanValue)}\"";
-
-                    string expressionValue = c.Expression ?? "";
-                    string expression = _constantTracker?.GetConstantReference(expressionValue) ?? $"\"{EscapeString(expressionValue)}\"";
-
-                    string xpath = c.Xpath != null ? $"\"{EscapeString(c.Xpath)}\"" : "null";
-
-                    return $"new Ignixa.Abstractions.ConstraintDefinition {{ Key = {key}, Severity = {severity}, Human = {human}, Expression = {expression}, Xpath = {xpath} }}";
-                })
-                .ToList();
-
-            if (constraintList.Count > 0)
-            {
-                constraints = $"new[] {{ {string.Join(", ", constraintList)} }}";
-            }
-        }
+        string constraints = BuildConstraintsLiteral(element, elementTypeName);
 
         // 3. Binding
         string binding = "null";

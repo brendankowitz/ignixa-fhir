@@ -712,7 +712,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(10m, quantity.Value);
         Assert.Equal("day", quantity.Unit);
@@ -730,7 +730,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         // 2 years ≈ 730.5 days / 365.25 ≈ 2.0
         Assert.True(quantity.Value >= 1.9m && quantity.Value <= 2.1m);
@@ -749,7 +749,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         // 17 months ≈ 517 days / 30.4375 ≈ 17
         Assert.True(quantity.Value >= 16m && quantity.Value <= 18m);
@@ -768,7 +768,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert - Since both dates have second precision, result is in seconds
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(16200m, quantity.Value); // 4.5 hours = 16200 seconds
         Assert.Equal("second", quantity.Unit);
@@ -804,7 +804,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(10m, quantity.Value);
         Assert.Equal("day", quantity.Unit);
@@ -822,7 +822,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(2m, quantity.Value);  // Exactly 2 years
         Assert.Equal("year", quantity.Unit);
@@ -840,7 +840,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(17m, quantity.Value);  // Exactly 17 months
         Assert.Equal("month", quantity.Unit);
@@ -858,7 +858,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert - Since both dates have second precision, result is in seconds
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(14400m, quantity.Value);  // 4 hours = 14400 seconds
         Assert.Equal("second", quantity.Unit);
@@ -876,7 +876,7 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(10m, quantity.Value);  // Still 10 days, not -10
         Assert.Equal("day", quantity.Unit);
@@ -908,10 +908,43 @@ public class FhirPathDateTimeComponentTests
 
         // Assert
         Assert.Equal("Quantity", result.InstanceType);
-        var quantity = result.Value as Ignixa.FhirPath.Types.Quantity;
+        var quantity = result.Value as Ignixa.Abstractions.FhirQuantity;
         Assert.NotNull(quantity);
         Assert.Equal(2m, quantity.Value);  // 2 years (using year precision)
         Assert.Equal("year", quantity.Unit);
+    }
+
+    #endregion
+
+    #region Precision Function with FhirTemporal Element Values
+
+    [Theory]
+    [InlineData("2024-01-15", "date", 8)]
+    [InlineData("2024-01", "date", 6)]
+    [InlineData("2024", "date", 4)]
+    [InlineData("2024-01-15T10:30:45", "dateTime", 14)]
+    [InlineData("10:30:45", "time", 6)]
+    public void GivenFhirTemporalElement_WhenPrecision_ThenReturnsDigitCount(string literal, string instanceType, int expectedDigitCount)
+    {
+        // FhirTemporal is the value type for resource elements with temporal primitives.
+        // precision() must count significant digits as it did when the value was a plain string.
+
+        // Arrange
+        var kind = instanceType switch
+        {
+            "time" => FhirPrimitive.Time,
+            "date" => FhirPrimitive.Date,
+            _ => FhirPrimitive.DateTime,
+        };
+        Assert.True(FhirTemporal.TryParse(literal, kind, out var temporal));
+        var element = new PrimitiveElement(temporal!, instanceType);
+        var expr = _parser.Parse("$this.precision()");
+
+        // Act
+        var result = _evaluator.Evaluate(element, expr).Single();
+
+        // Assert
+        Assert.Equal(expectedDigitCount, result.Value);
     }
 
     #endregion

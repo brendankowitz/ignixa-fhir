@@ -74,11 +74,8 @@ public class DeIdentifyHandler : IRequestHandler<DeIdentifyCommand, DeIdentifyRe
             ValidateOutput = options.Processing?.ValidateOutput ?? false,
         };
 
-        var element = request.InputResource.ToElement(schemaProvider);
-
         var deIdContext = new DeIdContext(
             request.InputResource,
-            element,
             schemaProvider,
             settings,
             options);

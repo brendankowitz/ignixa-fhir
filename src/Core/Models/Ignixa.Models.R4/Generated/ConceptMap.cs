@@ -43,16 +43,6 @@ public sealed partial class ConceptMap : Ignixa.Models.ConceptMap
         set => SetProperty("identifier", value?.MutableNode);
     }
 
-    [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
     private static readonly string[] SourceVariantKeys =
         ["sourceUri", "sourceCanonical"];
 
