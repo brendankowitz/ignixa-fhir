@@ -135,9 +135,10 @@ claude plugin install decide@agent-marketplace
 claude plugin install build@agent-marketplace
 claude plugin install review@agent-marketplace
 claude plugin install document@agent-marketplace
+claude plugin install pr-review-toolkit@claude-plugins-official
 ```
 
-Claude Code should use the official `pr-review-toolkit@claude-plugins-official`.
+Use the official `pr-review-toolkit@claude-plugins-official` for both Claude Code and Copilot CLI — `agent-marketplace` does not currently publish a `pr-review-toolkit` plugin, so `copilot plugin install pr-review-toolkit@agent-marketplace` above will fail.
 
 The only repository-local agents are:
 
