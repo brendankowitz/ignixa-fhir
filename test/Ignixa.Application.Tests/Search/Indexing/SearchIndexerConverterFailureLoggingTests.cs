@@ -6,6 +6,7 @@
 #nullable enable
 
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Search.Indexing.Converters;
@@ -156,6 +157,43 @@ public class SearchIndexerConverterFailureLoggingTests
         recordingLogger.Entries.ShouldNotBeEmpty();
         recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
         recordingLogger.Entries.ShouldAllBe(e => e.Exception is FormatException);
+    }
+
+    /// <summary>
+    /// The Warning-tier arm that carries the most weight and had no coverage. The FHIRPath function
+    /// library signals a refusal it is <em>right</em> to refuse - a malformed call, a non-converging
+    /// projection - as <see cref="FhirPathEvaluationException"/>, and on the write path that must be
+    /// contained as an expected miss, not surfaced as an indexer bug.
+    /// <para>
+    /// It only is because <c>IsExpectedEvaluationFailure</c> names <see cref="FhirPathEvaluationException"/>
+    /// first, ahead of the <see cref="ArgumentException"/> arm. Those refusals used to be plain
+    /// <see cref="ArgumentException"/>s and were admitted by that arm alone; had the predicate been
+    /// written to lean on it, converting them would have migrated every one of them from Warning to
+    /// Error here, silently, with no test going red. This test removes that dependence on ordering:
+    /// deleting the <see cref="FhirPathEvaluationException"/> term now fails, because
+    /// <see cref="FhirPathEvaluationException"/> derives from <see cref="InvalidOperationException"/>,
+    /// which no arm of the predicate matches.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void GivenAConverterThatThrowsAFhirPathEvaluationException_WhenIndexed_ThenTheFailureIsLoggedAtWarning()
+    {
+        // Arrange
+        var recordingLogger = new RecordingLogger();
+        var indexer = CreateIndexer(
+            new FhirPathEvaluationException("simulated expression-level refusal"),
+            recordingLogger);
+        var patient = PatientJson();
+        var element = patient.ToElement(_schemaProvider);
+
+        // Act
+        var indices = Should.NotThrow(() => indexer.Extract(element));
+
+        // Assert
+        indices.Select(i => i.SearchParameter.Code).ShouldNotContain("gender");
+        recordingLogger.Entries.ShouldNotBeEmpty();
+        recordingLogger.Entries.ShouldAllBe(e => e.Level == LogLevel.Warning);
+        recordingLogger.Entries.ShouldAllBe(e => e.Exception is FhirPathEvaluationException);
     }
 
     /// <summary>
