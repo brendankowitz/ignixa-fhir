@@ -27,6 +27,19 @@ internal static class DifferentialFixture
     /// <summary>
     /// Expressions every pair of evaluation paths must agree on.
     /// </summary>
+    /// <remarks>
+    /// Measured, at <see cref="DefaultVersion"/>: 100 of the 205 rows compile and 105 are declined. The
+    /// declined half - the quantity arithmetic, the temporal set operations, most of the <c>is</c> and
+    /// <c>as</c> forms, and the conversion and boundary functions - reaches the <c>compiled is null</c>
+    /// early-out, where the two paths agree by construction because only one of them ran. Those rows
+    /// still earn their place: <see cref="FoldableCorpus"/> and the interpreter-versus-folded harness
+    /// read the same list, and a row that starts compiling later gains differential coverage for free.
+    /// But a green run here is evidence about 100 expressions, not 205, and the rows that must keep
+    /// compiling are named in <c>CompiledVersusInterpretedDifferentialTests.MustCompile</c> rather than
+    /// left to the count. (<see cref="FoldableCorpus"/> is 24 compiled of 114 by the same measure; its
+    /// harness compares the interpreter against the folded AST, so declining to compile does not make
+    /// those rows inert.)
+    /// </remarks>
     public static TheoryData<string> Corpus => new()
     {
         "birthDate = @1974-12-25",
@@ -420,6 +433,22 @@ internal static class DifferentialFixture
     /// The System-spelling rows are the ones that carry that regression. The rest are here because the
     /// version gate sits in the same method and a change to it should be visible on all five versions
     /// at once, not discovered one artifact at a time.
+    /// </para>
+    /// <para>
+    /// What this corpus actually compares, measured: 8 of the 29 rows compile, 21 are declined. The
+    /// eight are the <c>ofType()</c> forms plus <c>name.count() &gt; 0</c>; <c>TryCompile</c> declines
+    /// every <c>is</c> form, every <c>as</c> and <c>.as()</c> form, and both <c>type()</c> forms. Those
+    /// 21 rows reach the early-out in the versioned harness, so across five versions the sweep is 40
+    /// real comparisons and 105 no-ops. Two of the three operators named above therefore contribute no
+    /// differential coverage at all, and <c>as</c> - the operator the R5 gate governs - is one of them.
+    /// Their version-axis coverage rests entirely on the single-path assertions in
+    /// <c>SystemValueTypeMatchingTests</c> and <c>TypeNameCaseSensitivityTests</c>. Do not read a green
+    /// versioned differential suite as evidence about <c>is</c> or <c>as</c>.
+    /// </para>
+    /// <para>
+    /// The eight that do compile are pinned by
+    /// <c>VersionedCompiledVersusInterpretedDifferentialTests.MustCompile</c>, so a row quietly becoming
+    /// uncompilable fails rather than joining the silent majority.
     /// </para>
     /// </remarks>
     public static TheoryData<string> TypeOperatorCorpus => new()

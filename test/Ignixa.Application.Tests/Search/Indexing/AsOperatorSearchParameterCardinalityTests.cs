@@ -132,8 +132,9 @@ public class AsOperatorSearchParameterCardinalityTests
             .Where(entry => entry.SearchParameter.Code == searchParameterCode)
             .ToList();
 
-        // Assert
-        entries.ShouldNotBeEmpty(
+        // Assert. Exact count, per the standard this file states below: "not empty" would still pass if
+        // the cast silently started yielding a different number of entries.
+        entries.ShouldHaveSingleItem(
             $"STU3 '{searchParameterCode}' spells its cast as(Date); removing Date from the pre-R5 alias set empties it");
     }
 

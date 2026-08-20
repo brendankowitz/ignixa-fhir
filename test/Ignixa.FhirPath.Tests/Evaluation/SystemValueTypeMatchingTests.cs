@@ -36,6 +36,13 @@ namespace Ignixa.FhirPath.Tests.Evaluation;
 /// These cases therefore have to run on R5 or later and compare the two paths. A single-path
 /// assertion, or the same assertion on R4, passes with the defect present.
 /// </para>
+/// <para>
+/// The converse holds for the values that reach the type operators without a function call -
+/// <c>$index</c> and the standard external constants. <c>TryCompile</c> declines every expression
+/// that produces one, so a differential comparison is satisfied whatever the answer is, and the same
+/// misclassification went unnoticed there through a whole round of review. Those are asserted
+/// single-path against their expected values, per version.
+/// </para>
 /// </remarks>
 public class SystemValueTypeMatchingTests
 {
@@ -176,8 +183,158 @@ public class SystemValueTypeMatchingTests
             "the compiler's System wrapper must declare System-ness, not spell it in its class name");
     }
 
+    /// <summary>
+    /// The standard external constants, per version, with the value each must still yield when
+    /// selected with its System spelling.
+    /// </summary>
+    /// <remarks>
+    /// Every one of these is a <c>System.String</c> defined by the FHIRPath specification, so
+    /// <c>ofType(String)</c> selects it on every version - the R5 gate withdraws the FHIR aliases, not
+    /// the System namespace itself. They regressed to empty on R5 and R6 because the element backing
+    /// them did not declare <see cref="ISystemValueElement"/>.
+    /// </remarks>
+    public static TheoryData<FhirVersion, string, string> StandardConstantSelections
+    {
+        get
+        {
+            var data = new TheoryData<FhirVersion, string, string>();
+            foreach (var version in AllVersions)
+            {
+                foreach (var (constant, expected) in StandardConstantValues)
+                {
+                    data.Add(version, constant, expected);
+                }
+            }
+
+            return data;
+        }
+    }
+
+    /// <summary>
+    /// The same constants without their values, for the assertions that only need the identity.
+    /// </summary>
+    public static TheoryData<FhirVersion, string> StandardConstants
+    {
+        get
+        {
+            var data = new TheoryData<FhirVersion, string>();
+            foreach (var version in AllVersions)
+            {
+                foreach (var constant in StandardConstantNames)
+                {
+                    data.Add(version, constant);
+                }
+            }
+
+            return data;
+        }
+    }
+
+    /// <summary>
+    /// Asserted single-path, and against the value rather than against the other path, because
+    /// <see cref="FhirPathDelegateCompiler.TryCompile"/> declines these expressions: a differential
+    /// comparison agrees by construction whatever the answer is, which is how they regressed to empty
+    /// on R5 and R6 with the versioned differential suite green.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(StandardConstantSelections))]
+    public void GivenAStandardConstantOnAnyVersion_WhenSelectedWithTheSystemSpelling_ThenTheStringSurvives(
+        FhirVersion version,
+        string constant,
+        string expected)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act
+        var selected = Interpret(element, $"{constant}.ofType(String)", schema);
+
+        // Assert
+        selected.ShouldHaveSingleItem(
+            $"'{constant}' is a System.String constant, so ofType(String) selects it on {version}").Value.ShouldBe(expected);
+    }
+
+    [Theory]
+    [MemberData(nameof(StandardConstants))]
+    public void GivenAStandardConstantOnAnyVersion_WhenTypeTested_ThenItIsASystemString(
+        FhirVersion version,
+        string constant)
+    {
+        // The type TEST gate is not version dependent, so this was false on all five versions rather
+        // than only the two the cast gate reaches.
+
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act
+        var isString = Interpret(element, $"{constant} is String", schema);
+
+        // Assert
+        isString.ShouldHaveSingleItem().Value.ShouldBe(true);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenIndexOnAnyVersion_WhenSelectedWithTheSystemSpelling_ThenTheIntegersSurvive(
+        FhirVersion version)
+    {
+        // $index is a System.Integer the evaluator produces, so ofType(Integer) keeps both positions.
+        // Also single-path: TryCompile declines select().
+
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act
+        var indices = Interpret(element, "(1 | 2).select($index).ofType(Integer)", schema);
+
+        // Assert
+        indices.Select(i => i.Value).ShouldBe([0, 1]);
+    }
+
+    [Theory]
+    [InlineData(FhirVersion.Stu3)]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    [InlineData(FhirVersion.R5)]
+    [InlineData(FhirVersion.R6)]
+    public void GivenIndexOnAnyVersion_WhenTypeTested_ThenItIsASystemInteger(FhirVersion version)
+    {
+        // Arrange
+        var schema = version.GetSchemaProvider();
+        var element = ResourceJsonNode.Parse(ObservationJson).ToElement(schema);
+
+        // Act
+        var isInteger = Interpret(element, "(1 | 2).select($index is Integer)", schema);
+
+        // Assert
+        isInteger.Select(i => i.Value).ShouldBe([true, true]);
+    }
+
     private static IReadOnlyList<FhirVersion> AllVersions =>
         [FhirVersion.Stu3, FhirVersion.R4, FhirVersion.R4B, FhirVersion.R5, FhirVersion.R6];
+
+    /// <summary>
+    /// The three enumerated standard constants plus one representative from each of the two families
+    /// <see cref="EvaluationContext"/> expands by rule.
+    /// </summary>
+    private static IReadOnlyList<(string Constant, string Value)> StandardConstantValues =>
+    [
+        ("%ucum", "http://unitsofmeasure.org"),
+        ("%sct", "http://snomed.info/sct"),
+        ("%loinc", "http://loinc.org"),
+        ("%`vs-administrative-gender`", "http://hl7.org/fhir/ValueSet/administrative-gender"),
+        ("%`ext-patient-birthTime`", "http://hl7.org/fhir/StructureDefinition/patient-birthTime"),
+    ];
+
+    private static IEnumerable<string> StandardConstantNames =>
+        StandardConstantValues.Select(entry => entry.Constant);
 
     private static EvaluationContext Context(IElement element, ISchema schema) =>
         new() { Resource = element, RootResource = element, Schema = schema };

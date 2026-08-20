@@ -118,8 +118,8 @@ internal static class TypeMatcher
     // Quantity's absence is load-bearing: it exists in both models with identical spelling, so adding it
     // here would make `is Quantity` false on a real FHIR Quantity. Date's absence is inert: FHIR spells
     // it `date`, never `Date`, so `birthDate is Date` already fails the Ordinal comparison in
-    // TypeNamesMatch before this set is ever consulted. Adding Date would change no result; removing
-    // Quantity would change many.
+    // TypeNamesMatch before this set is ever consulted. Neither is present, so the only edit either one
+    // admits is an addition: adding Date would change no result, adding Quantity would change many.
     //
     // This gate is TEST-only, and `is` is strict on every version while the casts are gated (see
     // UsesR5TypeRules). That asymmetry is the spec's, not ours: the System/FHIR namespace distinction is

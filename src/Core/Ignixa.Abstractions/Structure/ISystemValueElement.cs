@@ -23,8 +23,27 @@ namespace Ignixa.Abstractions;
 /// path. Inferring it from the CLR class name once made the compiled path disagree with the
 /// interpreter about the very same <c>count()</c> result: the interpreter's wrapper happened to be
 /// called <c>PrimitiveElement</c> and the compiler's <c>LiteralElement</c>, so only one of them was
-/// recognised. Any new wrapper for an engine-produced value has to implement this interface;
-/// <c>SystemValueTypeMatchingTests</c> fails if a path stops declaring it.
+/// recognised.
+/// </para>
+/// <para>
+/// <strong>What holds the set of implementors complete.</strong> Declaring the contract moves the
+/// failure from "the wrong classes match a name pattern" to "a producer was never given the
+/// declaration", which is silent in a different way: the value simply loses its System spelling from
+/// R5 onwards, and below R5 the cast alias hides it. That is how <c>IndexElement</c> and
+/// <c>StringElement</c> - <c>$index</c> and the <c>%ucum</c>/<c>%sct</c>/<c>%vs-</c> constants - were
+/// missed when the first six were marked.
+/// </para>
+/// <para>
+/// <c>SystemValueElementDeclarationTests</c> is what closes that. It reflects over every
+/// <see cref="IElement"/> implementor in the FhirPath, FHIR Mapping Language and SQL-on-FHIR
+/// assemblies and requires each one to appear in a table stating whether it declares this interface
+/// and why. A new element type fails the build until someone records that decision, and removing the
+/// declaration from a listed producer fails too. It does not decide the answer for a new type - it
+/// only makes an omission impossible to commit silently.
+/// </para>
+/// <para>
+/// The behavioural tests are narrower and should not be read as covering this: they pin the wrappers
+/// the expressions in them happen to reach, which is a handful, not all of them.
 /// </para>
 /// <para>
 /// Elements read from a resource tree must not implement it, whatever their primitive type.

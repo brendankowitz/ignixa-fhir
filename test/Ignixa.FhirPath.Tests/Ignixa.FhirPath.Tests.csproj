@@ -31,6 +31,16 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Search\Ignixa.Search.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Serialization\Ignixa.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
+
+    <!--
+      Referenced only so SystemValueElementDeclarationTests can reflect over them. These are the two
+      other assemblies that define IElement wrappers around engine-produced values, and a marker
+      applied to six of eight producers is what this guard exists to prevent. Neither takes a
+      dependency on Hl7.Fhir or on Ignixa.Extensions.FirelySdk6, so neither disturbs the pinned
+      Firely 5.11.4 link-compile described below.
+    -->
+    <ProjectReference Include="..\..\src\Core\Ignixa.FhirMappingLanguage\Ignixa.FhirMappingLanguage.csproj" />
+    <ProjectReference Include="..\..\src\Core\Ignixa.SqlOnFhir\Ignixa.SqlOnFhir.csproj" />
   </ItemGroup>
 
   <!--

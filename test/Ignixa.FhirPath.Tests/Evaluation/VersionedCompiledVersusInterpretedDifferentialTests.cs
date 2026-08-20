@@ -41,6 +41,29 @@ public class VersionedCompiledVersusInterpretedDifferentialTests
         }
     }
 
+    /// <summary>
+    /// The rows of <see cref="DifferentialFixture.TypeOperatorCorpus"/> that actually reach the
+    /// compiled path, named so that a row leaving that set fails instead of silently joining the
+    /// declined majority.
+    /// </summary>
+    /// <remarks>
+    /// Measured, these eight are the whole of it: 21 of the 29 rows are declined and reach the
+    /// early-out below, where the two paths agree because only one of them ran. Without this list the
+    /// last row could stop compiling and the sweep would still be green over 145 cases, every one of
+    /// them a no-op. Mirrors <c>CompiledVersusInterpretedDifferentialTests.MustCompile</c>.
+    /// </remarks>
+    public static TheoryData<string> MustCompile => new()
+    {
+        "birthDate.count().ofType(Integer)",
+        "birthDate.count().ofType(integer)",
+        "birthDate.exists().ofType(Boolean)",
+        "birthDate.exists().ofType(boolean)",
+        "name.count() > 0",
+        "birthDate.ofType(date)",
+        "birthDate.ofType(Date)",
+        "name.ofType(HumanName).family",
+    };
+
     [Theory]
     [MemberData(nameof(Corpus))]
     public void GivenATypeOperatorOnAnyPublishedVersion_WhenEvaluatedByBothPaths_ThenResultsAreIdentical(
@@ -69,5 +92,22 @@ public class VersionedCompiledVersusInterpretedDifferentialTests
         compiledResult.ShouldBe(
             interpretedResult,
             $"Compiled and interpreted evaluation of '{expression}' disagree on {version}.");
+    }
+
+    [Theory]
+    [MemberData(nameof(MustCompile))]
+    public void GivenATypeOperatorRowThatCarriesDifferentialCoverage_WhenCompiled_ThenCompilationIsNotDeclined(
+        string expression)
+    {
+        // Arrange
+        var ast = _parser.Parse(expression);
+
+        // Act
+        var compiled = _compiler.TryCompile(ast);
+
+        // Assert
+        compiled.ShouldNotBeNull(
+            $"'{expression}' is one of the eight rows this sweep actually compares. If it stops compiling "
+            + "the theory above turns into a no-op for it on all five versions and still reports green.");
     }
 }
