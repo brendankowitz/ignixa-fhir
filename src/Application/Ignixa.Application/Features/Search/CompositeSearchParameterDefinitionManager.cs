@@ -10,7 +10,9 @@ using Ignixa.Abstractions;
 using Ignixa.Application.Features.Conformance;
 using Ignixa.Conformance.Events.Models;
 using Ignixa.Search.Definition;
+using Ignixa.Search.Indexing;
 using Ignixa.Search.Models;
+using Ignixa.Specification.ValueSets.Normative;
 using Microsoft.Extensions.Logging;
 
 using SearchParamInfo = Ignixa.Search.Models.SearchParameterInfo;
@@ -30,7 +32,8 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     private readonly ILogger<CompositeSearchParameterDefinitionManager> _logger;
     private readonly SearchParameterResolutionOptions _options;
 
-    private readonly ConcurrentDictionary<Uri, SearchParamInfo> _packageSearchParameterCache = new();
+    private readonly ConcurrentDictionary<Uri, SearchParamInfo> _packageSearchParameterCache =
+        new(SearchParameterUriComparer.Instance);
     private readonly ConcurrentDictionary<string, IEnumerable<SearchParamInfo>> _packageSearchParametersByResourceType = new();
     private readonly ConcurrentDictionary<(string, string), SearchParamInfo?> _parameterByCodeCache = new();
 
@@ -51,7 +54,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _options = options ?? throw new ArgumentNullException(nameof(options));
 
         _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
-            () => _baseManager.SearchParameterHashMap,
+            CalculateSearchParameterHashMap,
             LazyThreadSafetyMode.ExecutionAndPublication);
 
         _logger.LogInformation(
@@ -166,21 +169,24 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
                 continue;
             }
 
-            var searchParamInfo = ConvertToSearchParameterInfo(asp);
             packageCount++;
             resourceTypeSet.Add(asp.ResourceType);
-
-            if (searchParamInfo.Url is not null)
-            {
-                _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
-            }
 
             if (!packageParamsByResourceType.TryGetValue(asp.ResourceType, out var list))
             {
                 list = [];
                 packageParamsByResourceType[asp.ResourceType] = list;
             }
-            list.Add(searchParamInfo);
+
+            foreach (SearchParamInfo searchParamInfo in IncludeDerivedParameter(ConvertToSearchParameterInfo(asp)))
+            {
+                if (searchParamInfo.Url is not null)
+                {
+                    _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
+                }
+
+                list.Add(searchParamInfo);
+            }
         }
 
         var allResourceTypes = baseParameters
@@ -210,6 +216,8 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
 
             _packageSearchParametersByResourceType[resourceType] = merged.Values.ToList();
         }
+
+        ResetSearchParameterHashMapCache();
 
         _logger.LogInformation(
             "Loaded {PackageCount} package search parameters covering {ResourceTypeCount} resource types from ConformanceState",
@@ -244,6 +252,16 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         return searchParamInfo;
     }
 
+    private static IEnumerable<SearchParamInfo> IncludeDerivedParameter(SearchParamInfo searchParameter)
+    {
+        yield return searchParameter;
+
+        if (searchParameter.Type == SearchParamType.Reference)
+        {
+            yield return ReferenceIdentifierSearchParameterFactory.Create(searchParameter);
+        }
+    }
+
     /// <inheritdoc/>
     public IEnumerable<SearchParamInfo> AllSearchParameters
     {
@@ -253,7 +271,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             {
                 return _packageSearchParametersByResourceType.Values
                     .SelectMany(list => list)
-                    .GroupBy(p => p.OverridesUrl ?? p.Url)
+                    .GroupBy(p => p.OverridesUrl ?? p.Url, SearchParameterUriComparer.Instance)
                     .Select(g => g.First())
                     .ToList();
             }
@@ -263,7 +281,8 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     }
 
     /// <inheritdoc/>
-    public IReadOnlyDictionary<string, string> SearchParameterHashMap => _searchParameterHashMapCache.Value;
+    public IReadOnlyDictionary<string, string> SearchParameterHashMap =>
+        Volatile.Read(ref _searchParameterHashMapCache).Value;
 
     /// <inheritdoc/>
     public IEnumerable<SearchParamInfo> GetSearchParameters(string resourceType)
@@ -292,12 +311,14 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
             if (string.Equals(asp.ResourceType, resourceType, StringComparison.OrdinalIgnoreCase) &&
                 (asp.Status == SearchParameterStatus.Enabled || asp.Status == SearchParameterStatus.Pending))
             {
-                var searchParamInfo = ConvertToSearchParameterInfo(asp);
-                merged[searchParamInfo.Code] = searchParamInfo;
-
-                if (searchParamInfo.Url is not null)
+                foreach (SearchParamInfo searchParamInfo in IncludeDerivedParameter(ConvertToSearchParameterInfo(asp)))
                 {
-                    _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
+                    merged[searchParamInfo.Code] = searchParamInfo;
+
+                    if (searchParamInfo.Url is not null)
+                    {
+                        _packageSearchParameterCache.TryAdd(searchParamInfo.Url, searchParamInfo);
+                    }
                 }
             }
         }
@@ -377,12 +398,15 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
     public void UpdateSearchParameterHashMap(Dictionary<string, string> updatedSearchParamHashMap)
     {
         _baseManager.UpdateSearchParameterHashMap(updatedSearchParamHashMap);
+        ResetSearchParameterHashMapCache();
     }
 
     /// <inheritdoc/>
     public string GetSearchParameterHashForResourceType(string resourceType)
     {
-        return _baseManager.GetSearchParameterHashForResourceType(resourceType);
+        return SearchParameterHashMap.TryGetValue(resourceType, out string? hash)
+            ? hash
+            : _baseManager.GetSearchParameterHashForResourceType(resourceType);
     }
 
     /// <inheritdoc/>
@@ -411,9 +435,7 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         _packageSearchParametersByResourceType.Clear();
         _parameterByCodeCache.Clear();
 
-        _searchParameterHashMapCache = new Lazy<IReadOnlyDictionary<string, string>>(
-            () => _baseManager.SearchParameterHashMap,
-            LazyThreadSafetyMode.ExecutionAndPublication);
+        ResetSearchParameterHashMapCache();
 
         _logger.LogInformation(
             "Cleared CompositeSearchParameterDefinitionManager cache (FHIR version: {FhirVersion})",
@@ -431,6 +453,27 @@ public class CompositeSearchParameterDefinitionManager : ISearchParameterDefinit
         {
             LoadFromConformanceState();
         }
+    }
+
+    private IReadOnlyDictionary<string, string> CalculateSearchParameterHashMap()
+    {
+        if (_packageSearchParametersByResourceType.IsEmpty)
+        {
+            return _baseManager.SearchParameterHashMap;
+        }
+
+        return _packageSearchParametersByResourceType.ToDictionary(
+            entry => entry.Key,
+            entry => entry.Value.CalculateSearchParameterHash(),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void ResetSearchParameterHashMapCache()
+    {
+        var cache = new Lazy<IReadOnlyDictionary<string, string>>(
+            CalculateSearchParameterHashMap,
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        Volatile.Write(ref _searchParameterHashMapCache, cache);
     }
 
     private sealed class ResourceTypeCodeComparer : IEqualityComparer<(string ResourceType, string Code)>

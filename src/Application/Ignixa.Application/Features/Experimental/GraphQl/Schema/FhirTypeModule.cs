@@ -939,7 +939,7 @@ public sealed class FhirTypeModule(
 
         foreach (var param in searchParams)
         {
-            if (skipParams.Contains(param.Code))
+            if (param.IsDerived || skipParams.Contains(param.Code))
                 continue;
 
             var graphQlName = param.Code.Replace('-', '_');

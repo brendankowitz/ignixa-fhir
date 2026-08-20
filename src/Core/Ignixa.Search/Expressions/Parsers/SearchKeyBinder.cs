@@ -106,6 +106,27 @@ internal sealed class SearchKeyBinder(ISearchParameterDefinitionManager definiti
     {
         SearchParameterInfo searchParameter = ResolveCommonSearchParameter(resourceTypes, syntax.Name);
         SearchModifier? modifier = BindModifier(searchParameter, syntax.Modifier);
+
+        if (modifier?.SearchModifierCode == SearchModifierCode.Identifier)
+        {
+            if (searchParameter.Type != SearchParamType.Reference ||
+                !ReferenceIdentifierSearchParameterFactory.TryResolve(
+                    definitionManager,
+                    searchParameter,
+                    out SearchParameterInfo derivedSearchParameter))
+            {
+                throw new SearchModifierNotSupportedException(
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        Resources.ModifierNotSupported,
+                        modifier,
+                        searchParameter.Code));
+            }
+
+            searchParameter = derivedSearchParameter;
+            modifier = null;
+        }
+
         return new BoundParameterKey(searchParameter, modifier);
     }
 

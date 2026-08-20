@@ -4,10 +4,12 @@
 // -------------------------------------------------------------------------------------------------
 
 using Shouldly;
+using System.Text.Json.Nodes;
 using Ignixa.Api.E2ETests._Infrastructure;
 using Ignixa.Api.E2ETests._Infrastructure.Base;
 using Ignixa.Api.E2ETests._Infrastructure.Collections;
 using Ignixa.Api.E2ETests._TestData.Fixtures.DataTypeSearch;
+using Ignixa.Serialization.SourceNodes;
 
 namespace Ignixa.Api.E2ETests.Search.DataTypes;
 
@@ -135,6 +137,36 @@ public class ReferenceSearchTests : CapabilityDrivenTestBase, IClassFixture<Refe
             unqualifiedResults.ShouldContain(r => r.Id == qualifiedResult.Id,
                 "Qualified and unqualified searches should return same results");
         }
+    }
+
+    [Fact]
+    public async Task GivenEncounterSubjectsWithReferenceAndLogicalIdentifiers_WhenSearchingPatientIdentifier_ThenReturnsBoth()
+    {
+        // Arrange
+        const string system = "http://example.org/facilityA";
+        const string value = "1234";
+        var tag = Guid.NewGuid().ToString();
+        ResourceJsonNode referencedSubject = CreateEncounterWithSubjectIdentifier(
+            tag,
+            "Patient/does-not-exist",
+            system,
+            value);
+        ResourceJsonNode logicalSubject = CreateEncounterWithSubjectIdentifier(
+            tag,
+            reference: null,
+            system,
+            value);
+        ResourceJsonNode[] encounters = await Harness.CreateResourcesAsync([referencedSubject, logicalSubject]);
+
+        // Act
+        ResourceJsonNode[] results = await Harness.SearchAsync(
+            "Encounter",
+            $"_tag={tag}&patient:identifier={Uri.EscapeDataString($"{system}|{value}")}");
+
+        // Assert
+        results.Select(result => result.Id).ShouldBe(
+            encounters.Select(encounter => encounter.Id),
+            ignoreOrder: true);
     }
 
     /// <summary>
@@ -312,5 +344,44 @@ public class ReferenceSearchTests : CapabilityDrivenTestBase, IClassFixture<Refe
         results.ShouldContain(r => r.Id == _fixture.Observations[1].Id, "Observation[1] references Patient[1]");
         results.ShouldContain(r => r.Id == _fixture.Observations[3].Id, "Observation[3] references Patient[0]");
         results.ShouldContain(r => r.Id == _fixture.Observations[4].Id, "Observation[4] references Patient[1]");
+    }
+
+    private static ResourceJsonNode CreateEncounterWithSubjectIdentifier(
+        string tag,
+        string? reference,
+        string system,
+        string value)
+    {
+        var subject = new JsonObject
+        {
+            ["identifier"] = new JsonObject
+            {
+                ["system"] = system,
+                ["value"] = value,
+            },
+        };
+        if (reference is not null)
+        {
+            subject["reference"] = reference;
+        }
+
+        var encounter = new ResourceJsonNode { ResourceType = "Encounter" };
+        encounter.MutableNode["meta"] = new JsonObject
+        {
+            ["tag"] = new JsonArray(
+                new JsonObject
+                {
+                    ["system"] = "http://ignixa.test/tags",
+                    ["code"] = tag,
+                }),
+        };
+        encounter.MutableNode["status"] = "finished";
+        encounter.MutableNode["class"] = new JsonObject
+        {
+            ["system"] = "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+            ["code"] = "AMB",
+        };
+        encounter.MutableNode["subject"] = subject;
+        return encounter;
     }
 }
