@@ -148,6 +148,20 @@ public class FhirTemporalComparisonTests
     }
 
     [Fact]
+    public void GivenDateLookingStringsForTheSameInstant_WhenOrdered_ThenUsesTemporalSemantics()
+    {
+        // Arrange
+        var root = CreateTemporalElement("birthDate", "1974-12-25", FhirPrimitive.Date, "date");
+        var expr = _parser.Parse("'2012-01-01T20:00:00+10:00' <= '2012-01-01T10:00:00Z'");
+
+        // Act
+        var result = _evaluator.Evaluate(root, expr).Single();
+
+        // Assert
+        result.Value.ShouldBe(true);
+    }
+
+    [Fact]
     public void GivenFhirTemporalDateCollection_WhenMin_ThenReturnsEarliestDate()
     {
         // Regression: min() had no arm for a typed temporal at all, so a FhirTemporal date

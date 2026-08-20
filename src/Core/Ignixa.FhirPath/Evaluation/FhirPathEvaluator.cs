@@ -1733,21 +1733,6 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                 return CompareDateTimesWithPrecision(leftValue, rightValue, leftType, rightType, greater, orEqual);
             }
 
-                    if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
-                    {
-                        // Try to treat as typed dates first if they look like dates
-                        // This handles cases where type info is lost or implicit conversion is expected
-                        if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
-                        {
-                             // Date comparison - if result is null (uncertain), don't fall through to string comparison
-                             return CompareDateTimesWithPrecision(leftValue, rightValue, null, null, greater, orEqual);
-                        }
-            
-                        var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
-                        return greater
-                            ? (orEqual ? comparison >= 0 : comparison > 0)
-                            : (orEqual ? comparison <= 0 : comparison < 0);
-                    }
             // Handle mixed numeric comparison (e.g. 1.5 > 1)
             if ((leftValue is int || leftValue is decimal || leftValue is long) &&
                 (rightValue is int || rightValue is decimal || rightValue is long))
@@ -1760,7 +1745,23 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
                         : (orEqual ? comparison <= 0 : comparison < 0);
                 }
             }
-    
+
+            if (WireValue.AsWireString(leftValue) is { } leftStr && WireValue.AsWireString(rightValue) is { } rightStr)
+            {
+                // Try to treat as typed dates first if they look like dates
+                // This handles cases where type info is lost or implicit conversion is expected
+                if (IsDateTimeString(leftStr) && IsDateTimeString(rightStr))
+                {
+                    // Date comparison - if result is null (uncertain), don't fall through to string comparison
+                    return CompareDateTimesWithPrecision(leftValue, rightValue, null, null, greater, orEqual);
+                }
+
+                var comparison = string.Compare(leftStr, rightStr, StringComparison.Ordinal);
+                return greater
+                    ? (orEqual ? comparison >= 0 : comparison > 0)
+                    : (orEqual ? comparison <= 0 : comparison < 0);
+            }
+
             if (leftValue is IComparable leftComparable && rightValue is IComparable rightComparable)
             {
                 int comparison;
