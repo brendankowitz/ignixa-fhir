@@ -29,6 +29,14 @@
     <ProjectReference Include="..\..\src\Core\Ignixa.Specification\Ignixa.Specification.csproj" />
   </ItemGroup>
 
+  <!-- Compile the production adapter against the parity suite's pinned Firely 5.11.4 dependency. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\FirelyPrimitiveValues.cs"
+             Link="FirelySdkAdapter\FirelyPrimitiveValues.cs" />
+    <Compile Include="..\..\src\Core\Extensions\Ignixa.Extensions.FirelySdk6\IgnixaElementAdapter.cs"
+             Link="FirelySdkAdapter\IgnixaElementAdapter.cs" />
+  </ItemGroup>
+
   <!--
     The Firely-parity harness compares Ignixa against the engine the migration actually targets.
     ADR 2608 (microsoft/fhir-server) pins the seam to Firely 5.11.4, whose semantics differ from the
@@ -77,4 +85,3 @@
   </Target>
 
 </Project>
-

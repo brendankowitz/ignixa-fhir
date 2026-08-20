@@ -883,38 +883,54 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
 
     private bool? CompareEquivalence(List<IElement> left, List<IElement> right, bool equivalent)
     {
-        if (left.Count == 0 && right.Count == 0)
-            return equivalent;
+        return AreCollectionsEquivalent(left, right, matchNames: false) == equivalent;
+    }
 
+    private bool AreCollectionsEquivalent(
+        IReadOnlyList<IElement> left,
+        IReadOnlyList<IElement> right,
+        bool matchNames)
+    {
         if (left.Count != right.Count)
-            return !equivalent;
+            return false;
 
-        if (left.Count == 1 && right.Count == 1)
+        var unmatched = right.ToList();
+
+        foreach (var leftItem in left)
         {
-            // Try to extract quantities from elements (handles FHIR Quantity complex types)
-            var leftQty = TryExtractQuantity(left[0]);
-            var rightQty = TryExtractQuantity(right[0]);
+            var match = unmatched.FindIndex(
+                rightItem =>
+                    (!matchNames || string.Equals(leftItem.Name, rightItem.Name, StringComparison.Ordinal))
+                    && AreElementsEquivalent(leftItem, rightItem));
 
-            if (leftQty != null && rightQty != null)
-            {
-                var isEquiv = AreEquivalent(leftQty, rightQty);
-                return isEquiv == equivalent;
-            }
+            if (match < 0)
+                return false;
 
-            var isEquivValue = AreEquivalent(left[0].Value, right[0].Value);
-            return isEquivValue == equivalent;
+            unmatched.RemoveAt(match);
         }
 
-        var leftSorted = left.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
-        var rightSorted = right.OrderBy(e => e.Value?.ToString() ?? string.Empty).ToList();
+        return true;
+    }
 
-        for (int i = 0; i < leftSorted.Count; i++)
+    private bool AreElementsEquivalent(IElement left, IElement right)
+    {
+        if (FunctionHelpers.AreElementsEqual(left, right))
+            return true;
+
+        var leftQuantity = TryExtractQuantity(left);
+        var rightQuantity = TryExtractQuantity(right);
+
+        if (leftQuantity is not null || rightQuantity is not null)
         {
-            if (!AreEquivalent(leftSorted[i].Value, rightSorted[i].Value))
-                return !equivalent;
+            return leftQuantity is not null
+                && rightQuantity is not null
+                && AreEquivalent(leftQuantity, rightQuantity);
         }
 
-        return equivalent;
+        if (left.Value is not null || right.Value is not null)
+            return AreEquivalent(left.Value, right.Value);
+
+        return AreCollectionsEquivalent(left.Children(), right.Children(), matchNames: true);
     }
 
     /// <summary>
