@@ -10,6 +10,7 @@ using Ignixa.FhirPath.Evaluation;
 using Ignixa.Search.Definition;
 using Ignixa.Search.Indexing;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification.Extensions;
 using Ignixa.Specification.Generated;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
@@ -74,6 +75,37 @@ public class AsOperatorSearchParameterCardinalityTests
       ]
     }
     """;
+
+    private const string DateTimeObservationJson = """
+    {
+      "resourceType": "Observation",
+      "id": "body-weight",
+      "status": "final",
+      "code": { "coding": [ { "system": "http://loinc.org", "code": "29463-7" } ] },
+      "valueDateTime": "2024-06-15T08:00:00Z"
+    }
+    """;
+
+    [Theory]
+    [InlineData(FhirVersion.R4)]
+    [InlineData(FhirVersion.R4B)]
+    public void GivenPreR5AndADateTimeObservation_WhenIndexing_ThenCodeValueDateStillProducesAnEntry(
+        FhirVersion version)
+    {
+        // R4 and R4B still ship `value.as(DateTime) | value.as(Period)` in this composite. DateTime is
+        // the canonical System spelling that those versions explicitly permit to cross to FHIR.dateTime.
+
+        // Arrange
+        var schema = version.GetSchemaProvider();
+
+        // Act
+        var entries = Index(schema, DateTimeObservationJson)
+            .Where(entry => entry.SearchParameter.Code == "code-value-date")
+            .ToList();
+
+        // Assert
+        entries.ShouldHaveSingleItem();
+    }
 
     [Theory]
     [InlineData("combo-value-quantity")]

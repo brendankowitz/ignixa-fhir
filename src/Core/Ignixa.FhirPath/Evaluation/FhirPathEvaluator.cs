@@ -822,7 +822,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
             return [];
 
         return FunctionHelpers.ReturnBoolean(
-            TypeMatcher.IsTypeMatch(left[0], typeName, TypeMatchMode.TypeTest));
+            TypeMatcher.IsTypeMatch(left[0], typeName, TypeMatchMode.TypeTest, context.Schema));
     }
 
     private IEnumerable<IElement> EvaluateTypeAs(List<IElement> left, Expression typeExpr, EvaluationContext context)
@@ -849,7 +849,7 @@ public partial class FhirPathEvaluator : IFhirPathExpressionVisitor<EvaluationCo
         // what stops the operator and the function drifting apart again - which is the defect this line
         // exists to fix. FilterByType is subclass-aware over complex types, so this now agrees with
         // 'is' on an Age: both see a Quantity. It stays exact over primitives; see TypeMatcher.
-        return TypeMatcher.FilterByType(left, typeName);
+        return TypeMatcher.FilterByType(left, typeName, context.Schema);
     }
 
     private bool? EvaluateMembership(List<IElement> left, List<IElement> right, bool isIn)

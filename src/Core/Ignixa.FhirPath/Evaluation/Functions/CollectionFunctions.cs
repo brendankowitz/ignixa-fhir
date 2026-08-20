@@ -609,7 +609,7 @@ internal static class CollectionFunctions
 
         TypeMatcher.EnsureTypeIdentifierResolves(typeName, context.Schema, "ofType()");
 
-        return TypeMatcher.FilterByType(focus, typeName);
+        return TypeMatcher.FilterByType(focus, typeName, context.Schema);
     }
 
     /// <summary>
@@ -642,7 +642,7 @@ internal static class CollectionFunctions
         var input = focus as IReadOnlyCollection<IElement> ?? focus.ToList();
         TypeMatcher.EnsureSingletonInput(input.Count, context.Schema, "as()");
 
-        return TypeMatcher.FilterByType(input, typeName);
+        return TypeMatcher.FilterByType(input, typeName, context.Schema);
     }
 
     /// <summary>

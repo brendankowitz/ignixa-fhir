@@ -48,14 +48,34 @@ namespace Ignixa.FhirPath.Evaluation;
 /// parameter.
 /// </para>
 /// <para>
-/// <em>Axis 2, the System/FHIR namespace.</em> R5 2.1.9.1.2 makes <c>is()</c> the explicit exception -
-/// "<c>Patient.name.given.is(System.string).not()</c>" - and then says of the cast: "Note that
-/// <c>ofType()</c> does not have such restrictions", declaring both <c>ofType(FHIR.string)</c> and
-/// <c>ofType(System.string)</c> valid. HL7's artifacts rely on the leniency: STU3 spells its casts with
-/// capitalized System-style names (<c>Patient.deceased.as(DateTime)</c>,
-/// <c>Observation.value.as(String)</c>), and R4/R4B's <c>code-value-date</c> composite still carries
-/// <c>value.as(DateTime)</c>. Enforcing the namespace distinction on casts would empty those search
-/// parameters.
+/// <em>Axis 2, type-name spelling across the System/FHIR namespace.</em> This rule changes with the FHIR
+/// version. R4 and R4B 2.1.9.1.2 say that <c>as()</c> "does not have such restrictions" and explicitly
+/// allow both <c>as(FHIR.string)</c> and <c>as(System.string)</c>. R5 changes that sentence to name only
+/// <c>ofType()</c>, withdrawing the allowance from <c>as</c>. HAPI follows that boundary exactly:
+/// <c>doNotEnforceAsCaseSensitive</c> is true only below R5. Ignixa therefore matches type names exactly
+/// in every version, but below R5 lets the canonical System spellings cross to the corresponding FHIR
+/// primitive for the cast operators. Arbitrary spellings such as <c>DATETIME</c> and
+/// <c>dAtEtImE</c> remain invalid matches; FHIRPath is not a case-insensitive language.
+/// </para>
+/// <para>
+/// HL7's artifacts corroborate the same boundary. The shipped definitions contain 9 capitalized casts
+/// in STU3 (<c>DateTime</c> x6, <c>String</c> x1, <c>Uri</c> x2), 1 in R4, 1 in R4B and none in R5 or
+/// R6. The R4/R4B occurrence is the <c>code-value-date</c> composite's
+/// <c>value.as(DateTime) | value.as(Period)</c>; removing the legacy crossing would drop its date
+/// component and therefore the whole composite index entry.
+/// </para>
+/// <para>
+/// <c>Uri</c> is deliberately separate from the System aliases because <c>System.Uri</c> is not a
+/// FHIRPath type. STU3's <c>ConceptMap-source-uri</c> and <c>ConceptMap-target-uri</c> simply misspell
+/// FHIR <c>uri</c>. The dedicated erratum alias exists solely to keep those two search parameters
+/// indexing; it can be removed with those artifacts or with STU3 support, and must not be extended as
+/// though it had the namespace rule's authority.
+/// </para>
+/// <para>
+/// HAPI's implementation leaves an unresolved inconsistency: its <c>funcOfType</c> uses exact
+/// <c>equals()</c> without the legacy <c>as</c> hook, so below R5 it is stricter than <c>as</c>. Ignixa
+/// retains one matcher for the three cast spellings; that internal consistency is a deliberate choice,
+/// not evidence that R5's <c>ofType()</c> sentence authorizes pre-R5 <c>as</c> behaviour.
 /// </para>
 /// <para>
 /// <strong>The tension this leaves.</strong> Subtyping is otherwise read off the StructureDefinition
@@ -69,13 +89,38 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </remarks>
 internal static class TypeMatcher
 {
-    // System-only types that must match FHIRPath literals (capitalized)
-    // These are FHIRPath System types, not FHIR element types
-    // Note: Date and Quantity exist as both System types and FHIR types, so they're NOT in this list.
+    // System-only types that must match FHIRPath literals (capitalized).
+    // Date and Quantity exist in both models, so unqualified type tests resolve them against FHIR first
+    // and they are intentionally absent. The pre-R5 Date cast crossing is handled separately below;
+    // Quantity has identical spelling in both models and needs no alias.
     private static readonly FrozenSet<string> SystemOnlyTypes = new[]
     {
         "Boolean", "Integer", "Decimal", "String", "DateTime", "Time"
     }.ToFrozenSet(StringComparer.Ordinal);
+
+    // The evaluator carries System primitive values with their FHIR-style runtime spellings, so these
+    // canonical names also normalize a System value back to its model name in every version. Separately,
+    // R4/R4B explicitly allow as() to cross the same names to FHIR primitives below R5. Neither use is
+    // permission to compare arbitrary casing.
+    private static readonly FrozenDictionary<string, string> CanonicalSystemPrimitiveSpellings =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Boolean"] = "boolean",
+            ["Integer"] = "integer",
+            ["Decimal"] = "decimal",
+            ["String"] = "string",
+            ["Date"] = "date",
+            ["DateTime"] = "dateTime",
+            ["Time"] = "time"
+        }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    // Pure STU3 artifact errata, with no System/FHIR namespace basis. These exact spellings occur only
+    // in ConceptMap-source-uri and ConceptMap-target-uri and exist solely to preserve their indexing.
+    private static readonly FrozenDictionary<string, string> PreR5ArtifactErratumCastAliases =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Uri"] = "uri"
+        }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>
     /// Specialization edges between FHIR primitive types, taken from the StructureDefinitions'
@@ -134,11 +179,13 @@ internal static class TypeMatcher
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     // The FHIRPath System namespace. These are types of the language itself, so no FHIR model declares
-    // them and asking the schema about them would wrongly report them as unresolvable.
+    // them and asking the schema about them would wrongly report them as unresolvable. Ordinal is
+    // deliberate: the model owns the spelling of its own identifiers, and System names are canonical.
+    // Case-insensitive lookup here previously disagreed with SystemOnlyTypes and accepted arbitrary case.
     private static readonly FrozenSet<string> SystemTypeNames = new[]
     {
         "Boolean", "String", "Integer", "Long", "Decimal", "Date", "DateTime", "Time", "Quantity"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
     /// Enforces FHIRPath's rule for the type operators: "if the identifier cannot be resolved to a valid
@@ -285,7 +332,9 @@ internal static class TypeMatcher
             $"This rule is enforced from FHIR R5 onwards, where HL7's own artifacts use ofType() for repeating paths.");
     }
 
-    private static bool EnforcesSingletonCast(ISchema? schema) =>
+    private static bool EnforcesSingletonCast(ISchema? schema) => UsesR5TypeRules(schema);
+
+    private static bool UsesR5TypeRules(ISchema? schema) =>
         schema is not null
         && schema.Version != FhirVersion.Unspecified
         && schema.Version >= FhirVersion.R5;
@@ -393,15 +442,21 @@ internal static class TypeMatcher
     /// This method does not handle Element/DataType hierarchy as it is not needed for
     /// FHIRPath type operations (the official test suite does not test for is(Element)).
     /// </remarks>
-    public static bool MatchesTypeWithInheritance(IElement element, string typeName, TypeMatchMode mode)
+    public static bool MatchesTypeWithInheritance(
+        IElement element,
+        string typeName,
+        TypeMatchMode mode,
+        ISchema? schema)
     {
         var currentType = element.InstanceType;
         if (string.IsNullOrEmpty(currentType))
             return false;
 
+        bool elementIsSystemType = IsSystemElement(element);
+
         while (!string.IsNullOrEmpty(currentType))
         {
-            if (currentType.Equals(typeName, StringComparison.OrdinalIgnoreCase))
+            if (TypeNamesMatch(currentType, typeName, mode, schema, elementIsSystemType))
                 return true;
 
             if (!TryGetBaseType(currentType, mode, out var baseType))
@@ -412,10 +467,10 @@ internal static class TypeMatcher
 
         if (element.Type?.Info is { IsResource: true })
         {
-            if (typeName.Equals("Resource", StringComparison.OrdinalIgnoreCase))
+            if (typeName.Equals("Resource", StringComparison.Ordinal))
                 return true;
 
-            if (typeName.Equals("DomainResource", StringComparison.OrdinalIgnoreCase))
+            if (typeName.Equals("DomainResource", StringComparison.Ordinal))
             {
                 var instanceType = element.InstanceType;
                 return !ResourcesNotExtendingDomainResource.Contains(instanceType);
@@ -423,6 +478,30 @@ internal static class TypeMatcher
         }
 
         return false;
+    }
+
+    private static bool TypeNamesMatch(
+        string instanceTypeName,
+        string requestedTypeName,
+        TypeMatchMode mode,
+        ISchema? schema,
+        bool elementIsSystemType)
+    {
+        if (instanceTypeName.Equals(requestedTypeName, StringComparison.Ordinal))
+            return true;
+
+        if (elementIsSystemType && MatchesAlias(CanonicalSystemPrimitiveSpellings))
+            return true;
+
+        if (mode != TypeMatchMode.Cast || UsesR5TypeRules(schema))
+            return false;
+
+        return MatchesAlias(CanonicalSystemPrimitiveSpellings)
+            || MatchesAlias(PreR5ArtifactErratumCastAliases);
+
+        bool MatchesAlias(FrozenDictionary<string, string> aliases) =>
+            aliases.TryGetValue(requestedTypeName, out var fhirTypeName)
+            && instanceTypeName.Equals(fhirTypeName, StringComparison.Ordinal);
     }
 
     private static bool TryGetBaseType(string typeName, TypeMatchMode mode, out string? baseType)
@@ -441,18 +520,22 @@ internal static class TypeMatcher
     /// The type test behind every FHIRPath type operator.
     /// </summary>
     /// <remarks>
-    /// <paramref name="mode"/> is the only knob any caller turns, and it selects between the two
-    /// documented axes of divergence; see <see cref="TypeMatcher"/> for why they exist and why nothing
-    /// else about the five operators' matching may differ.
+    /// <paramref name="mode"/> selects the operator family, while <paramref name="schema"/> supplies the
+    /// version boundary for the pre-R5 cast aliases. See <see cref="TypeMatcher"/> for why both are
+    /// required and why an unknown version fails open.
     /// </remarks>
-    public static bool IsTypeMatch(IElement element, string typeName, TypeMatchMode mode)
+    public static bool IsTypeMatch(
+        IElement element,
+        string typeName,
+        TypeMatchMode mode,
+        ISchema? schema)
     {
         var (baseTypeName, isSystemNamespace, isFhirNamespace) = ParseTypeName(typeName);
 
         if (mode == TypeMatchMode.TypeTest && !NamespaceMatches(element, baseTypeName, isSystemNamespace, isFhirNamespace))
             return false;
 
-        return MatchesTypeWithInheritance(element, baseTypeName, mode);
+        return MatchesTypeWithInheritance(element, baseTypeName, mode, schema);
     }
 
     /// <summary>
@@ -462,8 +545,7 @@ internal static class TypeMatcher
     private static bool NamespaceMatches(IElement element, string baseTypeName, bool isSystemNamespace, bool isFhirNamespace)
     {
         // A FHIRPath literal is a System value; anything sourced from the resource tree is a FHIR value.
-        var implType = element.GetType().Name;
-        bool elementIsSystemType = implType.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+        bool elementIsSystemType = IsSystemElement(element);
 
         if (isSystemNamespace)
             return elementIsSystemType;
@@ -476,16 +558,23 @@ internal static class TypeMatcher
         return !SystemOnlyTypes.Contains(baseTypeName) || elementIsSystemType;
     }
 
+    private static bool IsSystemElement(IElement element) =>
+        element.GetType().Name.Contains("Primitive", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Filters a collection to the elements matching the specified type, for <c>as</c>, <c>as()</c> and
     /// <c>ofType()</c>.
     /// </summary>
     /// <remarks>
     /// Uses <see cref="TypeMatchMode.Cast"/>: subclass-aware over complex types and resources, exact over
-    /// primitives, and indifferent to the namespace qualifier. That combination is what lets
-    /// <c>ofType(Quantity)</c> select a <c>SimpleQuantity</c> while <c>ofType(string)</c> still rejects a
-    /// <c>code</c> and STU3's <c>as(DateTime)</c> still selects a <c>dateTime</c>.
+    /// primitives, with only the documented pre-R5 namespace and artifact aliases. That combination is
+    /// what lets <c>ofType(Quantity)</c> select a <c>SimpleQuantity</c> while
+    /// <c>ofType(string)</c> still rejects a <c>code</c>, arbitrary casing still rejects every primitive,
+    /// and STU3's <c>as(DateTime)</c> still selects a <c>dateTime</c>.
     /// </remarks>
-    public static IEnumerable<IElement> FilterByType(IEnumerable<IElement> elements, string typeName) =>
-        elements.Where(e => IsTypeMatch(e, typeName, TypeMatchMode.Cast));
+    public static IEnumerable<IElement> FilterByType(
+        IEnumerable<IElement> elements,
+        string typeName,
+        ISchema? schema) =>
+        elements.Where(e => IsTypeMatch(e, typeName, TypeMatchMode.Cast, schema));
 }

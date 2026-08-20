@@ -416,7 +416,7 @@ public class FhirPathDelegateCompiler
             // expression must not change meaning because it happened to be compilable. The inline
             // comparison this replaces was exact, so a compiled ofType(Quantity) silently dropped the
             // SimpleQuantity that the interpreted one keeps.
-            return TypeMatcher.FilterByType(focusFunc(input, ctx), typeName);
+            return TypeMatcher.FilterByType(focusFunc(input, ctx), typeName, ctx.Schema);
         };
     }
 
