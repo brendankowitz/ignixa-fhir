@@ -161,7 +161,7 @@ public class OperationsSegment : ICapabilitySegment
         // Hash all feature declarations so cache invalidates if features change
         var featureDeclarations = new StringBuilder();
 
-        foreach (var feature in _features.OrderBy(f => f.PackageId))
+        foreach (var feature in _features.OrderBy(f => f.PackageId, StringComparer.Ordinal))
         {
             // Skip features that don't support this FHIR version
             if (feature.SupportedFhirVersions != null &&
@@ -173,16 +173,16 @@ public class OperationsSegment : ICapabilitySegment
             featureDeclarations.Append(feature.PackageId);
             featureDeclarations.Append(':');
 
-            foreach (var op in feature.SystemOperations.OrderBy(x => x))
+            foreach (var op in feature.SystemOperations.OrderBy(x => x, StringComparer.Ordinal))
             {
                 featureDeclarations.Append('S');
                 featureDeclarations.Append(op);
                 featureDeclarations.Append('|');
             }
 
-            foreach (var (resourceType, operations) in feature.ResourceOperations.OrderBy(x => x.Key))
+            foreach (var (resourceType, operations) in feature.ResourceOperations.OrderBy(x => x.Key, StringComparer.Ordinal))
             {
-                foreach (var op in operations.OrderBy(x => x))
+                foreach (var op in operations.OrderBy(x => x, StringComparer.Ordinal))
                 {
                     featureDeclarations.Append('R');
                     featureDeclarations.Append(resourceType);

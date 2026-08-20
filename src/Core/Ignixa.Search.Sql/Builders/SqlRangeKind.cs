@@ -22,7 +22,7 @@ public static class SqlRangeKind
     /// <summary>
     /// The match-seed CTE that trims the has-more probe row off the match page before include stages seed
     /// from it, labelled <see cref="SqlLabels.MatchSeed"/>. Described by <see cref="Ast.PlanRowKind.MatchSeedCte"/>'s
-    /// row when SqlBuilder.SeedsFromTrimmedMatchPage decides it's needed; same pseudo-label caveat as <see cref="MatchPage"/>.
+    /// row when an include plan's page over-fetches a probe row; same pseudo-label caveat as <see cref="MatchPage"/>.
     /// </summary>
     public const string MatchSeed = "matchSeed";
 
@@ -55,7 +55,7 @@ public static class SqlRangeKind
     public const string Assembly = "assembly";
 
     /// <summary>
-    /// The outer global-page SELECT of an includes-only page: one <c>TOP (@limit + 1)</c> over the union of
+    /// The outer global-page SELECT of an includes-only page: one <c>TOP (Limit + 1)</c> over the union of
     /// every include stage, applying the row budget once. No row is named for it; the includes-only
     /// counterpart of the per-stage <see cref="IncludeLimit"/>.
     /// </summary>

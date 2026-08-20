@@ -19,10 +19,7 @@ public class PlanExplainerTests
             new SqlColumnRef(table.TableName, "Text"),
             new SqlParameterRef("Smith"),
             "Latin1_General_100_CS_AS");
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            Match: new CteRef(0),
-            Top: 10);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10));
 
         // Act
         var explained = plan.Explain();
@@ -41,13 +38,11 @@ public class PlanExplainerTests
             new SqlColumnRef(stringTable.TableName, "Text"), new SqlParameterRef("Smith"), "Latin1_General_100_CS_AS");
         var tokenPredicate = new Predicate.Equal(
             new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"));
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(stringTable, 103, 202, stringPredicate),
                 new CteDefinition.ParamSource(tokenTable, 103, 44, tokenPredicate),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-            ],
-            Match: new CteRef(2));
+            ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var explained = plan.Explain();
@@ -67,7 +62,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.And(
             new Predicate.LessThanOrEqual(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)),
             new Predicate.GreaterThanOrEqual(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -84,7 +79,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.Or(
             new Predicate.LessThan(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)),
             new Predicate.GreaterThan(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -97,7 +92,7 @@ public class PlanExplainerTests
     public void GivenAResourceSourceCte_WhenExplained_ThenRendersResourceTypeId()
     {
         // Arrange
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -110,13 +105,11 @@ public class PlanExplainerTests
     public void GivenAnExceptCte_WhenExplained_ThenRendersBothOperands()
     {
         // Arrange
-        var plan = new QueryPlan(
-        [
+        var plan = new QueryPlan([
             new CteDefinition.ResourceSource(103),
             new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
             new CteDefinition.Except(new CteRef(0), new CteRef(1)),
-        ],
-        new CteRef(2));
+        ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var explained = plan.Explain();
@@ -132,10 +125,7 @@ public class PlanExplainerTests
     public void GivenAnOuterPredicate_WhenExplained_ThenAppendsWhereToTheRootLine()
     {
         // Arrange
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
-            new CteRef(0),
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))], new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"))));
 
         // Act
         var explained = plan.Explain();
@@ -147,12 +137,10 @@ public class PlanExplainerTests
     [Fact]
     public void GivenAForwardChainJoin_WhenExplained_ThenRendersTheJoinShape()
     {
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
                 new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
-            ],
-            new CteRef(1));
+            ], new MatchPageSpec(new CteRef(1)));
 
         plan.Explain().ShouldBe(
             "cte0 = StringSearchParam[105,202]  Text = @p0\n" +
@@ -166,7 +154,7 @@ public class PlanExplainerTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [stage]);
 
         // Act
         var explained = plan.Explain();
@@ -185,7 +173,7 @@ public class PlanExplainerTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage = new IncludeStage(IncludeDirection.Reverse, null, null, null, [], SeedFromMatch: true, Iterate: true, Limit: 500);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [stage]);
 
         // Act
         var explained = plan.Explain();
@@ -205,15 +193,11 @@ public class PlanExplainerTests
         // on the same plan and are cross-checked against each other rather than against a pinned string.
         var stringTable = SqlCatalog.Default.Table("StringSearchParam");
         var tokenTable = SqlCatalog.Default.Table("TokenSearchParam");
-        var plan = new QueryPlan(
-            [
+        var plan = IncludePlanFactory.Create([
                 new CteDefinition.ParamSource(stringTable, 103, 202, new Predicate.Equal(new SqlColumnRef(stringTable.TableName, "Text"), new SqlParameterRef("Smith"))),
                 new CteDefinition.ParamSource(tokenTable, 103, 44, new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"))),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-            ],
-            new CteRef(2),
-            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
-            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+            ], new MatchPageSpec(new CteRef(2), Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000))), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -242,42 +226,32 @@ public class PlanExplainerTests
     {
         // Arrange -- exactly the combination SqlBuilder's own RejectUnsupportedCombinations guard message
         // recommends: bound the match set with SurrogateRange (an $export shard window) and page the include
-        // rows with ResultShape.IncludesPage.Resume. WriteMatchPageCte binds SurrogateRange and
+        // rows with ResultShape.IncludesPage.Resume. EmitMatchPage binds SurrogateRange and
         // SearchParameterHash INSIDE itself, before the resume boundary is bound after it returns -- a
         // regression that reorders includeBoundary back ahead of them would make every ordinal here wrong,
         // and previously did (the boundary row used to render right after the CTE graph, before this pair).
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
-            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(7000L), new SqlParameterRef(8000L)),
-            SearchParameterHash: new SqlParameterRef("hashv"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(7000L), new SqlParameterRef(8000L)), SearchParameterHash: new SqlParameterRef("hashv")), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
         var rows = PlanExplainer.Describe(plan);
 
         // Assert -- real bind order: cte0's own predicate, then SurrogateRange, then SearchParameterHash
-        // (both inside WriteMatchPageCte's BuildMatchWhereClauses call), then the resume boundary.
+        // (both inside EmitMatchPage's BuildMatchWhereClauses call), then the resume boundary.
         emitted.Parameters.Select(p => p.Value).ShouldBe(["Smith", 7000L, 8000L, "hashv", (short)111, 5000L]);
 
-        var surrogateRow = rows.Single(r => r.CanonicalLabel == "surrogateRange");
-        surrogateRow.Body.ShouldBe("SurrogateRange(start=@p1, end=@p2)");
-
-        var hashRow = rows.Single(r => r.CanonicalLabel == "searchParameterHash");
-        hashRow.Body.ShouldBe("SearchParameterHash(hash=@p3)");
+        var matchPage = rows.Single(r => r.Kind == PlanRowKind.MatchPageCte);
+        matchPage.Body.ShouldContain("SurrogateRange(start=@p1, end=@p2)");
+        matchPage.Body.ShouldContain("SearchParameterHash(hash=@p3)");
 
         var boundaryRow = rows.Single(r => r.CanonicalLabel == "includeBoundary");
         boundaryRow.Body.ShouldBe("IncludeBoundary(type=@p4, sid=@p5)");
 
-        // Ordering, not just individual correctness: surrogateRange and searchParameterHash must both
-        // precede includeBoundary.
+        // The wrapper consumes both before the resume boundary, matching emitter order.
         var labels = rows.Select(r => r.CanonicalLabel).ToList();
-        labels.IndexOf("surrogateRange").ShouldBeLessThan(labels.IndexOf("includeBoundary"));
-        labels.IndexOf("searchParameterHash").ShouldBeLessThan(labels.IndexOf("includeBoundary"));
+        labels.IndexOf("matchPage").ShouldBeLessThan(labels.IndexOf("includeBoundary"));
     }
 
     [Fact]
@@ -288,7 +262,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.And(
             new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"), new SqlParameterRef((short)103)),
             new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceId"), new SqlParameterRef("123")));
-        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -301,7 +275,7 @@ public class PlanExplainerTests
     public void GivenANotReferencedSourceWithSourceAndPath_WhenExplained_ThenPrintsTargetSourceAndParam()
     {
         // Arrange -- Patient?_not-referenced=Observation:subject.
-        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -317,13 +291,11 @@ public class PlanExplainerTests
         // for it too or the @pN numbering diverges from the emitted SQL when another parameterized CTE
         // follows. `*:*` prints without source/ref suffixes.
         var table = SqlCatalog.Default.Table("StringSearchParam");
-        var plan = new QueryPlan(
-        [
+        var plan = new QueryPlan([
             new CteDefinition.NotReferencedSource(103, null, null),
             new CteDefinition.ParamSource(table, 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
             new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-        ],
-        new CteRef(2));
+        ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var explained = plan.Explain();
@@ -344,7 +316,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: page));
 
         // Act
         var explained = plan.Explain();
@@ -366,7 +338,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef(5000L)], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: page));
 
         // Act
         var explained = plan.Explain();
@@ -384,7 +356,7 @@ public class PlanExplainerTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches()));
 
         // Act
         var explained = plan.Explain();
@@ -401,7 +373,7 @@ public class PlanExplainerTests
         // Arrange
         var table = SqlCatalog.Default.Table("TokenSearchParam");
         var predicate = new Predicate.IsNull(new SqlColumnRef(table.TableName, "SystemId"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -416,7 +388,7 @@ public class PlanExplainerTests
         // Arrange
         var table = SqlCatalog.Default.Table("TokenSearchParam");
         var predicate = new Predicate.False();
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -434,7 +406,7 @@ public class PlanExplainerTests
             new SqlColumnRef(table.TableName, "Uri"),
             new SqlParameterRef("http://example.org/fhir/Patient/123"),
             "Latin1_General_100_BIN2");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -451,7 +423,7 @@ public class PlanExplainerTests
         var predicate = new Predicate.PrefixOfParameter(
             new SqlColumnRef(table.TableName, "Uri"),
             new SqlParameterRef("http://example.org/fhir/Patient/123"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -464,7 +436,7 @@ public class PlanExplainerTests
     public void GivenAMultiTypeResourceSourceWithSeveralTypes_WhenExplained_ThenPrintsAllTypeIds()
     {
         // Arrange -- GET /?_type=Patient,Observation
-        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])], new CteRef(0));
+        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.ForTypes([103, 104])], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -477,7 +449,7 @@ public class PlanExplainerTests
     public void GivenAMultiTypeResourceSourceWithNoTypes_WhenExplained_ThenPrintsStarForSystemWide()
     {
         // Arrange -- bare GET / (no _type filter)
-        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.AllTypes()], new CteRef(0));
+        var plan = new QueryPlan([CteDefinition.MultiTypeResourceSource.AllTypes()], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var explained = plan.Explain();
@@ -492,13 +464,11 @@ public class PlanExplainerTests
         // MultiTypeResourceSource has no bound parameters (type ids are literals), so it must NOT
         // consume an ordinal. A ParamSource following it must still start at @p0.
         var table = SqlCatalog.Default.Table("StringSearchParam");
-        var plan = new QueryPlan(
-        [
+        var plan = new QueryPlan([
             CteDefinition.MultiTypeResourceSource.ForTypes([103, 104]),
             new CteDefinition.ParamSource(table, 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
             new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-        ],
-        new CteRef(2));
+        ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var explained = plan.Explain();
@@ -517,10 +487,7 @@ public class PlanExplainerTests
         // right after the seek/outer predicate and before ORDER BY, so its ordinals land after cte0's own.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -538,11 +505,7 @@ public class PlanExplainerTests
         // SurrogateRange's in BuildMatchWhereClauses, so combining both proves the rows don't collide.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)), SearchParameterHash: new SqlParameterRef("abc123")));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -562,13 +525,7 @@ public class PlanExplainerTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var outer = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            OuterPredicate: outer,
-            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
-            Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
-            Top: 25);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 25, OuterPredicate: outer, Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)]);
 
         // Act
         var explained = plan.Explain();
@@ -586,11 +543,7 @@ public class PlanExplainerTests
         // Also cross-checks against the real emitted SQL: this is the one combination (ProbeExtraRow: true)
         // where matchSeed actually appears, and a prior version of this test only ever called plan.Explain(),
         // never SqlBuilder.Run -- so the ordinal claim was unverified for the one case it exists to cover.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)],
-            OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -599,7 +552,7 @@ public class PlanExplainerTests
         // Assert -- @p0 is cte0's own ResourceSource type id; @p1/@p2 are Offset/FetchCount (11 = Limit + probe row).
         emitted.Parameters.Select(p => p.Value).ShouldBe([(short)103, 20, 11]);
         explained.ShouldContain("matchSeed = MatchSeedCte(limit=10)");
-        explained.ShouldContain("offsetPage = OffsetSpec(offset=@p1, fetch=@p2)");
+        explained.ShouldContain("matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false) OffsetSpec(offset=@p1, fetch=@p2)");
     }
 
     [Fact]
@@ -607,14 +560,10 @@ public class PlanExplainerTests
     {
         // Arrange -- EmitSortJoins skips LastUpdated/ResourceType keys entirely: the match set already
         // projects the surrogate id those sort on, no join needed. Before this test, PrintMatchPageCte
-        // computed sortJoins as `plan.Sort is not null`, which is true here even though WriteMatchPageCte
+        // computed sortJoins as `plan.Sort is not null`, which is true here even though EmitMatchPage
         // emits zero JOIN clauses for this exact plan -- a real divergence, not just an unlikely one:
         // `_sort=_lastUpdated&_include=...` is an ordinary, common query shape.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)],
-            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending)], SortPhase.Valued));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending)], SortPhase.Valued)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 10)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -637,16 +586,8 @@ public class PlanExplainerTests
         // separate CountOnly plans, not one plan carrying both.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var pagedCountPlan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            Page: new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L)));
-        var offsetCountPlan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            OffsetPage: new OffsetSpec(20, 10));
+        var pagedCountPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Page: new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L)), Shape: new ResultShape.Count.AllMatches()));
+        var offsetCountPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches(), OffsetPage: new OffsetSpec(20, 10)));
 
         // Act
         var pagedEmitted = SqlBuilder.Run(pagedCountPlan);
@@ -662,5 +603,67 @@ public class PlanExplainerTests
         offsetEmitted.Parameters.Select(p => p.Value).ShouldBe(["Smith"]);
         offsetExplained.ShouldNotContain("offsetPage = ");
         offsetExplained.ShouldContain("countOnly = true");
+    }
+
+    [Fact]
+    public void GivenAParameterBindingCteAfterTheMatchRoot_WhenExplained_ThenTheOuterPredicateTakesTheOrdinalEmissionBoundIt()
+    {
+        // Emission binds every CTE body before the outer predicate (SqlBuilder.Run calls EmitCteBodies, then
+        // the shape emitter). Explain used to read the outer predicate mid-loop, which only agreed when the
+        // match root was the last parameter-binding CTE. An access constraint or a count shape can append one
+        // after it -- and then every name from the predicate on was off. Reachable from Lower, not just from
+        // hand-built plans.
+        var plan = new QueryPlan(
+            [
+                new CteDefinition.ResourceSource(103),
+                new CteDefinition.ResourceSource(105),
+            ],
+            new MatchPageSpec(
+                new CteRef(0),
+                OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "IsDeleted"), new SqlParameterRef(0))));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Parameters.Select(p => p.Value).ShouldBe([(short)103, (short)105, 0]);
+        plan.Explain().ShouldBe(
+            "root = ResourceSource[103] WHERE IsDeleted = @p2\n" +
+            "cte1 = ResourceSource[105]");
+    }
+
+    [Fact]
+    public void GivenAMultiTypeResourceSourceCarryingAPredicate_WhenExplained_ThenItNamesTheParameterEmissionBinds()
+    {
+        // The type ids are literals but the predicate is bound, so an explain that rendered only the type
+        // list under-counted every later @pN. This is the shape a system-level SMART compartment union leg
+        // lowers to; no test explained one, which is why the omission survived.
+        var predicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
+        var plan = new QueryPlan(
+            [CteDefinition.MultiTypeResourceSource.AllTypes(predicate)],
+            new MatchPageSpec(new CteRef(0)));
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["abc"]);
+        plan.Explain().ShouldBe("root = MultiTypeResourceSource[*]  ResourceId = @p0");
+    }
+
+    [Fact]
+    public void GivenAResourceSourceCarryingAPredicate_WhenEmittedAndExplained_ThenBothAgreeOnWhichValueTakesWhichOrdinal()
+    {
+        // Emit binds the predicate value BEFORE ResourceTypeId even though the WHERE renders ResourceTypeId
+        // first, so the two @pN tokens appear in the text out of numeric order. The explainer had it the
+        // other way round and printed the wrong name for every ResourceSource carrying a predicate; four
+        // goldens had that wrong output baked in. No golden pinned the emitted SQL for this shape, which is
+        // why nothing caught it.
+        var plan = new QueryPlan(
+            [new CteDefinition.ResourceSource(103, new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc")))],
+            new MatchPageSpec(new CteRef(0)),
+            Visibility: ResourceVisibility.Current);
+
+        var emitted = SqlBuilder.Run(plan);
+
+        emitted.Sql.ShouldContain("    WHERE ResourceTypeId = @p1 AND IsHistory = 0 AND IsDeleted = 0 AND ResourceId = @p0");
+        emitted.Parameters.Select(p => p.Value).ShouldBe(["abc", (short)103]);
+        plan.Explain().ShouldBe("root = ResourceSource[103] WHERE ResourceId = @p0");
     }
 }

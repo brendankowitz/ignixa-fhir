@@ -39,10 +39,20 @@ is known:
   `Scope` (`ResourceScope`).
 - `ResourceScope` carries `%resource`, `%rootResource`, and a `resolve()` delegate (backed by
   `ReferenceIndex`: contained `#id` + intra-Bundle `fullUrl` / `Type/id`).
-- Scope is forked at the two resource boundaries — `EnterRootResource` (handler entry) and
+  - **Update (2026-08):** since GitHub issue #400/#401, the FhirPath `resolve()` function tries
+    in-instance resolution first (contained resources, sibling Bundle/Parameters entries, and
+    container-scoped bare `#`) and only calls this `ResourceScope` delegate as a fallback when
+    nothing in-instance matches. This delegate is no longer *the* resolution mechanism, just the
+    external one. See `docs/site/docs/core-sdk/fhirpath.md` and `ResolveFunctionTests.cs` for the
+    current contract.
+- Scope is established at the two resource boundaries — `ValidationState.ForRoot` (construction) and
   `EnterContainedResource` (contained recursion). `FhirPathInvariantCheck.BuildEvaluationContext`
-  materializes a `FhirEvaluationContext { Resource, RootResource, ElementResolver }` from the scope;
-  when scope is unseeded it falls back to context-free evaluation.
+  materializes a `FhirEvaluationContext { Resource, RootResource, ElementResolver }` from the scope.
+  - **Update (2026-08):** there is no unseeded case to fall back from. `ValidationState` has no public
+    constructor, `ForRoot(IElement)` is its only entry point, and `ResourceScope`'s two members are
+    `required` and non-nullable — so a state with no resource is unrepresentable rather than merely
+    discouraged. This replaced an earlier shape where seeding was a separate `EnterRootResource` call
+    the caller had to remember; forgetting it was silent, and the write path did forget it.
 - Element-scoped constraints (e.g. `pat-1` on `Patient.contact`) are evaluated at the altitude of
   their owning element — injected into that element's nested schema and run per-occurrence by
   `NestedComplexTypeCheck` — never hoisted to the resource root.
@@ -89,8 +99,11 @@ modes replace the ones parent pointers would prevent:
    nested-element constraint to the root (the original `pat-1` bug) evaluates it against the wrong
    node. Reviewers of new checks must confirm element-scoped constraints descend to their owner.
 
-Any code that seeds validation (handlers, the conformance runner, tests) must seed the scope the same
-way (`new ValidationState().EnterRootResource(element)`) or the context features silently no-op.
+Callers do not seed the scope at all: `ValidationSchema.Validate` supplies `ValidationState.ForRoot(element)`
+when no state is passed, which is correct by construction because a schema is built per StructureDefinition
+and its element argument is by contract the resource that schema applies to. The `state` parameter exists
+for the one caller that already has a state to hand down — `ContainedResourceCheck`, so `%rootResource`
+keeps pointing at the container.
 
 ## Alternatives considered
 

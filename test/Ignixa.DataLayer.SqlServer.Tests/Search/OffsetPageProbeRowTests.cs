@@ -149,11 +149,32 @@ public class OffsetPageProbeRowTests
     }
 
     private static EmittedSql EmitWithInclude(SearchOptions options)
-        => SqlBuilder.Run(new QueryPlan(
-            [new CteDefinition.ResourceSource(MatchTypeId)],
+    {
+        // The spec instance must be shared between the MatchPage CTE and QueryPlan.MatchSpec: the
+        // emitter rejects a plan whose wrapper CTE carries a copy rather than the canonical spec.
+        var spec = new MatchPageSpec(
             new CteRef(0),
+            OffsetPage: SqlServerCompiledSearchService.DefaultOffsetPage(options));
+
+        List<CteDefinition> ctes =
+        [
+            new CteDefinition.ResourceSource(MatchTypeId),
+            new CteDefinition.MatchPage(spec),
+        ];
+
+        // The trimmed seed exists only when the page over-fetches a probe row. Without one, include
+        // stages correlate against the whole match page, which is what the non-probing case asserts.
+        if (spec.OffsetPage!.ProbeExtraRow)
+        {
+            ctes.Add(new CteDefinition.MatchSeed(new CteRef(1), spec));
+        }
+
+        return SqlBuilder.Run(new QueryPlan(
+            ctes,
+            spec,
             Includes: [ForwardIncludeStage()],
-            OffsetPage: SqlServerCompiledSearchService.DefaultOffsetPage(options)));
+            IncludeSeed: new CteRef(ctes.Count - 1)));
+    }
 
     private static IncludeStage ForwardIncludeStage()
         => new(

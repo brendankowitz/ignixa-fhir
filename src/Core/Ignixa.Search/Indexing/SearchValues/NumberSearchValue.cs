@@ -87,6 +87,6 @@ public class NumberSearchValue : ISearchValue
     {
         if (Low == High) return Low.Value.ToString(CultureInfo.InvariantCulture);
 
-        return $"[{Low}, {High})";
+        return FormattableString.Invariant($"[{Low}, {High})");
     }
 }

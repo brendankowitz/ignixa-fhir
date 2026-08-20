@@ -31,10 +31,12 @@ public static class PrimitiveTypeConverter
 
         var targetType = typeof(T);
 
-        // String conversion
+        // String conversion. Convert.ToString with an explicit provider rather than value.ToString(),
+        // which would render under CurrentCulture: a decimal becomes "1234,5" on de-DE and "1234٫5" on
+        // ar-SA, neither of which is valid FHIR wire text.
         if (targetType == typeof(string))
         {
-            return (T)(object)value.ToString();
+            return (T)(object)Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
         // DateTimeOffset conversion from FHIR datetime string

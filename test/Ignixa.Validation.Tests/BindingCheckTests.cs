@@ -61,7 +61,7 @@ public class BindingCheckTests
         };
 
         // Act
-        var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
+        var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, ValidationState.ForRoot(node.ToElement(TestSchemaProvider.GetR4Schema())));
 
         // Assert
         result.IsValid.ShouldBeTrue("extensible bindings are skipped in Spec depth");
@@ -109,7 +109,7 @@ public class BindingCheckTests
         };
 
         // Act
-        var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
+        var result = bindingCheck.Validate(node.ToElement(TestSchemaProvider.GetR4Schema()), settings, ValidationState.ForRoot(node.ToElement(TestSchemaProvider.GetR4Schema())));
 
         // Assert
         result.IsValid.ShouldBeTrue("extensible bindings in Full depth should warn, not fail");

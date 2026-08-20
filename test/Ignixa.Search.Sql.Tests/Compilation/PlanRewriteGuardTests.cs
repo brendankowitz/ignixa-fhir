@@ -18,7 +18,7 @@ public class PlanRewriteGuardTests
     public async Task GivenAMatchPastTheEndOfTheCteList_WhenTryCompiling_ThenItIsAnEmitFailureNamingTheReference()
     {
         var query = await PlanFixtures.SimplePatientSearchAsync();
-        var plan = new SearchPlan { Query = query with { Match = new CteRef(query.Ctes.Count) } };
+        var plan = new SearchPlan { Query = query with { MatchSpec = query.MatchSpec with { Root = new CteRef(query.Ctes.Count) } } };
 
         var result = plan.TryCompile();
 
@@ -31,7 +31,7 @@ public class PlanRewriteGuardTests
     public async Task GivenANegativeMatchIndex_WhenTryCompiling_ThenItIsAnEmitFailure()
     {
         var query = await PlanFixtures.SimplePatientSearchAsync();
-        var plan = new SearchPlan { Query = query with { Match = new CteRef(-1) } };
+        var plan = new SearchPlan { Query = query with { MatchSpec = query.MatchSpec with { Root = new CteRef(-1) } } };
 
         var result = plan.TryCompile();
 
@@ -50,7 +50,7 @@ public class PlanRewriteGuardTests
             Query = query with
             {
                 Ctes = [new CteDefinition.Intersect(new CteRef(1), new CteRef(1)), query.Ctes[0]],
-                Match = new CteRef(0),
+                MatchSpec = query.MatchSpec with { Root = new CteRef(0) },
             },
         };
 

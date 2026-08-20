@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Well-Architected Agent is a specialized Claude Code agent that conducts comprehensive code and architecture reviews based on Microsoft's **Azure Well-Architected Framework**. It evaluates your codebase against five core pillars to identify risks, opportunities, and best practices.
+The Well-Architected Agent is provided by `review@agent-marketplace` for GitHub Copilot CLI and Claude Code. It conducts comprehensive code and architecture reviews based on Microsoft's **Azure Well-Architected Framework**.
 
 ## Five Pillars of the Well-Architected Framework
 
@@ -54,7 +54,7 @@ The Well-Architected Agent can be invoked using several slash commands:
 
 #### Full Architecture Review
 ```
-/wa-review
+/wa-full-review
 ```
 Conducts a comprehensive review across all five pillars. Best for:
 - Pre-production readiness assessments
@@ -66,7 +66,7 @@ Conducts a comprehensive review across all five pillars. Best for:
 
 **Security Audit:**
 ```
-/wa-security
+/wa-security-review
 ```
 Deep dive into security vulnerabilities and best practices. Use when:
 - Preparing for security audits
@@ -76,7 +76,7 @@ Deep dive into security vulnerabilities and best practices. Use when:
 
 **Performance Analysis:**
 ```
-/wa-performance
+/wa-performance-review
 ```
 Identify performance bottlenecks and optimization opportunities. Use when:
 - Experiencing performance issues
@@ -86,7 +86,7 @@ Identify performance bottlenecks and optimization opportunities. Use when:
 
 **Reliability Assessment:**
 ```
-/wa-reliability
+/wa-reliability-review
 ```
 Evaluate resilience and fault tolerance. Use when:
 - Implementing error handling
@@ -102,21 +102,21 @@ You can also invoke the agent directly using the Task tool:
 
 #### Full Review Example
 ```
-Use the well-architected-agent to conduct a comprehensive review of the Ignixa.Api project,
+Use the review:well-architected-agent to conduct a comprehensive review of the Ignixa.Api project,
 focusing on all five pillars. Pay special attention to FHIR-specific security requirements
 and multi-tenancy isolation.
 ```
 
 #### Targeted Feature Review Example
 ```
-Use the well-architected-agent to review the Patient search implementation in
+Use the review:well-architected-agent to review the Patient search implementation in
 src/Ignixa.Application/Features/Patient/ against the Performance Efficiency and
 Reliability pillars. Check for N+1 queries and proper error handling.
 ```
 
 #### Pre-Production Readiness Example
 ```
-Use the well-architected-agent to assess production readiness of the Bundle streaming
+Use the review:well-architected-agent to assess production readiness of the Bundle streaming
 feature. Focus on Reliability and Operational Excellence pillars - verify health checks,
 logging, error handling, and monitoring are in place.
 ```
@@ -172,7 +172,7 @@ The agent provides structured, actionable output:
 
 **Command:**
 ```
-Use the well-architected-agent to review the FHIR Subscriptions implementation in
+Use the review:well-architected-agent to review the FHIR Subscriptions implementation in
 src/Ignixa.Application/Features/Subscriptions/ and src/Ignixa.Api/Infrastructure/SubscriptionEndpoints.cs
 
 Focus on:
@@ -196,7 +196,7 @@ Focus on:
 
 **Command:**
 ```
-/wa-reliability
+/wa-reliability-review
 
 Investigate database connection management patterns across the codebase.
 Check for:
@@ -220,7 +220,7 @@ Check for:
 
 **Command:**
 ```
-/wa-security
+/wa-security-review
 
 Conduct a security audit for HITRUST compliance focusing on:
 - PHI data encryption (at rest and in transit)
@@ -245,7 +245,7 @@ Conduct a security audit for HITRUST compliance focusing on:
 
 **Command:**
 ```
-/wa-performance
+/wa-performance-review
 
 Analyze the Patient search implementation for performance issues:
 - Files: src/Ignixa.Application/Features/Patient/SearchPatientHandler.cs
@@ -275,10 +275,10 @@ Check for:
 Use targeted pillar reviews during development:
 ```
 # Before committing authentication changes
-/wa-security
+/wa-security-review
 
 # Before committing search optimization
-/wa-performance
+/wa-performance-review
 ```
 
 ### Pull Request Reviews
@@ -286,13 +286,13 @@ Include in PR checklist:
 ```
 - [ ] Code reviewed by team member
 - [ ] Unit tests added/updated
-- [ ] /wa-review run with no critical issues
+- [ ] /wa-full-review run with no critical issues
 - [ ] Documentation updated
 ```
 
 ### Sprint Planning
 Plan remediation work:
-1. Run `/wa-review` at sprint start
+1. Run `/wa-full-review` at sprint start
 2. Export P0 and P1 findings
 3. Add to sprint backlog with effort estimates
 4. Track progress with ADR updates
@@ -300,7 +300,7 @@ Plan remediation work:
 ### Production Readiness
 Before deploying to production:
 ```
-/wa-review
+/wa-full-review
 
 Focus on production readiness checklist:
 - Health checks implemented
@@ -336,12 +336,12 @@ Focus on production readiness checklist:
 Provide context for better analysis:
 ```
 # Good: Specific context
-Use well-architected-agent to review the multi-tenant routing logic in
+Use review:well-architected-agent to review the multi-tenant routing logic in
 TenantResolutionMiddleware.cs. This is a critical security boundary -
 ensure partition isolation is enforced correctly.
 
 # Better: Include business context
-Use well-architected-agent to review Patient data export feature.
+Use review:well-architected-agent to review Patient data export feature.
 This handles PHI data and must comply with HIPAA. Focus on Security
 and Operational Excellence pillars, especially audit logging.
 ```
@@ -349,13 +349,13 @@ and Operational Excellence pillars, especially audit logging.
 ### 5. Combine with Other Agents
 ```
 # Step 1: Review against ADR requirements
-Use adr-analyzer to verify implementation matches ADR-2530
+Use decide:adr-analyzer to verify implementation matches the accepted ADR
 
 # Step 2: Well-Architected review
-/wa-review on the Subscriptions feature
+/wa-full-review on the Subscriptions feature
 
 # Step 3: Code review
-Use coding-agent to refactor any issues found
+Use build:coding-agent to refactor any issues found
 ```
 
 ---
@@ -421,7 +421,7 @@ with code examples and effort estimates for each item."
 ### 4. Compare Before/After
 ```
 # After implementing recommendations:
-"Re-run /wa-performance on PatientSearchHandler and compare scores
+"Re-run /wa-performance-review on PatientSearchHandler and compare scores
 to the previous review. Highlight improvements made."
 ```
 
@@ -467,7 +467,7 @@ to the previous review. Highlight improvements made."
 
 The Well-Architected Agent is continuously improved based on:
 - Azure Well-Architected Framework updates
-- Project-specific patterns (CLAUDE.md)
+- Project-specific patterns (AGENTS.md)
 - Team feedback
 - Industry best practices
 
@@ -483,10 +483,10 @@ The Well-Architected Agent is continuously improved based on:
 
 | Command | Purpose | When to Use |
 |---------|---------|-------------|
-| `/wa-review` | Full assessment (all 5 pillars) | Pre-production, quarterly reviews |
-| `/wa-security` | Security audit | Before handling sensitive data, security audits |
-| `/wa-performance` | Performance analysis | Performance issues, optimization sprints |
-| `/wa-reliability` | Reliability assessment | Incident post-mortems, resilience improvements |
+| `/wa-full-review` | Full assessment (all 5 pillars) | Pre-production, quarterly reviews |
+| `/wa-security-review` | Security audit | Before handling sensitive data, security audits |
+| `/wa-performance-review` | Performance analysis | Performance issues, optimization sprints |
+| `/wa-reliability-review` | Reliability assessment | Incident post-mortems, resilience improvements |
 
 **Priority Levels:**
 - 🚨 **P0 Critical** - Fix before production
@@ -507,7 +507,7 @@ The Well-Architected Agent is continuously improved based on:
 - [Azure Well-Architected Framework Documentation](https://learn.microsoft.com/en-us/azure/well-architected/)
 - [Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/)
 - [Well-Architected Review Assessment Tool](https://learn.microsoft.com/en-us/assessments/azure-architecture-review/)
-- Project CLAUDE.md - Coding standards and architecture rules
+- Project AGENTS.md - Coding standards and architecture rules
 - Project ADRs - Architecture decision records (docs/adr/)
 
 ---

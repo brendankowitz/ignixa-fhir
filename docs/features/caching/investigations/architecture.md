@@ -129,18 +129,21 @@ var child2 = typedElement.Children("name");  // Returns cached definition
 
 ### 3. FHIRPath Expression Caching (Phase 3)
 
-**File**: `src/Ignixa.FhirPath/Evaluation/TypedElementExtensions.cs:23-28`
+**File**: `src/Core/Ignixa.FhirPath/Evaluation/TypedElementExtensions.cs:32-40`, backed by `src/Core/Ignixa.FhirPath/Evaluation/BoundedExpressionCache.cs`
 
 ```csharp
 public static class TypedElementExtensions
 {
-    // AST Cache: String → Expression AST
-    private static readonly ConcurrentDictionary<string, Expression> _astCache = new();
+    // Entries retained per generation; each cache holds at most 2x this (hot + cold).
+    private const int ExpressionCacheCapacity = 4096;
+
+    // AST Cache: String → Expression AST, capacity-bounded generational cache
+    private static readonly BoundedExpressionCache<Expression> _astCache = new(ExpressionCacheCapacity);
 
     // Delegate Cache: String → Compiled Delegate (or null if unsupported)
-    private static readonly ConcurrentDictionary<string, Func<...>?> _delegateCache = new();
+    private static readonly BoundedExpressionCache<Func<...>?> _delegateCache = new(ExpressionCacheCapacity);
 
-    private static readonly FhirPathCompiler _astCompiler = new();
+    private static readonly FhirPathParser AstParser = new(preserveTrivia: false);
     private static readonly FhirPathDelegateCompiler _delegateCompiler = new(...);
 }
 ```
@@ -171,12 +174,13 @@ typedElement.Select("name.family")
 **Cache Size**:
 - **Typical**: 20-30 unique expressions per resource type × 10 common types = **200-300 entries**
 - **Memory**: ~1-2 KB per entry (AST + delegate) = **200-600 KB total**
-- **Unbounded**: No eviction policy (assumes limited expression variety in production)
+- **Bounded**: 4096 entries per generation, per cache (AST and delegate caches each) — worst case 2x that (8192) while a generation rotation is in flight
 
-**Why Unbounded is Safe**:
-- Search parameters use fixed expressions (from FHIR spec)
-- Custom search queries are user-driven (limited variety)
-- Worst case: 1000 unique expressions = ~2 MB (acceptable)
+**Why the Cache Must Be Bounded**:
+- Search parameters use fixed expressions from the FHIR spec — the shipped STU3/R4/R4B/R5/R6 SearchParameter definitions carry 2,396 distinct expressions combined, well inside the 4096 capacity.
+- Custom SearchParameters are tenant-driven, not just "user-driven (limited variety)": every distinct expression a tenant registers becomes a distinct cache key on `TypedElementExtensions.Select`, which runs on every write. An unbounded cache is therefore a caller-drivable memory leak, not a bounded worst case.
+- `BoundedExpressionCache<TValue>` caps each cache at `ExpressionCacheCapacity` (4096) using a generational hot/cold scheme, not a plain LRU or clear-at-capacity policy: once the hot generation fills, it is retained as the cold generation and a fresh hot generation starts; lookups check hot then cold, promoting cold hits back into hot. A working set at or under capacity survives indefinitely without evicting entries still in use, and memory stays bounded at 2x capacity instead of growing without limit.
+- Fixed in commit `0a708414` ("perf(fhirpath): bound the AST and delegate caches"), which replaced the previous unbounded `ConcurrentDictionary` caches with `BoundedExpressionCache`.
 
 **Performance Impact**:
 - **Cold cache** (first request): 8-16 μs per expression evaluation
@@ -428,7 +432,7 @@ public class R4StructureDefinitionSummaryProvider : IFhirSchemaProvider
 | Cache | Invalidated On | Mechanism |
 |-------|---------------|-----------|
 | **Request-scoped** | Request completion | Automatic (object disposal) |
-| **FHIRPath AST/Delegate** | Never (unbounded) | Manual: `TypedElementExtensions.ClearCache()` |
+| **FHIRPath AST/Delegate** | At capacity (4096 entries/generation, oldest generation dropped on rotation) | Automatic generational rotation; manual: `TypedElementExtensions.ClearCache()` |
 | **CapabilityStatement** | Tenant config change | `CapabilityCacheInvalidator.InvalidateForTenant(id)` |
 | **Validation Schemas** | Never (immutable spec) | Application restart |
 | **DbContextOptions** | Tenant reconfiguration | Factory recreates cache entry |

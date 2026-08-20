@@ -6,9 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Ignixa.SchemaUpgrade.Cli</RootNamespace>
-    <!-- AssemblyName deliberately left at the default (matches the project name): this assembly
-         consumes Ignixa.DataLayer.SqlServer's internal SqlExecutionService.ResolveConnectionStringAsync
-         via InternalsVisibleTo, which is granted by assembly name, not project name. -->
     <NoWarn>CA1303,CA1869,CA1861,CA2000,CA1031,CA1852,IDE0073,CA1307,CA1310,CA1849</NoWarn>
   </PropertyGroup>
 

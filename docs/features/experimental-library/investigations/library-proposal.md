@@ -598,7 +598,7 @@ The project follows the same structure as `Ignixa.Application.csproj`, inheritin
 
 ### Phase 5: Cleanup & Documentation
 - [ ] Remove old code from source projects
-- [ ] Update `CLAUDE.md` with experimental info
+- [ ] Update `AGENTS.md` with experimental info
 - [ ] Add README.md to experimental project
 - [ ] Verify all tests pass
 - [ ] Verify Docker image works with default config

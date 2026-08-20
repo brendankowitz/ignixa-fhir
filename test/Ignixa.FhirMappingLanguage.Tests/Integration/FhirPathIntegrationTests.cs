@@ -7,6 +7,7 @@
 using Shouldly;
 using Ignixa.FhirMappingLanguage.Evaluation;
 using Ignixa.Abstractions;
+using Ignixa.FhirPath.Evaluation;
 using Xunit;
 
 namespace Ignixa.FhirMappingLanguage.Tests.Integration;
@@ -363,4 +364,59 @@ public class FhirPathIntegrationTests
     }
 
     #endregion
+
+    /// <summary>
+    /// Parses cleanly, then fails during evaluation: '&amp;' is a singleton operator and the left operand
+    /// is a three-item collection.
+    /// </summary>
+    private const string ThrowsAtEvaluationTime = "(1 | 2 | 3) & 'b'";
+
+    [Fact]
+    public void GivenAnExpressionThatThrowsDuringEvaluation_WhenEvaluating_ThenTheGuardCatchesItBeforeReturning()
+    {
+        // Arrange
+        var integration = new FhirPathIntegration();
+        var patient = new TestTypedElement("Patient");
+
+        // Act: deliberately NOT enumerated. The evaluator returns a lazy sequence, so this call used to
+        // return normally and throw at the caller's first enumeration - past the try/catch entirely.
+        var exception = Should.Throw<Exception>(() => integration.Evaluate(ThrowsAtEvaluationTime, patient));
+
+        // Assert
+        exception.Message.ShouldStartWith("Failed to evaluate FHIRPath expression");
+        exception.InnerException.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void GivenAnExpressionThatThrowsDuringEvaluation_WhenEvaluating_ThenTheEvaluationErrorTypeSurvivesWrapping()
+    {
+        // Arrange
+        var integration = new FhirPathIntegration();
+        var patient = new TestTypedElement("Patient");
+
+        // Act
+        var exception = Should.Throw<FhirPathEvaluationException>(
+            () => integration.Evaluate(ThrowsAtEvaluationTime, patient));
+
+        // Assert: the contextual message is preserved, and so is the caller's ability to tell a
+        // spec-mandated FHIRPath error from an engine defect.
+        exception.Message.ShouldBe($"Failed to evaluate FHIRPath expression: {ThrowsAtEvaluationTime}");
+        exception.InnerException.ShouldBeOfType<FhirPathEvaluationException>();
+    }
+
+    [Fact]
+    public void GivenAnUnparseableExpression_WhenEvaluating_ThenItStillSurfacesAsPlainInvalidOperationException()
+    {
+        // Arrange
+        var integration = new FhirPathIntegration();
+        var patient = new TestTypedElement("Patient");
+
+        // Act
+        var exception = Should.Throw<InvalidOperationException>(() => integration.Evaluate("(((", patient));
+
+        // Assert: everything that is not a FHIRPath evaluation error keeps its previous shape exactly.
+        exception.ShouldNotBeOfType<FhirPathEvaluationException>();
+        exception.Message.ShouldBe("Failed to evaluate FHIRPath expression: (((");
+        exception.InnerException.ShouldNotBeNull();
+    }
 }

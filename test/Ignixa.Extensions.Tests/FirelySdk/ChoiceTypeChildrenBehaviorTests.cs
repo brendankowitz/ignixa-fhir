@@ -72,7 +72,7 @@ public class ChoiceTypeChildrenBehaviorTests
         Assert.Equal(1, effectiveChildren.Count);
         Assert.Equal("effectiveDateTime", effectiveChildren[0].Name);
         Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
-        Assert.Equal("2025-01-01T12:00:00Z", effectiveChildren[0].Value);
+        Assert.Equal("2025-01-01T12:00:00Z", effectiveChildren[0].Value?.ToString());
     }
 
     /// <summary>
@@ -102,7 +102,7 @@ public class ChoiceTypeChildrenBehaviorTests
         Assert.Equal(1, effectiveDateTimeChildren.Count);
         Assert.Equal("effectiveDateTime", effectiveDateTimeChildren[0].Name);
         Assert.Equal("dateTime", effectiveDateTimeChildren[0].InstanceType);
-        Assert.Equal("2025-01-01T12:00:00Z", effectiveDateTimeChildren[0].Value);
+        Assert.Equal("2025-01-01T12:00:00Z", effectiveDateTimeChildren[0].Value?.ToString());
     }
 
     /// <summary>
@@ -263,7 +263,7 @@ public class ChoiceTypeChildrenBehaviorTests
         var effective = element.Children("effective").FirstOrDefault();
         Assert.NotNull(effective);
         Assert.Equal("effectiveDateTime", effective.Name);  // CRITICAL: Should be suffixed
-        Assert.Equal("2025-01-01T12:00:00Z", effective.Value);
+        Assert.Equal("2025-01-01T12:00:00Z", effective.Value?.ToString());
     }
 
     /// <summary>
@@ -347,7 +347,7 @@ public class ChoiceTypeChildrenBehaviorTests
 
         Assert.NotNull(effective);
         Assert.Equal("effectiveDateTime", effective.Name);
-        Assert.Equal("2025-01-01T12:00:00Z", effective.Value);
+        Assert.Equal("2025-01-01T12:00:00Z", effective.Value?.ToString());
 
         Assert.NotNull(value);
         Assert.Equal("valueQuantity", value.Name);

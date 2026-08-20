@@ -42,7 +42,7 @@ public class StructuralShapeCheckTests
             ?? throw new InvalidOperationException($"Schema not found for {resourceType}");
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
+        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     private void AssertInvalidWithExpression(string resourceJson, string expectedExpression)
@@ -210,10 +210,7 @@ public class StructuralShapeCheckTests
     {
         var sourceNode = JsonNodeSourceNode.Create(JsonNode.Parse(resourceJson)!);
         var check = new StructuralShapeCheck(elementName, isPrimitive: false, isCollection: true, isBackbone: isBackbone, primitiveType: string.Empty);
-        return check.Validate(
-            sourceNode.ToElement(TestSchemaProvider.GetR4Schema()),
-            new ValidationSettings { Depth = ValidationDepth.Spec },
-            new ValidationState());
+        return check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), new ValidationSettings { Depth = ValidationDepth.Spec }, ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     [Fact]

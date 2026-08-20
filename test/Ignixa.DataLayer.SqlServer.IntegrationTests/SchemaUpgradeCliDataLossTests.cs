@@ -158,7 +158,7 @@ public class SchemaUpgradeCliDataLossTests
             using (var output = new StringWriter())
             {
                 await Should.ThrowAsync<Exception>(() =>
-                    Program.RunAsync(tenantId: 1, autoConfirm: true, allowDataLoss: false, configPath, input, output, CancellationToken.None));
+                    Program.RunAsync(new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: configPath), input, output, CancellationToken.None));
             }
 
             (await ColumnExistsAsync(connectionString, CancellationToken.None)).ShouldBeTrue();
@@ -169,7 +169,7 @@ public class SchemaUpgradeCliDataLossTests
             using (var input = new StringReader(string.Empty))
             using (var output = new StringWriter())
             {
-                exitCode = await Program.RunAsync(tenantId: 1, autoConfirm: true, allowDataLoss: true, configPath, input, output, CancellationToken.None);
+                exitCode = await Program.RunAsync(new CliUpgradeOptions(TenantId: 1, AutoConfirm: true, AllowDataLoss: true, AllowIncompatiblePlatform: true, ConfigPath: configPath), input, output, CancellationToken.None);
             }
 
             exitCode.ShouldBe(0);

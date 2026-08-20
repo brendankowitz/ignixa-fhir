@@ -162,7 +162,7 @@ public sealed class SqlServerTenantServiceFactory : IFhirRepositoryFactory, ISea
             throw new InvalidOperationException($"Tenant {tenantId} is not active");
         }
 
-        var connectionString = await SqlServerTenantConnectionResolver.ResolveConnectionStringAsync(
+        var connectionString = await TenantConnectionStringResolver.ResolveAsync(
             _tenantStore, tenantId, cancellationToken);
 
         // The only invocation of this guard in the codebase. Removing it silently re-opens Production to

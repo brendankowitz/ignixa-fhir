@@ -533,16 +533,14 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
     }
 
     /// <summary>
-    /// Tests case sensitivity of identifier value matching.
-    /// Per FHIR spec, token values are case-sensitive.
+    /// Tests case sensitivity of identifier type code matching.
+    /// Per FHIR spec, token codes are case-sensitive.
     /// </summary>
     /// <remarks>
-    /// KNOWN DEVIATION: The current implementation uses case-insensitive collation
-    /// (Latin1_General_100_CI_AS) for token matching, which is a server-wide behavior.
-    /// This test is skipped until case-sensitive token matching is implemented.
+    /// Uses the SQL-backed runtime path because collation behavior is database-specific.
     /// </remarks>
-    [Fact(Skip = "Token matching is currently case-insensitive - known deviation from FHIR spec")]
-    public async Task GivenIdentifierWithDifferentCase_WhenSearchingByOfType_ThenSearchIsCaseSensitive()
+    [Fact]
+    public async Task GivenIdentifiersWithCaseVariantTypeCodes_WhenSearchingByOfType_ThenReturnsOnlyExactTypeCode()
     {
         // Capability check
         RequireSearchParameter("Patient", "identifier");
@@ -550,37 +548,86 @@ public class IdentifierOfTypeTests : CapabilityDrivenTestBase
         // Arrange
         var tag = Guid.NewGuid().ToString();
 
-        // Patient with lowercase identifier
-        var patientLower = CreatePatient()
+        // Patient with lowercase type code
+        var patientLowerType = CreatePatient()
+            .FromSeattle()
+            .WithTypedIdentifier("12345", IdentifierTypeSystem, "mr", "Lowercase medical record")
+            .WithTag(tag)
+            .Build();
+
+        // Patient with uppercase type code
+        var patientUpperType = CreatePatient()
+            .FromSeattle()
+            .WithTypedIdentifier("12345", IdentifierTypeSystem, "MR", "Medical Record")
+            .WithTag(tag)
+            .Build();
+
+        await Harness.CreateResourcesAsync([patientLowerType, patientUpperType]);
+
+        // Act
+        var lowercaseResults = await Harness.SearchAsync("Patient",
+            $"identifier:of-type={IdentifierTypeSystem}|mr|12345&_tag={tag}");
+
+        // Assert
+        lowercaseResults.Length.ShouldBe(1, "identifier type code matching should be case-sensitive");
+        lowercaseResults[0].Id.ShouldBe(patientLowerType.Id);
+        lowercaseResults.ShouldNotContain(r => r.Id == patientUpperType.Id);
+
+        // Act
+        var uppercaseResults = await Harness.SearchAsync("Patient",
+            $"identifier:of-type={IdentifierTypeSystem}|MR|12345&_tag={tag}");
+
+        // Assert
+        uppercaseResults.Length.ShouldBe(1, "identifier type code matching should preserve query casing");
+        uppercaseResults[0].Id.ShouldBe(patientUpperType.Id);
+        uppercaseResults.ShouldNotContain(r => r.Id == patientLowerType.Id);
+    }
+
+    /// <summary>
+    /// Tests case sensitivity of identifier value matching.
+    /// Per FHIR spec, token values are case-sensitive.
+    /// </summary>
+    /// <remarks>
+    /// KNOWN DEVIATION: The current implementation uses case-insensitive collation
+    /// (Latin1_General_100_CI_AS) for identifier value matching. This test remains
+    /// skipped until identifier value matching is corrected.
+    /// </remarks>
+    [Fact(Skip = "Identifier value matching is currently case-insensitive - known deviation from FHIR spec")]
+    public async Task GivenIdentifierValueWithDifferentCase_WhenSearchingByOfType_ThenSearchIsCaseSensitive()
+    {
+        // Capability check
+        RequireSearchParameter("Patient", "identifier");
+
+        // Arrange
+        var tag = Guid.NewGuid().ToString();
+        var patientLowerValue = CreatePatient()
             .FromSeattle()
             .WithTypedIdentifier("abc123", IdentifierTypeSystem, "MR", "Medical Record")
             .WithTag(tag)
             .Build();
-
-        // Patient with uppercase identifier
-        var patientUpper = CreatePatient()
+        var patientUpperValue = CreatePatient()
             .FromSeattle()
             .WithTypedIdentifier("ABC123", IdentifierTypeSystem, "MR", "Medical Record")
             .WithTag(tag)
             .Build();
 
-        await Harness.CreateResourcesAsync([patientLower, patientUpper]);
+        await Harness.CreateResourcesAsync([patientLowerValue, patientUpperValue]);
 
-        // Act - Search for lowercase
-        var lowerResults = await Harness.SearchAsync("Patient",
+        // Act
+        var lowercaseResults = await Harness.SearchAsync("Patient",
             $"identifier:of-type={IdentifierTypeSystem}|MR|abc123&_tag={tag}");
 
-        // Assert - Only lowercase should match
-        lowerResults.Length.ShouldBe(1, "search should be case-sensitive");
-        lowerResults[0].Id.ShouldBe(patientLower.Id);
+        // Assert
+        lowercaseResults.Length.ShouldBe(1, "identifier value matching should be case-sensitive");
+        lowercaseResults[0].Id.ShouldBe(patientLowerValue.Id);
 
-        // Act - Search for uppercase
-        var upperResults = await Harness.SearchAsync("Patient",
+        // Act
+        var uppercaseResults = await Harness.SearchAsync("Patient",
             $"identifier:of-type={IdentifierTypeSystem}|MR|ABC123&_tag={tag}");
 
-        // Assert - Only uppercase should match
-        upperResults.Length.ShouldBe(1, "search should be case-sensitive");
-        upperResults[0].Id.ShouldBe(patientUpper.Id);
+        // Assert
+        uppercaseResults.Length.ShouldBe(1, "identifier value matching should be case-sensitive");
+        uppercaseResults[0].Id.ShouldBe(patientUpperValue.Id);
     }
 
     #endregion

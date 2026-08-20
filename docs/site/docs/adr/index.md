@@ -29,6 +29,7 @@ All architectural decisions support the **F5 Developer Experience**: a developer
 | [2509](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2509-inmemory-search.md) | InMemory Search Architecture | Accepted |
 | [2509](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2509-bundle-processing.md) | Bundle Processing with Channels | Accepted |
 | [2510](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/adr/adr-2510-capability-sourcenode-model.md) | CapabilityStatement Without Firely SDK | Accepted |
+| [2610](https://github.com/brendankowitz/ignixa-fhir/blob/main/docs/features/typed-models/adr-2610-typed-temporal-values.md) | Typed Temporal Values on IElement.Value | Accepted |
 
 ### Data & Storage
 

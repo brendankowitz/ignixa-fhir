@@ -14,7 +14,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), "Latin1_General_100_CS_AS");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -41,13 +41,11 @@ public class EmitTests
         var stringPredicate = new Predicate.Equal(
             new SqlColumnRef(stringTable.TableName, "Text"), new SqlParameterRef("Smith"), "Latin1_General_100_CS_AS");
         var tokenPredicate = new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"));
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(stringTable, 103, 202, stringPredicate),
                 new CteDefinition.ParamSource(tokenTable, 103, 44, tokenPredicate),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-            ],
-            new CteRef(2));
+            ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -81,7 +79,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Like(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Zorbaxil%"), LikeMatch.Contains, "Latin1_General_100_CI_AI");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -101,7 +99,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Like(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), LikeMatch.StartsWith, "Latin1_General_100_CI_AI");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -126,7 +124,7 @@ public class EmitTests
         var predicate = new Predicate.And(
             new Predicate.LessThanOrEqual(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)),
             new Predicate.GreaterThanOrEqual(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -144,7 +142,7 @@ public class EmitTests
         var predicate = new Predicate.Or(
             new Predicate.LessThan(new SqlColumnRef(table.TableName, "HighValue"), new SqlParameterRef(5m)),
             new Predicate.GreaterThan(new SqlColumnRef(table.TableName, "LowValue"), new SqlParameterRef(5m)));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 99, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -157,7 +155,7 @@ public class EmitTests
     public void GivenAResourceSourceCte_WhenEmitted_ThenSelectsFromDboResourceFilteredByType()
     {
         // Arrange
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -173,13 +171,11 @@ public class EmitTests
     public void GivenAnExceptCte_WhenEmitted_ThenUsesNotExistsAntiJoin()
     {
         // Arrange
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ResourceSource(103),
                 new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith"))),
                 new CteDefinition.Except(new CteRef(0), new CteRef(1)),
-            ],
-            new CteRef(2));
+            ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -196,10 +192,7 @@ public class EmitTests
     public void GivenAnOuterPredicate_WhenEmitted_ThenJoinsToDboResourceAndAppliesTheWhereClause()
     {
         // Arrange
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
-            new CteRef(0),
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))], new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"))));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -215,9 +208,7 @@ public class EmitTests
     public void GivenNoOuterPredicate_WhenEmitted_ThenNoJoinToDboResourceAppears()
     {
         // Arrange
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
-            new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -230,12 +221,10 @@ public class EmitTests
     public void GivenAForwardChainJoin_WhenEmitted_ThenTranslatesTheOutputSideThroughResource()
     {
         // Arrange -- cte0 is some pre-existing target-side match; ChainJoin wraps it as InnerMatch
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
                 new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
-            ],
-            new CteRef(1));
+            ], new MatchPageSpec(new CteRef(1)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -259,12 +248,10 @@ public class EmitTests
     public void GivenAReverseChainJoinWithPluralOutputTypes_WhenEmitted_ThenOrsTheOutputTypeFilter()
     {
         // Arrange -- cte0 is the referencing-side match; output can be more than one type
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(SqlCatalog.Default.Table("TokenSearchParam"), ResourceTypeId: 106, SearchParamId: 88, new Predicate.Equal(new SqlColumnRef("TokenSearchParam", "Code"), new SqlParameterRef("1234-5"))),
                 new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 77, InnerResourceTypeId: 106, OutputResourceTypeIds: [103, 108], ChainDirection.Reverse),
-            ],
-            new CteRef(1));
+            ], new MatchPageSpec(new CteRef(1)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -298,11 +285,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50), [stage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -370,11 +353,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 0);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50), [stage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -410,10 +389,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [stage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -473,10 +449,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 500);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [stage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -498,10 +471,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage0 = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
         var stage1 = new IncludeStage(IncludeDirection.Forward, 88, [105], [105], SeedStages: [0], SeedFromMatch: true, Iterate: true, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [stage0, stage1]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [stage0, stage1]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -527,7 +497,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(
             new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"), "Latin1_General_100_CS_AS");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -551,7 +521,7 @@ public class EmitTests
         var predicate = new Predicate.And(
             new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"), new SqlParameterRef((short)103)),
             new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceId"), new SqlParameterRef("123")));
-        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104, 106], 77, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -580,7 +550,7 @@ public class EmitTests
         var predicate = new Predicate.And(
             new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceTypeId"), new SqlParameterRef((short)103)),
             new Predicate.Equal(new SqlColumnRef(table.TableName, "ReferenceResourceId"), new SqlParameterRef("123")));
-        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104], 77, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.CompartmentSource([104], 77, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -597,7 +567,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -625,7 +595,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -649,7 +619,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -679,7 +649,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var page = new PageSpec([], BoundaryResourceTypeId: null, new SqlParameterRef(7000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Page: page));
 
         // Act / Assert
         var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
@@ -696,7 +666,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.ResourceType, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef((short)103)], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page));
 
         // Act / Assert
         var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
@@ -717,7 +687,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page));
 
         // Act / Assert
         var ex = Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
@@ -737,9 +707,9 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
 
-        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
         var typelessPage = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: typelessPage);
+        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: typelessPage));
 
         var pageOneOrderBy = LastOrderBy(SqlBuilder.Run(pageOnePlan).Sql);
         var pageTwoOrderBy = LastOrderBy(SqlBuilder.Run(pageTwoPlan).Sql);
@@ -759,9 +729,9 @@ public class EmitTests
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
 
-        var pageOnePlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Includes: [includeStage]);
+        var pageOnePlan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort), [includeStage]);
         var typelessPage = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var pageTwoPlan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: typelessPage, Includes: [includeStage]);
+        var pageTwoPlan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: typelessPage), [includeStage]);
 
         var pageOneOrderBy = LastOrderBy(SqlBuilder.Run(pageOnePlan).Sql);
         var pageTwoOrderBy = LastOrderBy(SqlBuilder.Run(pageTwoPlan).Sql);
@@ -781,7 +751,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -812,7 +782,7 @@ public class EmitTests
             [new SqlParameterRef("Zorro"), new SqlParameterRef("2000-01-01T00:00:00.0000000")],
             BoundaryResourceTypeId: null,
             new SqlParameterRef(9000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -839,7 +809,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending)], SortPhase.Valued);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -864,7 +834,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -891,7 +861,7 @@ public class EmitTests
                 new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Descending),
             ],
             SortPhase.Valued);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -922,7 +892,7 @@ public class EmitTests
             [new SqlParameterRef((short)103), new SqlParameterRef(5000L)],
             new SqlParameterRef((short)103),
             new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -941,7 +911,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var page = new PageSpec([], new SqlParameterRef((short)103), new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -965,12 +935,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Sort: sort,
-            Includes: [includeStage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, Sort: sort), [includeStage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1003,10 +968,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [includeStage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)), [includeStage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1033,7 +995,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.MissingPrimary);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
@@ -1058,7 +1020,7 @@ public class EmitTests
         // The boundary is typeless because the sort is custom; a typed one would be refused by
         // RejectUnsupportedCombinations first and this test would stop exercising the count guard at all.
         var page = new PageSpec([new SqlParameterRef("Zorro")], BoundaryResourceTypeId: null, new SqlParameterRef(9000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Sort: sort, Page: page));
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("1 value(s)");
@@ -1076,7 +1038,7 @@ public class EmitTests
         // RejectUnsupportedCombinations first and this test would stop exercising the count guard at all.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page));
 
         // Act & Assert
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan)).Message.ShouldContain("active key(s)");
@@ -1092,13 +1054,7 @@ public class EmitTests
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort,
-            Page: page,
-            Includes: [includeStage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page), [includeStage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1130,12 +1086,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort,
-            Includes: [includeStage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort), [includeStage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1170,13 +1121,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort,
-            Page: page,
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")), Sort: sort, Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1213,7 +1158,7 @@ public class EmitTests
             [new SqlParameterRef("2000-01-01T00:00:00.0000000")],
             BoundaryResourceTypeId: null,
             new SqlParameterRef(9000L));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort, Page: page);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1247,7 +1192,7 @@ public class EmitTests
                 new SortKey(303, SortKeyKind.Date, SortOrder.Descending),
             ],
             SortPhase.MissingPrimary);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Top: 10, Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -1270,7 +1215,7 @@ public class EmitTests
                 new SortKey(505, SortKeyKind.Date, SortOrder.Ascending),
             ],
             SortPhase.Valued);
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new CteRef(0), Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new MatchPageSpec(new CteRef(0), Sort: sort));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan))
             .Message.ShouldContain("at most 3 keys");
@@ -1281,7 +1226,7 @@ public class EmitTests
     {
         // Arrange -- the shape Task 3's LowerParameterPresence will produce: "any row exists for this parameter."
         var table = SqlCatalog.Default.Table("StringSearchParam");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1304,7 +1249,7 @@ public class EmitTests
         // Arrange -- Patient?name=Smith&_total=accurate, no resource-column predicate.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches()));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1327,9 +1272,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            OuterPredicate: outerPredicate, Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), OuterPredicate: outerPredicate, Shape: new ResultShape.Count.AllMatches()));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1349,9 +1292,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var includeStage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0),
-            Top: 10, Includes: [includeStage], Shape: new ResultShape.Count.AllMatches());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Shape: new ResultShape.Count.AllMatches()), [includeStage]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1372,7 +1313,7 @@ public class EmitTests
         // Arrange
         var table = SqlCatalog.Default.Table("TokenSearchParam");
         var predicate = new Predicate.IsNull(new SqlColumnRef(table.TableName, "SystemId"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1395,7 +1336,7 @@ public class EmitTests
         // Arrange
         var table = SqlCatalog.Default.Table("TokenSearchParam");
         var predicate = new Predicate.False();
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 44, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1421,7 +1362,7 @@ public class EmitTests
             new SqlColumnRef(table.TableName, "Uri"),
             new SqlParameterRef("http://example.org/fhir/Patient/123"),
             "Latin1_General_100_BIN2");
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1447,7 +1388,7 @@ public class EmitTests
         var predicate = new Predicate.PrefixOfParameter(
             new SqlColumnRef(table.TableName, "Uri"),
             new SqlParameterRef("http://example.org/fhir/Patient/123"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1471,7 +1412,7 @@ public class EmitTests
                 new Predicate.IsNull(overflowColumn),
                 new Predicate.Like(textColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
             new Predicate.Like(overflowColumn, new SqlParameterRef("mit"), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1503,7 +1444,7 @@ public class EmitTests
                 new Predicate.IsNull(overflowColumn),
                 new Predicate.Like(textColumn, new SqlParameterRef(specialValue), LikeMatch.Contains, "Latin1_General_100_CI_AI")),
             new Predicate.Like(overflowColumn, new SqlParameterRef(specialValue), LikeMatch.Contains, "Latin1_General_100_CI_AI"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1524,7 +1465,7 @@ public class EmitTests
             new Predicate.Or(
                 new Predicate.Equal(idColumn, new SqlParameterRef("a")),
                 new Predicate.Equal(idColumn, new SqlParameterRef("b"))));
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), OuterPredicate: outer);
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OuterPredicate: outer));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1540,7 +1481,7 @@ public class EmitTests
         // Arrange -- Patient?_not-referenced=Observation:subject. Target type 103, source type 96, ref
         // param 969. The anti-join correlates on reference-target identity: a ReferenceSearchParam row's
         // ReferenceResourceId/ReferenceResourceTypeId against the candidate Resource's own id and type.
-        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1569,7 +1510,7 @@ public class EmitTests
     {
         // Arrange -- Patient?_not-referenced=Observation:* -- source type 96, no reference path. The
         // anti-join narrows to references originating from Observation, but not to any single path.
-        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, null)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, null)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1589,7 +1530,7 @@ public class EmitTests
     public void GivenANotReferencedSourceFullWildcard_WhenEmitted_ThenTheAntiJoinFiltersOnlyOnTargetIdentity()
     {
         // Arrange -- Patient?_not-referenced=*:* -- a Patient referenced by nothing at all.
-        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, null, null)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, null, null)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1608,10 +1549,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanThatIncludesHistory_WhenEmitted_ThenNoIsHistoryFilterIsApplied()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: false));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)), Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: false));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1622,7 +1560,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithDefaultVisibility_WhenEmitted_ThenBothCurrentRowFiltersAreApplied()
     {
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1633,13 +1571,10 @@ public class EmitTests
     [Fact]
     public void GivenAForwardChainJoinWithFullyRelaxedVisibility_WhenEmitted_ThenNoRowFiltersAreInTheResourceJoin()
     {
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), ResourceTypeId: 105, SearchParamId: 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Acme"))),
                 new CteDefinition.ChainJoin(new CteRef(0), ReferenceSearchParamId: 55, InnerResourceTypeId: 105, OutputResourceTypeIds: [103], ChainDirection.Forward),
-            ],
-            new CteRef(1),
-            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
+            ], new MatchPageSpec(new CteRef(1)), Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1653,10 +1588,7 @@ public class EmitTests
     [Fact]
     public void GivenANotReferencedSourceWithFullyRelaxedVisibility_WhenEmitted_ThenNoRowFiltersAreInTheWhereClause()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.NotReferencedSource(103, 96, 969)],
-            new CteRef(0),
-            Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
+        var plan = new QueryPlan([new CteDefinition.NotReferencedSource(103, 96, 969)], new MatchPageSpec(new CteRef(0)), Visibility: new ResourceVisibility(IsHistory: null, IsDeleted: null));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1669,10 +1601,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithAProjection_WhenEmitted_ThenTheTerminalSelectReturnsTheNamedResourceColumns()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Projection: new ProjectionSpec(["ResourceId", "Version", "RawResource", "IsDeleted"]));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)), Projection: new ProjectionSpec(["ResourceId", "Version", "RawResource", "IsDeleted"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1684,7 +1613,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithNoProjection_WhenEmitted_ThenTheTerminalSelectReturnsIdentityColumnsOnly()
     {
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1694,11 +1623,7 @@ public class EmitTests
     [Fact]
     public void GivenACountOnlyPlanWithAProjection_WhenEmitted_ThenTheProjectionIsIgnored()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            Projection: new ProjectionSpec(["RawResource"]));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches()), Projection: new ProjectionSpec(["RawResource"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1709,11 +1634,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithProjectionAndOuterPredicate_WhenEmitted_ThenTheResourceJoinAppearsExactlyOnce()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")),
-            Projection: new ProjectionSpec(["RawResource", "IsDeleted"]));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123"))), Projection: new ProjectionSpec(["RawResource", "IsDeleted"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1725,8 +1646,8 @@ public class EmitTests
     {
         // An empty column list is treated as equivalent to null — projecting zero columns is the same
         // as asking for identity-only output, and avoids emitting a dangling comma in the SELECT list.
-        var planWithEmpty = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), Projection: new ProjectionSpec([]));
-        var planWithNull = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0));
+        var planWithEmpty = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)), Projection: new ProjectionSpec([]));
+        var planWithNull = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)));
 
         var sqlWithEmpty = SqlBuilder.Run(planWithEmpty).Sql;
         var sqlWithNull = SqlBuilder.Run(planWithNull).Sql;
@@ -1738,10 +1659,7 @@ public class EmitTests
     public void GivenAPlanWithASurrogateIdRange_WhenEmitted_ThenBothBoundsAreBoundParameters()
     {
         // Arrange -- plain no-includes shape; range alone, no outer predicate.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -1758,10 +1676,7 @@ public class EmitTests
     {
         // The doc says "inclusive … window". The presence of >= and <= (not bare > and <) is the
         // complete proof: the emitter can only produce one form, and it is the inclusive one.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1778,10 +1693,7 @@ public class EmitTests
         // legitimately mentions dbo.Resource), and there is no OuterPredicate, SearchParameterHash, or
         // Projection -- those are the other, legitimate reasons NeedsResourceJoin can add the join;
         // isolating the range from all of them is the whole point of this test.
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))],
-            new CteRef(0),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(SqlCatalog.Default.Table("StringSearchParam"), 103, 202, new Predicate.Equal(new SqlColumnRef("StringSearchParam", "Text"), new SqlParameterRef("Smith")))], new MatchPageSpec(new CteRef(0), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1794,11 +1706,7 @@ public class EmitTests
     public void GivenACountOnlyPlanWithASurrogateIdRange_WhenEmitted_ThenTheSurrogateRangeIsAppliedToTheCountQuery()
     {
         // CountOnly shape: the WHERE clause must filter the count to this partition.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches(), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -1816,12 +1724,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            OuterPredicate: outerPredicate,
-            Shape: new ResultShape.Count.AllMatches(),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), OuterPredicate: outerPredicate, Shape: new ResultShape.Count.AllMatches(), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -1841,13 +1744,7 @@ public class EmitTests
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
         var page = new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort,
-            Page: page,
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(1_000_000L), new SqlParameterRef(2_000_000L)));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, Page: page, SurrogateRange: new SurrogateIdRange(new SqlParameterRef(1_000_000L), new SqlParameterRef(2_000_000L))));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -1869,10 +1766,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithASearchParameterHash_WhenEmitted_ThenRowsCarryingThatHashAreExcluded()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -1886,10 +1780,7 @@ public class EmitTests
         // A resource with a NULL SearchParamHash has never been indexed and must qualify for reindex.
         // The IS NULL disjunct is not optional: dropping it would silently skip exactly the resources
         // most in need of indexing.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1899,10 +1790,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithASearchParameterHashAlone_WhenEmitted_ThenTheResourceJoinAppearsExactlyOnce()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1912,11 +1800,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithBothAProjectionAndAHashFilter_WhenEmitted_ThenTheResourceJoinAppearsOnce()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Projection: new ProjectionSpec(["RawResource"]),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SearchParameterHash: new SqlParameterRef("abc123")), Projection: new ProjectionSpec(["RawResource"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1928,11 +1812,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithOuterPredicateAndHashFilter_WhenEmitted_ThenTheResourceJoinAppearsOnceAndBothFiltersArePresent()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1944,12 +1824,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithProjectionOuterPredicateAndHashFilter_WhenEmitted_ThenTheResourceJoinAppearsOnceAndAllFiltersArePresent()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
-            Projection: new ProjectionSpec(["RawResource"]),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")), SearchParameterHash: new SqlParameterRef("abc123")), Projection: new ProjectionSpec(["RawResource"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1964,11 +1839,7 @@ public class EmitTests
     {
         // A reindex driver counts outstanding work before doing it; a count that ignores the hash
         // filter would report the wrong total.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches(), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -1981,11 +1852,7 @@ public class EmitTests
     [Fact]
     public void GivenACountOnlyPlanWithHashFilterAlone_WhenEmitted_ThenTheResourceJoinAppearsExactlyOnce()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches(), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -1998,12 +1865,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 10,
-            Sort: sort,
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 10, Sort: sort, SearchParameterHash: new SqlParameterRef("abc123")));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -2015,11 +1877,7 @@ public class EmitTests
     [Fact]
     public void GivenAPlanWithSearchParameterHashAndSurrogateRange_WhenEmitted_ThenBothFiltersAppearInTheWhere()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)), SearchParameterHash: new SqlParameterRef("abc123")));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -2046,12 +1904,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -2083,12 +1936,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2114,13 +1962,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")), SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2149,12 +1991,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99"))), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2180,12 +2017,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2212,11 +2044,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2244,12 +2072,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2274,12 +2097,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2304,12 +2122,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2334,12 +2147,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2361,13 +2169,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)), SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2387,11 +2189,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var stage = new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50), [stage]);
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -2451,12 +2249,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2477,12 +2270,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2506,12 +2294,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2527,9 +2310,7 @@ public class EmitTests
     public void GivenANoIncludesPlanWithHashFilterAndNoOtherJoinTrigger_WhenEmitted_ThenNoResourceJoinExistsWithoutHash()
     {
         // Regression: prove no-hash plan still has no resource join.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2542,10 +2323,7 @@ public class EmitTests
     public void GivenAPlanWithSearchParameterHashOnly_WhenEmitted_ThenHashValueIsNeverInlinedInSql()
     {
         // Safety: the hash value must only appear as a parameter, never as a SQL literal.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            SearchParameterHash: new SqlParameterRef("MyHashValue"));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), SearchParameterHash: new SqlParameterRef("MyHashValue")));
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -2569,11 +2347,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Includes: [stage],
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2599,14 +2373,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")),
-            Includes: [stage],
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)),
-            SearchParameterHash: new SqlParameterRef("abc123"));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("id99")), SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)), SearchParameterHash: new SqlParameterRef("abc123")), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2635,11 +2402,7 @@ public class EmitTests
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var ctePredicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
         var outerPredicate = new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("abc"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, ctePredicate)],
-            new CteRef(0),
-            OuterPredicate: outerPredicate,
-            SearchParameterHash: new SqlParameterRef("hash123"));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, ctePredicate)], new MatchPageSpec(new CteRef(0), OuterPredicate: outerPredicate, SearchParameterHash: new SqlParameterRef("hash123")));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -2659,10 +2422,7 @@ public class EmitTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            OffsetPage: new OffsetSpec(20, 10));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -2687,11 +2447,7 @@ public class EmitTests
         // Arrange -- no Top, so cteMatchPage would normally omit its own ORDER BY (SQL Server Msg 1033
         // forbids one without TOP); OffsetPage must gate that ORDER BY just as Top does, since OFFSET/FETCH
         // is equally illegal without one.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            OffsetPage: new OffsetSpec(20, 10));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10)), [ForwardIncludeStage(103, 111, 10)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2711,11 +2467,7 @@ public class EmitTests
     {
         // CountOnly returns a single scalar row; an OFFSET/FETCH clause has nothing to page there and
         // CountOnly already deliberately ignores Sort/Page for the same reason (see EmitCountOnlyShape).
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches(),
-            OffsetPage: new OffsetSpec(20, 10));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches(), OffsetPage: new OffsetSpec(20, 10)));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2731,10 +2483,7 @@ public class EmitTests
         // agree, or a plan trace built from it points a caller at the wrong bound value.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            OffsetPage: new OffsetSpec(20, 10));
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -2746,16 +2495,12 @@ public class EmitTests
     }
 
     [Fact]
-    public void GivenAnIncludesPlanWithOffsetPage_WhenExplained_ThenTheOffsetPageRowStillMatchesEmitsOrdinals()
+    public void GivenAnIncludesPlanWithOffsetPage_WhenExplained_ThenTheMatchPageRowNamesTheSameOrdinalsEmitBinds()
     {
         // Arrange -- same fixture as GivenAnIncludesPlanWithOffsetPage_WhenEmitted_ThenMatchPageCteEmitsOrderByAndOffsetFetch.
-        // WriteMatchPageCte binds OFFSET/FETCH inside cteMatchPage, not the top-level SELECT, but at the same
-        // ordinal position -- Explain()'s row must not drift just because Includes moved the clause.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            OffsetPage: new OffsetSpec(20, 10));
+        // EmitMatchPage binds OFFSET/FETCH inside cteMatchPage, not the top-level SELECT, but at the same
+        // ordinal position -- Explain()'s MatchPage row must not drift just because Includes moved the clause.
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(20, 10)), [ForwardIncludeStage(103, 111, 10)]);
 
         // Act
         var emitted = SqlBuilder.Run(plan);
@@ -2763,7 +2508,7 @@ public class EmitTests
 
         // Assert
         emitted.Sql.ShouldContain("OFFSET @p1 ROWS FETCH NEXT @p2 ROWS ONLY");
-        explained.ShouldContain("offsetPage = OffsetSpec(offset=@p1, fetch=@p2)");
+        explained.ShouldContain("matchPage = MatchPageCte(top=none, sortJoins=false, resourceJoin=false) OffsetSpec(offset=@p1, fetch=@p2)");
     }
 
     // ─── End OffsetPage tests ───────────────────────────────────────────────────────────────────────
@@ -2776,11 +2521,7 @@ public class EmitTests
         // Arrange -- Valued phase: Keys[0]'s join is present and the count must scope to it, not the
         // whole match set, or a two-phase executor would double count rows present in both phases.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.CurrentSortPhase(),
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase()));
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2805,11 +2546,7 @@ public class EmitTests
         // MissingPrimary continue) and instead the count must apply the NOT EXISTS filter, the same
         // predicate the match shapes use for this phase.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.MissingPrimary);
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.CurrentSortPhase(),
-            Sort: sort);
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: sort, Shape: new ResultShape.Count.CurrentSortPhase()));
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2825,10 +2562,7 @@ public class EmitTests
     [Fact]
     public void GivenACountPlanWithNoSort_WhenEmitted_ThenTheCountCoversTheWholeMatchSet()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches()));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2849,12 +2583,9 @@ public class EmitTests
         // Sort the plan already carried. Scoping off the Sort's presence instead would make this rewrite emit an
         // INNER JOIN to the sort table, silently excluding every resource missing the sort key from the total.
         var sort = new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued);
-        var sorted = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Sort: sort);
+        var sorted = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: sort));
 
-        var sql = SqlBuilder.Run(sorted with { Shape = new ResultShape.Count.AllMatches() }).Sql;
+        var sql = SqlBuilder.Run(sorted with { MatchSpec = sorted.MatchSpec with { Shape = new ResultShape.Count.AllMatches() } }).Sql;
 
         sql.ShouldNotContain("StringSearchParam sk0");
         sql.ShouldEndWith("SELECT COUNT_BIG(DISTINCT m.Sid1) FROM cte0 m");
@@ -2863,10 +2594,7 @@ public class EmitTests
     [Fact]
     public void GivenACountRestrictedToASortPhaseWithNoSort_WhenEmitted_ThenThrowsNotSupported()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.Count.CurrentSortPhase());
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.CurrentSortPhase()));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -2890,12 +2618,7 @@ public class EmitTests
             SeedFromMatch: true,
             Iterate: false,
             Limit: 1000);
-        var plan = new QueryPlan(
-            [new CteDefinition.ParamSource(table, 103, 202, predicate)],
-            new CteRef(0),
-            Top: 50,
-            Includes: [stage],
-            SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L)));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Top: 50, SurrogateRange: new SurrogateIdRange(new SqlParameterRef(5000L), new SqlParameterRef(6000L))), [stage]);
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -2938,10 +2661,7 @@ public class EmitTests
         // includes. A caller reading the documented (T1, Sid1, IsMatch, IsPartial) contract as a bit then threw
         // InvalidCastException on include rows only -- the kind of defect that appears at execution against a
         // real server and is invisible to a grammar check, since the SQL parses either way.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)), [ForwardIncludeStage(103, 111, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2953,11 +2673,7 @@ public class EmitTests
     public void GivenAnIncludesOnlyPlan_WhenEmitted_ThenMatchRowsAreExcludedFromTheResult()
     {
         // Arrange -- the $includes second-page scenario: caller already has the match rows.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         // Act
         var sql = SqlBuilder.Run(plan).Sql;
@@ -2973,11 +2689,7 @@ public class EmitTests
     {
         // The match CTE must survive — the include stages' EXISTS/NOT EXISTS correlate against it.
         // Dropping it would either break the SQL or silently change which rows the include stages produce.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -2992,11 +2704,7 @@ public class EmitTests
         // A caller reads columns by ordinal; dropping the match arm must not collapse the shape to 3
         // columns or change the IsMatch ordinal position.  Every row in an includes-only result has
         // IsMatch = 0 because there are no match rows.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3012,11 +2720,7 @@ public class EmitTests
         // In a UNION, column names come from the first SELECT.  The first include arm must name
         // IsMatch explicitly; subsequent arms must not double-alias it (which SQL Server would accept
         // but which would make the assertion below brittle rather than structural).
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3033,11 +2737,7 @@ public class EmitTests
         // index) ensures that any future arm inserted before the loop cannot silently break the ordinal
         // contract that callers rely on. This test verifies the alias is on the structurally-first arm,
         // not merely present somewhere in the SQL.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10), ForwardIncludeStage(103, 112, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3064,10 +2764,7 @@ public class EmitTests
     {
         // IncludesOnly with no include stages can only ever return empty, which is a caller error
         // not a legitimate empty result.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Shape: new ResultShape.IncludesPage());
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3081,12 +2778,7 @@ public class EmitTests
         // FHIR Server measurement caught). The predicate must therefore appear against the match source (m.*),
         // while the include rows must still page by (T1, Sid1) -- the sort key must never reach an ORDER BY or
         // a seek.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.MissingPrimary),
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.MissingPrimary), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3109,12 +2801,7 @@ public class EmitTests
         // (it is the filter), but the SortValueN columns it exists to project on an ordinary page must not:
         // an includes-only page never orders by them, so projecting them would be dead weight that implies an
         // ordering role the page does not have.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3133,13 +2820,7 @@ public class EmitTests
         // the includes-only page does not use -- its match window is the surrogate range and its include rows
         // page from a cursor. Letting it through would let the sort key decide which resources are included, so
         // the emitter refuses it.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued),
-            Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)),
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(203, SortKeyKind.Date, SortOrder.Ascending)], SortPhase.Valued), Page: new PageSpec([new SqlParameterRef("2000-01-01")], BoundaryResourceTypeId: null, BoundarySurrogateId: new SqlParameterRef(4200L)), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3149,12 +2830,7 @@ public class EmitTests
     {
         // Top bounds the match set that seeds the include stages, so it drops include rows without marking
         // the result partial. An includes-only page bounds its match set with SurrogateRange instead.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Top: 25,
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Top: 25, Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3162,12 +2838,7 @@ public class EmitTests
     [Fact]
     public void GivenAnIncludesOnlyPlanWithAnOffsetPage_WhenEmitted_ThenThrowsNotSupportedException()
     {
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            OffsetPage: new OffsetSpec(100, 50),
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(), OffsetPage: new OffsetSpec(100, 50)), [ForwardIncludeStage(103, 111, 10)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3181,10 +2852,7 @@ public class EmitTests
         // OFFSET/FETCH rejects a negative skip and a non-positive fetch at runtime. QueryPlan is a public
         // construction surface, so the emitter reports it rather than relying on every caller routing
         // through Lower.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            OffsetPage: new OffsetSpec(offset, limit));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), OffsetPage: new OffsetSpec(offset, limit)));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3194,11 +2862,7 @@ public class EmitTests
     {
         // SortSpec is a positional record, so a keyless one is constructible. It emits no sort join and no
         // MissingPrimary filter, which would silently produce the whole-set count the restriction excludes.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Sort: new SortSpec([], SortPhase.Valued),
-            Shape: new ResultShape.Count.CurrentSortPhase());
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([], SortPhase.Valued), Shape: new ResultShape.Count.CurrentSortPhase()));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3209,10 +2873,7 @@ public class EmitTests
         // SortPhase is an enum, so a cast or a deserialised int can carry a value no emitter branch handles.
         // Every such value falls through to the Valued segment, handing a caller driving the two-phase loop
         // rows it has already paged.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], (SortPhase)7));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], (SortPhase)7)));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3223,15 +2884,10 @@ public class EmitTests
         // A caller reuses one options record and flips the shape to get Bundle.total. QueryPlan documents that
         // a count ignores row caps, offsets and keyset boundaries, so rejecting it here would break a supported
         // pattern over a value the emitted SQL never reads.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued),
-            Page: new PageSpec(
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued), Page: new PageSpec(
                 [new SqlParameterRef(1L), new SqlParameterRef(2L)],
                 new SqlParameterRef((short)103),
-                new SqlParameterRef(9000L)),
-            Shape: new ResultShape.Count.AllMatches());
+                new SqlParameterRef(9000L)), Shape: new ResultShape.Count.AllMatches()));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3245,14 +2901,10 @@ public class EmitTests
     {
         // One key, Valued phase: the boundary must carry exactly one value. Too few and the seek compares
         // fewer columns than the ORDER BY; too many and it reads values for keys that are not in this phase.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued),
-            Page: new PageSpec(
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([new SortKey(null, SortKeyKind.LastUpdated, SortOrder.Ascending)], SortPhase.Valued), Page: new PageSpec(
                 Enumerable.Range(0, boundaryValues).Select(i => new SqlParameterRef((long)i)).ToList(),
                 new SqlParameterRef((short)103),
-                new SqlParameterRef(9000L)));
+                new SqlParameterRef(9000L))));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3264,10 +2916,7 @@ public class EmitTests
     {
         // Every path that emits an include stage writes TOP (Limit + 1): a negative limit is a SQL Server
         // runtime error, and int.MaxValue overflows the over-fetched row to a negative row count.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, limit)]);
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0)), [ForwardIncludeStage(103, 111, limit)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3277,12 +2926,7 @@ public class EmitTests
     {
         // Projection must still work in IncludesOnly mode. Include rows are fetched from dbo.Resource;
         // the projection columns are added to the include arm, not the (absent) match arm.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Projection: new ProjectionSpec(["RawResource", "IsDeleted"]),
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10)], projection: new ProjectionSpec(["RawResource", "IsDeleted"]));
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3308,11 +2952,7 @@ public class EmitTests
             Iterate: false,
             Limit: 10,
             Constraints: [constraint]);
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [stage],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [stage]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3329,11 +2969,10 @@ public class EmitTests
                SeedStages: [], SeedFromMatch: true, Iterate: false, Limit: limit);
 
     private static QueryPlan TwoStageIncludesOnlyPageWithBoundary()
-        => new(
+        => IncludePlanFactory.Create(
             [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 10)],
-            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+            new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000))),
+            [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 10)]);
 
     [Fact]
     public void GivenAnIncludesOnlyPageWithABoundaryAndTwoStages_WhenEmitted_ThenTheBudgetIsAppliedOnceGloballyOrderedByT1Sid1()
@@ -3380,11 +3019,7 @@ public class EmitTests
         // set, so it filters the union derived table on its own (T1, Sid1) -- the exact columns the outer
         // ORDER BY sees. Keeping it out of the stage body is what lets a downstream :iterate stage seed from
         // the complete body. The two cursor values still bind as parameters rather than inlining.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10)],
-            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000))), [ForwardIncludeStage(103, 111, 10)]);
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -3400,11 +3035,7 @@ public class EmitTests
         // A reverse stage projects rsp.* where a forward one projects r.*, but the union derived table
         // exposes both as (T1, Sid1), so the direction no longer changes the predicate at all -- which is
         // the point: one predicate over the union cannot key on the wrong resource for one of the stages.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ReverseIncludeStage(103, 112, 10)],
-            Shape: new ResultShape.IncludesPage(new IncludeBoundary(112, 7000)));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(new IncludeBoundary(112, 7000))), [ReverseIncludeStage(103, 112, 10)]);
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -3444,11 +3075,7 @@ public class EmitTests
         var stage1 = new IncludeStage(
             IncludeDirection.Forward, ReferenceSearchParamId: 211, SeedTypeIds: [(short)111], OutputTypeIds: [(short)111],
             SeedStages: [0], SeedFromMatch: false, Iterate: true, Limit: 10);
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10), stage1],
-            Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000)));
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage(new IncludeBoundary(111, 5000))), [ForwardIncludeStage(103, 111, 10), stage1]);
 
         var emitted = SqlBuilder.Run(plan);
 
@@ -3468,10 +3095,7 @@ public class EmitTests
         // QueryPlan is a public construction surface, so a rewritten plan can reach the emitter with a phased
         // sort and no keys. EmitMissingPrimaryFilter and EmitSeekPredicate both index Keys[0]; refuse it as an
         // unsupported plan rather than letting an IndexOutOfRangeException escape TryCompile.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Sort: new SortSpec([], SortPhase.MissingPrimary));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Sort: new SortSpec([], SortPhase.MissingPrimary)));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3479,7 +3103,7 @@ public class EmitTests
     [Fact]
     public void GivenANegativeTop_WhenEmitted_ThenItIsRefusedRatherThanDeferredToSqlServer()
     {
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new CteRef(0), Top: -1);
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Top: -1));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3502,7 +3126,7 @@ public class EmitTests
         // statement does not parse. Lower refuses the chain shape at LowerChain, but QueryPlan is a public
         // construction surface and `plan with { Query = … }` is a documented rewrite, so the emitter mirrors
         // it -- otherwise the failure reaches SQL Server as a syntax error with no diagnosis.
-        var plan = new QueryPlan([new CteDefinition.ResourceSource(103), node], new CteRef(1));
+        var plan = new QueryPlan([new CteDefinition.ResourceSource(103), node], new MatchPageSpec(new CteRef(1)));
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan), $"{scenario} emitted SQL instead of refusing")
             .Message.ShouldContain("names no resource type");
@@ -3515,11 +3139,7 @@ public class EmitTests
         // whole ordered stream, not of any single stage. Differing per-stage limits have no single coherent
         // meaning: the emitter would silently page on includes[0].Limit and return a wrong-sized page with
         // no error. Refuse it rather than pick a budget arbitrarily.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 20)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 112, 20)]);
 
         Should.Throw<NotSupportedException>(() => SqlBuilder.Run(plan));
     }
@@ -3535,11 +3155,7 @@ public class EmitTests
         // IsPartial = 1. Joining the arms with plain UNION dedups them before the window function runs, so
         // the two stages contribute exactly one row for that resource and a full page of distinct rows
         // correctly reports IsPartial = 0.
-        var plan = new QueryPlan(
-            [new CteDefinition.ResourceSource(103)],
-            new CteRef(0),
-            Includes: [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 111, 10)],
-            Shape: new ResultShape.IncludesPage());
+        var plan = IncludePlanFactory.Create([new CteDefinition.ResourceSource(103)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.IncludesPage()), [ForwardIncludeStage(103, 111, 10), ReverseIncludeStage(103, 111, 10)]);
 
         var sql = SqlBuilder.Run(plan).Sql;
 
@@ -3559,4 +3175,3 @@ public class EmitTests
         derivedTableUnion.All.ShouldBeFalse();
     }
 }
-

@@ -79,8 +79,8 @@ public class FhirPathBenchmarks
         var observationJson = ReadEmbeddedResource(assembly, "Ignixa.Benchmarks.TestData.observation-medium.json");
 
         // Ignixa setup
-        _ignixaPatient = JsonSerializer.Deserialize<ResourceJsonNode>(patientJson)!;
-        _ignixaObservation = JsonSerializer.Deserialize<ResourceJsonNode>(observationJson)!;
+        _ignixaPatient = ResourceJsonNode.Parse(patientJson);
+        _ignixaObservation = ResourceJsonNode.Parse(observationJson);
         
         _ignixaSchemaProvider = new R4CoreSchemaProvider();
 

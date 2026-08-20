@@ -30,10 +30,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("url", "\"http://example.org/ext\"");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -48,10 +49,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("url", "\"http://example.org/ext\"");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -68,10 +70,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("active", "true");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -86,10 +89,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("valueInteger", "42");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -114,10 +118,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("identifier.system", "\"http://hospital.example.org\"");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -138,10 +143,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("identifier.system", "\"http://hospital.example.org\"");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.False(result.IsValid);
@@ -161,10 +167,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("url", "\"http://example.org/ext\"");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);
@@ -199,10 +206,11 @@ public class FixedValueCheckTests
         var sourceNode = JsonNodeSourceNode.Create(json);
         var check = new FixedValueCheck("name.use", "\"official\"");
         var settings = new ValidationSettings();
-        var state = new ValidationState();
+        var element = sourceNode.ToElement(TestSchemaProvider.GetR4Schema());
+        var state = ValidationState.ForRoot(element);
 
         // Act
-        var result = check.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, state);
+        var result = check.Validate(element, settings, state);
 
         // Assert
         Assert.True(result.IsValid);

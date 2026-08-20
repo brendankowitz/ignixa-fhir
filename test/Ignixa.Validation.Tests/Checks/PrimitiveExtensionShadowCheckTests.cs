@@ -43,7 +43,7 @@ public class PrimitiveExtensionShadowCheckTests
             ?? throw new InvalidOperationException($"Schema not found for {resourceType}");
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, new ValidationState());
+        return schema.Validate(sourceNode.ToElement(TestSchemaProvider.GetR4Schema()), settings, ValidationState.ForRoot(sourceNode.ToElement(TestSchemaProvider.GetR4Schema())));
     }
 
     private void AssertValid(string resourceJson)

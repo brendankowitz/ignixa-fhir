@@ -94,7 +94,7 @@ public class UsCorePatientScenarioTests
         schema.ShouldNotBeNull();
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var result = schema!.Validate(element, settings, new ValidationState());
+        var result = schema!.Validate(element, settings, ValidationState.ForRoot(element));
 
         DumpIssues(result, "valid Patient @ Spec");
         result.Issues.Where(i => i.Severity == IssueSeverity.Error).ShouldBeEmpty(
@@ -113,7 +113,7 @@ public class UsCorePatientScenarioTests
         schema.ShouldNotBeNull();
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var result = schema!.Validate(element, settings, new ValidationState());
+        var result = schema!.Validate(element, settings, ValidationState.ForRoot(element));
 
         DumpIssues(result, "missing-required Patient @ Spec");
 

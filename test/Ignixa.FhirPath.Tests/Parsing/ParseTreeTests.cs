@@ -255,13 +255,16 @@ public class ParseTreeTests
     }
 
     [Fact]
-    public void GivenMixedExpression_WhenBuildingWithOptimization_ThenPartialFold()
+    public void GivenMixedExpression_WhenBuildingWithOptimization_ThenOnlyTheConstantSideFolds()
     {
         var ast = _optimizingParser.Parse("name and (1 + 1 = 2)");
 
-        // With enhanced optimization: "(1 + 1 = 2)" becomes "true", then "name and true" becomes "name"
-        Assert.IsType<PropertyAccessExpression>(ast);
-        Assert.Equal("name", ((PropertyAccessExpression)ast).PropertyName);
+        // "(1 + 1 = 2)" folds to "true", but "name and true" does not fold to "name": "and" yields a
+        // boolean or empty while "name" yields a collection of HumanName, so the rewrite would change
+        // what the caller observes.
+        var binary = Assert.IsType<BinaryExpression>(ast);
+        Assert.Equal("and", binary.Operator);
+        Assert.Equal(true, Assert.IsType<ConstantExpression>(binary.Right).Value);
     }
 
     [Fact]

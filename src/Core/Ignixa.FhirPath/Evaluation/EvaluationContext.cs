@@ -23,6 +23,20 @@ namespace Ignixa.FhirPath.Evaluation;
 /// <see cref="WithFocus"/>, <see cref="PushThis"/>, <see cref="WithEnvironmentVariable"/>.
 /// </para>
 /// <para>
+/// <b>Two deliberate exceptions:</b> <see cref="DefinedVariables"/> and
+/// <see cref="ReferenceIndexCache"/> are mutable holders, and a plain <c>with</c> copy carries the
+/// same reference forward rather than cloning it - so every derived context still mutates and sees
+/// the one shared <see cref="DefinedVariables"/> dictionary and the one shared
+/// <see cref="ReferenceIndexCache"/> instance. This is intentional, not an oversight: it is what
+/// lets <c>defineVariable()</c> stay visible across <c>with</c>-derived copies within the same
+/// expression, and what lets <see cref="ReferenceIndexCache"/> build its index once per root instead
+/// of once per copy. <see cref="ForkVariableScope"/> is the one place that deliberately breaks the
+/// sharing - it clones <see cref="DefinedVariables"/> so union branches cannot leak variables to
+/// each other. Do not "fix" the sharing elsewhere by cloning these two properties on every
+/// <c>with</c>; that would silently defeat the reference index cache and break variable visibility
+/// across nested evaluation.
+/// </para>
+/// <para>
 /// <b>Runtime vs Static Analysis Context:</b>
 /// </para>
 /// <para>
@@ -39,9 +53,9 @@ namespace Ignixa.FhirPath.Evaluation;
 /// </para>
 /// <list type="bullet">
 ///   <item><description><c>%resource</c>: Set via <see cref="Resource"/> property</description></item>
-///   <item><description><c>%rootResource</c>: Set via <see cref="RootResource"/> property</description></item>
-///   <item><description><c>%context</c>: Typically same as %resource at root</description></item>
-///   <item><description><c>%ucum</c>, <c>%sct</c>, <c>%loinc</c>: Terminology URIs via <see cref="WithEnvironmentVariable"/></description></item>
+///   <item><description><c>%rootResource</c>: Set via <see cref="RootResource"/> property, falling back to <see cref="Resource"/></description></item>
+///   <item><description><c>%context</c>: Set via <see cref="ContextNode"/>, which <see cref="FhirPathEvaluator.Evaluate"/> fills in from the node it is handed</description></item>
+///   <item><description><c>%ucum</c>, <c>%sct</c>, <c>%loinc</c>, <c>%vs-…</c>, <c>%ext-…</c>: fixed URIs, overridable via <see cref="WithEnvironmentVariable"/></description></item>
 /// </list>
 /// <para>
 /// <b>Context Propagation in Nested Expressions:</b>
@@ -67,7 +81,7 @@ public record EvaluationContext
         ImmutableDictionary<string, ImmutableList<IElement>> environment,
         IElement? resource,
         IElement? rootResource,
-        Dictionary<string, ImmutableList<IElement>>? definedVariables = null)
+        VariableScope? variables = null)
     {
         Focus = focus;
         ThisStack = thisStack;
@@ -75,7 +89,7 @@ public record EvaluationContext
         Environment = environment;
         Resource = resource;
         RootResource = rootResource;
-        DefinedVariables = definedVariables ?? new Dictionary<string, ImmutableList<IElement>>(StringComparer.OrdinalIgnoreCase);
+        Variables = variables ?? new VariableScope();
     }
 
     /// <summary>
@@ -85,7 +99,11 @@ public record EvaluationContext
         ImmutableList<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
         ImmutableStack<IElement>.Empty,
-        ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.OrdinalIgnoreCase),
+        // Ordinal for the same reason as VariableScope: host-supplied names are read back through the same
+        // case-sensitive %name syntax, a few lines below the ordinal switch that resolves %resource and
+        // friends. A lenient comparer here would make %v and %V collide for hosts only, which is a
+        // difference no caller asked for rather than a convenience.
+        ImmutableDictionary<string, ImmutableList<IElement>>.Empty.WithComparers(StringComparer.Ordinal),
         null,
         null,
         null)
@@ -127,11 +145,40 @@ public record EvaluationContext
     public IElement? RootResource { get; init; }
 
     /// <summary>
-    /// Mutable dictionary for user-defined variables created by defineVariable().
-    /// Variables flow forward in chains but are isolated across union branches.
-    /// Use <see cref="ForkForBranch"/> when evaluating parallel branches like union.
+    /// The current <c>defineVariable</c> frame. Definitions flow forward along an invocation chain and are
+    /// contained by the scope they were made in - see <see cref="VariableScope"/>.
     /// </summary>
-    public Dictionary<string, ImmutableList<IElement>> DefinedVariables { get; init; }
+    public VariableScope Variables { get; init; }
+
+    /// <summary>
+    /// The original node the expression is being evaluated against, exposed to expressions as <c>%context</c>.
+    /// </summary>
+    /// <remarks>
+    /// Set by <see cref="FhirPathEvaluator.Evaluate"/> from the node it is handed, which is what the FHIR
+    /// profile of FHIRPath defines <c>%context</c> to be. It is not always the resource: a constraint declared
+    /// on <c>Patient.contact</c> is evaluated with a <c>contact</c> node as its context and the Patient as
+    /// <see cref="Resource"/>.
+    /// </remarks>
+    public IElement? ContextNode { get; init; }
+
+    /// <summary>
+    /// Optional model the type operators resolve type identifiers against.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// FHIRPath's type operators are the one place the language requires an evaluator to know the model:
+    /// <c>as</c> must signal an error when its identifier does not name a type, which cannot be decided
+    /// from the instance alone - <see cref="TypeMatcher"/> otherwise compares type names as strings and
+    /// has nothing to check an unknown name against.
+    /// </para>
+    /// <para>
+    /// Optional on purpose. Callers that evaluate against elements from a known model (validation, the
+    /// conformance suites) supply it and get the stricter behaviour; callers that have no model - ad-hoc
+    /// expressions over hand-built elements - leave it null and keep the permissive behaviour, because
+    /// "no model" is not evidence that a type identifier is wrong.
+    /// </para>
+    /// </remarks>
+    public ISchema? Schema { get; init; }
 
     /// <summary>
     /// Optional callback for trace() function output.
@@ -158,21 +205,28 @@ public record EvaluationContext
     public Func<InstanceCreationRequest, IElement?>? InstanceCreator { get; init; }
 
     /// <summary>
-    /// Creates a forked context for evaluating a branch expression (e.g., union operands).
-    /// The forked context has its own copy of DefinedVariables so that variables defined
-    /// in one branch don't leak to sibling branches.
+    /// Cache holder for the in-instance <see cref="ReferenceIndex"/> that <c>resolve()</c> uses to
+    /// look up contained resources and, for a Bundle/Parameters root, sibling entries, before
+    /// falling back to <see cref="FhirEvaluationContext.ElementResolver"/>. A single holder
+    /// instance is shared by every <c>with</c>-derived copy of this context, so the index is built
+    /// at most once per root even though the context itself is copied on every
+    /// <see cref="PushThis"/> / <see cref="WithFocus"/> / etc. Internal: an implementation detail
+    /// of <c>resolve()</c>, not part of the public evaluation API.
+    /// </summary>
+    internal ReferenceIndexCache ReferenceIndexCache { get; init; } = new();
+
+    /// <summary>
+    /// Creates a context that evaluates in a nested <c>defineVariable</c> scope: it can read the variables
+    /// defined so far, and anything it defines is invisible once the nested expression is done.
     /// </summary>
     /// <remarks>
-    /// Per FHIRPath spec, defineVariable affects "subsequent expressions on the output collection".
-    /// Union branches are NOT subsequent - they're parallel evaluations from the same input.
+    /// Used for the operands of <c>|</c>, which are parallel evaluations of the same input rather than the
+    /// "subsequent expressions on the output collection" that <c>defineVariable</c> is defined to affect.
+    /// <see cref="PushThis"/> forks as well, because every per-item argument scope needs the same containment.
     /// </remarks>
-    public EvaluationContext ForkForBranch()
+    public EvaluationContext ForkVariableScope()
     {
-        return this with
-        {
-            DefinedVariables = new Dictionary<string, ImmutableList<IElement>>(
-                DefinedVariables, StringComparer.OrdinalIgnoreCase)
-        };
+        return this with { Variables = Variables.Fork() };
     }
 
     /// <summary>
@@ -192,12 +246,18 @@ public record EvaluationContext
     }
 
     /// <summary>
-    /// Pushes a $this binding onto the stack.
+    /// Pushes a $this binding onto the stack and enters a nested <c>defineVariable</c> scope.
     /// Used by where(), select(), exists() etc. for iteration context.
     /// </summary>
+    /// <remarks>
+    /// Binding <c>$this</c> is what "entering a per-item expression scope" looks like in this engine - every
+    /// caller of this method is evaluating a sub-expression once per focus item - so the variable scope is
+    /// forked here rather than at each call site. Doing it centrally is what stops a function added later
+    /// from leaking its argument's variables into the enclosing expression by omission.
+    /// </remarks>
     public EvaluationContext PushThis(IElement element)
     {
-        return this with { ThisStack = ThisStack.Push(element) };
+        return this with { ThisStack = ThisStack.Push(element), Variables = Variables.Fork() };
     }
 
     /// <summary>
@@ -279,6 +339,16 @@ public record EvaluationContext
     }
 
     /// <summary>
+    /// Creates a new context that resolves type identifiers against the specified model.
+    /// </summary>
+    public EvaluationContext WithSchema(ISchema schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+
+        return this with { Schema = schema };
+    }
+
+    /// <summary>
     /// Creates a new context with the specified resource.
     /// </summary>
     public EvaluationContext WithResource(IElement resource)
@@ -292,6 +362,16 @@ public record EvaluationContext
     public EvaluationContext WithRootResource(IElement rootResource)
     {
         return this with { RootResource = rootResource };
+    }
+
+    /// <summary>
+    /// Creates a new context whose <c>%context</c> is the specified node.
+    /// </summary>
+    public EvaluationContext WithContextNode(IElement contextNode)
+    {
+        ArgumentNullException.ThrowIfNull(contextNode);
+
+        return this with { ContextNode = contextNode };
     }
 
     /// <summary>
@@ -321,63 +401,101 @@ public record EvaluationContext
     }
 
     /// <summary>
-    /// Gets an environment variable value.
-    /// Returns the single element if collection has one item, otherwise returns the list.
-    /// Checks standard FHIRPath constants, user-defined variables (from defineVariable), then environment variables.
+    /// Gets an environment variable value, or null when the name resolves to nothing.
     /// </summary>
+    /// <remarks>
+    /// A null return conflates "no such variable" with "bound to an empty collection". Callers that must
+    /// tell those apart - FHIRPath makes the first an error and the second a value - use
+    /// <see cref="TryGetEnvironmentVariable"/>.
+    /// </remarks>
     public object? GetEnvironmentVariable(string name)
     {
-        if (name == "this")
+        return TryGetEnvironmentVariable(name, out var value) ? value : null;
+    }
+
+    /// <summary>
+    /// Resolves an environment variable, reporting whether the name is defined at all.
+    /// </summary>
+    /// <param name="name">The variable name, without the leading <c>%</c>.</param>
+    /// <param name="value">The bound value: a single <see cref="IElement"/>, a collection of them, or null when the binding is empty.</param>
+    /// <returns><see langword="true"/> when the name is defined, even if its value is empty.</returns>
+    /// <remarks>
+    /// <para>
+    /// The engine-managed names resolve first and are always considered defined, so an expression that reads
+    /// <c>%resource</c> or <c>%context</c> against a context that carries neither gets an empty collection
+    /// rather than an error - absence of a host binding is not the same as the expression naming something
+    /// that does not exist.
+    /// </para>
+    /// <para>
+    /// <c>defineVariable</c> bindings and host-supplied <see cref="Environment"/> entries are consulted before
+    /// the fixed FHIRPath constants so a host can override <c>%vs-…</c> / <c>%ext-…</c> with a real value.
+    /// </para>
+    /// </remarks>
+    public bool TryGetEnvironmentVariable(string name, out object? value)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        switch (name)
         {
-            return GetThis();
+            case "this":
+                value = GetThis();
+                return true;
+
+            case "index":
+                var idx = GetIndex();
+                value = idx.HasValue ? new IndexElement(idx.Value) : null;
+                return true;
+
+            case "context":
+                value = ContextNode ?? Resource;
+                return true;
+
+            case "resource":
+                value = Resource;
+                return true;
+
+            // Per the FHIR profile of FHIRPath, %rootResource is the container of %resource and is the same
+            // as %resource whenever the resource is not contained in another one.
+            case "rootResource":
+                value = RootResource ?? Resource;
+                return true;
+
+            // Not-supported environment variables that require external services
+            case "terminologies":
+                throw new NotSupportedException("Environment variable '%terminologies' is not supported. It requires terminology service integration.");
         }
 
-        if (name == "index")
+        if (Variables.TryResolve(name, out var definedValue))
         {
-            var idx = GetIndex();
-            return idx.HasValue ? new IndexElement(idx.Value) : null;
+            value = definedValue.Count == 1 ? definedValue[0] : definedValue;
+            return true;
         }
 
-        // Standard FHIRPath external constants per http://hl7.org/fhirpath/#environment-variables
-        var standardValue = GetStandardConstant(name);
-        if (standardValue != null)
+        if (Environment.TryGetValue(name, out var environmentValue))
         {
-            return new StringElement(standardValue);
+            value = environmentValue.Count == 1 ? environmentValue[0] : environmentValue;
+            return true;
         }
 
-        if (name == "resource")
+        if (GetStandardConstant(name) is { } standardValue)
         {
-            return Resource;
+            value = new StringElement(standardValue);
+            return true;
         }
 
-        if (name == "rootResource")
-        {
-            return RootResource;
-        }
-
-        // Not-supported environment variables that require external services
-        if (name == "terminologies")
-        {
-            throw new NotSupportedException("Environment variable '%terminologies' is not supported. It requires terminology service integration.");
-        }
-
-        if (DefinedVariables.TryGetValue(name, out var definedValue))
-        {
-            return definedValue.Count == 1 ? definedValue[0] : definedValue;
-        }
-
-        if (Environment.TryGetValue(name, out var value))
-        {
-            return value.Count == 1 ? value[0] : value;
-        }
-
-        return null;
+        value = null;
+        return false;
     }
 
     /// <summary>
     /// Gets the value for a standard FHIRPath external constant.
     /// These are defined by the FHIRPath specification and have fixed values.
     /// </summary>
+    /// <remarks>
+    /// The <c>vs-</c> and <c>ext-</c> families are expanded by rule rather than enumerated: the FHIR profile
+    /// of FHIRPath defines <c>%vs-[name]</c> and <c>%ext-[name]</c> for every name in the specification, so
+    /// a fixed list of two of them just makes the other several hundred silently unresolvable.
+    /// </remarks>
     private static string? GetStandardConstant(string name)
     {
         return name switch
@@ -385,8 +503,10 @@ public record EvaluationContext
             "sct" => "http://snomed.info/sct",
             "loinc" => "http://loinc.org",
             "ucum" => "http://unitsofmeasure.org",
-            "vs-administrative-gender" => "http://hl7.org/fhir/ValueSet/administrative-gender",
-            "ext-patient-birthTime" => "http://hl7.org/fhir/StructureDefinition/patient-birthTime",
+            _ when name.StartsWith("vs-", StringComparison.Ordinal) && name.Length > 3
+                => "http://hl7.org/fhir/ValueSet/" + name[3..],
+            _ when name.StartsWith("ext-", StringComparison.Ordinal) && name.Length > 4
+                => "http://hl7.org/fhir/StructureDefinition/" + name[4..],
             _ => null
         };
     }

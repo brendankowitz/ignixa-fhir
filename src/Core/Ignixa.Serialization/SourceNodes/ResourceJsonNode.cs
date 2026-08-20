@@ -126,6 +126,26 @@ public class ResourceJsonNode : BaseJsonNode, IResourceNode
         }
     }
 
+    [JsonIgnore]
+    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
+
+    [JsonIgnore]
+    public string? ImplicitRules
+    {
+        get => ImplicitRulesElement.Value;
+        set => ImplicitRulesElement.Value = value;
+    }
+
+    [JsonIgnore]
+    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
+
+    [JsonIgnore]
+    public string? Language
+    {
+        get => LanguageElement.Value;
+        set => LanguageElement.Value = value;
+    }
+
     /// <summary>
     /// Wraps the JSON representation of the resource in an ISourceNavigator.
     /// </summary>

@@ -1572,5 +1572,5 @@ public async Task GivenPatientExists_WhenQueryById_ThenReturnsPatientFields()
 - Achieves full FHIR $graphql spec compliance
 
 **Next steps**:
-1. `/fn-adr fhir-graphql` — Synthesize this investigation into a proposed ADR
+1. `/create-adr fhir-graphql` — Synthesize this investigation into a proposed ADR
 2. Phase 1 implementation: `FhirTypeModule` + `ResourceResolver` + `GraphQlEndpoints`

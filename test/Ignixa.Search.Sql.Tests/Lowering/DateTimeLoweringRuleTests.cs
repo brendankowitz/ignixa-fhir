@@ -185,8 +185,11 @@ public class DateTimeLoweringRuleTests
     }
 
     // :ap — date approximation: midpoint = Start + (End - Start) / 2;
-    // toleranceTicks = abs(referenceTime.UtcTicks - midpoint.UtcTicks) / 10;
-    // widened = [Start - tolerance, End + tolerance], compared with the same overlap shape as Eq.
+    // toleranceTicks = max(End - Start, abs(referenceTime.UtcTicks - midpoint.UtcTicks) / 10) -- the floor at
+    // the value's own width is what stops date=ap<now> collapsing to exact equality;
+    // widened = [Start - tolerance, End + tolerance], compared for OVERLAP. Ap is the only prefix that
+    // overlaps: Eq is containment (DateRangeComparisonSemantics.Build), and conflating the two is the exact
+    // inversion this file's comment used to assert.
     [Fact]
     public void GivenApComparator_WhenLoweredWithPastInstant_ThenBuildsOverlapAgainstWidenedRange()
     {

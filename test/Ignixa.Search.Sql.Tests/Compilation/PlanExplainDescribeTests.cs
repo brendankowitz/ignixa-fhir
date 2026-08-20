@@ -13,6 +13,11 @@ namespace Ignixa.Search.Sql.Tests.Compilation;
 /// </summary>
 public class PlanExplainDescribeTests
 {
+    /// <summary>
+    /// Guards the structured plan rows against the flat text they were extracted from. Dozens of goldens across
+    /// the compiler suites assert on <see cref="PlanExplainer.Print"/>'s exact output, so the refactor that
+    /// introduced <see cref="PlanExplainer.Describe"/> is only safe while the two stay one-for-one.
+    /// </summary>
     [Fact]
     public void GivenANonTrivialPlan_WhenPrinted_ThenTheTextIsUnchangedByTheDescribeRefactor()
     {
@@ -26,10 +31,10 @@ public class PlanExplainDescribeTests
         explained.ShouldBe(
             "cte0 = StringSearchParam[103,202]  Text = @p0\n" +
             "cte1 = TokenSearchParam[103,44]  Code = @p1\n" +
-            "root = Intersect(cte0, cte1) WHERE ResourceId = @p2\n" +
-            "matchPage = MatchPageCte(top=none, sortJoins=true, resourceJoin=true)\n" +
+            "root = Intersect(cte0, cte1)\n" +
+            "matchPage = MatchPageCte(top=none, sortJoins=true, resourceJoin=true) WHERE ResourceId = @p2 OffsetSpec(offset=@p3, fetch=@p4)\n" +
+            "matchSeed = MatchSeedCte(limit=10)\n" +
             "sort = SortSpec([String:202 ASC], Valued)\n" +
-            "page = PageSpec(boundary=[@p3], type=none, sid=@p4)\n" +
             "inc0 = IncludeStage(ref=55, seedTypes=[103], outputTypes=[105], seeds=[match], limit=1000, Forward)");
     }
 
@@ -43,7 +48,7 @@ public class PlanExplainDescribeTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert
-        rows.Select(row => row.Label).ShouldBe(["cte0", "cte1", "root", "matchPage", "sort", "page", "inc0"]);
+        rows.Select(row => row.Label).ShouldBe(["cte0", "cte1", "root", "matchPage", "matchSeed", "sort", "inc0"]);
     }
 
     [Fact]
@@ -56,7 +61,7 @@ public class PlanExplainDescribeTests
         var rows = PlanExplainer.Describe(plan);
 
         // Assert -- "root" is cosmetic; cte2 is what the SQL and CteProvenance actually use.
-        rows.Select(row => row.CanonicalLabel).ShouldBe(["cte0", "cte1", "cte2", "matchPage", "sort", "page", "inc0"]);
+        rows.Select(row => row.CanonicalLabel).ShouldBe(["cte0", "cte1", "cte2", "matchPage", "matchSeed", "sort", "inc0"]);
         rows.Count(row => row.Label != row.CanonicalLabel).ShouldBe(1);
     }
 
@@ -75,10 +80,27 @@ public class PlanExplainDescribeTests
             PlanRowKind.ParamSource,
             PlanRowKind.Intersect,
             PlanRowKind.MatchPageCte,
+            PlanRowKind.MatchSeedCte,
             PlanRowKind.SortSpec,
-            PlanRowKind.PageSpec,
             PlanRowKind.IncludeStage,
         ]);
+    }
+
+    [Fact]
+    public void GivenAnIncludePlanWithRealWrapperCtes_WhenDescribed_ThenTheRowsExposeTheirGraphEdges()
+    {
+        // Arrange
+        var rows = PlanExplainer.Describe(NonTrivialPlan());
+
+        // Act
+        var page = rows.Single(row => row.Kind == PlanRowKind.MatchPageCte);
+        var seed = rows.Single(row => row.Kind == PlanRowKind.MatchSeedCte);
+
+        // Assert
+        page.Label.ShouldBe("matchPage");
+        page.CanonicalLabel.ShouldBe("matchPage");
+        page.ReferencedCteIndexes.ShouldBe([2]);
+        seed.ReferencedCteIndexes.ShouldBe([3]);
     }
 
     [Fact]
@@ -104,13 +126,11 @@ public class PlanExplainDescribeTests
         // to ContributingOrdinals, which unions the two, so this is the only place it can be caught.
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(table, 103, 202, predicate),
                 new CteDefinition.ParamSource(table, 103, 44, predicate),
                 new CteDefinition.Except(new CteRef(0), new CteRef(1)),
-            ],
-            Match: new CteRef(2));
+            ], new MatchPageSpec(new CteRef(2)));
 
         // Act
         var row = PlanExplainer.Describe(plan).Single(r => r.Kind == PlanRowKind.Except);
@@ -125,14 +145,12 @@ public class PlanExplainDescribeTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan(
-            [
+        var plan = new QueryPlan([
                 new CteDefinition.ParamSource(table, 103, 202, predicate),
                 new CteDefinition.ParamSource(table, 103, 44, predicate),
                 new CteDefinition.ParamSource(table, 103, 55, predicate),
                 new CteDefinition.Union([new CteRef(0), new CteRef(1), new CteRef(2)]),
-            ],
-            Match: new CteRef(3));
+            ], new MatchPageSpec(new CteRef(3)));
 
         // Act
         var row = PlanExplainer.Describe(plan).Single(r => r.Kind == PlanRowKind.Union);
@@ -173,7 +191,7 @@ public class PlanExplainDescribeTests
         var root = PlanExplainer.Describe(plan).Single(row => row.Label == "root");
 
         // Assert
-        root.Body.ShouldBe("Intersect(cte0, cte1) WHERE ResourceId = @p2");
+        root.Body.ShouldBe("Intersect(cte0, cte1)");
     }
 
     [Fact]
@@ -182,7 +200,7 @@ public class PlanExplainDescribeTests
         // Arrange
         var table = SqlCatalog.Default.Table("StringSearchParam");
         var predicate = new Predicate.Equal(new SqlColumnRef(table.TableName, "Text"), new SqlParameterRef("Smith"));
-        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new CteRef(0), Shape: new ResultShape.Count.AllMatches());
+        var plan = new QueryPlan([new CteDefinition.ParamSource(table, 103, 202, predicate)], new MatchPageSpec(new CteRef(0), Shape: new ResultShape.Count.AllMatches()));
 
         // Act
         var rows = PlanExplainer.Describe(plan);
@@ -213,8 +231,7 @@ public class PlanExplainDescribeTests
         var stringTable = SqlCatalog.Default.Table("StringSearchParam");
         var tokenTable = SqlCatalog.Default.Table("TokenSearchParam");
 
-        return new QueryPlan(
-            [
+        return IncludePlanFactory.Create([
                 new CteDefinition.ParamSource(
                     stringTable, 103, 202,
                     new Predicate.Equal(new SqlColumnRef(stringTable.TableName, "Text"), new SqlParameterRef("Smith"))),
@@ -222,11 +239,6 @@ public class PlanExplainDescribeTests
                     tokenTable, 103, 44,
                     new Predicate.Equal(new SqlColumnRef(tokenTable.TableName, "Code"), new SqlParameterRef("true"))),
                 new CteDefinition.Intersect(new CteRef(0), new CteRef(1)),
-            ],
-            Match: new CteRef(2),
-            OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")),
-            Includes: [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)],
-            Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued),
-            Page: new PageSpec([new SqlParameterRef("Adams")], BoundaryResourceTypeId: null, new SqlParameterRef(5000L)));
+            ], new MatchPageSpec(new CteRef(2), OuterPredicate: new Predicate.Equal(new SqlColumnRef("Resource", "ResourceId"), new SqlParameterRef("123")), Sort: new SortSpec([new SortKey(202, SortKeyKind.String, SortOrder.Ascending)], SortPhase.Valued), OffsetPage: new OffsetSpec(20, 10, ProbeExtraRow: true)), [new IncludeStage(IncludeDirection.Forward, 55, [103], [105], [], SeedFromMatch: true, Iterate: false, Limit: 1000)]);
     }
 }

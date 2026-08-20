@@ -6,30 +6,30 @@ This folder contains feature areas organized using a structured investigation-to
 
 | Command | Purpose |
 |---------|---------|
-| `/fn-feature {name}` | Create a new feature area |
-| `/fn-investigation {feature} {topic}` | Add an investigation to explore an approach |
-| `/fn-adr {feature}` | Synthesize viable investigations into a proposed ADR |
-| `/fn-accept {feature} {adr-filename}` | Move implemented ADR to `docs/adr/` |
-| `/fn-reject {feature} {investigation}` | Mark an investigation as rejected |
+| `/create-feature {name}` | Create a new feature area |
+| `/create-investigation {feature} {topic}` | Add an investigation to explore an approach |
+| `/create-adr {feature}` | Synthesize viable investigations into a proposed ADR |
+| `/accept-adr {feature} {adr-filename}` | Move implemented ADR to `docs/adr/` |
+| `/reject-investigation {feature} {investigation}` | Mark an investigation as rejected |
 
 ## Workflow
 
 ```
-1. /fn-feature bulk-export
+1. /create-feature bulk-export
    └── Creates docs/features/bulk-export/readme.md
 
-2. /fn-investigation bulk-export channel-based
+2. /create-investigation bulk-export channel-based
    └── Creates docs/features/bulk-export/investigations/channel-based.md
 
-3. /fn-investigation bulk-export streaming-export
+3. /create-investigation bulk-export streaming-export
    └── Creates docs/features/bulk-export/investigations/streaming-export.md
 
-4. /fn-adr bulk-export
+4. /create-adr bulk-export
    └── Creates docs/features/bulk-export/adr-2512-bulk-export.md
 
 5. (Implement the feature)
 
-6. /fn-accept bulk-export adr-2512-bulk-export
+6. /accept-adr bulk-export adr-2512-bulk-export
    └── Moves to docs/adr/adr-2512-bulk-export.md
 ```
 
@@ -62,7 +62,7 @@ docs/features/
 | `Viable` | Research complete, approach is valid |
 | `Complete` | Research complete, ready for ADR synthesis |
 | `Merged` | Incorporated into accepted ADR and implemented |
-| `Rejected` | Not viable (use `/fn-reject` to document why) |
+| `Rejected` | Not viable (use `/reject-investigation` to document why) |
 
 ## Feature Status Values
 
@@ -106,13 +106,13 @@ docs/features/
 *Pending evaluation*
 ```
 
-## Tips for Claude Code
+## Tips for Coding Agents
 
-1. **Starting a new feature**: Use `/fn-feature {name}` first, then add investigations
+1. **Starting a new feature**: Use `/create-feature {name}` first, then add investigations
 2. **Multiple approaches**: Create separate investigation files for each approach
-3. **Ready to decide**: When investigations are complete, use `/fn-adr` to synthesize
-4. **After implementation**: Use `/fn-accept` to finalize the ADR
-5. **Dead ends**: Use `/fn-reject` to document why an approach didn't work
+3. **Ready to decide**: When investigations are complete, use `/create-adr` to synthesize
+4. **After implementation**: Use `/accept-adr` to finalize the ADR
+5. **Dead ends**: Use `/reject-investigation` to document why an approach didn't work
 
 ## Current Features
 

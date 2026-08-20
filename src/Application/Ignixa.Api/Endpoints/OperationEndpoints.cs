@@ -696,15 +696,10 @@ public static class OperationEndpoints
 
         searchOptions.IncludesContinuationToken = includesContinuationToken;
 
-        var includesCountParam = context.Request.Query["_includesCount"].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(includesCountParam) && int.TryParse(includesCountParam, out int includesCount))
-        {
-            searchOptions.IncludesMaxItemCount = includesCount;
-        }
-        else
-        {
-            searchOptions.IncludesMaxItemCount = DefaultIncludesPageSize;
-        }
+        // searchOptionsBuilder.Build already parsed and validated _includesCount (invariant culture,
+        // clamped to MaxAllowedItemCount) via the query parameters passed in above. Only the "absent"
+        // case needs handling here.
+        searchOptions.IncludesMaxItemCount ??= DefaultIncludesPageSize;
 
         var query = new IncludesResourceQuery(resourceType, searchOptions);
         var result = await mediator.SendAsync(query, cancellationToken);

@@ -138,8 +138,11 @@ track version explicitly, and `As<T>(validate: false)` remains available as an e
 
 - **Shared base layer**: identical types live once in `Ignixa.Serialization`, namespace `Ignixa.Models`
   (e.g. `Ignixa.Models.Patient`, `Ignixa.Models.Coding`).
-- **Per-version packages**: `Ignixa.Models.R4`/`.R5` subclass the shared base with only the elements
+- **Per-version packages**: `Ignixa.Models.R4`/`.R5` subclass the shared base with the elements
   that genuinely diverge for that version (`Ignixa.Models.R4.Patient : Ignixa.Models.Patient`).
+  Resources always get a per-version subclass even when nothing diverges, because the subclass is
+  what carries the `[CompatibleFhirVersions]` tag that guards cross-version `As<T>()` casts — a
+  `global using` alias cannot carry an attribute. Such a subclass may have no members of its own.
 - **Classification, not guesswork**: a build-time classifier walks every targeted version's
   `StructureDefinition`s and compares element-level signatures -- type, cardinality, and (for
   code-bound elements) the *actual expanded code set*, not just the value-set URL -- to decide what's

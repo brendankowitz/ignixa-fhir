@@ -28,7 +28,7 @@ public class ValidationBenchmarks
     private ValidationSchema _observationSchema = null!;
     private ValidationSettings _fastSettings = null!;
     private ValidationSettings _specSettings = null!;
-    private ValidationState _state = null!;
+    private ValidationSettings _fullSettings = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -119,30 +119,42 @@ public class ValidationBenchmarks
 
         _fastSettings = new ValidationSettings { Depth = ValidationDepth.Minimal };
         _specSettings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        _state = new ValidationState();
+        _fullSettings = new ValidationSettings { Depth = ValidationDepth.Full };
     }
 
     [Benchmark(Baseline = true, Description = "Ignixa: Validate Patient (Fast tier)")]
     public ValidationResult ValidatePatientFast()
     {
-        return _patientSchema.Validate(_patientElement, _fastSettings, _state);
+        return _patientSchema.Validate(_patientElement, _fastSettings);
     }
 
     [Benchmark(Description = "Ignixa: Validate Patient (Spec tier)")]
     public ValidationResult ValidatePatientSpec()
     {
-        return _patientSchema.Validate(_patientElement, _specSettings, _state);
+        return _patientSchema.Validate(_patientElement, _specSettings);
     }
 
     [Benchmark(Description = "Ignixa: Validate Observation (Fast tier)")]
     public ValidationResult ValidateObservationFast()
     {
-        return _observationSchema.Validate(_observationElement, _fastSettings, _state);
+        return _observationSchema.Validate(_observationElement, _fastSettings);
     }
 
     [Benchmark(Description = "Ignixa: Validate Observation (Spec tier)")]
     public ValidationResult ValidateObservationSpec()
     {
-        return _observationSchema.Validate(_observationElement, _specSettings, _state);
+        return _observationSchema.Validate(_observationElement, _specSettings);
+    }
+
+    [Benchmark(Description = "Ignixa: Validate Patient (Full tier)")]
+    public ValidationResult ValidatePatientFull()
+    {
+        return _patientSchema.Validate(_patientElement, _fullSettings);
+    }
+
+    [Benchmark(Description = "Ignixa: Validate Observation (Full tier)")]
+    public ValidationResult ValidateObservationFull()
+    {
+        return _observationSchema.Validate(_observationElement, _fullSettings);
     }
 }

@@ -61,9 +61,6 @@ public partial class Patient : DomainResourceJsonNode
     [JsonIgnore]
     public MutableJsonList<PatientContact> Contact => GetListProperty<PatientContact>("contact");
 
-    [JsonIgnore]
-    public MutableJsonList<ResourceJsonNode> Contained => GetListProperty<ResourceJsonNode>("contained");
-
     private static readonly string[] DeceasedVariantKeys =
         ["deceasedBoolean", "deceasedDateTime"];
 
@@ -141,9 +138,6 @@ public partial class Patient : DomainResourceJsonNode
     }
 
     [JsonIgnore]
-    public MutableJsonList<Extension> Extension => GetListProperty<Extension>("extension");
-
-    [JsonIgnore]
     public AdministrativeGender? Gender
     {
         get => EnumUtility.ParseLiteral<AdministrativeGender>(GetProperty<string>("gender"));
@@ -155,16 +149,6 @@ public partial class Patient : DomainResourceJsonNode
 
     [JsonIgnore]
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
-
-    [JsonIgnore]
-    public PrimitiveElement<string> ImplicitRulesElement => new(MutableNode, "implicitRules");
-
-    [JsonIgnore]
-    public string? ImplicitRules
-    {
-        get => ImplicitRulesElement.Value;
-        set => ImplicitRulesElement.Value = value;
-    }
 
     [JsonIgnore]
     public MutableJsonList<PatientLink> Link => GetListProperty<PatientLink>("link");
@@ -182,9 +166,6 @@ public partial class Patient : DomainResourceJsonNode
         get => GetComplexProperty<CodeableConcept>("maritalStatus");
         set => SetProperty("maritalStatus", value?.MutableNode);
     }
-
-    [JsonIgnore]
-    public MutableJsonList<Extension> ModifierExtension => GetListProperty<Extension>("modifierExtension");
 
     private static readonly string[] MultipleBirthVariantKeys =
         ["multipleBirthBoolean", "multipleBirthInteger"];
@@ -270,11 +251,4 @@ public partial class Patient : DomainResourceJsonNode
 
     [JsonIgnore]
     public MutableJsonList<ContactPoint> Telecom => GetListProperty<ContactPoint>("telecom");
-
-    [JsonIgnore]
-    public Narrative? Text
-    {
-        get => GetComplexProperty<Narrative>("text");
-        set => SetProperty("text", value?.MutableNode);
-    }
 }

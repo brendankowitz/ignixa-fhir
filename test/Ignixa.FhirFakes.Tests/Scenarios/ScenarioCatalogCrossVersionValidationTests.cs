@@ -117,9 +117,8 @@ public class ScenarioCatalogCrossVersionValidationTests
         }
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
-        var state = new ValidationState();
         var element = sourceNode.ToElement(schemaProvider);
-        var validationResult = schema.Validate(element, settings, state);
+        var validationResult = schema.Validate(element, settings);
 
         return validationResult.Issues
             .Where(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal)

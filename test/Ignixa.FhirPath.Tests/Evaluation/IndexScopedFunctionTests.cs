@@ -239,7 +239,7 @@ public class IndexScopedFunctionTests
 
         // Should throw because trace() returns $this (integer 42), 
         // and length() is not valid on integers
-        var ex = Assert.Throws<InvalidOperationException>(() => 
+        var ex = Assert.Throws<FhirPathEvaluationException>(() => 
             _evaluator.Evaluate(root, expr).ToList());
         
         Assert.Contains("length", ex.Message, StringComparison.OrdinalIgnoreCase);

@@ -12,7 +12,7 @@ public class EmitVisibleSinceFilterTests
     {
         // Arrange
         var since = new SqlParameterRef("2020-01-01T00:00:00.0000000");
-        var plan = new QueryPlan([new CteDefinition.VisibleSinceFilter(since)], new CteRef(0));
+        var plan = new QueryPlan([new CteDefinition.VisibleSinceFilter(since)], new MatchPageSpec(new CteRef(0)));
 
         // Act
         var emitted = SqlBuilder.Run(plan);

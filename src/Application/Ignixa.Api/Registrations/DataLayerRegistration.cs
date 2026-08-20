@@ -43,6 +43,9 @@ public static class DataLayerRegistration
         // SchemaDeployer (DacFx-based schema deployment for brand-new, empty tenant databases)
         services.AddIgnixaSqlServerSchemaDeployment(configuration);
 
+        // SchemaDeployer (DacFx-based schema deployment for brand-new, empty tenant databases)
+        services.AddIgnixaSqlServerSchemaDeployment(configuration);
+
         // Configure blob storage options
         services.Configure<Ignixa.DataLayer.BlobStorage.Infrastructure.LocalFileBlobStorageOptions>(
             configuration.GetSection("LocalFileBlobStorage"));

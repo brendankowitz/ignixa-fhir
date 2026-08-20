@@ -3,7 +3,15 @@
   <Sdk Name="Microsoft.Build.Sql" Version="2.2.0" />
   <PropertyGroup>
     <Name>Ignixa.DataLayer.SqlServer.Database</Name>
-    <DSP>Microsoft.Data.Tools.Schema.Sql.Sql170DatabaseSchemaProvider</DSP>
+    <!-- Azure SQL Database, because that is the production deployment target. DacFx treats Azure
+         SQL Database as its own platform, NOT as a box-engine version: a project targeting any
+         Sql1xx provider is refused at publish time with "cannot be published to Microsoft Azure
+         SQL Database v12". Targeting SqlAzureV12 also makes the build validate the schema against
+         what Azure SQL actually supports, which a box target silently skips.
+         The E2E container (docker-compose.test.yml: mssql/server) is a box engine and is therefore
+         the incompatible side of this pairing; the test-only deploy path sets
+         AllowIncompatiblePlatform=true for that reason. Production never sets it. -->
+    <DSP>Microsoft.Data.Tools.Schema.Sql.SqlAzureV12DatabaseSchemaProvider</DSP>
     <ModelCollation>1033, CI</ModelCollation>
     <ProjectGuid>0D46D298-89F4-43E1-B6B6-4F560D86D637</ProjectGuid>
   </PropertyGroup>

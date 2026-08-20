@@ -26,7 +26,7 @@ public class AttachmentSizeCheckTests
         var attachmentElement = element.Children("content")[0];
         var check = new AttachmentSizeCheck();
 
-        return check.Validate(attachmentElement, new ValidationSettings(), new ValidationState());
+        return check.Validate(attachmentElement, new ValidationSettings(), ValidationState.ForRoot(attachmentElement));
     }
 
     [Fact]

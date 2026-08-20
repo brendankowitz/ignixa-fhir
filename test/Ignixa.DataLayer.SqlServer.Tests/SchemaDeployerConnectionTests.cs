@@ -23,7 +23,7 @@ public class SchemaDeployerConnectionTests
             => new((IReadOnlyList<TenantConfiguration>)Tenants.Values.ToList());
 
         public ValueTask<TenantConfiguration?> ResolveByHostAsync(string host, CancellationToken cancellationToken = default)
-            => new(Tenants.Values.FirstOrDefault(t => t.Hostnames.Contains(host, StringComparer.OrdinalIgnoreCase)));
+            => new((TenantConfiguration?)null);
     }
 
     // IHostEnvironment.EnvironmentName is settable but the concrete HostingEnvironment

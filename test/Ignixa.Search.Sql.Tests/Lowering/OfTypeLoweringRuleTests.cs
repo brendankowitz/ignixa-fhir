@@ -83,6 +83,7 @@ public class OfTypeLoweringRuleTests
         var typeCodeEqual = inner.Left.ShouldBeOfType<Predicate.Equal>();
         typeCodeEqual.Column.Column.ShouldBe("IdentifierTypeCode");
         typeCodeEqual.Value.Value.ShouldBe("MR");
+        typeCodeEqual.Collation.ShouldBe("Latin1_General_100_CS_AS");
 
         var valueEqual = inner.Right.ShouldBeOfType<Predicate.Equal>();
         valueEqual.Column.Column.ShouldBe("Code");
@@ -106,6 +107,20 @@ public class OfTypeLoweringRuleTests
         var valueEqual = and.Right.ShouldBeOfType<Predicate.Equal>();
         valueEqual.Column.Column.ShouldBe("Code");
         valueEqual.Value.Value.ShouldBe("12345");
+    }
+
+    [Fact]
+    public void GivenAnOfTypeSearch_WhenLowered_ThenTypeCodeUsesCaseSensitiveCollation()
+    {
+        // Arrange
+        var cte = Lower(typeSystem: null, "MR", "12345");
+
+        // Act
+        var typeCodeEqual = cte.Predicate.ShouldBeOfType<Predicate.And>().Left.ShouldBeOfType<Predicate.Equal>();
+
+        // Assert
+        typeCodeEqual.Column.Column.ShouldBe("IdentifierTypeCode");
+        typeCodeEqual.Collation.ShouldBe("Latin1_General_100_CS_AS");
     }
 
     [Fact]

@@ -62,7 +62,12 @@ public class NestedComplexTypeCheck : IValidationCheck
     /// <returns>A validation result indicating success or failure of nested element validation.</returns>
     public ValidationResult Validate(IElement element, ValidationSettings settings, ValidationState state)
     {
+        // Nested issues are collected regardless of the nested result's validity. Gating on
+        // !IsValid would discard every non-failing Warning raised below the root - including the
+        // ones FhirPathInvariantCheck emits when the engine refuses to evaluate a constraint, which
+        // exist precisely to be reported without failing the resource.
         var issues = new List<ValidationIssue>();
+        var isValid = true;
 
         // Get all instances of this element (may be array)
         var elementNodes = element.Children(ElementName).ToList();
@@ -71,6 +76,13 @@ public class NestedComplexTypeCheck : IValidationCheck
         {
             // No elements to validate - cardinality checks handle missing/empty collections
             return ValidationResult.Success();
+        }
+
+        if (!state.TryDescend(out var descended))
+        {
+            return new ValidationResult(
+                isValid: true,
+                issues: new[] { ValidationIssue.NestingLimitExceeded(state.Location.InstancePath, ElementName) });
         }
 
         // If this is a collection, validate each element with index
@@ -82,35 +94,28 @@ public class NestedComplexTypeCheck : IValidationCheck
 
                 // Build path: "agent[0]", "agent[1]", etc.
                 string elementPath = $"{ElementName}[{i}]";
-                var nestedState = state.WithLocation(elementPath);
+                var nestedState = descended.WithLocation(elementPath);
 
                 // Validate nested element using the nested schema
                 var nestedResult = NestedSchema.Validate(elementNode, settings, nestedState);
-                if (!nestedResult.IsValid)
-                {
-                    issues.AddRange(nestedResult.Issues);
-                }
+                issues.AddRange(nestedResult.IssuesOrSynthesizedFailure(
+                    elementNode.Location, $"'{elementPath}' ({NestedSchema.ResourceType})"));
+                isValid &= nestedResult.IsValid;
             }
         }
         else
         {
             // Single nested object
             var elementNode = elementNodes[0];
-            var nestedState = state.WithLocation(ElementName);
+            var nestedState = descended.WithLocation(ElementName);
 
             // Validate nested element using the nested schema
             var nestedResult = NestedSchema.Validate(elementNode, settings, nestedState);
-            if (!nestedResult.IsValid)
-            {
-                issues.AddRange(nestedResult.Issues);
-            }
+            issues.AddRange(nestedResult.IssuesOrSynthesizedFailure(
+                elementNode.Location, $"'{ElementName}' ({NestedSchema.ResourceType})"));
+            isValid &= nestedResult.IsValid;
         }
 
-        if (issues.Count > 0)
-        {
-            return ValidationResult.Failure(issues);
-        }
-
-        return ValidationResult.Success();
+        return new ValidationResult(isValid, issues);
     }
 }

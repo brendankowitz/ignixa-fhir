@@ -41,8 +41,9 @@ public class RunAsyncConfigLoadTests
             using var input = new StringReader(string.Empty);
             using var output = new StringWriter();
 
+            var options = new CliUpgradeOptions(TenantId: 999, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: configPath);
             var exception = await Record.ExceptionAsync(() =>
-                Program.RunAsync(tenantId: 999, autoConfirm: true, allowDataLoss: false, configPath, input, output, CancellationToken.None));
+                Program.RunAsync(options, input, output, CancellationToken.None));
 
             exception.ShouldNotBeNull();
             exception.ShouldNotBeOfType<FileNotFoundException>();
@@ -60,9 +61,9 @@ public class RunAsyncConfigLoadTests
     // configOption's DefaultValueFactory) resolved against wherever the operator happens to run
     // the packaged tool from -- NOT the CLI assembly's own bin directory. Without SetBasePath,
     // AddJsonFile resolves a relative path against AppContext.BaseDirectory instead, so this test
-    // would throw FileNotFoundException if the fix were reverted (verified manually: see
-    // .superpowers/sdd/task-9-fix-report.md). A rooted/absolute --config path (the test above)
-    // resolves correctly with or without SetBasePath, so it can't stand in for this scenario.
+    // would throw FileNotFoundException if the fix were reverted. A rooted/absolute --config path
+    // (the test above) resolves correctly with or without SetBasePath, so it can't stand in for
+    // this scenario.
     [Fact]
     public async Task GivenARelativeConfigPathAndAnOperatorWorkingDirectory_WhenRunAsyncCalled_ThenConfigLoadsRelativeToCurrentDirectory()
     {
@@ -78,8 +79,9 @@ public class RunAsyncConfigLoadTests
             using var input = new StringReader(string.Empty);
             using var output = new StringWriter();
 
+            var options = new CliUpgradeOptions(TenantId: 999, AutoConfirm: true, AllowDataLoss: false, AllowIncompatiblePlatform: true, ConfigPath: "appsettings.json");
             var exception = await Record.ExceptionAsync(() =>
-                Program.RunAsync(tenantId: 999, autoConfirm: true, allowDataLoss: false, "appsettings.json", input, output, CancellationToken.None));
+                Program.RunAsync(options, input, output, CancellationToken.None));
 
             exception.ShouldNotBeNull();
             exception.ShouldNotBeOfType<FileNotFoundException>();

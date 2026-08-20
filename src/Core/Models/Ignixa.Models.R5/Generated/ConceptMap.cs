@@ -79,16 +79,6 @@ public sealed partial class ConceptMap : Ignixa.Models.ConceptMap
     public MutableJsonList<Identifier> Identifier => GetListProperty<Identifier>("identifier");
 
     [JsonIgnore]
-    public PrimitiveElement<string> LanguageElement => new(MutableNode, "language");
-
-    [JsonIgnore]
-    public string? Language
-    {
-        get => LanguageElement.Value;
-        set => LanguageElement.Value = value;
-    }
-
-    [JsonIgnore]
     public PrimitiveElement<string> LastReviewDateElement => new(MutableNode, "lastReviewDate");
 
     [JsonIgnore]

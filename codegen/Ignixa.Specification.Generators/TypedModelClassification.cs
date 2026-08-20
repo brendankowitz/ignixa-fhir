@@ -90,7 +90,9 @@ internal sealed class TypeClassification
     public required IReadOnlyList<string> PresentInVersions { get; init; }
 
     /// <summary>
-    /// Versions that must emit a subclass for this type. Empty for an Identical type (base used directly).
+    /// Versions that must emit a subclass for this type. Empty for an Identical datatype or backbone
+    /// (base used directly). Never empty for a resource: resources are always subclassed so that
+    /// <c>CompatibleFhirVersionsAttribute</c> has a per-version type to live on.
     /// </summary>
     public required IReadOnlyList<string> SubclassVersions { get; init; }
 

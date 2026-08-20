@@ -11,9 +11,9 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.Configure<SqlServerOptions>(configuration.GetSection(SqlServerOptions.SectionName));
+        services.AddSingleton<ISqlExecutionService, SqlExecutionService>();
         services.AddSingleton<ISchemaDeployer, SchemaDeployer>();
         services.AddSingleton<ISchemaVersionResolver, SchemaVersionResolver>();
-        services.AddSingleton<ISqlExecutionService, SqlExecutionService>();
         return services;
     }
 }

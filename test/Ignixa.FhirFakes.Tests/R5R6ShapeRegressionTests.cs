@@ -573,7 +573,7 @@ public class R5R6ShapeRegressionTests
 
         var settings = new ValidationSettings { Depth = ValidationDepth.Spec };
         var element = sourceNode.ToElement(schemaProvider);
-        var result = schema!.Validate(element, settings, new ValidationState());
+        var result = schema!.Validate(element, settings);
 
         var errors = result.Issues
             .Where(i => i.Severity is IssueSeverity.Error or IssueSeverity.Fatal)

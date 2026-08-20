@@ -7,6 +7,7 @@
 
 using Ignixa.Abstractions;
 using Ignixa.Serialization.SourceNodes;
+using Ignixa.Serialization.Tests.TestHelpers;
 using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 using Xunit;
@@ -437,7 +438,8 @@ public class SchemaAwareElementTests
         Assert.Single(effectiveChildren);
         Assert.Equal("effectiveDateTime", effectiveChildren[0].Name);
         Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
-        Assert.Equal("1980-05-11", effectiveChildren[0].Value);
+        var temporalValue = Assert.IsType<FhirTemporal>(effectiveChildren[0].Value);
+        Assert.Equal("1980-05-11", temporalValue.Literal);
     }
 
     /// <summary>
@@ -659,7 +661,8 @@ public class SchemaAwareElementTests
         var valueDateTimes = extensions[0].Children("valueDateTime");
         Assert.Single(valueDateTimes);
         Assert.Equal("dateTime", valueDateTimes[0].InstanceType);
-        Assert.Equal("2000-01-01T01:01:01-01:00", valueDateTimes[0].Value);
+        var valueDateTimeValue = Assert.IsType<FhirTemporal>(valueDateTimes[0].Value);
+        Assert.Equal("2000-01-01T01:01:01-01:00", valueDateTimeValue.Literal);
     }
 
     [Fact]
@@ -689,7 +692,8 @@ public class SchemaAwareElementTests
         // Assert
         Assert.Single(birthDateList);
         var birthDate = birthDateList[0];
-        Assert.Equal("2010-05-07", birthDate.Value);
+        var birthDateTemporal = Assert.IsType<FhirTemporal>(birthDate.Value);
+        Assert.Equal("2010-05-07", birthDateTemporal.Literal);
 
         var extensions = birthDate.Children("extension").ToList();
         Assert.Single(extensions);
@@ -698,6 +702,561 @@ public class SchemaAwareElementTests
         var valueDateTimes = extensions[0].Children("valueDateTime");
         Assert.Single(valueDateTimes);
         Assert.Equal("dateTime", valueDateTimes[0].InstanceType);
+    }
+
+    #endregion
+
+    #region Temporal Value Tests
+
+    [Theory]
+    [InlineData("birthDate", "date", "1974-12-25", FhirTemporalPrecision.Day)]
+    [InlineData("birthDate", "date", "1974", FhirTemporalPrecision.Year)]
+    public void GivenPatientWithDateField_WhenReadingValue_ThenReturnsFhirTemporal(
+        string field, string expectedInstanceType, string literal, FhirTemporalPrecision expectedPrecision)
+    {
+        // Arrange
+        var patientJson = $$"""
+        {
+          "resourceType": "Patient",
+          "id": "p1",
+          "{{field}}": "{{literal}}"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var children = typedElement.Children(field).ToList();
+
+        // Assert
+        Assert.Single(children);
+        Assert.Equal(expectedInstanceType, children[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(children[0].Value);
+        Assert.Equal(literal, temporal.Literal);
+        Assert.Equal(expectedPrecision, temporal.Precision);
+    }
+
+    [Fact]
+    public void GivenObservationWithEffectiveDateTime_WhenReadingValue_ThenReturnsFhirTemporal()
+    {
+        // Arrange
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs",
+          "status": "final",
+          "code": { "text": "test" },
+          "effectiveDateTime": "1974-12-25T14:30:00Z"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var effectiveChildren = typedElement.Children("effective").ToList();
+
+        // Assert
+        Assert.Single(effectiveChildren);
+        Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(effectiveChildren[0].Value);
+        Assert.Equal("1974-12-25T14:30:00Z", temporal.Literal);
+        Assert.Equal(FhirTemporalPrecision.Second, temporal.Precision);
+    }
+
+    [Fact]
+    public void GivenObservationWithInstant_WhenReadingValue_ThenReturnsFhirTemporal()
+    {
+        // Arrange
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs",
+          "status": "final",
+          "code": { "text": "test" },
+          "issued": "1974-12-25T14:30:00.123Z"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var issuedChildren = typedElement.Children("issued").ToList();
+
+        // Assert
+        Assert.Single(issuedChildren);
+        Assert.Equal("instant", issuedChildren[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(issuedChildren[0].Value);
+        Assert.Equal("1974-12-25T14:30:00.123Z", temporal.Literal);
+        Assert.Equal(FhirTemporalPrecision.Millisecond, temporal.Precision);
+    }
+
+    [Fact]
+    public void GivenUnparseableTemporalLiteral_WhenReadingValue_ThenFallsBackToRawString()
+    {
+        // Arrange — hour-precision dateTime deliberately fails FhirTemporal.TryParse
+        // (GetPrecision returns Hour, which TryParseTemporal cannot handle via DateTimeOffset.TryParse
+        // for a date-prefixed hour-only string — the round-trip through GetLowerBound returns null)
+        var observationJson = """
+        {
+          "resourceType": "Observation",
+          "id": "obs",
+          "status": "final",
+          "code": { "text": "test" },
+          "effectiveDateTime": "2012-01-01T10"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(observationJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var effectiveChildren = typedElement.Children("effective").ToList();
+
+        // Assert — raw string fallback, no FhirTemporal, no null, no exception
+        Assert.Single(effectiveChildren);
+        Assert.Equal("dateTime", effectiveChildren[0].InstanceType);
+        Assert.Equal("2012-01-01T10", effectiveChildren[0].Value);
+    }
+
+    [Fact]
+    public void GivenHourPrecisionTemporalLiteral_WhenReadingValue_ThenFallsBackToRawString()
+    {
+        // Arrange — "2012-01-01T10" is the canonical example from the task brief
+        var patientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "p1",
+          "birthDate": "2012-01-01T10"
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(patientJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var children = typedElement.Children("birthDate").ToList();
+
+        // Assert
+        Assert.Single(children);
+        Assert.Equal("date", children[0].InstanceType);
+        Assert.Equal("2012-01-01T10", children[0].Value);
+    }
+
+    /// <summary>
+    /// Exercises the <c>time</c> arm of <see cref="FhirTemporal"/>.
+    /// A bare FHIR <c>time</c> is anchored internally to a synthetic 1900-01-01 date and is not a
+    /// determinate calendar instant, so the anchor must stay invisible: <see cref="FhirTemporal.Literal"/>
+    /// must round-trip the source text and <see cref="FhirTemporal.Kind"/> must be
+    /// <see cref="FhirPrimitive.Time"/>.
+    /// Field used: <c>HealthcareService.availableTime.availableStartTime</c> (typed as <c>time</c>
+    /// in R4 and therefore a clean, shallow path that the schema provider resolves without fabricating
+    /// wrapper elements).
+    /// </summary>
+    [Fact]
+    public void GivenHealthcareServiceWithAvailableStartTime_WhenReadingValue_ThenReturnsFhirTemporalWithNullValue()
+    {
+        // Arrange
+        var healthcareServiceJson = """
+        {
+          "resourceType": "HealthcareService",
+          "id": "hs1",
+          "availableTime": [
+            {
+              "availableStartTime": "09:00:00"
+            }
+          ]
+        }
+        """;
+
+        var resource = ResourceJsonNode.Parse(healthcareServiceJson);
+        var typedElement = resource.ToElement(_r4Provider);
+
+        // Act
+        var availableTimeChildren = typedElement.Children("availableTime").ToList();
+        var startTimeChildren = availableTimeChildren[0].Children("availableStartTime").ToList();
+
+        // Assert
+        Assert.Single(startTimeChildren);
+        Assert.Equal("time", startTimeChildren[0].InstanceType);
+        var temporal = Assert.IsType<FhirTemporal>(startTimeChildren[0].Value);
+        Assert.Equal(FhirPrimitive.Time, temporal.Kind);
+        Assert.Equal("09:00:00", temporal.Literal);
+        Assert.Equal(FhirTemporalPrecision.Second, temporal.Precision);
+    }
+
+    #endregion
+
+    #region Value Memoisation Tests
+
+    [Fact]
+    public void GivenATemporalElement_WhenReadingValueTwice_ThenTheParsedValueIsMemoised()
+    {
+        // Arrange
+        var element = ParseObservation("\"effectiveDateTime\": \"2013-04-02T10:30:10+01:00\"")
+            .Children("effective")
+            .Single();
+
+        // Act
+        var first = element.Value;
+        var second = element.Value;
+
+        // Assert
+        Assert.IsType<FhirTemporal>(first);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void GivenAnElementWithoutPrimitiveValue_WhenReadingValueTwice_ThenTheSourceIsReadOnlyOnce()
+    {
+        // Arrange - a recording navigator observes ISourceNavigator.Text reads directly, so removing
+        // the memoisation of Value (both reads recomputing null independently) would still leave a
+        // plain Assert.Null(first)/Assert.Null(second) test green. Asserting the read count instead
+        // makes that regression fail.
+        var resource = ResourceJsonNode.Parse($$"""
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "text": "test" },
+          "valueString": "foo"
+        }
+        """);
+        var recordingNavigator = new TextAccessRecordingSourceNavigator(resource.ToSourceNavigator());
+        var element = recordingNavigator.ToElement(_r4Provider)
+            .Children("code")
+            .Single();
+
+        // Act
+        var first = element.Value;
+        var second = element.Value;
+
+        // Assert
+        Assert.Null(first);
+        Assert.Null(second);
+        Assert.Equal(1, recordingNavigator.TextReadCount(element.Location));
+    }
+
+    [Fact]
+    public void GivenAnUnparseableTemporal_WhenReadingValueTwice_ThenBothReadsFallBackToTheRawString()
+    {
+        // Arrange
+        var element = ParseObservation("\"effectiveDateTime\": \"not-a-date\"")
+            .Children("effective")
+            .Single();
+
+        // Act
+        var first = element.Value;
+        var second = element.Value;
+
+        // Assert
+        Assert.Equal("not-a-date", first);
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void GivenASharedElement_WhenReadingValueConcurrently_ThenEveryReaderSeesTheSameValue()
+    {
+        // Arrange
+        var element = ParseObservation("\"effectiveDateTime\": \"2013-04-02T10:30:10+01:00\"")
+            .Children("effective")
+            .Single();
+
+        var expected = FhirTemporal.TryParse("2013-04-02T10:30:10+01:00", FhirPrimitive.DateTime, out var parsed)
+            ? parsed
+            : null;
+
+        // Act
+        var observed = new object[256];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Value);
+
+        // Assert
+        Assert.NotNull(expected);
+        Assert.All(observed, value => Assert.Equal(expected, value));
+    }
+
+    private IElement ParseObservation(string discriminatingProperty)
+    {
+        var observationJson = $$"""
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "text": "test" },
+          {{discriminatingProperty}}
+        }
+        """;
+
+        return ResourceJsonNode.Parse(observationJson).ToElement(_r4Provider);
+    }
+
+    #endregion
+
+    #region Snapshot Invariant Tests
+
+    // Memoising Value is only sound because an element is a snapshot of its source node. These tests pin
+    // that invariant at the layer that actually supplies it, so a future live-reading ISourceNavigator
+    // cannot make Value silently stale without turning a test red.
+
+    [Fact]
+    public void GivenARetainedSourceNavigator_WhenTheUnderlyingJsonIsReplaced_ThenTextStillReportsTheSnapshot()
+    {
+        // Arrange - ISourceNavigator.Text has never been memoised, at any point in this file's history.
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        var gender = resource.ToSourceNavigator().Children("gender").Single();
+        var textBeforeMutation = gender.Text;
+
+        // Act
+        MutableNodeOf(resource)["gender"] = "male";
+
+        // Assert - the capture is frozen by JsonNodeSourceNode, not by any cache above it.
+        Assert.Equal("female", textBeforeMutation);
+        Assert.Equal("female", gender.Text);
+        Assert.Equal("male", MutableNodeOf(resource)["gender"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void GivenARetainedElement_WhenTheUnderlyingJsonIsReplaced_ThenValueStillReportsTheSnapshot()
+    {
+        // Arrange
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        var gender = resource.ToElement(_r4Provider).Children("gender").Single();
+        var valueBeforeMutation = gender.Value;
+
+        // Act
+        MutableNodeOf(resource)["gender"] = "male";
+
+        // Assert
+        Assert.Equal("female", valueBeforeMutation);
+        Assert.Equal("female", gender.Value);
+    }
+
+    [Fact]
+    public void GivenAMutatedResource_WhenCachesAreInvalidatedAndTheTreeIsRebuilt_ThenTheNewValueIsVisible()
+    {
+        // Arrange
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        Assert.Equal("female", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+
+        // Act - the supported way to observe an edit: re-derive rather than re-read.
+        MutableNodeOf(resource)["gender"] = "male";
+        resource.InvalidateCaches();
+
+        // Assert
+        Assert.Equal("male", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+    }
+
+    [Fact]
+    public void GivenAMutatedResource_WhenTheTreeIsRebuiltWithoutInvalidatingCaches_ThenTheOldValuePersists()
+    {
+        // Arrange
+        var resource = ResourceJsonNode.Parse(PatientJson);
+        Assert.Equal("female", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+
+        // Act - ToElement() returns the cached tree, so re-deriving without invalidating changes nothing.
+        MutableNodeOf(resource)["gender"] = "male";
+
+        // Assert - this is why ResourceJsonNode.InvalidateCaches() exists.
+        Assert.Equal("female", resource.ToElement(_r4Provider).Children("gender").Single().Value);
+    }
+
+    private const string PatientJson = """
+    {
+      "resourceType": "Patient",
+      "id": "pat1",
+      "gender": "female"
+    }
+    """;
+
+    private static System.Text.Json.Nodes.JsonObject MutableNodeOf(ResourceJsonNode resource)
+        => ((IMutableJsonNode)resource).MutableNode;
+
+    #endregion
+
+    #region Type Definition Memoisation Tests
+
+    [Fact]
+    public void GivenAnElementWhoseTypeIsUnknownToTheSchema_WhenReadingTypeTwice_ThenBothReadsAreNull()
+    {
+        // Arrange
+        var element = ParseObservation("\"Bogus\": \"x\"")
+            .Children("Bogus")
+            .Single();
+
+        // Act
+        var first = element.Type;
+        var second = element.Type;
+
+        // Assert
+        Assert.Equal("Bogus", element.InstanceType);
+        Assert.Null(first);
+        Assert.Null(second);
+    }
+
+    [Fact]
+    public void GivenAnElementWithNoInstanceType_WhenReadingTypeTwice_ThenBothReadsAreNullWithoutQueryingTheSchema()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"bogus\": \"x\"", schema)
+            .Children("bogus")
+            .Single();
+        schema.ResetCounts();
+
+        // Act
+        var first = element.Type;
+        var second = element.Type;
+
+        // Assert
+        Assert.Equal(string.Empty, element.InstanceType);
+        Assert.Null(first);
+        Assert.Null(second);
+        Assert.Equal(0, schema.TotalLookupCount);
+    }
+
+    [Fact]
+    public void GivenAnElement_WhenReadingTypeRepeatedly_ThenTheSchemaIsQueriedOnce()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"valueString\": \"foo\"", schema);
+
+        // Act
+        var reads = new[] { element.Type, element.Type, element.Type, element.Type };
+
+        // Assert
+        Assert.All(reads, type => Assert.Same(reads[0], type));
+        Assert.NotNull(reads[0]);
+        Assert.Equal(1, schema.LookupCount("Observation"));
+    }
+
+    [Fact]
+    public void GivenAnUnknownType_WhenReadingTypeRepeatedly_ThenTheNullResultIsMemoisedToo()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"Bogus\": \"x\"", schema)
+            .Children("Bogus")
+            .Single();
+        schema.ResetCounts();
+
+        // Act
+        var reads = new[] { element.Type, element.Type, element.Type, element.Type };
+
+        // Assert
+        Assert.All(reads, Assert.Null);
+        Assert.Equal(1, schema.LookupCount("Bogus"));
+    }
+
+    [Fact]
+    public void GivenASharedElement_WhenReadingTypeConcurrently_ThenEveryReaderSeesTheSameDefinition()
+    {
+        // Arrange
+        var element = ParseObservation("\"valueString\": \"foo\"");
+        var expected = element.Type;
+
+        // Act
+        var observed = new IType[256];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Type);
+
+        // Assert
+        Assert.NotNull(expected);
+        Assert.All(observed, type => Assert.Same(expected, type));
+    }
+
+    #endregion
+
+    #region Child Definition Cache Tests
+
+    [Fact]
+    public void GivenAnUndefinedChildName_WhenNavigatingTwice_ThenBothPassesReportNoDefinition()
+    {
+        // Arrange
+        var element = ParseObservation("\"Bogus\": \"x\"");
+
+        // Act
+        var first = element.Children("Bogus").Single();
+        var second = element.Children("Bogus").Single();
+
+        // Assert
+        Assert.Null(first.Type);
+        Assert.Null(second.Type);
+    }
+
+    [Fact]
+    public void GivenTheSameElement_WhenNavigatingTheSameChildTwice_ThenTheSecondPassQueriesTheSchemaLessOften()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var element = ParseObservation("\"valueString\": \"foo\"", schema);
+        _ = element.Type;
+
+        // Act
+        schema.ResetCounts();
+        var first = element.Children("status").Single();
+        var firstPassLookups = schema.TotalLookupCount;
+
+        schema.ResetCounts();
+        var second = element.Children("status").Single();
+        var secondPassLookups = schema.TotalLookupCount;
+
+        // Assert
+        Assert.Equal(first.InstanceType, second.InstanceType);
+        Assert.Same(first.Type, second.Type);
+        Assert.True(
+            secondPassLookups < firstPassLookups,
+            $"expected the cached pass to query the schema less often, got {secondPassLookups} vs {firstPassLookups}");
+    }
+
+    [Fact]
+    public void GivenALeafElement_WhenNavigatingIntoIt_ThenTheChildDefinitionCacheIsNeverReached()
+    {
+        // Arrange
+        var schema = new TypeLookupRecordingSchema(_r4Provider);
+        var leaf = ParseObservation("\"valueString\": \"foo\"", schema)
+            .Children("status")
+            .Single();
+        schema.ResetCounts();
+
+        // Act
+        var children = leaf.Children("anything");
+
+        // Assert
+        Assert.Empty(children);
+        Assert.Equal(0, schema.LookupCount("code.anything"));
+    }
+
+    [Fact]
+    public void GivenASharedElement_WhenNavigatingChildrenConcurrently_ThenEveryCallerSeesTheSameChildDefinition()
+    {
+        // Arrange
+        var element = ParseObservation("\"valueString\": \"foo\"");
+        var expected = element.Children("status").Single().Type;
+
+        // Act
+        var observed = new IType[256];
+        Parallel.For(0, observed.Length, i => observed[i] = element.Children("status").Single().Type);
+
+        // Assert
+        Assert.NotNull(expected);
+        Assert.All(observed, type => Assert.Same(expected, type));
+    }
+
+    private IElement ParseObservation(string discriminatingProperty, ISchema schema)
+    {
+        var observationJson = $$"""
+        {
+          "resourceType": "Observation",
+          "id": "obs1",
+          "status": "final",
+          "code": { "text": "test" },
+          {{discriminatingProperty}}
+        }
+        """;
+
+        return ResourceJsonNode.Parse(observationJson).ToElement(schema);
     }
 
     #endregion

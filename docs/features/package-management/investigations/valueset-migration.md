@@ -319,7 +319,7 @@ case "valueset-provider":
    - Delete `src/Core/Ignixa.Validation/Generated/*InMemoryTerminologyService.g.cs`
 
 10. **Update documentation**
-    - Update CLAUDE.md with new provider usage
+    - Update AGENTS.md with new provider usage
     - Document migration for external consumers
 
 ---
