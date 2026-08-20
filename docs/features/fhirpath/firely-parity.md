@@ -16,6 +16,12 @@ on every write through `TypedElementSearchIndexer`. A divergence nothing can rea
 
 ## Headline
 
+This document describes the original expression-focused R4 inventory. The all-version,
+resource-backed enablement gate now lives in
+[Resource-backed Firely parity corpus](resource-backed-parity-corpus.md). That follow-up runs
+shipped expressions against 788 real resource-shaped inputs, compares CLR carriers as well as
+FHIR values, and uses the production Ignixa indexer.
+
 **The inventory is short, and that is the finding.**
 
 Across the R4 search parameter corpus - **1,367 distinct expressions x 5 resources = 6,835
@@ -67,9 +73,10 @@ between releases. Consequently **the R5-specific `as`/`is` behaviour is not cove
 
 ## What is compared, and what is normalised
 
-Compared: result count, each result's `InstanceType`, each result's value, and whether evaluation
-threw. A throw is an outcome, not a test failure - "one engine throws where the other returns empty"
-is the exact mechanism ADR 2608 names for turning a conformance gap into silent index drift.
+Compared: result count, each result's `InstanceType`, each result's CLR carrier and invariant value,
+and whether evaluation threw. A throw is an outcome, not a test failure - "one engine throws where
+the other returns empty" is the exact mechanism ADR 2608 names for turning a conformance gap into
+silent index drift.
 
 Two normalisations, both deliberate:
 
@@ -268,16 +275,14 @@ The brief predicted four findings. Two were confirmed, two refuted.
 
 ---
 
-## Not yet covered
+## Not covered by the original R4 inventory
 
-- **R5 and R4B.** The harness is R4-only, because referencing two Firely model assemblies makes
-  `ModelInfo` ambiguous. Covering R5 needs a second test project or `extern alias`. The R5 `as`
-  prediction is untested as a result.
+The resource-backed follow-up linked above now covers all five versions, populated resources, and
+present/absent/contained `resolve()` targets. The following limitations describe only the original
+expression-focused harness or remain future work:
+
 - **Custom search parameters.** ADR 2608 already scopes these to bake-in observation rather than a
   pre-merge gate.
-- **`resolve()` against a real resource graph.** Both engines get an identical synthetic resolver, so
-  `resolve()` is compared rather than the fixture - but a resolver that returns fully populated
-  resources would exercise more.
 - **Firely 6.0.1 vs 5.11.4 as its own axis.** Both are available offline; a second project could
   report where the two Firely versions disagree, which is directly useful when fhir-server upgrades.
 

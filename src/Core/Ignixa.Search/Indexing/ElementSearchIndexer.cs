@@ -117,7 +117,7 @@ public partial class ElementSearchIndexer : ISearchIndexer
     /// docs/superpowers/plans/2026-07-18-search-indexer-min-max-flags.md's Global Constraints for the
     /// exact source method this mirrors.
     /// </summary>
-    private static void MarkMinMaxValues(IReadOnlyCollection<SearchIndexEntry> searchIndices)
+    internal static void MarkMinMaxValues(IReadOnlyCollection<SearchIndexEntry> searchIndices)
     {
         var minValues = new Dictionary<Uri, ISupportSortSearchValue>();
         var maxValues = new Dictionary<Uri, ISupportSortSearchValue>();

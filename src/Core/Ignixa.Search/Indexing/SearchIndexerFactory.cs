@@ -34,10 +34,24 @@ public static class SearchIndexerFactory
         var definitionManager = searchParameterDefinitionManager
             ?? new SearchParameterDefinitionManager(fhirSchemaProvider, loggerProvider.CreateLogger<SearchParameterDefinitionManager>());
 
+        var (converterManager, elementResolver) = CreateIndexingComponents(fhirSchemaProvider, baseUriProvider);
+
+        return new ElementSearchIndexer(
+            new SupportedSearchParameterDefinitionManager(definitionManager),
+            converterManager,
+            elementResolver,
+            loggerProvider.CreateLogger<ElementSearchIndexer>());
+    }
+
+    internal static (
+        IElementToSearchValueConverterManager ConverterManager,
+        IReferenceToElementResolver ElementResolver) CreateIndexingComponents(
+            IFhirSchemaProvider fhirSchemaProvider,
+            IFhirBaseUriProvider baseUriProvider)
+    {
         var referenceParser = new ReferenceSearchValueParser(fhirSchemaProvider, baseUriProvider);
         var elementResolver = new LightweightReferenceToElementResolver(referenceParser, fhirSchemaProvider);
         var codesystems = new CodeSystemResolver(fhirSchemaProvider.Version);
-
         IElementToSearchValueConverter[] converters = typeof(ElementSearchIndexer)
             .Assembly
             .ExportedTypes
@@ -45,13 +59,7 @@ public static class SearchIndexerFactory
             .Select(x => (IElementToSearchValueConverter)CreateTypeWithArguments(x, fhirSchemaProvider, referenceParser, elementResolver, codesystems, fhirSchemaProvider.Version))
             .ToArray();
 
-        // Manager is now initialized synchronously in constructor with pre-generated search parameters
-
-        return new ElementSearchIndexer(
-            new SupportedSearchParameterDefinitionManager(definitionManager),
-            new FhirElementToSearchValueConverterManager(converters),
-            elementResolver,
-            loggerProvider.CreateLogger<ElementSearchIndexer>());
+        return (new FhirElementToSearchValueConverterManager(converters), elementResolver);
     }
 
     private static object CreateTypeWithArguments(Type type, params object[] argOverrides)
