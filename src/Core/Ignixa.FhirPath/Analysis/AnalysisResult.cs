@@ -12,6 +12,21 @@ namespace Ignixa.FhirPath.Analysis;
 /// <summary>
 /// Represents the result of FhirPath expression analysis.
 /// </summary>
+/// <remarks>
+/// Known limitation — type-name casing. The analyzer resolves type names case-insensitively, while
+/// from R5 the evaluator matches them <c>Ordinal</c>-exact and carries an alias set only for the
+/// pre-R5 versions. The two therefore disagree on a mis-cased cast:
+/// <c>Observation.value.as(String)</c> analyses clean on R5 and R6 and evaluates empty, and
+/// <c>as(codeableconcept)</c> or <c>as(humanname)</c> do so on every version. In those cases
+/// <see cref="IsValid"/> is <see langword="true"/>, <see cref="HasAlwaysEmptySubexpression"/> is
+/// <see langword="false"/>, and <see cref="InferredTypes"/> names the correctly-cased type, for an
+/// expression the evaluator provably empties — so no member of this type can be used to detect that
+/// class of typo. The analyzer resolves a cast target twice over, first against the focus's own types
+/// and then through the schema's type lookup, and both are case-insensitive; closing either alone was
+/// measured to change nothing, so aligning the two engines means version-gating both paths as the
+/// evaluator already does. Until then the divergence is pinned by
+/// <c>AnalyzerEvaluatorTypeCasingDivergenceTests</c>, which fails when it changes in either direction.
+/// </remarks>
 public sealed class AnalysisResult
 {
     /// <summary>
@@ -41,8 +56,13 @@ public sealed class AnalysisResult
     /// corpus, <c>Severity == Error</c> is confined to a single defective upstream expression — 26 of
     /// 1,977 parameter/base-resource pairs on R5 and 25 of 2,027 on R6, none on STU3, R4 or R4B — and
     /// <c>IsValid</c> is additionally false wherever the result is indeterminate, up to 4.2% of pairs
-    /// (83 of 1,977 on R5). A decidably always-empty navigation is neither: it leaves <c>IsValid</c>
-    /// true, and <see cref="HasAlwaysEmptySubexpression"/> is the only signal for it.
+    /// (83 of 1,977 on R5). A decidably always-empty navigation is neither, as a diagnostic: it is
+    /// raised as a warning, so in isolation it leaves <c>IsValid</c> true and
+    /// <see cref="HasAlwaysEmptySubexpression"/> is the only signal for it. That describes the
+    /// diagnostic, not the corpus — there the always-empty pairs and the error pairs are the same set
+    /// (26 of 26 on R5, 25 of 25 on R6), so <c>HasAlwaysEmptySubexpression &amp;&amp; IsValid</c> does
+    /// not occur in the shipped vocabulary at all. Expect the combination from hand-written
+    /// expressions.
     /// </remarks>
     public bool IsValid =>
         !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error) &&
@@ -60,9 +80,10 @@ public sealed class AnalysisResult
         !Issues.Any(i => i.Severity == ValidationIssueSeverity.Error);
 
     /// <summary>
-    /// Gets whether some subexpression provably yields empty for every conformant input.
+    /// Gets whether the analyzer concluded that some subexpression always yields empty.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately independent of <see cref="IsValid"/>. An always-empty navigation is a decided fact,
     /// so treating it as invalid would contradict the analyzer's own reasoning; but it is also the shape
     /// a typo takes once the root type is known concretely (<c>status</c> against a <c>Patient</c> root is
@@ -71,6 +92,16 @@ public sealed class AnalysisResult
     /// predicate exists to let a caller apply its own policy without matching on warning text. It is not
     /// evidence of a defect on its own: an expression written as a union across resource types is
     /// legitimately empty on most of them.
+    /// </para>
+    /// <para>
+    /// This reports the analyzer's conclusion, not decidability. The classifier keys on
+    /// <see cref="FhirPathTypeSet.IsRoot"/>, so only a bare root-relative name reaches the always-empty
+    /// outcome: <c>Patient.status</c> provably yields empty and returns <see langword="false"/> here,
+    /// as do <c>$this.status</c>, <c>%resource.status</c> and <c>Patient.where(status = 'active')</c>,
+    /// all of which are reported as an unresolved-property error instead. A <see langword="false"/>
+    /// result therefore means "not classified as always-empty", not "not always empty" — see also the
+    /// class-level note on type-name casing, which is a second source of the same asymmetry.
+    /// </para>
     /// </remarks>
     public bool HasAlwaysEmptySubexpression => Issues.Any(issue => issue.IsAlwaysEmpty);
 

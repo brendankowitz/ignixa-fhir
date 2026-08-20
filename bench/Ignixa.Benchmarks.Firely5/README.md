@@ -2,16 +2,23 @@
 
 ## Finding
 
-The short run observed an adapter-input win for the measured aggregate, but not for every
-expression family. Against the current fhir-server indexer path, Ignixa took **5.449 ms versus
-7.954 ms** for Firely (**0.69x time**) and allocated **4.446 MB versus 6.346 MB** (**0.70x
-allocation**) across the 382-expression evaluation plan. Plain paths reversed the result:
-Ignixa took **1.366 ms versus 0.633 ms** (**2.16x slower**) and allocated **1.79x** as much.
+Measured at commit `86b5cce8` (clean tree). The short run observed an adapter-input win for the
+measured aggregate, but not for every expression family. Against the current fhir-server indexer
+path, Ignixa took **2.961 ms versus 5.102 ms** for Firely (**0.59x time**) and allocated **4.446 MB
+versus 6.346 MB** (**0.70x allocation**) across the 382-expression evaluation plan. Plain paths
+reversed the result: Ignixa took **0.783 ms versus 0.409 ms** (**1.92x slower**) and allocated
+**1.79x** as much.
 
 This rejects the pre-measurement expectation that the adapter would erase the aggregate win on
 this workload. It does not establish a universal win: the workload mix controls the outcome, the
 plain-path result is a material loss, and the short job is evidence rather than a release-grade
 capacity measurement.
+
+An earlier run of this same job at `77cb4e74` reported wall-clock times 35–45% higher in **every**
+arm, including the two Firely arms the intervening commits do not touch, while reporting
+byte-identical allocations for every family. The absolute times here are therefore dominated by
+host variance and must not be read as a speedup delivered by those commits; the ratios and the
+allocation figures are the durable content of this table.
 
 ## What was measured
 
@@ -70,36 +77,44 @@ are marked as within short-run noise.
 
 ## Evaluation results
 
-Times are per complete family plan. Ratios and allocation ratios use the direct Firely indexer as
-baseline.
+Measured at commit `86b5cce8`. Times are per complete family plan. Ratios and allocation ratios use
+the direct Firely indexer as baseline.
 
 | Family | Firely indexer mean ± SD | Firely seam mean ± SD | Ignixa adapter mean ± SD | Ignixa time ratio | Ignixa allocation ratio | Reading |
 |---|---:|---:|---:|---:|---:|---|
-| All | 7.954 ± 0.198 ms | 8.493 ± 0.194 ms | 5.449 ± 0.224 ms | 0.69x | 0.70x | Aggregate win observed |
-| Union | 7.695 ± 0.644 ms | 6.852 ± 0.126 ms | 3.224 ± 0.229 ms | 0.42x | 0.53x | Win observed; Firely arm ordering is noisy |
-| `where()` | 1.982 ± 0.074 ms | 2.125 ± 0.026 ms | 0.683 ± 0.021 ms | 0.34x | 0.44x | Win observed |
-| `ofType()` | 0.605 ± 0.034 ms | 0.815 ± 0.086 ms | 0.504 ± 0.017 ms | 0.83x | 0.68x | Small time win; confirm with full job |
-| `resolve()` | 1.710 ± 0.056 ms | 1.886 ± 0.054 ms | 0.582 ± 0.034 ms | 0.34x | 0.42x | Win observed on the resolvable Appointment fixture |
-| `as()` | 0.138 ± 0.020 ms | 0.169 ± 0.008 ms | 0.153 ± 0.011 ms | 1.13x | 0.95x | Time difference is within short-run noise |
-| Plain | 0.633 ± 0.016 ms | 0.605 ± 0.077 ms | 1.366 ± 0.109 ms | 2.16x | 1.79x | Clear adapter-input loss |
+| All | 5.102 ± 0.857 ms | 4.605 ± 0.151 ms | 2.961 ± 0.270 ms | 0.59x | 0.70x | Aggregate win observed |
+| Union | 4.054 ± 0.131 ms | 3.889 ± 0.015 ms | 1.702 ± 0.033 ms | 0.42x | 0.53x | Win observed; Firely arm ordering is noisy |
+| `where()` | 1.314 ± 0.070 ms | 1.217 ± 0.043 ms | 0.431 ± 0.057 ms | 0.33x | 0.44x | Win observed |
+| `ofType()` | 0.475 ± 0.017 ms | 0.504 ± 0.015 ms | 0.323 ± 0.020 ms | 0.68x | 0.68x | Time win; confirm with full job |
+| `resolve()` | 1.637 ± 0.257 ms | 1.422 ± 0.049 ms | 0.343 ± 0.023 ms | 0.21x | 0.42x | Win observed on the resolvable Appointment fixture |
+| `as()` | 0.118 ± 0.004 ms | 0.103 ± 0.001 ms | 0.096 ± 0.002 ms | 0.81x | 0.95x | Direction reversed from the `77cb4e74` run's 1.13x; 11 expressions is a thin sample |
+| Plain | 0.409 ± 0.001 ms | 0.435 ± 0.005 ms | 0.783 ± 0.022 ms | 1.92x | 1.79x | Clear adapter-input loss |
+
+Every allocation figure in this run is byte-identical to the `77cb4e74` run except Patient
+lazy-tree materialization below, so the two families whose time ratio moved — `ofType()` 0.83x to
+0.68x and `as()` 1.13x to 0.81x — moved without any change in allocated bytes. That is consistent
+with the cheaper `element is ISystemValueElement` type test replacing a class-name string scan, but
+three samples on a virtualized host cannot separate that from host variance, and the `as()` family
+has 11 expressions.
 
 The Firely seam allocated 5–10% more than the direct indexer path by family. Its time delta was not
-stable in this short run: union and plain paths measured faster despite the extra wrapper, so those
-Firely-versus-Firely point estimates should be treated as noise. Keeping both rows prevents the
+stable in this short run: five of the seven families measured faster despite the extra wrapper, so
+those Firely-versus-Firely point estimates should be treated as noise. Keeping both rows prevents the
 comparison from silently choosing the Firely topology that favors a predetermined conclusion.
 
 Compilation was measured separately and is excluded from every evaluation ratio. The short run
-reported 586.6 ms / 341.4 MB for Ignixa and 648.3 ms / 951.0 MB for Firely over the distinct
-five-version common corpus. The indexer caches compiled plans, so these numbers do not describe the
-per-write hot path.
+reported 330.4 ms / 341.4 MB for Ignixa and 378.7 ms / 951.0 MB for Firely over the distinct
+five-version common corpus. Both allocation figures are unchanged from the `77cb4e74` run; both
+times are materially lower, which is the same host-variance caveat as above. The indexer caches
+compiled plans, so these numbers do not describe the per-write hot path.
 
 ## Adapter isolation
 
 | Firely fixture | Root wrapper | Full lazy-tree materialization |
 |---|---:|---:|
-| Patient | 15.38 ns, 56 B | 22.03 us, 20,256 B |
-| Observation | 15.92 ns, 56 B | 59.31 us, 55,504 B |
-| Appointment | 17.22 ns, 56 B | 6.63 us, 6,744 B |
+| Patient | 11.04 ns, 56 B | 14.92 us, 20,384 B |
+| Observation | 11.23 ns, 56 B | 33.89 us, 55,504 B |
+| Appointment | 10.18 ns, 56 B | 4.28 us, 6,744 B |
 
 `ToIgnixaElement()` itself is a small root allocation. The materialized child adapters are the
 meaningful cost, and they scale with the portion of the Firely tree traversed. Moving ingress to
@@ -115,11 +130,12 @@ support native-element claims such as the published **3,220x** figure; they do n
 per-call adapter-input topology.
 
 This run licenses only this statement: on this machine, runtime, short-job configuration, corpus
-plan, and three populated resource fixtures, adapter-input Ignixa was about **1.46x faster overall**
-than the current direct Firely indexer and allocated about **30% less**, while plain paths were
-about **2.16x slower** and allocated about **79% more**. It does not license a 3,220x Phase 3 claim,
-a portable production throughput claim, or enablement without the parity gate and a full benchmark
-run on representative deployment hardware.
+plan, and three populated resource fixtures, at commit `86b5cce8`, adapter-input Ignixa was about
+**1.72x faster overall** than the current direct Firely indexer and allocated about **30% less**,
+while plain paths were about **1.92x slower** and allocated about **79% more**. It does not license
+a 3,220x Phase 3 claim, a portable production throughput claim, or enablement without the parity
+gate and a full benchmark run on representative deployment hardware.
 
 Benchmarks are not unit tests, so there is no regression/guard table. Verification is the Release
-build, the executed BenchmarkDotNet job above, and the unchanged `Ignixa.FhirPath.Tests` result.
+build, the executed BenchmarkDotNet job above, and the `Ignixa.FhirPath.Tests` result at the same
+commit.
