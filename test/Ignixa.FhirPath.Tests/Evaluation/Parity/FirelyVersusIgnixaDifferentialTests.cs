@@ -62,11 +62,28 @@ public class FirelyVersusIgnixaDifferentialTests
     /// Pins raw primitive-name divergences <see cref="ParityTypeName"/> normalises away, so
     /// normalising them does not amount to hiding them.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each row also asserts the two conditions that are its reason for existing: the engines still
+    /// spell the type differently, and <see cref="ParityTypeName"/> still reduces both spellings to
+    /// one so <see cref="ParitySweep"/> cannot report it. A row that stops satisfying either fails
+    /// here instead of silently becoming a tautology. That closes the gap which let the
+    /// <c>1 'mg'</c> row be deleted on the belief its divergence had closed: it had not, and nothing
+    /// contradicted the belief. <c>e82f1f03</c> made <c>is System.Quantity</c> true without changing
+    /// the raw <c>InstanceType</c>, which is what this row reads.
+    /// </para>
+    /// <para>
+    /// What it does not do: nothing enumerates this list, so it cannot detect a row deleted while
+    /// still divergent. It makes each row self-verifying, so a row can only be retired honestly
+    /// after this test has gone red.
+    /// </para>
+    /// </remarks>
     [Theory]
     [InlineData("active and true", "System.Boolean", "boolean")]
     [InlineData("'a' & 'b'", "System.String", "string")]
     [InlineData("1 + 1", "System.Integer", "integer")]
     [InlineData("birthDate + 1 year", "System.Date", "date")]
+    [InlineData("1 'mg'", "System.Quantity", "Quantity")]
     public void GivenAnOperatorResult_WhenTypedByBothEngines_ThenFirelyNamesTheSystemTypeAndIgnixaTheFhirType(
         string expression,
         string firelyType,
@@ -82,6 +99,19 @@ public class FirelyVersusIgnixaDifferentialTests
         // Assert
         firely.ShouldBe([firelyType]);
         ignixa.ShouldBe([ignixaType]);
+
+        var firelyName = firely.ShouldHaveSingleItem();
+        var ignixaName = ignixa.ShouldHaveSingleItem();
+
+        firelyName.ShouldNotBe(
+            ignixaName,
+            $"The engines now agree on the raw type of '{expression}', so this row pins nothing. "
+            + "Retire it, and confirm ParitySweep covers whatever behaviour replaced it.");
+
+        ParityTypeName.Canonical(firelyName).ShouldBe(
+            ParityTypeName.Canonical(ignixaName),
+            $"ParityTypeName no longer collapses the two spellings of '{expression}', so ParitySweep "
+            + "reports this divergence itself and this row has become a duplicate pin.");
     }
 
     /// <summary>

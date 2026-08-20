@@ -171,6 +171,56 @@ public class FirelySdkInteropTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal("Quantity", result.Info.Name);
+
+        // The fallback keeps the first declaration's primitiveness too, so an unmatched runtime type
+        // cannot silently make a complex declaration look like a primitive leaf to Ignixa.DeId.
+        Assert.Equal(FhirPrimitive.None, result.Info.Primitive);
+        Assert.False(result.Info.IsPrimitive);
+    }
+
+    /// <summary>
+    /// Pins the primitiveness this adapter reports for a choice element whose selected type is a
+    /// primitive, on the Firely-to-Ignixa input path.
+    /// </summary>
+    /// <remarks>
+    /// Selecting the declared choice type that matches <c>InstanceType</c> moves more than the type
+    /// name: <see cref="TypeInfo.Primitive"/> is derived from that name, so a <c>valueString</c> under
+    /// a <c>value[x]</c> that declares <c>Quantity</c> first reports
+    /// <see cref="FhirPrimitive.String"/> where selecting the first declaration reported
+    /// <see cref="FhirPrimitive.None"/>. <c>Ignixa.DeId</c> reads <c>Info.IsPrimitive</c> to decide
+    /// whether to treat a node as a leaf or recurse into it, so this is a behavioural contract of the
+    /// input path and not incidental to the type name.
+    /// </remarks>
+    [Fact]
+    public void GivenChoiceElementWithPrimitiveInstanceType_WhenAccessingType_ThenReportsThatPrimitive()
+    {
+        // Arrange
+        var definition = new MockElementDefinitionSummary
+        {
+            ElementName = "value",
+            IsChoiceElement = true,
+            Type =
+            [
+                new MockStructureDefinitionReference("Quantity"),
+                new MockStructureDefinitionReference("string")
+            ]
+        };
+        var firelyElement = new MockTypedElement
+        {
+            Name = "value",
+            InstanceType = "string",
+            Definition = definition
+        };
+        var adapter = new IgnixaElementAdapter(firelyElement);
+
+        // Act
+        var result = adapter.Type;
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("string", result.Info.Name);
+        Assert.Equal(FhirPrimitive.String, result.Info.Primitive);
+        Assert.True(result.Info.IsPrimitive);
     }
 
     [Fact]

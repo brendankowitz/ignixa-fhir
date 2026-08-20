@@ -418,6 +418,7 @@ internal static class FunctionHelpers
     /// IElement wrapper for Quantity values.
     /// Used by aggregate, math, boundary, and conversion functions.
     /// </summary>
+    /// <remarks>Declares <see cref="ISystemValueElement"/>; see that interface for why.</remarks>
     public sealed class QuantityElement : ISystemValueElement
     {
         private readonly FhirQuantity _quantity;

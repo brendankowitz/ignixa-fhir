@@ -207,6 +207,8 @@ TypedElementAdapter output:
 
 `IgnixaElementAdapter.TypeAdapter` selects the declared choice type matching `InstanceType`; selecting the first declaration produced `Quantity` for this string value. The tested string index converter already dispatched correctly on `InstanceType`, but preserving the concrete type also makes `Name`, `Definition.Type`, and downstream POCO conversion consistent.
 
+The change is on the Firely-to-Ignixa **input** path, so its reach is wider than the output seam above. `TypeInfo.Primitive` is derived from the selected type name, so for every Firely-sourced choice element whose selected type is primitive it moves from `None` to that primitive — `String` for the `valueString` traced here — and `Info.IsPrimitive` from `false` to `true`. `Ignixa.DeId`'s `ElementExtensions.IsPrimitiveType`/`IsPrimitiveElement` read `Info.IsPrimitive` to decide whether to treat a node as a leaf or recurse into it, and `Ignixa.FhirPath.Visitors.FhirPathType.TypeName` returns `Type.Info.Name`; both see the corrected value. Each move is toward the truth — a `valueString` genuinely is a primitive `string` — and `FirelySdkInteropTests` pins `Info.Primitive` on both the matched and the fallback branch so the shift stays deliberate.
+
 ### Reverse-Corpus Language Findings
 
 These findings remain real, but do not block search-parameter enablement because the relevant constructs are absent from shipped search-parameter expressions:

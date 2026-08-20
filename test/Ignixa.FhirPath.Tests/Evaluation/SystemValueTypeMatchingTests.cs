@@ -394,6 +394,19 @@ public class SystemValueTypeMatchingTests
         resourceOfType.ShouldHaveSingleItem();
     }
 
+    /// <summary>
+    /// Pins what <c>type()</c> answers for a quantity literal. That answer is a known deviation from
+    /// the specification, not a settled classification.
+    /// </summary>
+    /// <remarks>
+    /// The specification puts a quantity literal in the System namespace, so this should answer
+    /// System/Quantity. Marking <c>QuantityElement</c> as a System value closed the <c>is</c> half of
+    /// that divergence and left this half open, so <c>(1 'mg') is System.Quantity</c> is now true while
+    /// <c>(1 'mg').type()</c> still says FHIR/Quantity - the two contradict each other. The cause is the
+    /// <c>"quantity"</c> case in <c>CollectionFunctions.Type</c>, which maps to FHIR from inside the
+    /// <c>isSystemLiteral</c> branch. Correcting it is a separate spec fix needing its own evidence;
+    /// this guard exists so that correction is deliberate and visible rather than incidental.
+    /// </remarks>
     [Fact]
     public void GivenQuantityLiteral_WhenItsTypeIsReported_ThenItRemainsFhirQuantity()
     {
