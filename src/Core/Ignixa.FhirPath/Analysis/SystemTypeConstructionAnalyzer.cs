@@ -50,9 +50,9 @@ internal sealed class SystemTypeConstructionAnalyzer(
     /// The evaluator projects System value members such as <c>Quantity.value</c> and <c>Quantity.unit</c>,
     /// so a child whose focus constructs a System value constructs one too. Naming that member's type would
     /// require mirroring the evaluator's member map, which cannot be proven complete, so the negative answer
-    /// survives only when the focus is proven to construct nothing. This is weaker than
-    /// <see cref="AnalyzePropertyAccess"/>, which propagates only the unknown bit: a property access never
-    /// navigates off a constructed value, because the grammar only produces it at term position.
+    /// survives only when the focus is proven to construct nothing. <see cref="AnalyzePropertyAccess"/>
+    /// applies the same test: today the grammar produces a property access only at term position, so its
+    /// focus is always null, but the node's constructor is public and nothing enforces that.
     /// Because the rule over-approximates, a uniform sweep of expression shapes measures a large apparent
     /// loss of true always-empty diagnostics - 7,696 of 18,240 rows at <c>8780aaf1..d090c8a9</c>, measured
     /// 2026-08-20 - but that ratio is an artefact of weighting synthetic foci equally with real ones. Over
@@ -81,7 +81,8 @@ internal sealed class SystemTypeConstructionAnalyzer(
                 : SystemTypeConstruction.Any;
         }
 
-        return Analyze(expression.Focus).MayConstructAny
+        var focus = Analyze(expression.Focus);
+        return focus.MayConstructAny || focus.TypeNames.Count > 0
             ? SystemTypeConstruction.Any
             : SystemTypeConstruction.None;
     }
