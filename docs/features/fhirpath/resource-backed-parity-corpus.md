@@ -246,16 +246,18 @@ Those three changes do not alter runtime indexing behavior.
 The current checkout's raw official-suite result is:
 
 ```text
-2,890 passed / 10 skipped / 2,900 total
+2,896 passed / 4 skipped / 2,900 total
 ```
 
-Nine of the 2,890 reported passes catch `NotSupportedException` and return successfully. The audited interpretation is therefore:
+Nine of the 2,896 reported passes catch `NotSupportedException` and return successfully. The audited interpretation is therefore:
 
 ```text
-2,881 genuinely asserted / 9 unsupported pass-throughs / 10 skipped
+2,887 genuinely asserted / 9 unsupported pass-throughs / 4 skipped
 ```
 
-The `.downloaded` marker records neither source version nor content hash, so the checkout cannot prove which upstream archive produced its 2,900 cases. Forensics independently verified `fhir-test-cases` 1.7.46 at SHA-256 `D89CEC2BD3A22D9968AE91EFCB460B7FAA0802802840E7AC99A0A9D65B091302`, but issue #405's 2,908-case figure cannot be reconciled from repository provenance. Raw xUnit totals must not be presented as 2,890 supported conformance assertions.
+The `.downloaded` marker records neither source version nor content hash, so the checkout cannot prove which upstream archive produced its 2,900 cases. Forensics independently verified `fhir-test-cases` 1.7.46 at SHA-256 `D89CEC2BD3A22D9968AE91EFCB460B7FAA0802802840E7AC99A0A9D65B091302`, but issue #405's 2,908-case figure cannot be reconciled from repository provenance. Raw xUnit totals must not be presented as 2,896 supported conformance assertions.
+
+The skip count was 10 until six `testQuantity9`/`testQuantity10` skips were found to be stale - they passed on R4, R4B and R5 while still being skipped for a Fhir.Metrics limitation that no longer applied to them. Each remaining skip is now routed through a guard that runs the case and fails if it passes, so this figure cannot drift the same way again.
 
 ## Running the Suites
 
