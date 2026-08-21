@@ -1,7 +1,14 @@
 /*
  * Copyright (c) 2025, Ignixa Contributors
  *
- * Regression coverage for deriving System-value construction provenance from the focus AST.
+ * Coverage for deriving System-value construction provenance from the focus AST.
+ *
+ * This file contains both regressions and guards, which AGENTS.md distinguishes: a regression fails at
+ * the base commit, a guard pins behaviour that was already correct. Measured against 6eb11829, the
+ * commit immediately before the provenance fix, 37 of the 42 cases here failed and 5 passed. The 5 are
+ * the version rows of GivenAChildNavigatedOffNavigatedFhirData_WhenCastToASystemType_ThenAnalysisKeepsItsVerdict,
+ * which is a guard: the fix deliberately left navigated FHIR data alone, and that test exists to prove
+ * the fix did not widen into it. Everything else in this file is a regression.
  */
 
 using Ignixa.Abstractions;
@@ -417,6 +424,12 @@ public class AnalyzerCastProvenanceRegressionTests
         { FhirVersion.R6, true, 0 },
     };
 
+    /// <summary>
+    /// Guard, not a regression: all five rows passed at 6eb11829. The provenance fix targeted values the
+    /// analysis constructs, and navigated FHIR data is not one of them - this pins that the fix stayed
+    /// out of it, including the R5/R6 rows where the verdict is legitimately always-empty because
+    /// <c>family</c> is no longer a System.String from R5 onwards.
+    /// </summary>
     [Theory]
     [MemberData(nameof(NavigatedFhirStringCastVerdicts))]
     public void GivenAChildNavigatedOffNavigatedFhirData_WhenCastToASystemType_ThenAnalysisKeepsItsVerdict(
