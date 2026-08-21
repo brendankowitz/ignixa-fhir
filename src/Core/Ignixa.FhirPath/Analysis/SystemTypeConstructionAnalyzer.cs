@@ -53,6 +53,16 @@ internal sealed class SystemTypeConstructionAnalyzer(
     /// survives only when the focus is proven to construct nothing. This is weaker than
     /// <see cref="AnalyzePropertyAccess"/>, which propagates only the unknown bit: a property access never
     /// navigates off a constructed value, because the grammar only produces it at term position.
+    /// Because the rule over-approximates, a uniform sweep of expression shapes measures a large apparent
+    /// loss of true always-empty diagnostics - 7,696 of 18,240 rows at <c>8780aaf1..d090c8a9</c>, measured
+    /// 2026-08-20 - but that ratio is an artefact of weighting synthetic foci equally with real ones. Over
+    /// the shipped search parameter corpus the delta is 0 of 8,827 parameter/base-resource pairs across all
+    /// five versions, because no shipped search parameter navigates off a constructed System value. Do not
+    /// read that ratio as a regression and tighten this arm back into asserting a negative without
+    /// consulting the focus; that is the unsoundness it exists to remove. A System type member map
+    /// (<c>Quantity</c> alone has members) would recover precision on the synthetic rows, and is the option
+    /// to revisit only if a future population, such as tenant search parameters or FHIRPath drawn from
+    /// invariants, is found to contain quantity-rooted navigation.
     /// </remarks>
     private SystemTypeConstruction AnalyzeChild(ChildExpression expression)
     {
