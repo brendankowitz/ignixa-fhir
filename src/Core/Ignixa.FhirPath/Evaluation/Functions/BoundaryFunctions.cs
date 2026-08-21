@@ -31,12 +31,13 @@ internal static class BoundaryFunctions
     /// For dates/times: Returns the start of the period at the given precision with UTC+14:00 offset.
     /// </summary>
     /// <remarks>
-    /// Declared as returning the focus type: FHIRPath defines the boundary of a value to be a value of that
-    /// same kind, so static analysis keeps the focus type rather than reporting the result as unanalysable.
+    /// The boundary of a value is a newly constructed value, not the focus element, and it is not always of
+    /// the focus's own type: the boundary of a <c>date</c> is a <c>dateTime</c>. Declaring
+    /// <c>boundaryOfContext</c> gives static analysis both facts.
     /// </remarks>
     [FhirPathFunction("lowBoundary",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "boundaryOfContext",
         MinArguments = 0,
         MaxArguments = 1,
         TakesExpressionArguments = true,
@@ -99,11 +100,11 @@ internal static class BoundaryFunctions
     /// For dates/times: Returns the end of the period at the given precision with UTC-12:00 offset.
     /// </summary>
     /// <remarks>
-    /// Declared as returning the focus type, for the same reason as <see cref="LowBoundary"/>.
+    /// Declared as constructing the boundary of the focus, for the same reason as <see cref="LowBoundary"/>.
     /// </remarks>
     [FhirPathFunction("highBoundary",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "boundaryOfContext",
         MinArguments = 0,
         MaxArguments = 1,
         TakesExpressionArguments = true,

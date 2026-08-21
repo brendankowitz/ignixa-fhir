@@ -73,7 +73,7 @@ internal static class AggregateFunctions
     /// <returns>The total, or empty when the units do not relate.</returns>
     [FhirPathFunction("sum",
         SupportedContexts = "any-any",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         SupportsCollections = true,
         MinArguments = 0,
         MaxArguments = 0,

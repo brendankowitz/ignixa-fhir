@@ -278,9 +278,14 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
         {
             sb.AppendLine("            .WithReturnType(ReturnsUnknown)");
         }
-        else if (string.Equals(returnType, "context", StringComparison.OrdinalIgnoreCase))
+        else if (string.Equals(returnType, "context", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(returnType, "constructsFromContext", StringComparison.OrdinalIgnoreCase))
         {
             sb.AppendLine("            .WithReturnType(ReturnsContext)");
+        }
+        else if (string.Equals(returnType, "boundaryOfContext", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.AppendLine("            .WithReturnType(ReturnsBoundaryOfContext)");
         }
         else if (string.Equals(returnType, "fromargument", StringComparison.OrdinalIgnoreCase))
         {

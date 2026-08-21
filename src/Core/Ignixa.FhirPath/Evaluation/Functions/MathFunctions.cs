@@ -21,7 +21,7 @@ internal static class MathFunctions
     /// </summary>
     [FhirPathFunction("round",
         SupportedContexts = "number-number",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         MinArguments = 0,
         MaxArguments = 1,
         Category = "Math",
@@ -157,7 +157,7 @@ internal static class MathFunctions
     /// </summary>
     [FhirPathFunction("abs",
         SupportedContexts = "number-number",
-        ReturnType = "context",
+        ReturnType = "constructsFromContext",
         MinArguments = 0,
         MaxArguments = 0,
         Category = "Math",

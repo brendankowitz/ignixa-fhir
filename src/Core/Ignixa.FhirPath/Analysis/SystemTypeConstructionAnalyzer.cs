@@ -200,6 +200,12 @@ internal sealed class SystemTypeConstructionAnalyzer(
             return Analyze(expression.Focus);
         }
 
+        if (returnType.Equals("constructsFromContext", StringComparison.OrdinalIgnoreCase) ||
+            returnType.Equals("boundaryOfContext", StringComparison.OrdinalIgnoreCase))
+        {
+            return AnalyzeConstructionFromContext(expression);
+        }
+
         if (returnType.Equals("fromArgument", StringComparison.OrdinalIgnoreCase))
         {
             return expression.FunctionName.Equals("iif", StringComparison.OrdinalIgnoreCase)
@@ -222,6 +228,22 @@ internal sealed class SystemTypeConstructionAnalyzer(
             ? SystemTypeConstruction.None
             : SystemTypeConstruction.Any;
     }
+
+    /// <summary>
+    /// Reports a function that builds a new value out of its focus as constructing an unnamed System type.
+    /// </summary>
+    /// <remarks>
+    /// These functions return a freshly built primitive element rather than an element selected out of the
+    /// focus, so the focus's namespace provenance does not survive them and inheriting it would report a
+    /// valid System-spelled cast as provably empty from R5 onward. Naming the constructed type would mean
+    /// enumerating the evaluator's result matrix per function, which cannot be proven complete, so this
+    /// stays an over-approximation. Only the evaluator's empty-in/empty-out invariant is carried through:
+    /// a focus that is provably empty produces a provably empty result.
+    /// </remarks>
+    private SystemTypeConstruction AnalyzeConstructionFromContext(FunctionCallExpression expression) =>
+        Analyze(expression.Focus).IsKnownEmpty
+            ? SystemTypeConstruction.Empty
+            : SystemTypeConstruction.Any;
 
     private SystemTypeConstruction AnalyzeArguments(IReadOnlyList<Expression> arguments)
     {
