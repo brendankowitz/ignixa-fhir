@@ -34,15 +34,25 @@ internal sealed record ParityOutcome(bool Threw, string? ExceptionType, IReadOnl
     /// rendered results in the same order.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A double-throw counts as agreement without comparing <see cref="ExceptionType"/>. Firely and
     /// Ignixa have unrelated exception hierarchies - Firely raises SDK types such as
     /// <c>ArgumentException</c> or <c>InvalidOperationException</c> for conditions Ignixa reports as its
     /// own <c>FhirPathEvaluationException</c> - so requiring the same type name would report every
     /// mutually-agreed error as a divergence, whether or not the underlying cause matches. That is a
     /// worse harness, not a stricter one: it would bury the throw-versus-return disagreements this
-    /// harness exists to find under noise that only says "the SDKs are different libraries". The
-    /// exception type is still captured and folded into <see cref="Shape"/>, so a divergence in which
-    /// exception fires is pinned and visible - it just is not what decides whether two throws match.
+    /// harness exists to find under noise that only says "the SDKs are different libraries".
+    /// </para>
+    /// <para>
+    /// The consequence is that a double-throw is invisible individually. <see cref="Shape"/> is reached
+    /// only through <c>ParityDivergence.Signature</c>, and a double-throw returns <see langword="true"/>
+    /// here, so it never becomes a divergence and its <see cref="ExceptionType"/> is never rendered
+    /// anywhere. Two engines failing for completely unrelated reasons is therefore indistinguishable
+    /// from two engines agreeing on a value. That is contained at the sweep level instead:
+    /// <c>ResourceParityReport.BothThrew</c> and <c>BothEmpty</c> count these outcomes and are pinned by
+    /// <c>ResourceBackedParityCorpusTests</c>, so the population cannot shift without failing a test even
+    /// though no individual double-throw is a divergence.
+    /// </para>
     /// </remarks>
     public bool Matches(ParityOutcome other)
     {

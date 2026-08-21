@@ -48,8 +48,8 @@ public class SystemValueElementDeclarationTests
     /// whether it wraps a System value and why.
     /// </summary>
     /// <remarks>
-    /// The nine marked wrappers each carry the result of a FHIRPath function or literal, which the
-    /// specification defines in the System namespace. The unmarked three each state what they carry
+    /// The marked wrappers each carry the result of a FHIRPath function or literal, which the
+    /// specification defines in the System namespace. The unmarked ones each state what they carry
     /// instead.
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, (bool IsSystemValue, string Rationale)> Decisions =
@@ -140,6 +140,39 @@ public class SystemValueElementDeclarationTests
         ProducerAssemblyPaths
             .SelectMany(GetElementImplementors);
 
+    /// <summary>
+    /// Proves the census sees a producer that inherits its <see cref="IElement"/> declaration rather than
+    /// making it, using fixtures in this assembly because the production assemblies contain no such shape
+    /// and the census would go on passing if one appeared.
+    /// </summary>
+    /// <remarks>
+    /// This is the mutation that exposed the hole. Before the base-type walk, a directly-implementing
+    /// producer correctly failed the census while an inheriting one left both census tests green - a guard
+    /// with a hole, which is worse than a known absence because the omission it exists to catch would have
+    /// looked answered.
+    /// </remarks>
+    [Fact]
+    public void GivenAProducerInheritingItsDeclaration_WhenElementImplementorsAreReflected_ThenTheCensusSeesIt()
+    {
+        // Arrange
+        var testAssemblyPath = typeof(SystemValueElementDeclarationTests).Assembly.Location;
+
+        // Act
+        var implementors = GetElementImplementors(testAssemblyPath)
+            .ToDictionary(implementor => implementor.FullName, StringComparer.Ordinal);
+
+        // Assert
+        implementors.ShouldContainKey(
+            typeof(InheritedElementProducer).FullName!,
+            "a producer inheriting IElement through an abstract base must still be censused, or the omission "
+            + "guard has a hole exactly where a forgotten producer would sit.");
+        implementors[typeof(InheritedElementProducer).FullName!].DeclaresSystemValue.ShouldBeFalse();
+        implementors.ShouldContainKey(typeof(InheritedSystemValueProducer).FullName!);
+        implementors[typeof(InheritedSystemValueProducer).FullName!].DeclaresSystemValue.ShouldBeTrue(
+            "an inherited ISystemValueElement declaration must be seen too, or the declaration half of the "
+            + "census is blind to the same shape.");
+    }
+
     private static IEnumerable<(string FullName, bool DeclaresSystemValue)> GetElementImplementors(string assemblyPath)
     {
         using var stream = File.OpenRead(assemblyPath);
@@ -161,10 +194,46 @@ public class SystemValueElementDeclarationTests
         }
     }
 
-    private static bool ImplementsInterface(MetadataReader metadata, TypeDefinition type, string interfaceName) =>
-        type.GetInterfaceImplementations()
+    /// <summary>
+    /// Whether <paramref name="type"/> implements <paramref name="interfaceName"/>, directly or through a
+    /// base type.
+    /// </summary>
+    /// <remarks>
+    /// The base-type walk is what makes this a census rather than a sample. The compiler emits an
+    /// <c>InterfaceImpl</c> row only for interfaces named in a type's own declaration, so a concrete
+    /// producer that inherits <see cref="IElement"/> from an abstract base declares nothing itself and is
+    /// invisible without it. Verified by mutation: such a producer left both census tests green.
+    /// </remarks>
+    /// <returns>
+    /// Interfaces short-circuit to <see langword="false"/>: their <c>Extends</c> row is not a readable
+    /// type reference and reading it faults the metadata reader, and an interface is never a producer.
+    /// Only bases defined in the same module are followed. A base in another assembly resolves to a
+    /// <see cref="TypeReferenceHandle"/> that this reader cannot open, so a producer inheriting
+    /// <see cref="IElement"/> across an assembly boundary is still out of reach. No such producer exists;
+    /// the census would need a resolver spanning all scanned assemblies to cover one.
+    /// </returns>
+    private static bool ImplementsInterface(MetadataReader metadata, TypeDefinition type, string interfaceName)
+    {
+        var declaresIt = type.GetInterfaceImplementations()
             .Select(handle => metadata.GetInterfaceImplementation(handle).Interface)
             .Any(handle => InterfaceHasName(metadata, handle, interfaceName));
+
+        if (declaresIt)
+        {
+            return true;
+        }
+
+        if ((type.Attributes & TypeAttributes.Interface) != 0)
+        {
+            return false;
+        }
+
+        var baseType = type.BaseType;
+
+        return !baseType.IsNil
+            && baseType.Kind == HandleKind.TypeDefinition
+            && ImplementsInterface(metadata, metadata.GetTypeDefinition((TypeDefinitionHandle)baseType), interfaceName);
+    }
 
     private static bool InterfaceHasName(MetadataReader metadata, EntityHandle handle, string interfaceName)
     {
@@ -201,5 +270,41 @@ public class SystemValueElementDeclarationTests
         return declaringType.IsNil
             ? $"{metadata.GetString(type.Namespace)}.{typeName}"
             : $"{GetTypeFullName(metadata, declaringType)}+{typeName}";
+    }
+
+    /// <summary>
+    /// Declares <see cref="IElement"/> so its subclasses do not have to, which is the shape the census was
+    /// blind to.
+    /// </summary>
+    private abstract class ElementProducerBase : IElement
+    {
+        public string Name => nameof(ElementProducerBase);
+
+        public object? Value => null;
+
+        public string InstanceType => "string";
+
+        public string Location => Name;
+
+        public IType? Type => null;
+
+        public bool HasPrimitiveValue => false;
+
+        public IReadOnlyList<IElement> Children(string? name = null) => [];
+
+        public T? Meta<T>()
+            where T : class => null;
+    }
+
+    private abstract class SystemValueProducerBase : ElementProducerBase, ISystemValueElement
+    {
+    }
+
+    private sealed class InheritedElementProducer : ElementProducerBase
+    {
+    }
+
+    private sealed class InheritedSystemValueProducer : SystemValueProducerBase
+    {
     }
 }

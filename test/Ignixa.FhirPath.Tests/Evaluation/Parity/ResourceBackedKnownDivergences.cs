@@ -27,6 +27,35 @@ internal static class ResourceBackedKnownDivergences
             [TemporalCarrier] = 2,
         };
 
+    /// <summary>
+    /// Evaluations where both engines threw. Pinned at zero because a mutual throw satisfies
+    /// <c>ParityOutcome.Matches</c> without either engine producing a comparable value, so it is
+    /// agreement the harness asserts but never established. Any non-zero value here is a finding.
+    /// </summary>
+    public const int ExpectedBothThrew = 0;
+
+    /// <summary>
+    /// Evaluations where both engines returned no results.
+    /// </summary>
+    /// <remarks>
+    /// This is legitimate agreement - a search parameter expression that matches nothing on a resource
+    /// is the common case - but it is agreement on absence, so it is much weaker evidence than a
+    /// matched value and it is invisible to every divergence-based assertion. Pinning it exactly means
+    /// the composition of the sweep cannot drift silently: 9,453 of 19,647 evaluations agree on empty,
+    /// leaving 10,074 that compare real values. If an engine change moves this number the pin has to be
+    /// updated deliberately, with the shift understood, rather than absorbed into an unchanged
+    /// divergence count.
+    /// </remarks>
+    public const int ExpectedBothEmpty = 9453;
+
+    /// <summary>
+    /// Lower bounds on sweep size, so a corpus that stopped generating resources or expressions fails
+    /// instead of trivially satisfying the divergence counts with nothing to compare.
+    /// </summary>
+    public const int MinimumSelectEvaluationsPerEngine = 19647;
+
+    public const int MinimumResourceCount = 788;
+
     public static ResourceParityClassification? Classify(ParityDivergence divergence)
     {
         if (divergence.Source == "SearchParameter")

@@ -12,7 +12,7 @@ internal static class ResourceParitySweep
     {
         var stopwatch = Stopwatch.StartNew();
         var divergences = new List<ParityDivergence>();
-        int evaluations = 0;
+        var tally = new ParityOutcomeTally();
         int resources = 0;
 
         foreach (var version in GeneratedParityCorpus.Build())
@@ -27,19 +27,25 @@ internal static class ResourceParitySweep
                     resource.Expressions.Select(expression => (Expression: expression, Source: "SearchParameter")),
                     cultureName: "de-DE",
                     divergences,
-                    ref evaluations);
+                    tally);
                 resources++;
             }
         }
 
         foreach (var resource in TargetedParityCorpus.Build())
         {
-            Collect(resource, divergences, ref evaluations);
+            Collect(resource, divergences, tally);
             resources++;
         }
 
         stopwatch.Stop();
-        return new ResourceParityReport(resources, evaluations, stopwatch.Elapsed, divergences);
+        return new ResourceParityReport(
+            resources,
+            tally.Evaluations,
+            tally.BothThrew,
+            tally.BothEmpty,
+            stopwatch.Elapsed,
+            divergences);
     }
 
     public static ResourceParityReport Run(IReadOnlyList<TargetedParityResource> resources)
@@ -47,21 +53,27 @@ internal static class ResourceParitySweep
         ArgumentNullException.ThrowIfNull(resources);
         var stopwatch = Stopwatch.StartNew();
         var divergences = new List<ParityDivergence>();
-        int evaluations = 0;
+        var tally = new ParityOutcomeTally();
 
         foreach (var resource in resources)
         {
-            Collect(resource, divergences, ref evaluations);
+            Collect(resource, divergences, tally);
         }
 
         stopwatch.Stop();
-        return new ResourceParityReport(resources.Count, evaluations, stopwatch.Elapsed, divergences);
+        return new ResourceParityReport(
+            resources.Count,
+            tally.Evaluations,
+            tally.BothThrew,
+            tally.BothEmpty,
+            stopwatch.Elapsed,
+            divergences);
     }
 
     private static void Collect(
         TargetedParityResource resource,
         List<ParityDivergence> divergences,
-        ref int evaluations)
+        ParityOutcomeTally tally)
     {
         var expressions = resource.SearchParameterExpressions
             .Select(expression => (Expression: expression, Source: "SearchParameter"))
@@ -75,7 +87,7 @@ internal static class ResourceParitySweep
             expressions,
             resource.CultureName,
             divergences,
-            ref evaluations);
+            tally);
     }
 
     private static void Collect(
@@ -85,7 +97,7 @@ internal static class ResourceParitySweep
         IEnumerable<(string Expression, string Source)> expressions,
         string? cultureName,
         List<ParityDivergence> divergences,
-        ref int evaluations)
+        ParityOutcomeTally tally)
     {
         var originalCulture = CultureInfo.CurrentCulture;
         var originalUiCulture = CultureInfo.CurrentUICulture;
@@ -104,7 +116,7 @@ internal static class ResourceParitySweep
             {
                 var firely = FirelyEngine.Evaluate(subject, schema, expression);
                 var ignixa = IgnixaEngine.Evaluate(subject, schema, expression);
-                evaluations++;
+                tally.Observe(firely, ignixa);
 
                 if (!firely.Matches(ignixa))
                 {
