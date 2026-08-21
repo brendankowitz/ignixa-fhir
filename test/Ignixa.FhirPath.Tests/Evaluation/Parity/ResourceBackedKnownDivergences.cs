@@ -41,10 +41,10 @@ internal static class ResourceBackedKnownDivergences
     /// This is legitimate agreement - a search parameter expression that matches nothing on a resource
     /// is the common case - but it is agreement on absence, so it is much weaker evidence than a
     /// matched value and it is invisible to every divergence-based assertion. Pinning it exactly means
-    /// the composition of the sweep cannot drift silently: 9,453 of 19,647 evaluations agree on empty,
-    /// leaving 10,074 that compare real values. If an engine change moves this number the pin has to be
-    /// updated deliberately, with the shift understood, rather than absorbed into an unchanged
-    /// divergence count.
+    /// the composition of the sweep cannot drift silently: 9,453 of 19,647 evaluations agree on empty;
+    /// the remaining 10,194 compare real values, of which 10,074 agree and 120 are the pinned
+    /// divergences. If an engine change moves this number the pin has to be updated deliberately, with
+    /// the shift understood, rather than absorbed into an unchanged divergence count.
     /// </remarks>
     public const int ExpectedBothEmpty = 9453;
 
