@@ -62,6 +62,17 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     private readonly SymbolTable _symbolTable;
     private readonly SystemTypeConstructionAnalyzer _systemTypeConstructionAnalyzer;
     private readonly FhirPathParser _parser;
+    /// <summary>
+    /// Top-level element names declared by any resource type, used to tell a name this schema knows
+    /// nowhere from one this root simply does not declare.
+    /// </summary>
+    /// <remarks>
+    /// Compared case-insensitively to agree with <see cref="FindChildByName"/>, which resolves properties
+    /// that way. An ordinal set would call a name unknown to every resource that navigation would still
+    /// have resolved, and the two would then disagree about the same expression. The ordinal-exact
+    /// matching this analysis applies elsewhere is about type names at a cast site, where the System and
+    /// FHIR namespaces distinguish <c>Integer</c> from <c>integer</c>; no such pair exists here.
+    /// </remarks>
     private readonly Lazy<HashSet<string>> _rootPropertyNames;
     private IFhirPathExpressionVisitor<AnalysisContext, FhirPathTypeSet>? _childVisitor;
 
@@ -81,6 +92,7 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
                 .Select(child => child.Info.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase),
             isThreadSafe: true);
+
         _systemTypeConstructionAnalyzer = new SystemTypeConstructionAnalyzer(
             _symbolTable,
             propertyName => _rootPropertyNames.Value.Contains(propertyName));
@@ -1355,6 +1367,46 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
         return _rootPropertyNames.Value.Contains(propertyName);
     }
 
+    /// <summary>
+    /// Reports whether an unresolved name may name one instance of a choice element the focus declares,
+    /// such as <c>occurrenceDateTime</c> for <c>ServiceRequest.occurrence</c>.
+    /// </summary>
+    /// <remarks>
+    /// The test is the evaluator's own: <c>SchemaAwareElement</c> accepts any name that extends a choice
+    /// element's base name, without checking that the suffix spells one of the declared types. Reproducing
+    /// FHIR's suffix spelling here instead would have to be proven complete before it could carry a
+    /// negative, and a gap in it would put the confident always-empty claim back.
+    /// </remarks>
+    private static bool MayBeChoiceElementInstanceName(FhirPathTypeSet focusTypes, string propertyName)
+    {
+        foreach (var focusType in focusTypes.Types)
+        {
+            if (focusType.Type is null)
+            {
+                continue;
+            }
+
+            foreach (var child in focusType.Type.Children)
+            {
+                var childName = child.Info.Name;
+                var hasSuffix = childName.EndsWith("[x]", StringComparison.Ordinal);
+                if (!child.Info.IsChoiceElement && !hasSuffix)
+                {
+                    continue;
+                }
+
+                var baseName = hasSuffix ? childName[..^3] : childName;
+                if (propertyName.Length > baseName.Length &&
+                    propertyName.StartsWith(baseName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private static int IndexOfTypeName(IList<FhirPathType> types, string typeName)
     {
         for (var i = 0; i < types.Count; i++)
@@ -1395,6 +1447,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
     /// Reconciling it would reclassify every "property not found" error the analyzer raises, which is its
     /// principal typo signal, so it is recorded here rather than changed.
     /// </para>
+    /// <para>
+    /// A choice element's instance names are excluded from the always-empty outcome. Property resolution
+    /// matches declared child names, and the schema declares a choice as a single element (<c>occurrence</c>,
+    /// carrying <c>dateTime|Period|Timing</c>), so <c>occurrenceDateTime</c> never resolves here even though
+    /// the evaluator returns a value for it. Those names would otherwise be decided by whether some
+    /// unrelated resource happens to declare the same spelling as an ordinary element — <c>GuidanceResponse</c>
+    /// does declare <c>occurrenceDateTime</c> — which is a collision, not evidence about the root in hand.
+    /// </para>
     /// </remarks>
     private void ReportUnresolvedProperty(
         string propertyName,
@@ -1416,6 +1476,14 @@ public sealed class FhirPathAnalyzer : DefaultFhirPathExpressionVisitor<Analysis
             result.AddUnknown(path: propertyName);
             context.AddIndeterminateWarning(
                 $"Property '{propertyName}' is not present on abstract root type '{context.RootType}', so the runtime type cannot be analysed for this root.",
+                expression);
+            return;
+        }
+
+        if (MayBeChoiceElementInstanceName(focusTypes, propertyName))
+        {
+            context.AddError(
+                $"Property '{propertyName}' not found on type '{focusTypes.TypeNames()}'",
                 expression);
             return;
         }
