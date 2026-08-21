@@ -70,13 +70,25 @@ public class GeneratedParityCorpusTests
         first.ShouldBe(second);
     }
 
+    /// <summary>
+    /// Pins that the faker's chosen <c>Observation.value[x]</c> carrier is <c>valueBoolean</c> on every
+    /// version, and that it is written with a real JSON boolean shape.
+    /// </summary>
+    /// <remarks>
+    /// The presence check is an assertion rather than a guard. Gating the shape check behind
+    /// <c>if (observation["valueBoolean"] is { } node)</c> made it depend on a condition the test does
+    /// not control: any change to <c>SchemaBasedFhirResourceFaker.SelectChoiceType</c>'s preference
+    /// order, or to <c>Observation.value[x]</c>'s type list in a future FHIR version, would silently
+    /// turn it into a test that asserts nothing and still passes. AGENTS.md requires the opposite -
+    /// a row expected to be covered must fail rather than be skipped when it stops being covered.
+    /// </remarks>
     [Theory]
     [InlineData(FhirVersion.Stu3)]
     [InlineData(FhirVersion.R4)]
     [InlineData(FhirVersion.R4B)]
     [InlineData(FhirVersion.R5)]
     [InlineData(FhirVersion.R6)]
-    public void GivenAGeneratedObservation_WhenValueBooleanIsPresent_ThenItHasABooleanShape(
+    public void GivenAGeneratedObservation_WhenSerialised_ThenValueBooleanIsPresentWithABooleanShape(
         FhirVersion version)
     {
         // Arrange
@@ -85,11 +97,11 @@ public class GeneratedParityCorpusTests
         var observation = JsonNode.Parse(GeneratedParityCorpus.BuildResource(version, "Observation").Json)!.AsObject();
 
         // Assert
-        if (observation["valueBoolean"] is { } valueBooleanNode)
-        {
-            valueBooleanNode.ShouldBeAssignableTo<JsonValue>()
-                .TryGetValue<bool>(out _)
-                .ShouldBeTrue();
-        }
+        var valueBooleanNode = observation["valueBoolean"].ShouldNotBeNull(
+            $"The generated {version} Observation no longer carries valueBoolean, so this test would "
+            + "assert nothing. Confirm which value[x] carrier the faker now selects and pin its shape.");
+        valueBooleanNode.ShouldBeAssignableTo<JsonValue>()
+            .TryGetValue<bool>(out _)
+            .ShouldBeTrue();
     }
 }
