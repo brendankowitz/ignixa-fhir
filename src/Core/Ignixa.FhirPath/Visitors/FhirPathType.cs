@@ -37,8 +37,10 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// <param name="isCollection">Whether this is a collection (max cardinality > 1)</param>
     /// <param name="path">Optional definitional path for error reporting</param>
     public FhirPathType(IType type, bool isCollection = false, string? path = null)
-        : this(type ?? throw new ArgumentNullException(nameof(type)), null, isCollection, path, isUnknown: false, isSystemValue: false)
     {
+        Type = type ?? throw new ArgumentNullException(nameof(type));
+        IsCollection = isCollection || type.IsCollection;
+        Path = path ?? type.Info.Name;
     }
 
     /// <summary>
@@ -47,20 +49,18 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// <param name="typeName">The FHIR type name</param>
     /// <param name="isCollection">Whether this is a collection</param>
     /// <param name="path">Optional definitional path for error reporting</param>
-    /// <param name="isSystemValue">Whether the value this type describes is a System-namespace value</param>
-    public FhirPathType(string typeName, bool isCollection = false, string? path = null, bool isSystemValue = false)
-        : this(null, typeName ?? throw new ArgumentNullException(nameof(typeName)), isCollection, path, isUnknown: false, isSystemValue)
+    public FhirPathType(string typeName, bool isCollection = false, string? path = null)
+        : this(typeName, isCollection, path, isUnknown: false)
     {
     }
 
-    private FhirPathType(IType? type, string? typeName, bool isCollection, string? path, bool isUnknown, bool isSystemValue)
+    private FhirPathType(string typeName, bool isCollection, string? path, bool isUnknown)
     {
-        Type = type;
-        _typeName = typeName;
-        IsCollection = isCollection || (type?.IsCollection ?? false);
-        Path = path ?? type?.Info.Name ?? typeName!;
+        Type = null;
+        _typeName = typeName ?? throw new ArgumentNullException(nameof(typeName));
+        IsCollection = isCollection;
+        Path = path ?? typeName;
         IsUnknown = isUnknown;
-        IsSystemValue = isSystemValue;
     }
 
     /// <summary>
@@ -85,20 +85,6 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     public bool IsUnknown { get; }
 
     /// <summary>
-    /// Gets whether the value this type describes is a System-namespace value rather than a FHIR element.
-    /// </summary>
-    /// <remarks>
-    /// This is the static-analysis counterpart of <see cref="ISystemValueElement"/>: a value the expression
-    /// constructs - a literal, an operator result, or the return of a function declared to produce a
-    /// primitive - rather than one navigated out of a resource. The distinction is not cosmetic, because a
-    /// System value carries FHIR's lower camel case spelling in its instance type, so <c>System.Integer</c>
-    /// has to reach an <c>integer</c> instance type on every FHIR version. Without this flag the analyzer
-    /// cannot tell <c>Patient.active.ofType(Boolean)</c>, which is a FHIR element and empties from R5
-    /// onwards, from <c>Patient.name.exists().ofType(Boolean)</c>, which is a System value and never does.
-    /// </remarks>
-    public bool IsSystemValue { get; }
-
-    /// <summary>
     /// Simple definitional path to the property (e.g., "Patient.name").
     /// Used for error reporting and path tracking.
     /// </summary>
@@ -117,32 +103,43 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// <summary>
     /// Returns a new FhirPathType marked as a collection.
     /// </summary>
-    public FhirPathType AsCollection() => With(isCollection: true, Path);
+    public FhirPathType AsCollection() =>
+        IsUnknown
+            ? Unknown(isCollection: true, path: Path)
+            : Type != null
+            ? new FhirPathType(Type, isCollection: true, path: Path)
+            : new FhirPathType(TypeName, isCollection: true, path: Path);
 
     /// <summary>
     /// Returns a new FhirPathType marked as a single value (not collection).
     /// </summary>
-    public FhirPathType AsSingle() => With(isCollection: false, Path);
+    public FhirPathType AsSingle() =>
+        IsUnknown
+            ? Unknown(isCollection: false, path: Path)
+            : Type != null
+            ? new FhirPathType(Type, isCollection: false, path: Path)
+            : new FhirPathType(TypeName, isCollection: false, path: Path);
 
     /// <summary>
     /// Returns a new FhirPathType with the updated path.
     /// </summary>
-    public FhirPathType WithPath(string newPath) => With(IsCollection, newPath);
-
-    private FhirPathType With(bool isCollection, string path) =>
-        new(Type, _typeName, isCollection, path, IsUnknown, IsSystemValue);
+    public FhirPathType WithPath(string newPath) =>
+        IsUnknown
+            ? Unknown(IsCollection, newPath)
+            : Type != null
+            ? new FhirPathType(Type, IsCollection, newPath)
+            : new FhirPathType(TypeName, IsCollection, newPath);
 
     public bool Equals(FhirPathType other) =>
         TypeName == other.TypeName &&
         IsCollection == other.IsCollection &&
-        IsUnknown == other.IsUnknown &&
-        IsSystemValue == other.IsSystemValue;
+        IsUnknown == other.IsUnknown;
 
     public override bool Equals(object? obj) =>
         obj is FhirPathType other && Equals(other);
 
     public override int GetHashCode() =>
-        HashCode.Combine(TypeName, IsCollection, IsUnknown, IsSystemValue);
+        HashCode.Combine(TypeName, IsCollection, IsUnknown);
 
     public override string ToString() =>
         IsCollection ? $"{TypeName}[]" : TypeName;
@@ -154,7 +151,7 @@ public readonly struct FhirPathType : IEquatable<FhirPathType>
     /// Creates a type whose runtime shape cannot be determined statically.
     /// </summary>
     public static FhirPathType Unknown(bool isCollection = false, string? path = null) =>
-        new(null, IndeterminateTypeName, isCollection, path, isUnknown: true, isSystemValue: false);
+        new(IndeterminateTypeName, isCollection, path, isUnknown: true);
 
     public static bool IsPrimitiveTypeName(string typeName)
     {

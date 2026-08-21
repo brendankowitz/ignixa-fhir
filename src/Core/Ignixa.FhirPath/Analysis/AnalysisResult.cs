@@ -18,11 +18,8 @@ namespace Ignixa.FhirPath.Analysis;
 /// validates the canonical type name returned by the provider before accepting a cast target. A
 /// mis-cased target therefore infers no type and sets <see cref="HasAlwaysEmptySubexpression"/> when the
 /// focus is statically known, matching the evaluator's empty result without narrowing schema lookup for
-/// unrelated callers. The one exception the evaluator keeps above that version gate is also kept here:
-/// a System value carries FHIR's lower camel case spelling in its instance type, so a cast naming the
-/// System spelling of the value's own type resolves on every version. The analyzer tells the two apart
-/// through <see cref="Visitors.FhirPathType.IsSystemValue"/>, which distinguishes a constructed value
-/// such as <c>count()</c> from a navigated element such as <c>Observation.value</c>.
+/// unrelated callers. The analyzer derives the evaluator's System-namespace exception from the cast
+/// focus expression rather than storing namespace provenance in inferred type identity.
 /// </remarks>
 public sealed class AnalysisResult
 {

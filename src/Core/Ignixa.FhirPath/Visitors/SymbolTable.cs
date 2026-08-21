@@ -81,6 +81,14 @@ internal sealed partial class SymbolTable
     public int FunctionCount => _functions.Count;
 
     /// <summary>
+    /// Gets whether the schema positively identifies a type as a FHIR type.
+    /// </summary>
+    /// <param name="typeName">The declared type name.</param>
+    /// <returns><see langword="true"/> when the configured schema defines the type.</returns>
+    public bool IsKnownFhirType(string typeName) =>
+        _schema?.GetTypeDefinition(typeName) is not null;
+
+    /// <summary>
     /// Registers all standard FhirPath functions.
     /// This method is implemented by the source generator.
     /// </summary>

@@ -410,14 +410,14 @@ public sealed record AnalysisContext
     private static FhirPathTypeSet CreateIntegerTypeSet()
     {
         var props = new FhirPathTypeSet();
-        props.AddSystemPrimitiveType("integer");
+        props.AddPrimitiveType("integer");
         return props;
     }
 
     private static FhirPathTypeSet CreateStringTypeSet()
     {
         var props = new FhirPathTypeSet();
-        props.AddSystemPrimitiveType("string");
+        props.AddPrimitiveType("string");
         return props;
     }
 }

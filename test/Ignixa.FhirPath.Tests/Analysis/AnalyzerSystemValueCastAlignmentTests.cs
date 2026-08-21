@@ -28,9 +28,8 @@ namespace Ignixa.FhirPath.Tests.Analysis;
 /// R5 onward, which the evaluator contradicts.
 /// </para>
 /// <para>
-/// The distinction is carried by <see cref="Visitors.FhirPathType.IsSystemValue"/>, set where the
-/// analyzer already knows a value was constructed rather than navigated to: literals, operator results
-/// and functions declared to return a primitive.
+/// The distinction is derived from the focus AST at each cast. Inferred type identity deliberately carries
+/// no namespace provenance because union and arithmetic do not preserve per-type origin.
 /// </para>
 /// <para>
 /// Suppressing the diagnostic whenever the target is a System spelling would look equivalent and is not:

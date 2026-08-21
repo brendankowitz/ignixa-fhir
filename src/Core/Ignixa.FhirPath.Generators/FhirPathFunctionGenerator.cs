@@ -238,6 +238,7 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
                 sb.Append(", supportedAtRoot: true");
             }
 
+            sb.Append($", declaredReturnType: \"{func.ReturnType}\"");
             sb.AppendLine(")");
 
             if (func.SupportedContexts != "any-any")
@@ -305,9 +306,8 @@ public class FhirPathFunctionGenerator : IIncrementalGenerator
             // to ensure return types have proper IType definitions with children
             if (IsPrimitiveReturnType(returnType))
             {
-                // Primitives don't need schema resolution. A declared primitive return is a value the
-                // function constructs, so it carries the System namespace: see FhirPathType.IsSystemValue.
-                sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\", focus.IsCollection(), path: null, isSystemValue: true) }})");
+                // Primitives don't need schema resolution.
+                sb.AppendLine($"            .WithReturnType((def, focus, args, issues) => new List<FhirPathType> {{ new FhirPathType(\"{func.ReturnType}\", focus.IsCollection()) }})");
             }
             else
             {

@@ -22,12 +22,19 @@ public sealed class FunctionDefinition
     /// <param name="name">The function name (e.g., "where", "select")</param>
     /// <param name="supportsCollections">Whether function accepts collection inputs</param>
     /// <param name="supportedAtRoot">Whether function can be called without focus</param>
-    public FunctionDefinition(string name, bool supportsCollections = false, bool supportedAtRoot = false)
+    /// <param name="declaredReturnType">The return-type rule from <c>FhirPathFunctionAttribute</c></param>
+    public FunctionDefinition(
+        string name,
+        bool supportsCollections = false,
+        bool supportedAtRoot = false,
+        string declaredReturnType = "any")
     {
         ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(declaredReturnType);
         Name = name;
         SupportsCollections = supportsCollections;
         SupportedAtRoot = supportedAtRoot;
+        DeclaredReturnType = declaredReturnType;
     }
 
     /// <summary>
@@ -44,6 +51,11 @@ public sealed class FunctionDefinition
     /// Gets whether this function can be called at expression root.
     /// </summary>
     public bool SupportedAtRoot { get; }
+
+    /// <summary>
+    /// Gets the generated return-type rule declared by the function metadata.
+    /// </summary>
+    public string DeclaredReturnType { get; }
 
     /// <summary>
     /// Gets whether this function takes expression arguments evaluated with focus as $this.
