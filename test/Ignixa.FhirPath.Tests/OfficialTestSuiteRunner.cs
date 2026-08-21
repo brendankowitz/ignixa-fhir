@@ -371,12 +371,23 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
     /// Runs a version-policy skip's case and fails when it now passes, so the skip retires itself.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A skip with no such guard stays green forever whether or not it is still needed. Six quantity-algebra
     /// skips in this file went stale exactly that way: their cases passed on all three versions and nothing
     /// said so, which also meant unit multiplication and division could regress without failing anything.
     /// <see cref="AssertDeferralIsStillNeeded"/> gives <see cref="_unsignalledInvalidCases"/> the same
     /// protection; this gives it to the two version-policy skips, which are not deferrals and so do not go
     /// through that list.
+    /// </para>
+    /// <para>
+    /// The skip carries the failure that produced it. Any throw out of <see cref="ExecuteTestCase"/> is
+    /// read here as "the limitation still applies", and a harness bug throws exactly the same way a real
+    /// version-policy mismatch does, so a <see cref="NullReferenceException"/> would otherwise report as a
+    /// legitimate skip with its cause discarded. Naming the exception in the reason makes the skip its own
+    /// evidence: when it later turns out to have been wrong, the record of why it skipped is still there.
+    /// <see cref="OperationCanceledException"/> is re-thrown so an abandoned run cannot be recorded as a
+    /// version-policy skip.
+    /// </para>
     /// </remarks>
     private void SkipUnlessTheCaseWouldNowPass(FhirPathTestCase testCase, FhirVersion fhirVersion, string reason)
     {
@@ -384,9 +395,13 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         {
             ExecuteTestCase(testCase, fhirVersion);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex) when (ex is not Xunit.SkipException)
         {
-            SkipTest(reason);
+            SkipTest($"{reason} [{ex.GetType().Name}: {ex.Message}]");
             return;
         }
 
