@@ -913,20 +913,58 @@ public class FhirPathInvariantCheckTests
     /// defect in the constraint, not in the instance, so it degrades to a non-failing Warning on the
     /// same footing as <c>tim-9</c> above rather than rejecting the resource.
     /// <para>
-    /// The four cases cover the three collection functions whose argument checks sit on the hot
-    /// navigation path plus one string function, so a regression confined to a single function file is
-    /// still caught. The message assertion is deliberately split: <c>ShouldStartWith</c> pins the
-    /// <em>tier</em> - the catch-all at <c>FhirPathInvariantCheck</c> formats its issue as
-    /// "<c>{key}: unexpected error evaluating FHIRPath expression</c>", so a tier regression cannot
-    /// satisfy this prefix - while <c>ShouldContain</c> pins that the refusal still names the offending
-    /// function, which is the only thing that makes the warning actionable.
+    /// One case per converted argument check, enumerated from the diff rather than sampled. Sampling was
+    /// the defect: four cases pinned four of thirty-two conversions, and reverting <c>power()</c> to
+    /// <see cref="ArgumentException"/> left every test green while silently re-tiering a malformed
+    /// constraint from a non-failing Warning to a resource-rejecting Error.
+    /// </para>
+    /// <para>
+    /// The message assertion is deliberately split: <c>ShouldStartWith</c> pins the <em>tier</em> - the
+    /// catch-all at <c>FhirPathInvariantCheck</c> formats its issue as "<c>{key}: unexpected error
+    /// evaluating FHIRPath expression</c>", so a tier regression cannot satisfy this prefix - while
+    /// <c>ShouldContain</c> pins that the refusal still names the offending function, which is the only
+    /// thing that makes the warning actionable.
     /// </para>
     /// </summary>
+    public static TheoryData<string, string> MissingArgumentInvocations() =>
+        new()
+        {
+            { "name.skip()", "skip()" },
+            { "name.take()", "take()" },
+            { "name.where()", "where()" },
+            { "name.select()", "select()" },
+            { "name.all()", "all()" },
+            { "name.repeat()", "repeat()" },
+            { "name.repeatAll()", "repeatAll()" },
+            { "name.coalesce()", "coalesce()" },
+            { "name.ofType()", "ofType()" },
+            { "name.as()", "as()" },
+            { "name.intersect()", "intersect()" },
+            { "name.exclude()", "exclude()" },
+            { "name.union()", "union()" },
+            { "name.combine()", "combine()" },
+            { "name.aggregate()", "aggregate()" },
+            { "name.subsetOf()", "subsetOf()" },
+            { "name.supersetOf()", "supersetOf()" },
+            { "name.iif()", "iif()" },
+            { "name.extension()", "extension()" },
+            { "name.count().power()", "power()" },
+            { "name.count().log()", "log()" },
+            { "name.first().family.indexOf()", "indexOf()" },
+            { "name.first().family.lastIndexOf()", "lastIndexOf()" },
+            { "name.first().family.substring()", "substring()" },
+            { "name.first().family.startsWith()", "startsWith()" },
+            { "name.first().family.endsWith()", "endsWith()" },
+            { "name.first().family.replace()", "replace()" },
+            { "name.first().family.matches()", "matches()" },
+            { "name.first().family.matchesFull()", "matchesFull()" },
+            { "name.first().family.replaceMatches()", "replaceMatches()" },
+            { "name.first().family.split()", "split()" },
+            { "name.first().family.contains()", "contains()" },
+        };
+
     [Theory]
-    [InlineData("name.skip()", "skip()")]
-    [InlineData("name.take()", "take()")]
-    [InlineData("name.where()", "where()")]
-    [InlineData("name.first().family.substring()", "substring()")]
+    [MemberData(nameof(MissingArgumentInvocations))]
     public void GivenConstraintWithMissingFunctionArgument_WhenValidating_ThenValidWithWarning(
         string expression,
         string function)
