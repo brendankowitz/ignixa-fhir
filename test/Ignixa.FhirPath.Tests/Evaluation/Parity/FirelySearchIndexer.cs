@@ -9,14 +9,25 @@ using Ignixa.Specification.ValueSets.Normative;
 
 namespace Ignixa.FhirPath.Tests.Evaluation.Parity;
 
+/// <summary>
+/// Projects the search index Firely would produce, so the production Ignixa indexer has a reference to
+/// be compared against.
+/// </summary>
+/// <remarks>
+/// Every failure on this side is captured rather than swallowed. A silently dropped parameter produces
+/// no entries, which is indistinguishable from one that matched nothing, and the Ignixa side contains
+/// its own evaluation failures by design - so a discarded exception here lets mutual failure score as
+/// agreement. See <see cref="ReferenceEvaluationFailure"/>.
+/// </remarks>
 internal sealed class FirelySearchIndexer(
     ISearchParameterDefinitionManager definitions,
     IElementToSearchValueConverterManager converters,
     ISchema schema)
 {
-    public IReadOnlyCollection<SearchIndexEntry> Extract(IElement resource)
+    public ReferenceIndexProjection Extract(IElement resource)
     {
         var entries = new List<SearchIndexEntry>();
+        var failures = new List<ReferenceEvaluationFailure>();
 
         foreach (var parameter in definitions.GetSearchParameters(resource.InstanceType))
         {
@@ -28,7 +39,7 @@ internal sealed class FirelySearchIndexer(
 
             if (parameter.Type == SearchParamType.Composite)
             {
-                entries.AddRange(ExtractComposite(resource, parameter));
+                entries.AddRange(ExtractComposite(resource, parameter, failures));
                 continue;
             }
 
@@ -41,8 +52,15 @@ internal sealed class FirelySearchIndexer(
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                failures.Add(
+                    ReferenceEvaluationFailure.From(
+                        parameter.Url,
+                        parameter.Expression,
+                        parameter.Expression,
+                        ReferenceEvaluationStage.Select,
+                        exception));
                 continue;
             }
 
@@ -66,8 +84,15 @@ internal sealed class FirelySearchIndexer(
                 {
                     throw;
                 }
-                catch (Exception)
+                catch (Exception exception)
                 {
+                    failures.Add(
+                        ReferenceEvaluationFailure.From(
+                            parameter.Url,
+                            parameter.Expression,
+                            parameter.Expression,
+                            ReferenceEvaluationStage.Convert,
+                            exception));
                     continue;
                 }
 
@@ -76,12 +101,13 @@ internal sealed class FirelySearchIndexer(
         }
 
         ElementSearchIndexer.MarkMinMaxValues(entries);
-        return entries;
+        return new ReferenceIndexProjection(entries, failures);
     }
 
     private IReadOnlyList<SearchIndexEntry> ExtractComposite(
         IElement resource,
-        SearchParameterInfo parameter)
+        SearchParameterInfo parameter,
+        List<ReferenceEvaluationFailure> failures)
     {
         IReadOnlyList<Hl7.Fhir.ElementModel.ITypedElement> roots;
         try
@@ -92,8 +118,15 @@ internal sealed class FirelySearchIndexer(
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            failures.Add(
+                ReferenceEvaluationFailure.From(
+                    parameter.Url,
+                    parameter.Expression,
+                    parameter.Expression,
+                    ReferenceEvaluationStage.CompositeSelect,
+                    exception));
             return [];
         }
 
@@ -113,7 +146,7 @@ internal sealed class FirelySearchIndexer(
                     break;
                 }
 
-                var values = ExtractComponentValues(root, component.Expression, definition);
+                var values = ExtractComponentValues(root, parameter, component.Expression, definition, failures);
                 values = values.Where(value => value.IsValidAsCompositeComponent).ToArray();
                 if (values.Count == 0)
                 {
@@ -135,20 +168,29 @@ internal sealed class FirelySearchIndexer(
 
     private IReadOnlyList<ISearchValue> ExtractComponentValues(
         Hl7.Fhir.ElementModel.ITypedElement root,
-        string expression,
-        SearchParameterInfo definition)
+        SearchParameterInfo composite,
+        string componentExpression,
+        SearchParameterInfo definition,
+        List<ReferenceEvaluationFailure> failures)
     {
         IReadOnlyList<Hl7.Fhir.ElementModel.ITypedElement> selected;
         try
         {
-            selected = FirelyEngine.Select(root, schema, expression);
+            selected = FirelyEngine.Select(root, schema, componentExpression);
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch (Exception)
+        catch (Exception exception)
         {
+            failures.Add(
+                ReferenceEvaluationFailure.From(
+                    definition.Url,
+                    composite.Expression,
+                    componentExpression,
+                    ReferenceEvaluationStage.ComponentSelect,
+                    exception));
             return [];
         }
 
@@ -184,8 +226,15 @@ internal sealed class FirelySearchIndexer(
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                failures.Add(
+                    ReferenceEvaluationFailure.From(
+                        definition.Url,
+                        composite.Expression,
+                        componentExpression,
+                        ReferenceEvaluationStage.ComponentConvert,
+                        exception));
                 continue;
             }
 

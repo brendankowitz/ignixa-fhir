@@ -9,6 +9,7 @@ internal static class SearchIndexParitySweep
     {
         var stopwatch = Stopwatch.StartNew();
         var divergences = new List<SearchIndexDivergence>();
+        var referenceFailures = new List<ReferenceEvaluationFailure>();
         int resources = 0;
 
         foreach (var version in GeneratedParityCorpus.Build())
@@ -20,7 +21,8 @@ internal static class SearchIndexParitySweep
                     $"{version.Version}/{resource.ResourceType}/generated",
                     resource.Json,
                     "de-DE",
-                    divergences);
+                    divergences,
+                    referenceFailures);
                 resources++;
             }
         }
@@ -32,12 +34,13 @@ internal static class SearchIndexParitySweep
                 $"{resource.Version}/{resource.Name}",
                 resource.Json,
                 resource.CultureName,
-                divergences);
+                divergences,
+                referenceFailures);
             resources++;
         }
 
         stopwatch.Stop();
-        return new SearchIndexParityReport(resources, stopwatch.Elapsed, divergences);
+        return new SearchIndexParityReport(resources, stopwatch.Elapsed, divergences, referenceFailures);
     }
 
     private static void Collect(
@@ -45,7 +48,8 @@ internal static class SearchIndexParitySweep
         string resourceName,
         string json,
         string? cultureName,
-        List<SearchIndexDivergence> divergences)
+        List<SearchIndexDivergence> divergences,
+        List<ReferenceEvaluationFailure> referenceFailures)
     {
         var originalCulture = CultureInfo.CurrentCulture;
         var originalUiCulture = CultureInfo.CurrentUICulture;
@@ -59,6 +63,7 @@ internal static class SearchIndexParitySweep
             }
 
             var comparison = SearchIndexParityHarness.Compare(version, json);
+            referenceFailures.AddRange(comparison.FirelyFailures);
             if (!comparison.FirelyEntries.SequenceEqual(comparison.IgnixaEntries, StringComparer.Ordinal))
             {
                 divergences.Add(

@@ -23,9 +23,12 @@ internal static class SearchIndexParityHarness
 
         return new SearchIndexComparison(
             SearchIndexCanonicalizer.Canonicalize(
-                firely.Where(entry => harness.CommonExpressions.Contains(entry.SearchParameter.Expression))),
+                firely.Entries.Where(entry => harness.CommonExpressions.Contains(entry.SearchParameter.Expression))),
             SearchIndexCanonicalizer.Canonicalize(
-                ignixa.Where(entry => harness.CommonExpressions.Contains(entry.SearchParameter.Expression))));
+                ignixa.Where(entry => harness.CommonExpressions.Contains(entry.SearchParameter.Expression))),
+            firely.Failures
+                .Where(failure => harness.CommonExpressions.Contains(failure.ParameterExpression))
+                .ToArray());
     }
 
     private static Harness Create(FhirVersion version)

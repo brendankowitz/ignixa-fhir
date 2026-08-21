@@ -30,10 +30,18 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             select.Elapsed.TotalSeconds,
             select.Divergences.Count);
         _output.WriteLine(
-            "Index: {0} resources in {1:F3}s; {2} divergent resources.",
+            "Index: {0} resources in {1:F3}s; {2} divergent resources; {3} reference failures.",
             index.ResourceCount,
             index.Elapsed.TotalSeconds,
-            index.Divergences.Count);
+            index.Divergences.Count,
+            index.ReferenceFailures.Count);
+        foreach (var failure in index.ReferenceFailures
+                     .GroupBy(failure => failure.Signature, StringComparer.Ordinal)
+                     .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            _output.WriteLine("Reference failure: {0} = {1}.", failure.Key, failure.Count());
+        }
+
         foreach (var finding in select.Divergences
                      .Select(ResourceBackedKnownDivergences.Classify)
                      .Where(classification => classification is not null)
@@ -84,6 +92,9 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
 
     private static void AssertIndexFindings(SearchIndexParityReport report)
     {
+        report.ReferenceFailures.ShouldBeEmpty(
+            string.Join(Environment.NewLine, report.ReferenceFailures.Select(failure => failure.Describe())));
+
         var classified = report.Divergences
             .Select(divergence => (Divergence: divergence, Classification: ResourceBackedKnownDivergences.Classify(divergence)))
             .ToArray();
@@ -92,8 +103,7 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             .Select(item => item.Divergence)
             .ToArray();
 
-        unclassified.ShouldBeEmpty(
-            RenderIndexDivergences(new SearchIndexParityReport(report.ResourceCount, report.Elapsed, unclassified)));
+        unclassified.ShouldBeEmpty(RenderIndexDivergences(unclassified));
         classified.Select(item => item.Classification!)
             .ShouldAllBe(classification =>
                 classification.BlocksEnablement
@@ -120,10 +130,10 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
         actualCounts.ShouldBe(expectedCounts);
     }
 
-    private static string RenderIndexDivergences(SearchIndexParityReport report) =>
+    private static string RenderIndexDivergences(IReadOnlyList<SearchIndexDivergence> divergences) =>
         string.Join(
             Environment.NewLine,
-            report.Divergences.Select(
+            divergences.Select(
                 divergence =>
                 {
                     var firelyOnly = divergence.FirelyEntries
