@@ -1,6 +1,12 @@
+using System.Text.Json;
 using Ignixa.Abstractions;
 using Ignixa.FhirPath.Analysis;
+using Ignixa.FhirPath.Evaluation;
+using Ignixa.FhirPath.Parser;
+using Ignixa.FhirPath.Tests.Evaluation.Parity;
 using Ignixa.FhirPath.Visitors;
+using Ignixa.Serialization.SourceNodes;
+using Ignixa.Specification;
 using Ignixa.Specification.Extensions;
 
 namespace Ignixa.FhirPath.Tests.Analysis;
@@ -9,24 +15,123 @@ namespace Ignixa.FhirPath.Tests.Analysis;
 /// Covers root-relative names that some other resource type declares. These are decidable, not
 /// unanalysable: the analyzer knows the root type concretely and knows it has no such element.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Every always-empty claim here is paired with an evaluator result, because an always-empty verdict is
+/// only dangerous in the direction where it is wrong. Asserting <c>HasAlwaysEmptySubexpression</c>
+/// against the analyzer alone cannot distinguish a correct verdict from a false one, and a false one
+/// suppresses a search parameter's index silently. The pairing is the assertion with teeth.
+/// </para>
+/// <para>
+/// <see cref="GivenEveryTopLevelElementPresentInTheCorpus_WhenAnalyzedAsABareName_ThenNeverReportsAlwaysEmpty"/>
+/// generalises that into the soundness rule itself. It fails at <c>c14f5b76</c>, the commit before the
+/// analyzer fix, and is the only test here that would have caught either always-empty defect unaided.
+/// </para>
+/// </remarks>
 public class AlwaysEmptyRootPropertyAnalysisTests
 {
+    private const string PatientJson = """
+        {
+          "resourceType": "Patient",
+          "id": "pat1",
+          "active": true,
+          "gender": "female",
+          "birthDate": "1980-04-01"
+        }
+        """;
+
     private readonly FhirPathAnalyzer _analyzer = new(FhirVersion.R5.GetSchemaProvider());
+    private readonly FhirPathEvaluator _evaluator = new();
+    private readonly FhirPathParser _parser = new();
+
+    /// <summary>
+    /// Each name is a real element on the paired resource type, so the analyzer is deciding a genuine
+    /// element name rather than a typo.
+    /// </summary>
+    public static TheoryData<string, string> RootPropertiesOfOtherResources =>
+        new()
+        {
+            { "status", "Appointment" },
+            { "vaccineCode", "Immunization" },
+            { "requestedPeriod", "Appointment" },
+        };
 
     [Theory]
-    [InlineData("status")]
-    [InlineData("vaccineCode")]
-    [InlineData("requestedPeriod")]
-    public void GivenPropertyOfAnotherResource_WhenAnalyzedOnConcreteRoot_ThenReportsAlwaysEmptyNotIndeterminate(
-        string propertyName)
+    [MemberData(nameof(RootPropertiesOfOtherResources))]
+    public void GivenPropertyOfAnotherResource_WhenAnalyzedOnConcreteRoot_ThenReportsAlwaysEmptyAndTheEvaluatorAgrees(
+        string propertyName,
+        string declaringResourceType)
     {
-        var result = _analyzer.Analyze(propertyName, "Patient");
+        // Arrange
+        var schema = FhirVersion.R5.GetSchemaProvider();
+        var patient = ResourceJsonNode.Parse(PatientJson).ToElement(schema);
 
+        // Act
+        var result = _analyzer.Analyze(propertyName, "Patient");
+        var onPatient = Evaluate(patient, propertyName, schema);
+        var declaresProperty = schema.GetTypeDefinition(declaringResourceType)!
+            .Children.Any(child => child.Info.Name == propertyName);
+
+        // Assert
+        onPatient.ShouldBeEmpty(
+            $"'{propertyName}' must yield nothing on a populated Patient, or the always-empty verdict below is false.");
+        declaresProperty.ShouldBeTrue(
+            $"'{propertyName}' must be a real element on {declaringResourceType}, or this is a typo case rather than a decidable miss.");
         result.Errors.ShouldBeEmpty();
         result.IsIndeterminate.ShouldBeFalse();
         result.HasAlwaysEmptySubexpression.ShouldBeTrue();
         result.Warnings.ShouldContain(warning =>
             warning.Contains("will always be empty on root type 'Patient'", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The soundness rule the analyzer declares, stated as something that can fail. For every generated
+    /// resource in the parity corpus and every key its JSON actually carries, the bare name names present
+    /// data, so no always-empty verdict on it can be correct.
+    /// </summary>
+    /// <remarks>
+    /// Driven from the corpus rather than a hand-written list precisely so it reaches element shapes nobody
+    /// thought to enumerate; both always-empty defects this PR fixed were in that category. Failures are
+    /// collected and reported together so a regression shows its extent rather than its first instance.
+    /// </remarks>
+    [Fact]
+    public void GivenEveryTopLevelElementPresentInTheCorpus_WhenAnalyzedAsABareName_ThenNeverReportsAlwaysEmpty()
+    {
+        // Arrange
+        var falseVerdicts = new List<string>();
+        var checkedNames = 0;
+
+        // Act
+        foreach (var version in GeneratedParityCorpus.Build())
+        {
+            var analyzer = new FhirPathAnalyzer(version.Version.GetSchemaProvider());
+
+            foreach (var resource in version.Resources)
+            {
+                using var document = JsonDocument.Parse(resource.Json);
+
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (property.Name is "resourceType" || property.Name.StartsWith('_'))
+                    {
+                        continue;
+                    }
+
+                    checkedNames++;
+
+                    if (analyzer.Analyze(property.Name, resource.ResourceType).HasAlwaysEmptySubexpression)
+                    {
+                        falseVerdicts.Add($"{version.Version} {resource.ResourceType}.{property.Name}");
+                    }
+                }
+            }
+        }
+
+        // Assert
+        checkedNames.ShouldBeGreaterThan(0, "The corpus must supply elements, or this invariant is vacuous.");
+        falseVerdicts.ShouldBeEmpty(
+            $"The analyzer called {falseVerdicts.Count} present elements provably empty: "
+            + string.Join(", ", falseVerdicts.Take(20)));
     }
 
     [Fact]
@@ -55,8 +160,17 @@ public class AlwaysEmptyRootPropertyAnalysisTests
     public void GivenPropertyOfAnotherResource_WhenAnalyzedOnAbstractNonResourceRoot_ThenReportsAlwaysEmpty(
         string rootType)
     {
-        var result = _analyzer.Analyze("status", rootType);
+        // Arrange
+        var schema = FhirVersion.R5.GetSchemaProvider();
 
+        // Act
+        var result = _analyzer.Analyze("status", rootType);
+        var declaresStatus = schema.GetTypeDefinition(rootType)!
+            .Children.Any(child => child.Info.Name == "status");
+
+        // Assert
+        declaresStatus.ShouldBeFalse(
+            $"'status' must be absent from {rootType}, or the always-empty verdict below is false.");
         result.Errors.ShouldBeEmpty();
         result.IsIndeterminate.ShouldBeFalse();
         result.HasAlwaysEmptySubexpression.ShouldBeTrue();
@@ -69,8 +183,17 @@ public class AlwaysEmptyRootPropertyAnalysisTests
     [Fact]
     public void GivenAlwaysEmptyRootProperty_WhenAnalyzed_ThenInfersNoTypes()
     {
-        var result = _analyzer.Analyze("requestedPeriod", "Patient");
+        // Arrange
+        var schema = FhirVersion.R5.GetSchemaProvider();
+        var patient = ResourceJsonNode.Parse(PatientJson).ToElement(schema);
 
+        // Act
+        var result = _analyzer.Analyze("requestedPeriod", "Patient");
+        var evaluated = Evaluate(patient, "requestedPeriod", schema);
+
+        // Assert
+        evaluated.ShouldBeEmpty(
+            "'requestedPeriod' must yield nothing on a populated Patient, or the verdict below is false.");
         result.HasAlwaysEmptySubexpression.ShouldBeTrue();
         result.InferredTypes.Types.ShouldBeEmpty();
     }
@@ -138,4 +261,12 @@ public class AlwaysEmptyRootPropertyAnalysisTests
         result.Errors.ShouldContain(error =>
             error.Contains("'nosuchpropanywhere' not found", StringComparison.Ordinal));
     }
+
+    private IReadOnlyList<IElement> Evaluate(IElement element, string expression, ISchema schema) =>
+        _evaluator
+            .Evaluate(
+                element,
+                _parser.Parse(expression),
+                new EvaluationContext { Resource = element, RootResource = element, Schema = schema })
+            .ToList();
 }
