@@ -341,7 +341,10 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // and our implementation follows R5 (sub-second precision preserved).
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testPlusDate19")
         {
-            SkipTest("testPlusDate19: R4/R4B expect truncation of fractional seconds; this implementation follows R5 behaviour");
+            SkipUnlessTheCaseWouldNowPass(
+                testCase,
+                fhirVersion,
+                "testPlusDate19: R4/R4B expect truncation of fractional seconds; this implementation follows R5 behaviour");
             return;
         }
 
@@ -354,19 +357,48 @@ public class OfficialTestSuiteRunner(ITestOutputHelper output)
         // same reason (doNotEnforceAsSingletonRule below R5).
         if (fhirVersion is FhirVersion.R4 or FhirVersion.R4B && testCase.Name == "testFHIRPathAsFunction21")
         {
-            SkipTest("testFHIRPathAsFunction21: the 'as' singleton rule is enforced from R5 onwards, because HL7's own R4/R4B SearchParameters violate it - see TypeMatcher.EnsureSingletonInput");
+            SkipUnlessTheCaseWouldNowPass(
+                testCase,
+                fhirVersion,
+                "testFHIRPathAsFunction21: the 'as' singleton rule is enforced from R5 onwards, because HL7's own R4/R4B SearchParameters violate it - see TypeMatcher.EnsureSingletonInput");
             return;
         }
 
-        // Quantity algebra: Fhir.Metrics does not support unit multiplication/division across prefixes.
-        // testQuantity9:  2.0 'cm' * 2.0 'm' = 0.040 'm2' (unit multiplication)
-        // testQuantity10: 4.0 'g'  / 2.0 'm' = 2 'g/m'    (unit division)
-        if (testCase.Name is "testQuantity9" or "testQuantity10")
+        ExecuteTestCase(testCase, fhirVersion);
+    }
+
+    /// <summary>
+    /// Runs a version-policy skip's case and fails when it now passes, so the skip retires itself.
+    /// </summary>
+    /// <remarks>
+    /// A skip with no such guard stays green forever whether or not it is still needed. Six quantity-algebra
+    /// skips in this file went stale exactly that way: their cases passed on all three versions and nothing
+    /// said so, which also meant unit multiplication and division could regress without failing anything.
+    /// <see cref="AssertDeferralIsStillNeeded"/> gives <see cref="_unsignalledInvalidCases"/> the same
+    /// protection; this gives it to the two version-policy skips, which are not deferrals and so do not go
+    /// through that list.
+    /// </remarks>
+    private void SkipUnlessTheCaseWouldNowPass(FhirPathTestCase testCase, FhirVersion fhirVersion, string reason)
+    {
+        try
         {
-            SkipTest($"{testCase.Name}: requires full UCUM unit algebra; Fhir.Metrics library limitation");
+            ExecuteTestCase(testCase, fhirVersion);
+        }
+        catch (Exception ex) when (ex is not Xunit.SkipException)
+        {
+            SkipTest(reason);
             return;
         }
 
+        Assert.Fail($"""
+            '{testCase.Name}' is skipped on {fhirVersion} but the case now passes, so the skip is stale and must be removed.
+            Expression: {testCase.Expression}
+            Skip reason on file: {reason}
+            """);
+    }
+
+    private void ExecuteTestCase(FhirPathTestCase testCase, FhirVersion fhirVersion)
+    {
         var versionString = fhirVersion switch
         {
             FhirVersion.R4 => "r4",
