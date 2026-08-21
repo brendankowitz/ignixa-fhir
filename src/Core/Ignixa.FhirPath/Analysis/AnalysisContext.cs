@@ -177,14 +177,10 @@ public sealed record AnalysisContext
     /// </summary>
     public void AddAlwaysEmptyWarning(string message, Expression? location = null)
     {
-        _issues.Add(new ValidationIssue
-        {
-            Severity = ValidationIssueSeverity.Warning,
-            Message = message,
-            IsAlwaysEmpty = true,
-            Location = location?.Location?.ToString(),
-            Expression = location?.ToString()
-        });
+        _issues.Add(ValidationIssue.AlwaysEmpty(
+            message,
+            location?.Location?.ToString(),
+            location?.ToString()));
     }
 
     /// <summary>
@@ -192,14 +188,10 @@ public sealed record AnalysisContext
     /// </summary>
     public void AddIndeterminateWarning(string message, Expression? location = null)
     {
-        _issues.Add(new ValidationIssue
-        {
-            Severity = ValidationIssueSeverity.Warning,
-            Message = message,
-            IsIndeterminate = true,
-            Location = location?.Location?.ToString(),
-            Expression = location?.ToString()
-        });
+        _issues.Add(ValidationIssue.Indeterminate(
+            message,
+            location?.Location?.ToString(),
+            location?.ToString()));
     }
 
     /// <summary>

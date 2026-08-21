@@ -96,12 +96,12 @@ public sealed class AnalysisResult
     /// result therefore means "not classified as always-empty", not "not always empty".
     /// </para>
     /// </remarks>
-    public bool HasAlwaysEmptySubexpression => Issues.Any(issue => issue.IsAlwaysEmpty);
+    public bool HasAlwaysEmptySubexpression => Issues.Any(issue => issue.Kind == ValidationIssueKind.AlwaysEmpty);
 
     /// <summary>
     /// Gets whether static analysis could not determine the expression's validity.
     /// </summary>
-    public bool IsIndeterminate => Issues.Any(issue => issue.IsIndeterminate);
+    public bool IsIndeterminate => Issues.Any(issue => issue.Kind == ValidationIssueKind.Indeterminate);
 
     /// <summary>
     /// Gets whether the analysis found any warnings.
