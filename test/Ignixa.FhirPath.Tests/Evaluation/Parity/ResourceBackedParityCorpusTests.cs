@@ -75,13 +75,48 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
     private static void AssertSelectFindings(ResourceParityReport report)
     {
         report.SelectEvaluationsPerEngine.ShouldBeGreaterThanOrEqualTo(
-            ResourceBackedKnownDivergences.MinimumSelectEvaluationsPerEngine);
+            ResourceBackedKnownDivergences.MinimumSelectEvaluationsPerEngine,
+            """
+            The parity sweep evaluated fewer expressions per engine than the floor.
+            The evidence base for the conformance claim has shrunk, so something removed
+            expressions or resources from the corpus. Find what, and restore it.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
         report.ResourceCount.ShouldBeGreaterThanOrEqualTo(
-            ResourceBackedKnownDivergences.MinimumResourceCount);
-        report.BothThrew.ShouldBe(ResourceBackedKnownDivergences.ExpectedBothThrew);
-        report.BothEmpty.ShouldBe(ResourceBackedKnownDivergences.ExpectedBothEmpty);
+            ResourceBackedKnownDivergences.MinimumResourceCount,
+            """
+            The sweep ran over fewer resources than the floor.
+            Check SchemaBasedFhirResourceFaker and the resource type list before anything else.
+            Raise this floor when the corpus genuinely grows; never lower it to accommodate a loss.
+            """);
+        report.BothThrew.ShouldBe(
+            ResourceBackedKnownDivergences.ExpectedBothThrew,
+            """
+            Both engines now throw on an expression where previously neither did.
+            This is not a parity failure - the engines still agree - but it is coverage lost:
+            an evaluation that used to compare real values no longer does.
+            Identify the expression from the divergence output and confirm the throw is correct
+            for both engines before re-pinning.
+            """);
+        report.BothEmpty.ShouldBe(
+            ResourceBackedKnownDivergences.ExpectedBothEmpty,
+            """
+            The both-empty count moved. Roughly 62% of this number is corpus shape and 38% is
+            engine behaviour: 5,888 of 9,453 come from expressions that are never non-empty
+            anywhere in the corpus, so the faker's density decides them, not either engine.
+            Check whether the corpus, the resource type list, or SchemaBasedFhirResourceFaker
+            changed before concluding an engine improved. Re-pin only once you can say which of
+            the two moved, and say so in the commit message.
+            """);
         report.AgreementsOnValues.ShouldBeGreaterThanOrEqualTo(
-            ResourceBackedKnownDivergences.MinimumAgreementsOnValues);
+            ResourceBackedKnownDivergences.MinimumAgreementsOnValues,
+            """
+            Fewer evaluations produced matching non-empty values than the floor requires.
+            This is the number the conformance claim rests on, so a drop is a regression until
+            proven otherwise - agreements do not become empty or divergent for a benign reason.
+            A floor is raised when evidence is gained and never lowered to accommodate a loss:
+            if it is red, fix the regression rather than re-pinning the floor beneath it.
+            """);
 
         var classified = report.Divergences
             .Select(divergence => (Divergence: divergence, Classification: ResourceBackedKnownDivergences.Classify(divergence)))
