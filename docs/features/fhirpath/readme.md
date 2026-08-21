@@ -21,11 +21,13 @@ This feature provides FHIRPath expression evaluation capabilities used throughou
 | Investigation | Status | Created | Description |
 |--------------|--------|---------|-------------|
 | [Performance Optimization](investigations/performance-optimization.md) | Complete | 2025-10-16 | Performance analysis and optimization strategies for FHIRPath evaluation |
-| [Gap Analysis](investigations/gap-analysis.md) | Complete | 2025-11-18 | Analysis of FHIRPath implementation gaps and missing functionality |
+| [Gap Analysis](investigations/gap-analysis.md) | Superseded | 2025-11-18 | Analysis of FHIRPath implementation gaps and missing functionality |
 | [Visitor Pattern Evaluation](investigations/visitor-pattern-evaluation.md) | Complete | 2026-01-09 | Comparison of switch-based vs visitor pattern for FhirPath AST traversal |
 | [Performance vs Firely SDK](investigations/fhirpath-performance-analysis.md) | Complete | 2026-01-11 | Deep analysis proving 3,220x speedup over Firely through compiled delegates |
-| [Official Test Suite Integration](investigations/official-test-suite-integration.md) | Complete | 2026-01-12 | Leveraging HL7's official FHIRPath test cases (2,900 tests executed, 2,881 genuinely asserted) for specification compliance validation |
+| [Official Test Suite Integration](investigations/official-test-suite-integration.md) | Complete | 2026-01-12 | Leveraging HL7's official FHIRPath test cases (2,900 tests executed, 2,881 genuinely asserted - *count unverified pending runner fix*) for specification compliance validation |
 | [Instance Creation Delegate](investigations/instance-creation-delegate.md) | Implemented | 2026-06-16 | Instance-selector construction is delegated to a host-provided creation delegate on EvaluationContext; documents the spec-silent choices Ignixa makes |
+| [FHIRPath Release Readiness](investigations/release-readiness.md) | In Progress | 2026-08-21 | Comprehensive plan for FHIRPath release readiness covering spec conformance, production defects, evidence base, and official suite validation |
+| [PR #427 Known Residuals](investigations/pr427-residuals.md) | In Progress | 2026-08-21 | Implementation plan for PR #427 residual issues including analyzer fixes, guard hardening, and tier decisions |
 
 ### Performance Comparison: Ignixa vs Firely
 

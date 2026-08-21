@@ -1,8 +1,10 @@
 # Investigation: FHIRPath Gap Analysis
 
 **Feature**: fhirpath
-**Status**: Investigation Complete
+**Status**: Superseded
 **Created**: 2025-11-18
+
+> This analysis was superseded on 2026-08-21 by [FHIRPath Release Readiness](release-readiness.md). Its conclusions were re-validated against the current FHIRPath continuous build and no longer hold: the functions listed as missing (math, aggregates, date components, sort, coalesce, string extensions, defineVariable, precision, repeatAll, toLong) are all implemented. The claim that the `not` operator is missing was incorrect—`not()` is a function in FHIRPath, not an operator. Long is a Standard for Trial Use feature, not a normative gap. Do not use this document's roadmap phases for planning.
 
 **Date:** 2025-11-18
 **Specification Version:** FHIRPath 3.0.0-ballot (R2 STU1)

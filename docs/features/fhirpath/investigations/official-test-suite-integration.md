@@ -266,7 +266,7 @@ engine work and were stale in every column.
 
 (Measured against `fhir-test-cases` 1.7.46, `dotnet test test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj
 --filter "FullyQualifiedName~OfficialTestSuite_R4&FullyQualifiedName!~OfficialTestSuite_R4B"` and the
-equivalent `_R4B` / `_R5` filters.)
+equivalent `_R4B` / `_R5` filters. **Count unverified pending runner fix**: The current runner cannot distinguish an unimplemented function from a passing test because it treats `NotSupportedException` as an unconditional pass; see [FHIRPath Release Readiness](release-readiness.md) item E1 for details.)
 
 Read the last column, not the "Failed" column. Every case in the suite now either asserts and passes or
 is accounted for explicitly, so a raw pass rate reads 100% and tells you nothing. Two things are worth
@@ -309,7 +309,7 @@ the 35 real gaps that then went into `_unsignalledInvalidCases` as named deferra
 (`FhirPathAnalyzer` static analysis, `VariableScope` lexical scoping, version-gating the `as` singleton
 rule) is what closed all 35 down to zero - the `Assert.Fail` fix exposed the gaps, it didn't close them.
 
-Three R5 cases are CDA-mode and excluded at parse time, so 2,903 parse and 2,900 execute.
+Three R5 cases are CDA-mode and excluded at parse time, so 2,903 parse and 2,900 execute (**count unverified pending runner fix** — see caveat above).
 
 **Test Coverage Distribution** (by group, counting only genuinely asserted cases):
 - `testBasics` - 5/7; `testType` - 30/30
@@ -374,7 +374,7 @@ skipped result instead of a silent pass.
 - ✅ Failed tests report expression, expected vs actual output, input file reference
 - ✅ Tests run in parallel via xUnit's default parallelization
 - ✅ Coverage report via `dotnet test --logger "console;verbosity=detailed"`
-- ✅ Full R4/R4B/R5 suite (2,900 tests executed) - exceeded Phase 1 goal of 200 tests
+- ✅ Full R4/R4B/R5 suite (2,900 tests executed (**count unverified** — see caveat in summary table above)) - exceeded Phase 1 goal of 200 tests
 - ✅ FHIRPath 2.0 support: Comments, `defineVariable()`, backtick variables, escape sequences
 - ✅ Comprehensive function coverage: 120 registered `[FhirPathFunction]` implementations
 

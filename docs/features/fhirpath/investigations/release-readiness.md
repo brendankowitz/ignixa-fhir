@@ -1,0 +1,603 @@
+# Investigation: FHIRPath Release Readiness
+
+**Feature**: fhirpath
+**Status**: In Progress
+**Created**: 2026-08-21
+
+Ignixa FHIRPath — release-readiness plan for the fhir-server (ADR 2608) NuGet package
+
+Date: 2026-08-21. Code references are to the PR #427 worktree at `C:/w427` (detached `92c99541`,
+merge base `c66cc4a6`). Spec references are to the FHIRPath continuous build v3.0.0
+(https://build.fhir.org/ig/HL7/FHIRPath/), read from its source
+`https://raw.githubusercontent.com/HL7/FHIRPath/master/input/pages/index.md` (fetched 2026-08-21;
+line numbers below are into that file, 4,810 lines). HAPI references are to
+`hapifhir/org.hl7.fhir.core` master,
+`org.hl7.fhir.r5/src/main/java/org/hl7/fhir/r5/fhirpath/FHIRPathEngine.java` (7,391 lines, last
+touched 2026-07-30 by `a000cc51`) and `org.hl7.fhir.r5/.../model/Base.java`, both fetched today.
+
+**Decision rule (binding, stated per decision below):**
+Tier 1 = FHIRPath spec at build.fhir.org (current text, not the Nov-2025 ballot reading).
+Tier 2 = HAPI (`FHIRPathEngine.java`).
+Tier 3 = Firely 5.11.4 (the version fhir-server runs), only where 1 and 2 don't settle it.
+Where Ignixa is more spec-compliant than Firely: deliberate divergence, documented and surfaced to
+the seam — not "fixed" back. Where Ignixa diverges from spec AND HAPI: defect.
+
+---
+
+## 1. Spec-conformance re-baseline
+
+### 1.1 The Nov-2025 gap analysis is obsolete and must be retired, not amended
+
+`docs/features/fhirpath/investigations/gap-analysis.md` (2025-11-18) is wrong in both
+directions against the code at `C:/w427`:
+
+| gap-analysis claim | Status today | Evidence |
+|---|---|---|
+| Quantity literal evaluation "NOT IMPLEMENTED, critical" | Implemented; quantity equivalence and unit handling are exercised by the parity corpus | `1 'mg'` cases throughout `test/Ignixa.FhirPath.Tests/Evaluation/Parity/`; quantity comparison narrowing was the subject of PR #398 |
+| Math, aggregates, date components, sort, coalesce, trim/split/join/encode/decode, defineVariable, precision, repeatAll, toLong "NOT IMPLEMENTED" | All implemented | `[FhirPathFunction]` census over `src/Core/Ignixa.FhirPath/Evaluation/Functions/`: 120+ functions including `abs ceiling floor exp ln log power round sqrt truncate`, `aggregate sum min max avg`, `year month day hour minute second millisecond timezone timeOfDay duration difference`, `sort coalesce defineVariable precision repeatAll toLong convertsToLong trim split join lastIndexOf encode decode escape unescape matchesFull combine not` |
+| "`not` operator missing" (~94% operator coverage) | Wrong then and now. FHIRPath has no unary `not` operator; `not()` is a function (spec line 3884) and Ignixa implements it | spec-index.md:3884; function census above |
+| "Long literal missing" | Still true as a *literal*, and `Long` is **STU**, not normative (see 1.2). The real Long defect is different (see D3, §4) | spec-index.md:226 "`Long: 0L, 45L // Long is defined as STU`" |
+| "~98% normative coverage" headline | Understated now; the normative surface is effectively complete. What remains open is a handful of *semantic* decisions (§3, §4), not missing functions | function census; official suite results (§6) |
+
+Verdict: mark gap-analysis.md superseded (header edit only, in the docs PR), pointing at this plan
+and `firely-parity.md`. Do not maintain its roadmap — Phases 23–26 there describe work that already
+happened.
+
+### 1.2 What the current build actually says (deltas that matter)
+
+Facts pulled from the current spec text, each with the line in `index.md`:
+
+1. **Long is STU** (line 226; conversion-table rows carry `{:.stu-bg}` at 1296–1300; `toLong`/
+   `convertsToLong` STU at 1484/1517). Not a normative gap. The Ignixa defect around `Long` is a
+   self-consistency bug (D3), not a conformance blocker.
+2. **`repeat()` dedup is defined via the `=` operator, not deep equality** (line 1016: items are
+   added "only if they are not already in the output collection as determined by the equals (`=`)
+   operator returning `true` *(i.e. `false` and empty both indicate that the values are not equal
+   and thus added)*"). Ignixa dedups by deep equality (`src/Core/Ignixa.FhirPath/Evaluation/Functions/CollectionFunctions.cs:446-485`). For
+   primitives these coincide; for temporals with mismatched precision `=` yields empty → spec says
+   ADD, and deep equality may decide differently. This must be checked when the `repeat()` guard is
+   built (WI-R2). Order of `repeat()` results is explicitly undefined (line 1042).
+3. **The spec does not mandate termination guards.** `repeatAll`'s own examples show
+   non-terminating expressions as authoring mistakes (lines 1088–1089). HAPI's `funcRepeat` is
+   unbounded (FHIRPathEngine.java:5625-5657 — `while (more)` with `equalsDeep` dedup, no cap). So
+   iteration caps are engine hardening, decided by neither tier — they are *our* multi-tenant
+   write-path requirement, and Ignixa already set the precedent with `repeatAll`'s 100,000 cap.
+4. **Collection equivalence `~`** (lines 3483–3505): same-size, "Each item must be equivalent",
+   "Comparison is not order dependent", different sizes → false. The text does not say whether
+   duplicates must pair off (multiset matching) or merely each find *some* equivalent partner.
+   Tier 1 is ambiguous; see §3.5.
+5. **Singleton evaluation of collections** (lines 546–560): single node + expected type Boolean →
+   `true`; empty → empty; multi-item → error. This is the spec basis for Firely's `BooleanEval`;
+   nothing in the spec defines a `Predicate`-on-empty answer — that is SDK API surface (§3.1).
+6. **Type/element name case-sensitivity is delegated to the model** (line 4561: "the
+   case-sensitivity of type and element names is defined by each model"; restated at 4777). Tier 1
+   therefore does not settle the pre-R5 capitalised-cast question by itself — the FHIR model's own
+   per-release text does, and HAPI's reading of it is Tier 2 evidence (§3.3).
+7. **STU date-component functions were RENAMED in the current build**: `yearOf()`, `monthOf()`,
+   `dayOf()` … `timezoneOffsetOf(): Decimal` (lines 3055, 3073, 3099, 3195). Ignixa implements the
+   older ballot names (`year`, `month`, …, `timezone`). These are STU, reachable from no shipped
+   search parameter, and absent from the vendored FHIR test suites (which track published FHIR
+   releases, not the FHIRPath CI build). **Do not chase the rename for this release** — record it
+   as a known STU drift. It is, however, a live demonstration of why implementing ballot functions
+   eagerly is a liability (see §10).
+8. **`conformsTo()` and `%terminologies` do not appear in the FHIRPath spec at all** (zero
+   occurrences in index.md). They are FHIR-core supplement functions (fhirpath.html "additional
+   functions"). This materially supports converting their suite pass-throughs to recorded skips
+   rather than implementing them (§6.3).
+
+**What "in good shape" means now:** the normative FHIRPath surface is implemented; release
+readiness is decided by (a) the five production defects in §4, (b) the semantic verdicts in §3,
+(c) honest measurements (§7), and (d) an honestly-passing official suite (§6). Not by function
+coverage percentages.
+
+---
+
+## 2. HAPI cross-check — every contested behaviour
+
+All verified by reading the fetched source, not from memory.
+
+| # | Behaviour | HAPI (evidence) | Bearing |
+|---|---|---|---|
+| 2.1 | Boolean projection of a result set (`Predicate`-shaped) | `convertToBoolean(List<Base>)`: **empty → false**; singleton BooleanType → its value; any other non-empty → true (FHIRPathEngine.java:978-988) | Ignixa's `Predicate` empty→false (`src/Core/Ignixa.FhirPath/Extensions/TypedElementExtensions.cs:211,223`) **matches HAPI**, diverges from Firely (empty→true). See §3.1 |
+| 2.2 | Pre-R5 capitalised casts | **Confirmed**: `initFlags()` sets `doNotEnforceAsCaseSensitive = true` and `doNotEnforceAsSingletonRule = true` when `!VersionUtilities.isR5Plus(worker.getVersion())` (FHIRPathEngine.java:237-242); `compareTypeNames` then uses `equalsIgnoreCase` (:2009-2015). The PR's `!isR5Plus()` claim is **verified**, with a nuance: HAPI's leniency is blanket case-insensitivity, *broader* than Ignixa's enumerated canonical-spelling alias set (`TypeMatcher.CanonicalSystemPrimitiveSpellings`, src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs:138-150). Also `Base.hasType` is `equalsIgnoreCase` (Base.java:325-338), so HAPI's System-namespace casts are case-insensitive at the base | §3.3 — Ignixa's version-gated, enumerated leniency is the *narrowest* implementation consistent with both tiers |
+| 2.3 | `as` singleton rule pre-R5 | Same flag: HAPI does **not** enforce the singleton rule pre-R5 (:240, :1997, :5530) | Direct Tier-2 support for the `testFHIRPathAsFunction21` skip rationale (§6.4) |
+| 2.4 | `repeat()` termination | **Unbounded** (:5625-5657). No iteration cap, `equalsDeep` dedup, O(n²) | Cap is engine hardening, not conformance (§4 D2) |
+| 2.5 | Collection `~` | `opEquivalent` (:2496-2517): size equality + each left item finds *some* equivalent right item; matched right items are **not consumed** — no multiset matching | §3.5 |
+| 2.6 | Complex-type equivalence recursion | `doEquivalent` recurses through `MergedList` into children with **no depth guard** (:2335-2390) | HAPI shares the exposure; irrelevant to our containment guarantee — D4 stands on the write-path argument |
+| 2.7 | `Long` | HAPI's engine has no `System.Long`: `isKnownType` System list is `String, Boolean, Integer, Decimal, Quantity, DateTime, Time, SimpleTypeInfo, ClassInfo` (:2018-2035); `funcIs`'s unqualified-System list likewise (:5477). 64-bit integers appear only as FHIR `integer64` in numeric handling (:6553-6571) | Long is STU (Tier 1) and unsupported by HAPI (Tier 2) — implementing the Long *literal* is not release work. The D3 fix is about not lying (silent empty) |
+| 2.8 | `ofType()` unknown-identifier failure mode | HAPI errors (`isKnownType` → `PathEngineException`, :1994-1996, :5528); Firely returns empty. Ignixa matches HAPI-style erroring by consistency choice (src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs doc block, "the reference engines disagree (HAPI errors, Firely returns empty)") | Keep; already documented in code. Seam note only |
+
+Not cross-checked in HAPI because they are SDK API surface, not language semantics: `Scalar`
+(throw-vs-null on 2+) and `IsBoolean` — HAPI has no analogues; these are decided in §3.1/3.2.
+
+---
+
+## 3. Verdicts on contested behaviours and blocking divergences
+
+Format: verdict, then **deciding tier**.
+
+### 3.1 `Predicate` empty→false (Ignixa) vs empty→true (Firely)
+**Verdict: keep Ignixa's behaviour; no engine change.** The spec does not define a Predicate API
+(Tier 1 silent — singleton boolean evaluation at spec lines 546-560 covers non-empty singletons
+only); HAPI's equivalent maps empty→false (Tier 2, FHIRPathEngine.java:978-988). Ignixa agrees
+with HAPI. Firely's empty→true is the odd one out. **fhir-server is unaffected**: ADR 2608
+deliberately derives `Predicate` (and `Scalar`, `IsTrue`, `IsBoolean`) once, in the seam, from
+`Select`, reimplementing Firely's `BooleanEval` — precisely so the engines never need to agree on
+this. What the release must do: document the difference in the package docs so no one wires
+Ignixa's `TypedElementExtensions.Predicate` (src/Core/Ignixa.FhirPath/Extensions/TypedElementExtensions.cs:211,223) directly into a
+Firely-shaped call site, and reconcile the second `Predicate` at
+`src/Core/Ignixa.DeId/Extensions/FhirPathExtensions.cs:37` with the primary one (same semantics,
+one documented definition). **Deciding tier: 2 (HAPI), with the seam derivation making the
+question moot for fhir-server.**
+
+### 3.2 `Scalar` null-on-2+ (Ignixa, SDK-6 semantics) vs throw (Firely 5.11.4)
+**Verdict: keep; document.** Tier 1 and 2 silent (API surface). The seam derives Scalar and pins
+the 5.11.4 throw (ADR 2608, "we are on 5.11.4 and pin the throw"), so fhir-server gets the throw
+regardless of what `TypedElementExtensions.Scalar` (src/Core/Ignixa.FhirPath/Extensions/TypedElementExtensions.cs:155-165) does.
+Package docs must state Ignixa's native Scalar is SDK-6-shaped. `IsBoolean` similarly does not
+need an engine implementation — the seam derives it — but the *characterization corpus* gap is
+real: nothing in the parity work compares an IsBoolean derivation. That test belongs in
+fhir-server's characterization suite per ADR 2608 step 1; note it in the ADR correction (§8), do
+not build it here. **Deciding tier: 3 (Firely), implemented at the seam, not in the engine.**
+
+### 3.3 Pre-R5 capitalised casts (STU3 11/11, R4 1, R4B 1) — crux #1
+**Verdict: keep-and-document. Ignixa is more correct than Firely; this is the deliberate-divergence
+case the policy exists for.** Tier 1 delegates model-name casing to the model (spec line 4561);
+the FHIR model's own release texts moved from R4/R4B's `as()` allowance to R5's narrower rule
+(the `TypeMatcher` doc block, src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs, walks this); Tier 2 confirms with `initFlags()`
+gating blanket case-insensitive `as` on `!isR5Plus()` (FHIRPathEngine.java:237-242). Firely
+returns empty for `value.as(DateTime)` on pre-R5 content and silently drops the value from the
+index; Ignixa (and HAPI) return the value. Ignixa's mechanism — ordinal matching everywhere plus
+an enumerated pre-R5 alias set (`CanonicalSystemPrimitiveSpellings`,
+`PreR5ArtifactErratumCastAliases`, src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs:138-160) — is *narrower* than HAPI's
+`equalsIgnoreCase` and is the defensible minimum.
+**Deciding tier: 2 (HAPI), Tier 1 having delegated.**
+
+Enablement consequence, stated honestly (this is what the divergence actually costs fhir-server):
+enabling Ignixa makes index rows *appear* that Firely never wrote (correct, additive rows).
+Existing rows are not invalidated; rollback leaves extra correct rows behind. So ADR 2608's "index
+rows written under either provider stay valid" **holds for this class**, but "search results are
+identical without a reindex" does not — R4 `Observation-code-value-date` (1 parameter) starts
+matching where it previously silently didn't. That is a *behaviour-change release note plus
+optional reindex to backfill*, not a migration blocker. STU3's 11 parameters are the same story at
+larger scale; STU3 is not fhir-server's primary version. These stay pinned as
+`BlocksEnablement: true` in the differential tests until the ADR text is corrected to carry this
+exact framing; then they become documented divergences, not blockers.
+
+### 3.4 R5 `instant` carrier: point vs 1-second range — crux #2
+**Verdict: verify-then-decide, default keep-and-document with an explicit reindex note for R5.**
+This is FHIR *search* semantics (implicit ranges of temporal values), not FHIRPath semantics —
+Tier 1 here is FHIR's search page (`https://hl7.org/fhir/R5/search.html#date`: a date parameter
+matches on the implicit range of the value; an `instant` carries at least second, typically
+millisecond precision). The divergence: for `(start | requestedPeriod.start).first()` Ignixa hands
+the indexer an `instant` and a point is indexed; Firely 5.11.4 hands `System.DateTime` and a
+1-second range is indexed (docs/features/fhirpath/resource-backed-parity-corpus.md:~110, "R5 instant/dateTime carrier —
+Confirmed production divergence").
+Work item: pin down which implicit range FHIR R5 mandates for a millisecond-precision instant
+(fetch and cite the search page + datatypes page in the PR). If the point (or ms-range) is
+correct, Ignixa keeps its carrier, and ADR 2608's "index rows written under either provider stay
+valid" must be **corrected**: for R5 the same resource produces *different* rows under the two
+providers, so provider flips on R5 require a reindex of instant-carrying date parameters. If FHIR
+mandates the second-range, the fix belongs where the range is expanded — most likely fhir-server's
+date converter reacting to the carrier type, in which case the seam adapter must present the
+carrier Firely-compatibly and that is an Ignixa adapter change (`src/Core/Extensions/Ignixa.Extensions.FirelySdk5`).
+Only R5 is affected; fhir-server ships R4 as primary, so this is not a package release blocker —
+it is an **ADR-correction blocker** (the ADR currently asserts something the measurements
+contradict). **Deciding tier: 1 (FHIR search spec), pending the verification read; Firely is not
+followed merely because the old rows are Firely-shaped.**
+
+### 3.5 Collection `~`: Kuhn matching (Ignixa) vs per-item existence (HAPI)
+**Verdict: keep-and-document.** Tier 1 is genuinely ambiguous (spec lines 3499-3503: same size,
+"each item must be equivalent", order-independent — silent on duplicate multiplicity). Tier 2 has
+a behaviour — size check plus unconsumed per-left-item existence (FHIRPathEngine.java:2496-2517) —
+which answers `[a,a,b] ~ [a,b,b]` as `true` where Ignixa's verified-correct maximum bipartite
+matching answers `false`. The precedence rule says HAPI settles what the spec leaves open; but
+HAPI's answer is not a *reading* of the ambiguity so much as an implementation shortcut, the
+divergent inputs (duplicate-heavy multisets) are reachable from no shipped search parameter, and
+no official test distinguishes them (verify this claim by grepping the vendored suites when
+documenting). Downgrading a verified-correct multiset semantics to an existence check to match an
+implementation detail buys nothing and loses symmetry guarantees. Keep the matching; add two
+differential pins (`[a,a,b] ~ [a,b,b]` false, and its official-suite absence recorded); document
+as a deliberate divergence from HAPI in firely-parity.md. If HL7 clarifies the text the decision
+gets revisited — cite the spec lines in the doc so the trigger is findable.
+**Deciding tier: 1 (ambiguity acknowledged), consciously *not* following Tier 2, with rationale
+recorded — this is the one place the plan recommends deviating from the letter of the precedence
+rule; the user signs off on it or we flip to HAPI's behaviour (a ~20-line change).**
+
+> **DECIDED 2026-08-21 (user signoff): keep the Kuhn matching.** The deviation from the stated
+> precedence rule is accepted for the reasons above — HAPI's `opEquivalent` reads as an
+> implementation shortcut rather than a reading of the ambiguity, the divergent inputs are
+> unreachable from any shipped search parameter, and the matching's order-independence is
+> guaranteed by construction where the existence check's is not. Work item stands as written:
+> keep the code, add the two differential pins (`[a,a,b] ~ [a,b,b]` false, plus the recorded
+> absence of any official-suite case distinguishing the two semantics), and document the
+> divergence in `firely-parity.md` citing spec lines 3499-3503 and
+> `FHIRPathEngine.java:2496-2517` so the decision is findable and revisitable if HL7 clarifies
+> the text. This is a documentation item, not a code change.
+
+### 3.6 `%resource` / `%rootResource` / `%context` binding
+**Verdict: fix precedence in the engine (D-adjacent, hard blocker H4).** Spec: environment
+variables are supplied by the evaluation environment; FHIR defines `%resource`/`%rootResource` as
+the containing resource, walked up — Ignixa's `src/Core/Ignixa.FhirPath/Extensions/TypedElementExtensions.cs:106-122` binding them to
+*the input element* is wrong whenever `Select` is invoked on a non-root element, and 5 shipped
+composite components depend on root-bound `%resource` (R4 `R4SearchParameterDefinitions.g.cs:10206,10261`,
+R4B `:10393,10448`, STU3 `:12087`). `ElementSearchIndexer` gets it right by binding `Resource`
+once (`src/Core/Ignixa.Search/Indexing/ElementSearchIndexer.cs:82-85`). The engine-side requirement for the seam:
+**explicitly-supplied environment bindings must always win over the input-element defaults** —
+including `%context`, which `src/Core/Ignixa.FhirPath/Evaluation/EvaluationContext.cs:449-451` currently binds by name *ahead of* the
+environment dictionary (also the fact that makes ADR 2608's `%context` paragraph factually wrong —
+it claims the opposite fall-through; goes in the ADR correction, §8). One precedence policy, three
+variables, one test class. **Deciding tier: 1 (FHIR's definitions of the variables); no HAPI/Firely
+consultation needed.**
+
+---
+
+## 4. Production defects (all confirmed this session; verdicts and falsification)
+
+Every item: the concrete production mutation that turns the new test red, demonstrated by
+execution. This codebase's history (six tests that passed but could not fail; four consecutive
+self-certified commits) makes "reviewed the diff" a non-closure.
+
+**D1 — `'@x'` string literals misclassified as temporals (regression, dangerous direction). HARD BLOCKER.**
+`src/Core/Ignixa.FhirPath/Analysis/SystemTypeConstructionAnalyzer.cs:GetConstantTypeName:90-102` sniffs a leading `@`;
+`src/Core/Ignixa.FhirPath/Parsing/FhirPathParseTreeGrammar.cs:57` stores `DateLiteral` with its `@` while `:30` strips only quotes
+from `StringLiteral`, making them byte-identical in the AST. `'@'.length()` → hard Error;
+`'@x' as String` → false AlwaysEmpty. The same rewrite dropped base's `null => "empty"` arm.
+*Fix:* at the parse layer — distinct node kind or typed value for temporal literals, so the
+analyzer never string-sniffs; restore the null/empty arm explicitly. Not a switch-arm patch.
+*Tier:* spec (string literals are strings, unconditionally; lexical section) — defect against
+Tier 1, no cross-check needed.
+*Falsify:* new tests `'@2013'.length() = 5`, `'@x' as String` non-empty,
+`{} …` null-arm analyzer case. Then revert only the parse-layer change (restore the `@`-sniffing
+classification), run, show red, restore. Execute and record in the PR.
+
+**D2 — `repeat()` has no iteration cap. HARD BLOCKER (tenant-suppliable unbounded loop+memory on the write path).**
+`src/Core/Ignixa.FhirPath/Evaluation/Functions/CollectionFunctions.cs:446-485` vs `RepeatAll`'s 100,000 cap at `:518`. Residuals plan WI-4
+already scoped filing this; this plan executes it. Constraints inherited from WI-4's pin: the
+guard must throw `FhirPathEvaluationException` so it lands in the Warning/`FailedToExtractValues`
+tier. While in the file: check dedup semantics against spec `=` (§1.2 item 2) and fix or
+explicitly document the deep-equality choice; do not silently ship a second semantic decision
+inside a guard PR — if dedup changes, it is called out in the PR description with spec line 1016
+quoted. The O(n²) dedup can be improved opportunistically (hash by a stable value key) but only if
+it doesn't change semantics; otherwise file it.
+*Tier:* neither (spec is silent, HAPI unbounded — FHIRPathEngine.java:5625) — engine hardening,
+justified by the multi-tenant write path and Ignixa's own `repeatAll` precedent.
+*Falsify:* test `repeat($this & 'x')`-shaped fresh-value projection asserts
+`FhirPathEvaluationException` within a bounded runtime; mutation = raise the cap to
+`int.MaxValue`, run with a test timeout, show red (timeout/OOM-guarded), restore. Plus the
+indexer-tier containment test per WI-4's template (Warning captured, zero Errors, write survives).
+
+**D3 — `Long` resolves but can never match.**
+`src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs:SystemTypeNames:223` contains `"Long"`; `CanonicalSystemPrimitiveSpellings:138` has
+no `Long` entry; `toLong()` declares `ReturnType = "long"` → `X.toLong() is Long` and
+`.ofType(Long)` silently return empty. **Answer to the census question asked:** Long is the *only*
+name with this split. `Quantity` is in `SystemTypeNames` but absent from the spellings map —
+inert, because quantity values carry the runtime spelling `Quantity` which matches ordinally
+(pinned by `test/Ignixa.FhirPath.Tests/Evaluation/SystemValueTypeMatchingTests.cs:GivenQuantityLiteral_…`); `Date` is in the spellings map
+but not `SystemOnlyTypes` — documented inert in the code comment ("Date's absence is inert",
+src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs:~118). *Fix:* add `["Long"] = "long"` to the spellings map so the three facts
+(resolvable, constructible via `toLong()`, matchable) agree; Long stays STU so this is
+**should-fix**, not a blocker — but silent-empty on a resolvable type is the exact silent-index-
+drift shape ADR 2608 warns about, so it ships in the release if at all possible.
+*Tier:* self-consistency; Long itself is STU (spec line 226) and absent from HAPI
+(FHIRPathEngine.java:2018-2035).
+*Falsify:* census test asserting every `SystemTypeNames` entry either has a spellings entry or is
+on a documented-inert allowlist (`Quantity`, with rationale); behaviour test
+`(1).toLong() is Long = true`. Mutation = remove the new `Long` spelling entry → both red; also
+remove `["Boolean"]` → census red (proves the census discriminates beyond the one name it was
+written for). Execute both.
+
+**D4 — Unguarded mutual recursion in collection equivalence. HARD BLOCKER.**
+`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:AreCollectionsEquivalent` (~925) ↔ `AreElementsEquivalent` (:~1028) with no
+depth/work guard; a `StackOverflowException` kills the process — `ElementSearchIndexer`'s catch
+ladder cannot contain it, so the write-path containment guarantee is false for this path. HAPI
+shares the exposure (2.6) — irrelevant; HAPI is not a multi-tenant indexer.
+*Fix:* depth or work-budget guard throwing `FhirPathEvaluationException` (same tier logic as D2).
+The Kuhn matching itself is verified correct — do not touch `TryPair`.
+*Tier:* engine hardening; no conformance dimension.
+*Falsify:* in-proc test: deeply nested tenant-shaped JSON (extension-in-extension chain, depth in
+the thousands) through `~`, assert `FhirPathEvaluationException` not process death. Mutation =
+remove the guard and run the same input in a **separate process** (scratch harness, not xunit),
+observe abnormal exit; restore. Record both executions — an SOE cannot be asserted in-proc, so
+the out-of-proc run is the only honest red.
+
+**D5 — Analyzer/evaluator casing policy split.**
+`src/Core/Ignixa.FhirPath/Visitors/FhirPathTypeSet.cs:CanBeOfType:144,150` matches `OrdinalIgnoreCase` ungated by version;
+`src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs` is ordinal-exact + gated aliases. Live only on negated always-empty/cast guards
+(`src/Core/Ignixa.FhirPath/Analysis/FhirPathAnalyzer.cs:876,986,1007,1035`) → under-warns; benign direction, but it sits inside the
+exact area `AnalyzerEvaluatorTypeCasingAlignmentTests` exists to guard. *Fix:* align
+`CanBeOfType` to the TypeMatcher policy (ordinal + version-gated aliases), **should-fix**.
+*Tier:* internal consistency with the §3.3 verdict.
+*Falsify:* extend `AnalyzerEvaluatorTypeCasingAlignmentTests` with a mis-cased pre-R5-alias case
+whose analyzer verdict must match the evaluator's; mutation = revert `CanBeOfType` to
+`OrdinalIgnoreCase` → red. Execute.
+
+Verified-correct list (do not spend effort): Kuhn matching/`TryPair`; `ValueOrdering` transitivity;
+`SystemTypeConstruction.TypeNames` throw-on-unknown; `IsSystemValue` flag deletion.
+
+---
+
+## 5. Fix the evidence base before quoting it
+
+Order matters: no number gets re-stated until the instrument that produces it discriminates.
+
+**E1 — `OfficialTestSuiteRunner` `NotSupportedException`-as-PASS. First, highest leverage.**
+`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:477-482`: `catch (NotSupportedException)` → log + `return` → xunit
+Passed. The catch is scoped by exception *type*; `src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322` ("Binary operator not
+yet implemented") and `:1250` ("Scope not yet implemented") throw the same type, so deleting a
+binary-operator arm turns every conformance case using that operator green. *Fix:* replace with a
+name-allowlisted genuine skip (the runner already has a real dynamic-skip mechanism —
+`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:674` region — use it): only the five terminology/profile/CDA functions
+(`conformsTo`, `memberOf`, `validateVS`, `translate`, `hasTemplateIdOf` — throw sites
+`src/Core/Ignixa.FhirPath/Evaluation/Functions/FhirSpecificFunctions.cs:486,506,526,546,566`) plus `%terminologies` may skip, matched on a typed
+marker (e.g. a `FhirPathFunctionNotSupportedException : NotSupportedException` carrying the
+function name), never on bare `NotSupportedException`.
+*Falsify (the coordinator's required mutation):* delete one binary-operator switch arm in
+`FhirPathEvaluator` (the `:322` region), run the suite, demonstrate cases using that operator go
+**red**; restore. Executed and recorded in the PR description. Until this run exists, no
+conformance figure is quoted anywhere — release notes, README, or the ADR correction.
+
+**E2 — `SearchIndexParityHarness` discards Ignixa-side failures.**
+`test/Ignixa.FhirPath.Tests/Evaluation/Parity/SearchIndexParityHarness.cs:44-48` builds the production indexer with `NullLoggerFactory`;
+Ignixa-throws + Firely-legitimately-empty = 0 vs 0 = green. *Fix:* capture logger; any
+contained-failure log entry on the Ignixa side is a tallied outcome class (`IgnixaContained`),
+asserted zero or pinned. *Falsify:* inject an unconditional throw for one parameter (temporary
+production mutation or test seam), show the corpus goes red instead of green; restore. Execute.
+
+**E3 — `ResourceParityReport` derives `AgreementsOnValues` by subtraction.**
+`test/Ignixa.FhirPath.Tests/Evaluation/Parity/ResourceParityReport.cs:32-33`: a `BothThrew` counter that stops incrementing inflates the
+headline and *relaxes* the `MinimumAgreementsOnValues` floor. *Fix:* count agreements positively;
+`BothThrew` becomes its own asserted floor/pin. *Falsify:* mutation = stop incrementing
+`BothThrew` → the positive-count floor must go red. Execute.
+
+**E4 — `ParitySweep` has no tally.** `test/Ignixa.FhirPath.Tests/Evaluation/Parity/ParitySweep.cs:38-57` (~1,400 R4 expressions × 5 resources)
+records nothing; mutual throws already occur. *Fix:* same outcome-class tally as E3.
+*Falsify:* make Ignixa throw for one swept expression (temporary mutation) → sweep red. Execute.
+
+**E5 — Compiled-vs-interpreted differentials compare `TypeMatcher` to itself.**
+`test/Ignixa.FhirPath.Tests/Evaluation/SystemValueTypeMatchingTests.cs:120`, `test/Ignixa.FhirPath.Tests/Compilation/VersionedCompiledVersusInterpretedDifferentialTests.cs:92`
+— both paths route `ofType()` through `FilterByType`. *Fix:* either add an independent expected-
+value oracle (literal expected results per case) or retitle/re-scope the tests honestly ("compiled
+and interpreted route through one matcher — this pins route equality, not correctness"). Prefer
+the oracle for the small case set. *Falsify:* mutation in `FilterByType` that changes both paths
+identically → the oracle version goes red, the self-comparison version demonstrably stays green
+(that pair of observations is the point). Execute both runs.
+
+**E6 — The bipartite "33.5M-graph brute-force oracle" is not committed; every shipped case is n=2.**
+*Fix:* commit a bounded property test (n ≤ 5, exhaustive or randomized-with-seed, brute-force
+matcher as oracle) or delete the claim from docs/comments. *Falsify:* mutation = skip the
+visited-reset in `TryPair` → property test red. Execute.
+
+**E7 — Benchmark README cites a commit (`86b5cce8`) that does not exist in the branch**, with 13
+`src/` commits including `src/Core/Ignixa.FhirPath/Evaluation/TypeMatcher.cs` postdating the figures
+(`bench/Ignixa.Benchmarks.Firely5/README.md:5`). *Fix:* re-run the benchmark at the release
+commit; restate all three numbers together — aggregate 1.72x faster, **plain paths 1.92x slower,
+and plain paths are 207 of 382 entries** — or their re-measured successors; never quote the
+aggregate alone. This also feeds ADR 2608's adverse-effect #1 (the adapter-input benchmark gate is
+fhir-server's, but our README must not hand it a stale number). No falsification step — it is a
+measurement, gated by citing the exact commit hash in the README and CI-checking that the hash is
+an ancestor of the release tag (cheap script in the release checklist).
+
+Measurement re-run order: E1 → re-baseline suite (§6.1) → E2/E3/E4 → re-run parity corpus → E7
+benchmark at the release commit. Anything published (release notes, ADR correction, docs site)
+quotes only post-fix numbers.
+
+---
+
+## 6. Passing the official HL7 FHIRPath test suite — first-class release objective
+
+The vendored suite is **FHIR/fhir-test-cases** (`test/Ignixa.FhirPath.Tests/TestData/
+fhir-test-cases/{r4,r4b,r5}/fhirpath/tests-fhir-*.xml`), not the FHIRPath IG's own tests. That is
+the right suite for a FHIR server (it tracks published FHIR releases, so the §1.2 STU renames
+don't apply), but its snapshot provenance is not recorded anywhere I could find — `testcases.zip`
+sits beside the tree with no version marker. **Pin the snapshot**: record the fhir-test-cases
+commit/release in a README next to the data and assert it (hash of the xml files) in a test, so
+"passes the official suite" names *which* suite.
+
+### 6.1 Step zero: re-baseline on an honest runner
+E1 lands first. Then re-run all three versions and publish the true counts in the four-way split:
+passed / failed / skipped-with-recorded-reason / excluded-by-scope. The current
+"2,900 runnable / 2,887 asserted / 9 pass-throughs / 4 skipped" is not a baseline — it was
+produced by a runner that converts unimplemented functionality into green. The unknown quantity is
+**cases newly red once laundering stops**: `NotSupportedException` from
+`src/Core/Ignixa.FhirPath/Evaluation/FhirPathEvaluator.cs:322/:1250` may be propping up currently-green cases. Quantify before sizing:
+if the newly-red set is empty beyond the known 9, this section is a cleanup; if operators or
+scopes surface, it is implementation work and gets sized then — do not pre-commit effort to an
+unmeasured set.
+
+### 6.2 Two bars, kept separate
+- **Bar A (release blocker):** every case whose expression surface is reachable from a shipped
+  search-parameter expression, in any supported version, passes. Anything normative that goes red
+  after E1 is a blocker regardless of reachability.
+- **Bar B (conformance claim):** the full suite passes minus a short, recorded, justified
+  exclusion list. Bar B gates the *claim* "passes the official FHIR test cases", the user's stated
+  ideal — it does not gate shipping the package if the only misses are the recorded exclusions
+  below.
+
+### 6.3 The 9 pass-throughs: convert to genuine skips, do not implement
+`conformsTo()` ×6 and `%terminologies` ×3. Neither appears in the FHIRPath spec at all (§1.2
+item 8 — zero occurrences in index.md); both are FHIR-supplement functions requiring profile
+validation / terminology-service infrastructure (`src/Core/Ignixa.FhirPath/Evaluation/Functions/FhirSpecificFunctions.cs:486` and the
+`%terminologies` path); neither is reachable from any shipped search parameter in any version
+(verified by grep across the five generated definition files, this session). Implementing them for
+a FHIRPath package release is scope creep into validation/terminology subsystems. **Verdict:
+genuine `Skip` with recorded rationale and a self-retiring guard** — the skip is keyed to the
+typed not-supported marker (E1), so the day `conformsTo` gets implemented the skip mechanism finds
+nothing to catch and the guard test (asserting the skip list matches the actually-throwing
+function set) goes red, forcing the entry's removal. A pass-through that reads as a pass is the
+worst option and dies with E1. The conformance claim then reads: "passes N of N runnable cases;
+9 cases skipped pending terminology/profile services, listed with rationale" — honest and stable.
+
+### 6.4 The 4 skips: keep, with HAPI citations attached
+Already genuine skips with recorded reasons (`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:342-363`; the mechanism
+reports real skips, `:674`):
+- **`testFHIRPathAsFunction21` (R4/R4B)** — Ignixa enforces the `as` singleton rule only from R5,
+  "because HL7's own R4/R4B SearchParameters violate it" (`:363`). Now Tier-2-confirmed: HAPI sets
+  `doNotEnforceAsSingletonRule = true` for pre-R5 (FHIRPathEngine.java:237-242) — HAPI would not
+  enforce it on R4 content either. The published R4/R4B expectation contradicts both engines'
+  reading of R4. Keep the skip; add the HAPI citation to the reason string; file upstream at
+  FHIR/fhir-test-cases (issue, low effort, optional).
+- **`testPlusDate19` (R4/R4B)** — reason on file: R4/R4B expect fractional-second truncation,
+  Ignixa follows R5 behaviour. Verification step before the release: check HAPI's date arithmetic
+  for the same case (its `DateTimeType` plus logic) — if HAPI R4 also refuses to truncate, the
+  case joins the contradicts-both-engines category and the skip stands with citation; if HAPI
+  truncates on R4, this is a genuine version-gating decision Ignixa made toward R5 semantics —
+  keep only with an explicit tier note ("Ignixa more R5-spec-compliant than the R4 expectation;
+  deliberate"). Either way the reason string ends up citing evidence, not assertion.
+
+### 6.5 CDA exclusion: legitimate, make it a recorded scope decision
+The runner "Filter[s] like the Firely validator: exclude only CDA mode"
+(`test/Ignixa.FhirPath.Tests/OfficialTestSuiteRunner.cs:279`) and prints the excluded count (`:297`); `hasTemplateIdOf`
+throws not-supported (`src/Core/Ignixa.FhirPath/Evaluation/Functions/FhirSpecificFunctions.cs:566`, "CDA support is out of scope"). Correct for
+a FHIR server package. Action: one paragraph in the suite README recording it as a deliberate
+scope decision with the excluded-case count per version, and the exclusion filter covered by the
+same guard test as 6.3 so it cannot silently widen.
+
+### 6.6 Falsification for the whole section
+The E1 operator-arm deletion run (suite goes red) is the load-bearing proof. Additional: remove
+one entry from the skip allowlist → the corresponding case must go red (skip only fires from the
+list); add a bogus entry naming an implemented function → guard test red. Execute all three.
+
+---
+
+## 7. Release-gating checklist for `publish-release.yml`
+
+Mechanics first, because they constrain sequencing: `publish-release.yml` is manual
+`workflow_dispatch` and **downloads the NuGet artifacts of the latest successful `ci.yml` run on
+`main`** (`.github/workflows/publish-release.yml`, `workflow: ci.yml … branch: main`). Therefore
+the release content is "whatever main last built" — #427 (and every PR below marked pre-release)
+must be **merged to main with CI green** before dispatch; there is no release-from-branch path.
+Latest published is 0.6.41 (`release/0.6.41` = `c22ca789`, 2026-07-27); #398 (`4e760f23`, ADR
+2608's named prerequisite) has never shipped; #427 adds public API
+(`src/Core/Ignixa.Abstractions/Structure/ISystemValueElement.cs`, plus `IgnixaElementAdapter` /
+`FirelyPrimitiveValues` / `FhirTemporal` changes), so the package fhir-server needs is
+#427-inclusive. Version: next minor (0.7.0) given the new public interface; 0.x semver makes this
+a judgment call — say so in the release notes.
+
+**Hard blockers (all true before dispatch):**
+1. D1 (string-literal regression) merged. — dangerous-direction write-path regression.
+2. D2 (`repeat()` cap) merged. — tenant-suppliable unbounded loop on the write path.
+3. D4 (equivalence recursion guard) merged. — process-killing SOE breaks the containment guarantee.
+4. §3.6 (`%resource`/`%rootResource`/`%context` explicit-binding precedence) merged — 5 shipped
+   composite components and the seam's context bridge depend on it.
+5. E1 merged and the suite re-baselined (§6.1); Bar A green; any post-E1 normative reds fixed.
+6. E2–E4 merged and the parity corpus re-run green with positive counting.
+7. **Firely floor resolved (explicit answer):** the shipped `src/Core/Extensions/Ignixa.Extensions.FirelySdk5` targets
+   `Hl7.Fhir.Base` **5.13.1**
+   (`C:/w427/src/Core/Extensions/Ignixa.Extensions.FirelySdk5/Directory.Packages.props:14`)
+   while every parity measurement link-compiles the same sources at **5.11.4**
+   (`test/Ignixa.FhirPath.Tests/Ignixa.FhirPath.Tests.csproj:94-95`), and fhir-server runs 5.11.4.
+   A 5.13.1 dependency floor would force fhir-server's Firely up past the version its own
+   characterization tests pin (`Scalar` throw semantics are version-sensitive — SDK 6 changed
+   them). **Decision: lower the package floor to 5.11.4** (standard lowest-supported-version
+   practice), verify it compiles at 5.11.4 (the comment says 5.13.1 was a "compatibility target" —
+   if an API used exists only in 5.13.x, that changes the answer and must be found by the
+   downgrade build, not assumed), and add a CI matrix leg that builds+tests the adapter at both
+   5.11.4 (floor) and 5.13.1 (current 5.x) so neither combination is ever untested again.
+   Multi-targeting is not the tool here — this is a dependency-version floor, not a TFM problem.
+   *Falsify:* packaging test asserting the nuspec dependency range floor is 5.11.4; mutation =
+   bump the props version → red. Plus the two CI legs actually executing (check the run, not the
+   yaml).
+8. #427 + all of the above merged to main; `ci.yml` green on main; artifact version.txt matches
+   the intended release version.
+9. Release notes drafted quoting **only** post-fix measurements (E-series) and carrying the
+   §3.3/§3.4 divergence framing verbatim.
+
+**Should-fix (ship without only with a recorded decision):**
+- D3 (`Long` spelling + census), D5 (casing-policy alignment).
+- E5 (differential oracle), E6 (bipartite property test or claim deletion), E7 (benchmark re-run,
+  README commit fix).
+- Residuals WI-1 (#423 analyzer fix + sweep) and WI-2/3/4 per `pr427-residuals.md` — folded into
+  sequencing below by reference, not restated.
+- §6.4 `testPlusDate19` HAPI verification; fhir-test-cases snapshot pinning (§6 preamble).
+- DeId `Predicate` reconciliation (§3.1).
+
+**Document-and-ship (no code):**
+- Pre-R5 capitalised casts: deliberate, Ignixa+HAPI-correct, additive-rows enablement note (§3.3).
+- Collection `~` matching semantics vs HAPI (§3.5).
+- `Scalar`/`Predicate`/`IsBoolean` API-surface differences and the seam derivation story (§3.1/3.2).
+- STU date-component rename drift vs the FHIRPath CI build (§1.2 item 7).
+- Skip/exclusion register for the official suite (§6.3–6.5).
+- gap-analysis.md superseded header (§1.1).
+- **ADR 2608 correction PR to microsoft/fhir-server** (the branch is ADR-only, so this is a text
+  PR): (a) "2906 of 2906" is false — replace with the post-E1 re-baselined figure and the skip
+  register, never a laundered number; (b) the `%context` paragraph is factually inverted
+  (`src/Core/Ignixa.FhirPath/Evaluation/EvaluationContext.cs:449-451` binds it by name ahead of the dictionary) — and after §3.6 the
+  corrected statement is "explicit bindings win"; (c) `resolve()` appears in 75 distinct shipped
+  expressions, not 76; (d) the composition snippet passes a schema into `ElementSearchIndexer`,
+  which arms the two schema-gated TypeMatcher errors the indexer deliberately avoids
+  (`src/Core/Ignixa.Search/Indexing/ElementSearchIndexer.cs:61-81` — the unset-Schema comment is load-bearing) — the snippet must
+  match the shipped composition; (e) "index rows written under either provider stay valid" gets
+  the §3.3 additive-rows framing and the §3.4 R5-instant qualification; (f) the package
+  prerequisite is a release containing **#427**, not merely #398.
+
+---
+
+## 8. Sequencing into PRs
+
+Residuals plan (`pr427-residuals.md`) PRs 1–3 are incorporated by reference; its WI numbering is
+reused unchanged. New PRs:
+
+| PR | Content | Stands alone because | Effort |
+|---|---|---|---|
+| **N1** | E1 runner honesty + §6 re-baseline + skip conversion/guards + snapshot pin | Changes the headline number everyone downstream quotes; its PR description carries the operator-arm-deletion red run | 2–3 d |
+| **N2** | E2+E3+E4 parity-evidence repairs + corpus re-run | Test-only, one theme; its description carries the injected-throw red runs | 2–3 d |
+| **N3** | D1 parse-layer literal fix | Production parser/analyzer semantics; nothing rides with it | 1–2 d |
+| **N4** | D2 `repeat()` cap (+dedup check) + D4 recursion guard | One theme: evaluator resource guards on the write path; both throw `FhirPathEvaluationException` per WI-4's pin, so it lands **after or with** residuals PR 3 (#428 affirmation) — the tier decision is the same conversation | 1–2 d |
+| **N5** | §3.6 environment-variable binding precedence | Production evaluation-context semantics; seam-facing contract | 1–2 d |
+| **N6** | D3 + D5 + type-name census | Consistency fixes, one theme | 1 d |
+| **N7** | Firely floor: props change to 5.11.4, CI matrix leg, nuspec test (H7) | Packaging; must not ride with semantics changes | 1 d |
+| **N8** | E5+E6+E7: differential oracle, bipartite property test, benchmark re-run + README | Measurement hygiene batch; last, at (near-)release commit | 1–2 d |
+| **N9** | Docs: firely-parity/corpus updates, divergence register, gap-analysis supersession; and the fhir-server ADR-correction PR | Text only; after all numbers are re-run | 1–2 d |
+
+Residuals PR 1 (WI-1, #423 sweep) can proceed in parallel with N1–N2; residuals PR 2 (WI-2/3) after
+PR 1; residuals PR 3 (WI-4) before or with N4 as noted. Order-critical chain:
+**N1 → (re-baseline) → any newly-red normative fixes → N3/N4/N5 → N6/N7 → N8 → merge train to
+main → CI → N9/ADR correction → dispatch `publish-release.yml`.**
+Total new work ≈ 11–16 working days plus residuals' 4–6; call it 3–4 engineer-weeks, long pole
+being N1's unknown (newly-red set) and the two corpus re-runs.
+
+---
+
+## 9. What could not be verified (stated plainly)
+
+- Firely 5.11.4's collection-`~` algorithm was not read; unnecessary — §3.5 is decided at tiers
+  1–2, and the divergence tests pin observed behaviour regardless.
+- HAPI's `testPlusDate19` behaviour (fractional-second date arithmetic on R4) — deliberately left
+  as the §6.4 verification step, not asserted.
+- Whether any 5.13.1-only API blocks the H7 floor downgrade — decided by the downgrade build.
+- The FHIR R5 implicit-range mandate for millisecond instants (§3.4) — the verification read is
+  the work item; the verdict text above brackets both outcomes.
+- fhir-test-cases snapshot provenance — unknown; that is why pinning it is a work item.
+- Whether official-suite cases exist that would distinguish §3.5's duplicate-multiset semantics —
+  asserted unlikely, verified during N9's doc write-up by grep, as noted.
+
+## 10. Do not do this
+
+1. **Do not chase STU/ballot surface to raise a percentage.** Normative correctness and the
+   shipped search-parameter surface gate the release; the §1.2 `yearOf()` rename is the standing
+   proof that ballot functions churn under you. Specifically: do not implement `conformsTo`,
+   `%terminologies`, `memberOf`, `validateVS`, `translate`, the Long *literal*, or the renamed
+   date components for this release.
+2. **Do not "fix" Ignixa back to a Firely behaviour where spec and HAPI agree Ignixa is right.**
+   Pre-R5 capitalised casts (§3.3) are the canonical case: Firely silently drops indexable values;
+   Ignixa and HAPI keep them. Matching the bug would be re-introducing silent data loss to make a
+   diff smaller.
+3. **Do not quote any of the three broken measurements before re-running them** — the conformance
+   count (laundered by E1's bug), the parity agreement count (inflated by E3's subtraction and
+   blinded by E2's null logger), and the benchmark figures (unattributable commit, E7). This
+   includes the ADR correction: a corrected-but-still-laundered number must not ship as the fix.
+4. **Do not implement the seam's `Predicate`/`Scalar`/`IsBoolean` semantics inside the engine.**
+   ADR 2608 derives them once from `Select` in fhir-server precisely to remove that drift class;
+   duplicating Firely semantics in Ignixa reintroduces two sources of truth.
+5. **Do not pass a schema into `ElementSearchIndexer`** to match ADR 2608's snippet — the unset
+   schema is load-bearing (`src/Core/Ignixa.Search/Indexing/ElementSearchIndexer.cs:61-81`); the ADR snippet is what gets fixed.
+6. **Do not patch D1 in the analyzer switch.** The defect is that two byte-identical AST shapes
+   need distinguishing; the only sound fix is at the parse layer. A smarter sniffer is the same
+   bug with better aim.
+7. **Do not close any item on "reviewed the diff/test".** Every falsification step above is an
+   executed mutation with an observed red, recorded in the PR. Base rate here: six tests that
+   passed but could not fail, four consecutive self-certified commits that were not clean.
+8. Residuals plan §"Do not do this" items 1–7 carry over unchanged (axis conflation, the
+   System.Quantity member map, `AnalyzeChild` tightening, inventory-from-TheoryData, tier-by-
+   message pinning, and the rest).
