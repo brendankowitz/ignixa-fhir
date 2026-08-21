@@ -38,6 +38,7 @@ internal static class ResourceBackedKnownDivergences
     /// Evaluations where both engines returned no results.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is legitimate agreement - a search parameter expression that matches nothing on a resource
     /// is the common case - but it is agreement on absence, so it is much weaker evidence than a
     /// matched value and it is invisible to every divergence-based assertion. Pinning it exactly means
@@ -45,8 +46,42 @@ internal static class ResourceBackedKnownDivergences
     /// the remaining 10,194 compare real values, of which 10,074 agree and 120 are the pinned
     /// divergences. If an engine change moves this number the pin has to be updated deliberately, with
     /// the shift understood, rather than absorbed into an unchanged divergence count.
+    /// </para>
+    /// <para>
+    /// Most of what this pin measures is the corpus, not either engine. Of the 9,453, 5,888 (62.3%)
+    /// come from 311 expressions that are never non-empty anywhere in the sweep -
+    /// <c>Resource.meta.profile</c>, <c>Resource.meta.security</c> and <c>Resource.meta.tag</c> at 788
+    /// each, <c>Resource.meta.source</c> at 658, <c>Resource.language</c> at 345 - and only 3,565
+    /// (37.7%) come from expressions that do produce values somewhere. The likeliest cause of this
+    /// number moving is therefore a corpus or <c>SchemaBasedFhirResourceFaker</c> density change, which
+    /// says nothing about conformance: check that direction first, and re-pin only once you can say
+    /// which of the two moved. <see cref="MinimumAgreementsOnValues"/>, not this, is the assertion that
+    /// carries the conformance claim.
+    /// </para>
     /// </remarks>
     public const int ExpectedBothEmpty = 9453;
+
+    /// <summary>
+    /// Lower bound on evaluations where both engines returned the same non-empty results - the only
+    /// bucket that is positive evidence the two agree.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ExpectedBothThrew"/> and <see cref="ExpectedBothEmpty"/> pin the agreements that
+    /// establish nothing, and <see cref="ExpectedSelectCounts"/> pins the disagreements. None of them
+    /// floors the evidence base, so today's 10,074 value agreements could halve, <see cref="ExpectedBothEmpty"/>
+    /// could be raised to absorb the difference, and every other assertion here would still pass on half
+    /// the evidence.
+    /// </para>
+    /// <para>
+    /// A floor rather than an exact pin, because the two are not equally safe to update. An exact pin is
+    /// satisfied by any number that has been written down, so losing evidence and gaining it both look
+    /// like a re-pin and neither prompts a question. A floor can only be satisfied by holding or gaining
+    /// evidence: raise it when the sweep genuinely covers more, and never lower it to accommodate a
+    /// regression, because a number below this one is the finding rather than the maintenance.
+    /// </para>
+    /// </remarks>
+    public const int MinimumAgreementsOnValues = 10074;
 
     /// <summary>
     /// Lower bounds on sweep size, so a corpus that stopped generating resources or expressions fails

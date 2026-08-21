@@ -24,13 +24,14 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
     private void WriteSummary(ResourceParityReport select, SearchIndexParityReport index)
     {
         _output.WriteLine(
-            "Select: {0} evaluations per engine across {1} resources in {2:F3}s; {3} divergences; {4} both threw; {5} both empty.",
+            "Select: {0} evaluations per engine across {1} resources in {2:F3}s; {3} divergences; {4} both threw; {5} both empty; {6} agreed on values.",
             select.SelectEvaluationsPerEngine,
             select.ResourceCount,
             select.Elapsed.TotalSeconds,
             select.Divergences.Count,
             select.BothThrew,
-            select.BothEmpty);
+            select.BothEmpty,
+            select.AgreementsOnValues);
         _output.WriteLine(
             "Index: {0} resources in {1:F3}s; {2} divergent resources; {3} reference failures.",
             index.ResourceCount,
@@ -79,6 +80,8 @@ public class ResourceBackedParityCorpusTests(ITestOutputHelper output)
             ResourceBackedKnownDivergences.MinimumResourceCount);
         report.BothThrew.ShouldBe(ResourceBackedKnownDivergences.ExpectedBothThrew);
         report.BothEmpty.ShouldBe(ResourceBackedKnownDivergences.ExpectedBothEmpty);
+        report.AgreementsOnValues.ShouldBeGreaterThanOrEqualTo(
+            ResourceBackedKnownDivergences.MinimumAgreementsOnValues);
 
         var classified = report.Divergences
             .Select(divergence => (Divergence: divergence, Classification: ResourceBackedKnownDivergences.Classify(divergence)))
